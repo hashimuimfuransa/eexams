@@ -9,6 +9,11 @@ export default defineConfig({
       include: "**/*.{jsx,js,ts,tsx}",
     }),
   ],
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    copyPublicDir: true,
+  },
   server: {
     port: 3000,
     proxy: {

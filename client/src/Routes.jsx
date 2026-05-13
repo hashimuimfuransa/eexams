@@ -8,6 +8,9 @@ import OrgAdminDashboard from './pages/OrgAdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import StudentRoutes from './StudentRoutes';
 import NotFound from './pages/NotFound';
+import PublicExamAccess from './pages/PublicExamAccess';
+import PublicExamTaking from './pages/PublicExamTaking';
+import ExamResult from './pages/ExamResult';
 import { useAuth } from './context/AuthContext';
 
 // Protected route component
@@ -36,6 +39,11 @@ const AppRoutes = () => {
 
   return (
     <Routes>
+      {/* Public exam access - must be before catch-all routes */}
+      <Route path="/join/:shareToken" element={<PublicExamAccess />} />
+      <Route path="/exam/:shareToken" element={<PublicExamTaking />} />
+      <Route path="/exam-result/:resultId" element={<ExamResult />} />
+      
       {/* Public routes */}
       <Route path="/" element={<App />} />
       <Route path="/login" element={<Login />} />

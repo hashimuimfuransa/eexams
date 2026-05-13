@@ -894,35 +894,17 @@ const getExamById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find the exam by ID
+    // Find the exam by ID with populated sections and questions
     const exam = await Exam.findById(id)
-      .populate('createdBy', 'firstName lastName');
+      .populate('createdBy', 'firstName lastName')
+      .populate({ path: 'sections.questions', model: 'Question' });
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    // Return the exam with all fields
-    res.json({
-      _id: exam._id,
-      title: exam.title,
-      description: exam.description,
-      timeLimit: exam.timeLimit,
-      passingScore: exam.passingScore,
-      isLocked: exam.isLocked,
-      scheduledFor: exam.scheduledFor,
-      startTime: exam.startTime,
-      endTime: exam.endTime,
-      status: exam.status,
-      createdBy: exam.createdBy ?
-        `${exam.createdBy.firstName} ${exam.createdBy.lastName}` : 'Unknown',
-      assignedTo: exam.assignedTo || [],
-      allowLateSubmission: exam.allowLateSubmission || false,
-      originalFile: exam.originalFile,
-      answerFile: exam.answerFile,
-      createdAt: exam.createdAt,
-      updatedAt: exam.updatedAt
-    });
+    // Return the exam with all fields including sections and questions
+    res.json(exam);
   } catch (error) {
     console.error('Get exam by ID error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -934,12 +916,19 @@ const getExamById = async (req, res) => {
 // @access  Private/Admin
 const getAllExams = async (req, res) => {
   try {
-    // Get all exams created by this admin with populated creator
+    console.log('getAllExams - req.orgAdminId:', req.orgAdminId);
+    console.log('getAllExams - req.user._id:', req.user?._id);
+    console.log('getAllExams - req.user.role:', req.user?.role);
+    
+    // Get all exams created by this admin with populated creator, sections, and questions
     const exams = await Exam.find({ createdBy: req.orgAdminId })
       .populate('createdBy', 'firstName lastName')
+      .populate({ path: 'sections.questions', model: 'Question' })
       .sort({ createdAt: -1 });
+    
+    console.log('getAllExams - exams found:', exams.length);
 
-    // Count students for each exam
+    // Count students for each exam and calculate question count
     const examsWithStudentCount = await Promise.all(
       exams.map(async (exam) => {
         const studentCount = await Result.countDocuments({ exam: exam._id });
@@ -954,20 +943,27 @@ const getAllExams = async (req, res) => {
           ? Math.round((completedCount / studentCount) * 100)
           : 0;
 
+        // Count total questions across all sections
+        const questionCount = (exam.sections || []).reduce((sum, sec) => sum + (sec.questions?.length || 0), 0);
+
         return {
           _id: exam._id,
           title: exam.title,
           description: exam.description,
           timeLimit: exam.timeLimit,
+          passingScore: exam.passingScore,
           totalPoints: exam.totalPoints,
           isLocked: exam.isLocked,
           createdAt: exam.createdAt,
+          updatedAt: exam.updatedAt,
           scheduledFor: exam.scheduledFor,
           status: exam.status,
-          createdBy: `${exam.createdBy.firstName} ${exam.createdBy.lastName}`,
+          createdBy: exam.createdBy ? `${exam.createdBy.firstName} ${exam.createdBy.lastName}` : 'Unknown',
           students: studentCount,
           completionRate,
-          assignedTo: exam.assignedTo || []
+          assignedTo: exam.assignedTo || [],
+          sections: exam.sections || [],
+          questions: questionCount
         };
       })
     );
@@ -1300,6 +1296,15 @@ const createExam = async (req, res) => {
   try {
     console.log('Create exam request received:', req.body);
     console.log('Files received:', req.files);
+    console.log('createExam - req.orgAdminId:', req.orgAdminId);
+    console.log('createExam - req.user._id:', req.user?._id);
+    console.log('createExam - req.user.role:', req.user?.role);
+
+    // Ensure we have a valid createdBy ID
+    const createdById = req.orgAdminId || req.user?._id;
+    if (!createdById) {
+      return res.status(401).json({ message: 'Not authenticated or missing user information' });
+    }
 
     const { title, timeLimit, isLocked, passingScore } = req.body;
     const description = req.body.description && req.body.description.trim() ? req.body.description.trim() : 'Exam';
@@ -1342,6 +1347,7 @@ const createExam = async (req, res) => {
     });
 
     // Create exam
+    console.log('About to create exam with createdBy:', createdById);
     const exam = await Exam.create({
       title,
       description,
@@ -1350,9 +1356,10 @@ const createExam = async (req, res) => {
       originalFile: examFilePath,
       answerFile: answerFilePath,
       isLocked: isLockedBool,
-      createdBy: req.orgAdminId,
+      createdBy: createdById,
       status: 'draft'
     });
+    console.log('Exam created with _id:', exam._id, 'createdBy:', exam.createdBy);
 
     // Log activity
     await ActivityLog.logActivity({
@@ -1482,24 +1489,32 @@ const createExam = async (req, res) => {
 
     // Handle manually-provided sections with inline questions (manual exam creation, no file)
     if (!examFilePath && req.body.sections && Array.isArray(req.body.sections)) {
+      console.log('Handling manual exam with sections:', req.body.sections.length);
       const TYPE_MAP = { 'fill-blank': 'fill-in-blank', 'short-answer': 'open-ended' };
       const HAS_OPTIONS = new Set(['multiple-choice', 'true-false']);
 
       // Step 1: ensure all sections exist on the exam document, then save once
       for (const sec of req.body.sections) {
-        if (!sec.questions || !sec.questions.length) continue;
+        if (!sec.questions || !sec.questions.length) {
+          console.log('Section has no questions, skipping:', sec.name);
+          continue;
+        }
         if (!exam.sections.find(s => s.name === sec.name)) {
+          console.log('Adding new section:', sec.name);
           exam.sections.push({ name: sec.name, description: sec.description || `Section ${sec.name}`, questions: [] });
         } else {
           const existing = exam.sections.find(s => s.name === sec.name);
           if (sec.description) existing.description = sec.description;
+          console.log('Updated existing section:', sec.name);
         }
       }
       await exam.save(); // persist sections so findIndex is stable
+      console.log('Sections saved, now creating questions');
 
       // Step 2: create questions section by section
       for (const sec of req.body.sections) {
         if (!sec.questions || !sec.questions.length) continue;
+        console.log(`Creating ${sec.questions.length} questions for section ${sec.name}`);
         for (const qd of sec.questions) {
           if (!qd.text) continue;
           const qType = TYPE_MAP[qd.type] || qd.type || 'multiple-choice';
@@ -1529,11 +1544,15 @@ const createExam = async (req, res) => {
               exam: exam._id, section: sec.name,
             });
             const si = exam.sections.findIndex(s => s.name === sec.name);
-            if (si !== -1) exam.sections[si].questions.push(q._id);
+            if (si !== -1) {
+              exam.sections[si].questions.push(q._id);
+              console.log(`Created question ${q._id} for section ${sec.name}`);
+            }
           } catch (qErr) { console.error('Error creating question:', qErr.message); }
         }
       }
       await exam.save();
+      console.log('Manual exam completed with sections and questions');
     }
 
     res.status(201).json(exam);
@@ -3235,15 +3254,29 @@ const createStudentAccounts = async (req, res) => {
 
 const updateExam = async (req, res) => {
   try {
-    const exam = await Exam.findOne({ _id: req.params.id, createdBy: req.orgAdminId });
+    const exam = await Exam.findOne({ _id: req.params.id, createdBy: req.orgAdminId })
+      .populate({ path: 'sections.questions', model: 'Question' });
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
-    const { title, description, timeLimit, passingScore } = req.body;
+    
+    const { title, description, timeLimit, passingScore, sections } = req.body;
     if (title) exam.title = title;
     if (description) exam.description = description;
     if (timeLimit) exam.timeLimit = Number(timeLimit);
     if (passingScore) exam.passingScore = Number(passingScore);
+    
+    // Handle sections update if provided
+    if (sections && Array.isArray(sections)) {
+      exam.sections = sections.map(sec => ({
+        name: sec.name,
+        description: sec.description,
+        questions: sec.questions?.map(q => q._id || q) || []
+      }));
+    }
+    
     await exam.save();
-    res.json(exam);
+    const updated = await Exam.findById(exam._id)
+      .populate({ path: 'sections.questions', model: 'Question' });
+    res.json(updated);
   } catch (err) {
     console.error('updateExam error:', err);
     res.status(500).json({ message: 'Server error' });

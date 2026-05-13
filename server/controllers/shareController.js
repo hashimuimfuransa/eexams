@@ -156,11 +156,27 @@ const getSharedExam = async (req, res) => {
     const { shareToken } = req.params;
 
     const sharedExam = await SharedExam.findOne({ shareToken })
-      .populate('exam', 'title description timeLimit totalPoints passingScore questions fileUrl')
+      .populate({
+        path: 'exam',
+        select: 'title description timeLimit totalPoints passingScore questions fileUrl sections',
+        populate: {
+          path: 'sections.questions',
+          model: 'Question'
+        }
+      })
       .populate('sharedBy', 'firstName lastName email');
 
     if (!sharedExam) {
       return res.status(404).json({ message: 'Share link not found' });
+    }
+
+    console.log('Shared exam found:', sharedExam.shareToken);
+    console.log('Exam sections:', sharedExam.exam?.sections);
+    
+    if (sharedExam.exam?.sections) {
+      sharedExam.exam.sections.forEach((section, idx) => {
+        console.log(`Section ${idx} (${section.name}): ${section.questions?.length || 0} questions`);
+      });
     }
 
     if (!sharedExam.isActive) {
@@ -206,6 +222,7 @@ const getSharedExam = async (req, res) => {
         totalPoints: sharedExam.exam.totalPoints,
         passingScore: sharedExam.exam.passingScore,
         questionCount: sharedExam.exam.questions?.length || 0,
+        sections: sharedExam.exam.sections || [],
         hasFile: !!sharedExam.exam.fileUrl
       },
       sharedBy: {
@@ -256,13 +273,28 @@ const verifySharePassword = async (req, res) => {
 const joinSharedExam = async (req, res) => {
   try {
     const { shareToken } = req.params;
-    const { email, name, password, inviteToken } = req.body;
+    let { email, name, password, inviteToken } = req.body;
 
     const sharedExam = await SharedExam.findOne({ shareToken })
-      .populate('exam', 'title description timeLimit totalPoints passingScore questions');
+      .populate({
+        path: 'exam',
+        select: 'title description timeLimit totalPoints passingScore questions sections',
+        populate: {
+          path: 'sections.questions',
+          model: 'Question'
+        }
+      });
 
     if (!sharedExam) {
       return res.status(404).json({ message: 'Share link not found' });
+    }
+
+    console.log('Join exam - Shared exam found:', sharedExam.shareToken);
+    console.log('Join exam - Exam sections:', sharedExam.exam?.sections);
+    if (sharedExam.exam?.sections) {
+      sharedExam.exam.sections.forEach((section, idx) => {
+        console.log(`  Section ${idx} (${section.name}): ${section.questions?.length || 0} questions`);
+      });
     }
 
     if (!sharedExam.isActive || sharedExam.isExpired()) {
@@ -297,9 +329,19 @@ const joinSharedExam = async (req, res) => {
       }
     }
 
+    // For public links without email/name, generate temporary ones
+    if (!email || !name) {
+      const tempId = Math.random().toString(36).substring(2, 11);
+      email = `student-${tempId}@exam.local`;
+      name = `Student ${tempId}`;
+    }
+
+    // Normalize email
+    email = email.toLowerCase().trim();
+
     // Check if already joined
     const existingStudent = sharedExam.students.find(
-      s => s.email === email.toLowerCase().trim()
+      s => s.email === email
     );
 
     if (existingStudent) {
@@ -324,16 +366,20 @@ const joinSharedExam = async (req, res) => {
     }
 
     // Create new student user if doesn't exist
-    let studentUser = await User.findOne({ email: email.toLowerCase().trim() });
+    let studentUser = await User.findOne({ email });
 
     if (!studentUser) {
       // Create a temporary student account
       const randomPassword = Math.random().toString(36).slice(-8);
+      const nameParts = name.split(' ');
+      const firstName = nameParts[0] || 'Student';
+      const lastName = nameParts.slice(1).join(' ') || 'User';
+      
       studentUser = await User.create({
         email: email.toLowerCase().trim(),
         password: randomPassword,
-        firstName: name.split(' ')[0] || name,
-        lastName: name.split(' ').slice(1).join(' ') || '',
+        firstName,
+        lastName,
         role: 'student',
         userType: 'individual',
         createdBy: sharedExam.sharedBy
@@ -342,7 +388,7 @@ const joinSharedExam = async (req, res) => {
 
     // Add student to share
     const studentData = {
-      student: studentUser._id,
+      studentId: studentUser._id,
       email: email.toLowerCase().trim(),
       name: name,
       accessMethod: inviteToken ? 'invite' : 'link'
@@ -560,12 +606,166 @@ const getShareStats = async (req, res) => {
   }
 };
 
+// @desc    Submit shared exam answers
+// @route   POST /api/share/:shareToken/submit
+// @access  Public
+const submitSharedExam = async (req, res) => {
+  try {
+    const { shareToken } = req.params;
+    const { answers, studentId } = req.body;
+
+    console.log('Submit exam - shareToken:', shareToken);
+    console.log('Submit exam - studentId:', studentId);
+    console.log('Submit exam - answers:', Object.keys(answers).length);
+
+    const sharedExam = await SharedExam.findOne({ shareToken })
+      .populate('students.student', 'email firstName lastName')
+      .populate({
+        path: 'exam',
+        select: 'title description timeLimit totalPoints passingScore sections',
+        populate: {
+          path: 'sections.questions',
+          model: 'Question'
+        }
+      });
+
+    if (!sharedExam) {
+      return res.status(404).json({ message: 'Share link not found' });
+    }
+
+    // Find the student in the shared exam
+    console.log('Students in shared exam:', sharedExam.students.length);
+    sharedExam.students.forEach((s, idx) => {
+      console.log(`  Student ${idx}: student=${s.student?._id}, email=${s.email}`);
+    });
+
+    const studentData = sharedExam.students.find(s => {
+      if (!s.student) return false;
+      return s.student._id.toString() === studentId;
+    });
+    
+    console.log('Found student data:', studentData ? 'Yes' : 'No');
+    
+    if (!studentData) {
+      return res.status(403).json({ message: 'Student not found in this exam' });
+    }
+
+    // Create a result record
+    const Result = require('../models/Result');
+    
+    // Calculate score
+    let totalPoints = 0;
+    let earnedPoints = 0;
+
+    // Flatten all questions from sections
+    const allQuestions = [];
+    if (sharedExam.exam?.sections) {
+      sharedExam.exam.sections.forEach(section => {
+        if (section.questions && Array.isArray(section.questions)) {
+          allQuestions.push(...section.questions);
+        }
+      });
+    }
+
+    console.log('Total questions:', allQuestions.length);
+
+    // Grade the exam
+    const detailedAnswers = [];
+    allQuestions.forEach(question => {
+      const points = question.points || 1;
+      totalPoints += points;
+
+      const studentAnswer = answers[question._id];
+      let isCorrect = false;
+
+      // Grade based on question type
+      if (question.type === 'multiple-choice') {
+        // For multiple choice, find the option that matches the student's answer
+        const selectedOption = question.options?.find(opt => opt.text === studentAnswer);
+        if (selectedOption) {
+          // Check if this option is the correct one
+          isCorrect = selectedOption.isCorrect || selectedOption.letter === question.correctAnswer;
+        }
+      } else if (question.type === 'true-false') {
+        // For true/false, compare directly
+        isCorrect = studentAnswer === question.correctAnswer;
+      } else {
+        // For open-ended and fill-in-blank, do exact match (case-insensitive)
+        isCorrect = studentAnswer?.toLowerCase().trim() === question.correctAnswer?.toLowerCase().trim();
+      }
+
+      if (isCorrect) {
+        earnedPoints += points;
+      }
+
+      // Build answer object based on question type
+      const answerObj = {
+        question: question._id,
+        isCorrect,
+        score: isCorrect ? points : 0
+      };
+
+      if (question.type === 'multiple-choice' || question.type === 'true-false') {
+        answerObj.selectedOption = studentAnswer || 'Not answered';
+        answerObj.correctedAnswer = question.correctAnswer;
+      } else if (question.type === 'open-ended' || question.type === 'fill-in-blank') {
+        answerObj.textAnswer = studentAnswer || 'Not answered';
+        answerObj.correctedAnswer = question.correctAnswer;
+      }
+
+      detailedAnswers.push(answerObj);
+    });
+
+    const percentage = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0;
+    const isPassed = percentage >= (sharedExam.exam?.passingScore || 70);
+
+    // Create result
+    const result = await Result.create({
+      student: studentId,
+      exam: sharedExam.exam._id,
+      answers: detailedAnswers,
+      totalScore: earnedPoints,
+      maxPossibleScore: totalPoints,
+      isCompleted: true,
+      endTime: new Date(),
+      aiGradingStatus: 'completed'
+    });
+
+    console.log('Result created:', result._id);
+
+    // Update student data
+    studentData.hasCompleted = true;
+    studentData.result = result._id;
+    studentData.completedAt = new Date();
+    await sharedExam.save();
+
+    // Increment completed count
+    sharedExam.incrementCompleted();
+    await sharedExam.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Exam submitted successfully',
+      resultId: result._id,
+      score: earnedPoints,
+      totalScore: totalPoints,
+      percentage: Math.round(percentage),
+      isPassed
+    });
+
+  } catch (error) {
+    console.error('Submit shared exam error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   createShare,
   getExamShares,
   getSharedExam,
   verifySharePassword,
   joinSharedExam,
+  submitSharedExam,
   updateShare,
   deleteShare,
   getMyShares,

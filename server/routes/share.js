@@ -8,6 +8,7 @@ const {
   getSharedExam,
   verifySharePassword,
   joinSharedExam,
+  submitSharedExam,
   updateShare,
   deleteShare,
   getMyShares,
@@ -18,6 +19,7 @@ const {
 router.get('/:shareToken', getSharedExam);
 router.post('/:shareToken/verify-password', verifySharePassword);
 router.post('/:shareToken/join', joinSharedExam);
+router.post('/:shareToken/submit', submitSharedExam);
 
 // Protected routes (for teachers managing shares)
 router.use(auth);

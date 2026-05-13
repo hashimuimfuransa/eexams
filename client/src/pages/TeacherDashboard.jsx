@@ -102,17 +102,38 @@ export default function TeacherDashboard() {
   const [results, setResults] = useState([]);
 
   useEffect(() => {
-    api.get('/admin/dashboard-stats').then(r => setStats(r.data)).catch(() => setStats({})).finally(() => setStatsLoading(false));
-    api.get('/admin/exams').then(r => setExams(r.data || [])).catch(() => {});
-    api.get('/admin/results').then(r => setResults(Array.isArray(r.data) ? r.data : (r.data?.results || []))).catch(() => {});
-  }, []);
+    if (!user) return; // Don't fetch if user is not authenticated
+    
+    api.get('/admin/dashboard-stats')
+      .then(r => setStats(r.data))
+      .catch(err => {
+        console.error('Error fetching dashboard stats:', err);
+        setStats({});
+      })
+      .finally(() => setStatsLoading(false));
+    
+    api.get('/admin/exams')
+      .then(r => {
+        console.log('Dashboard exams fetched:', r.data);
+        setExams(r.data || []);
+      })
+      .catch(err => {
+        console.error('Error fetching exams in dashboard:', err);
+      });
+    
+    api.get('/admin/results')
+      .then(r => setResults(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+      .catch(err => {
+        console.error('Error fetching results:', err);
+      });
+  }, [user]);
 
   return (
     <DashboardShell
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Teacher Portal" logoIcon={<School sx={{ color: 'white', fontSize: 20 }} />} />}
       topbarEl={<Topbar greeting={`Good morning, ${user?.firstName || 'Teacher'} 👋`} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
-      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={exams} results={results} />}
+      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={exams} results={results} setActiveSection={setActiveSection} />}
       {activeSection === 'exams'     && <ExamsSection exams={exams} setExams={setExams} />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'questions' && <QuestionsSection />}
@@ -126,7 +147,7 @@ export default function TeacherDashboard() {
 }
 
 /* ── HOME ── */
-function HomeSection({ stats, statsLoading, exams, results }) {
+function HomeSection({ stats, statsLoading, exams, results, setActiveSection }) {
   const isXs = useMediaQuery('(max-width:600px)');
   const [aiMode, setAiMode] = useState('describe');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, sections: [{ name: 'A', description: 'Section A', questions: [] }] });
@@ -345,7 +366,7 @@ function HomeSection({ stats, statsLoading, exams, results }) {
 
       {/* 3-col bottom row */}
       <Grid container spacing={2.5}>
-        {/* Donut */}
+        {/* Donut / Question types */}
         <Grid item xs={12} sm={6} md={4}>
           <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
             <SectionTitle>Question Types &amp; Counts</SectionTitle>
@@ -363,7 +384,7 @@ function HomeSection({ stats, statsLoading, exams, results }) {
                 ))}
               </Box>
             </Box>
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />}
+            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('questions')}
               sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
               Manage Question Types
             </Button>
@@ -373,7 +394,7 @@ function HomeSection({ stats, statsLoading, exams, results }) {
         {/* Recent Exams */}
         <Grid item xs={12} sm={6} md={4}>
           <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
-            <SectionTitle action={<Button size="small" sx={{ color: tokens.accent, fontWeight: 700, fontSize: 12, textTransform: 'none' }}>View All</Button>}>Recent Exams</SectionTitle>
+            <SectionTitle action={<Button size="small" onClick={() => setActiveSection('exams')} sx={{ color: tokens.accent, fontWeight: 700, fontSize: 12, textTransform: 'none' }}>View All</Button>}>Recent Exams</SectionTitle>
             {exams.length === 0
               ? <Box sx={{ py: 4, textAlign: 'center' }}><Typography sx={{ color: tokens.textMuted, fontSize: 13 }}>No exams yet.</Typography></Box>
               : exams.slice(0, 3).map((e, i) => {
@@ -391,7 +412,7 @@ function HomeSection({ stats, statsLoading, exams, results }) {
                     </Box>
                   );
                 })}
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />}
+            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('exams')}
               sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
               View All Exams
             </Button>
@@ -408,7 +429,7 @@ function HomeSection({ stats, statsLoading, exams, results }) {
             <Box sx={{ textAlign: 'center', mt: 0.5 }}>
               <Chip label={`${avgPerf}% Average Score`} sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, fontSize: 12 }} />
             </Box>
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />}
+            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('analytics')}
               sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
               View Analytics
             </Button>
@@ -421,12 +442,12 @@ function HomeSection({ stats, statsLoading, exams, results }) {
         <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary, mb: 2 }}>Quick Actions</Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
           {[
-            { label: 'Create Exam',      icon: <Add sx={{ fontSize: 18 }} />,         color: tokens.accent,  bg: 'rgba(12,189,115,0.09)' },
-            { label: 'Add Students',     icon: <People sx={{ fontSize: 18 }} />,       color: '#6366F1',      bg: 'rgba(99,102,241,0.09)' },
-            { label: 'Browse Templates', icon: <Description sx={{ fontSize: 18 }} />,  color: tokens.primary, bg: 'rgba(13,64,108,0.07)' },
-            { label: 'View Reports',     icon: <BarChart sx={{ fontSize: 18 }} />,     color: tokens.warning, bg: 'rgba(245,158,11,0.09)' },
+            { label: 'Create Exam',      icon: <Add sx={{ fontSize: 18 }} />,         color: tokens.accent,  bg: 'rgba(12,189,115,0.09)',  section: 'exams' },
+            { label: 'Add Students',     icon: <People sx={{ fontSize: 18 }} />,       color: '#6366F1',      bg: 'rgba(99,102,241,0.09)',  section: 'students' },
+            { label: 'Browse Templates', icon: <Description sx={{ fontSize: 18 }} />,  color: tokens.primary, bg: 'rgba(13,64,108,0.07)',   section: 'templates' },
+            { label: 'View Reports',     icon: <BarChart sx={{ fontSize: 18 }} />,     color: tokens.warning, bg: 'rgba(245,158,11,0.09)',  section: 'reports' },
           ].map((a, i) => (
-            <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderRadius: 2.5, bgcolor: a.bg, cursor: 'pointer', flex: '1 1 130px', minWidth: { xs: 0, sm: 130 }, border: `1px solid ${a.color}18`, transition: 'opacity 0.15s', '&:hover': { opacity: 0.82 } }}>
+            <Box key={i} onClick={() => setActiveSection(a.section)} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderRadius: 2.5, bgcolor: a.bg, cursor: 'pointer', flex: '1 1 130px', minWidth: { xs: 0, sm: 130 }, border: `1px solid ${a.color}18`, transition: 'opacity 0.15s', '&:hover': { opacity: 0.82 } }}>
               <Box sx={{ color: a.color }}>{a.icon}</Box>
               <Typography fontWeight={700} sx={{ color: a.color, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>{a.label}</Typography>
             </Box>
@@ -683,6 +704,7 @@ function PublishDialog({ examId, onClose }) {
       <Box sx={{ borderBottom: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 44, '& .MuiTab-root': { fontWeight: 700, fontSize: 13, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", minHeight: 44 }, '& .MuiTabs-indicator': { backgroundColor: tokens.primary } }}>
           <Tab label="👁 Preview" />
+          <Tab label="✏️ Edit Questions" />
           <Tab label="🔗 Public Link" />
           <Tab label="🔒 Private / Invite" />
         </Tabs>
@@ -698,8 +720,67 @@ function PublishDialog({ examId, onClose }) {
               : <Typography sx={{ color: tokens.textMuted, textAlign: 'center', py: 5 }}>Could not load exam preview.</Typography>
         )}
 
-        {/* TAB 1 — PUBLIC LINK */}
+        {/* TAB 1 — EDIT QUESTIONS */}
         {tab === 1 && (
+          <Box sx={{ p: 3, maxHeight: '70vh', overflowY: 'auto' }}>
+            {exam && exam.sections && exam.sections.length > 0 ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                {exam.sections.map((sec, si) => (
+                  <Paper key={si} elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                      <Box>
+                        <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
+                        <Typography sx={{ fontSize: 12, color: tokens.textMuted }}>{sec.description}</Typography>
+                      </Box>
+                      <Chip label={`${sec.questions?.length || 0} questions`} sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent, fontWeight: 700 }} />
+                    </Box>
+                    {sec.questions && sec.questions.length > 0 ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                        {sec.questions.map((q, qi) => (
+                          <Paper key={qi} elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+                                <Chip label={`Q${qi + 1}`} size="small" sx={{ bgcolor: tokens.primary, color: 'white', fontWeight: 700, minWidth: 32 }} />
+                                <Chip label={q.type?.replace(/-/g, ' ')} size="small" sx={{ bgcolor: '#F1F5F9', color: tokens.textSecondary, fontSize: 11, textTransform: 'capitalize' }} />
+                                <Chip label={`${q.points}pt`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning, fontWeight: 700, fontSize: 11 }} />
+                              </Box>
+                              <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.5 }}>{q.text}</Typography>
+                              {q.type === 'multiple-choice' && q.options && q.options.length > 0 && (
+                                <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                                  {q.options.map((opt, oi) => (
+                                    <Chip key={oi} label={`${opt.letter || String.fromCharCode(65 + oi)}: ${opt.text}`} size="small" sx={{ bgcolor: opt.isCorrect ? 'rgba(12,189,115,0.1)' : '#F1F5F9', color: opt.isCorrect ? tokens.accent : tokens.textSecondary, fontSize: 10, fontWeight: opt.isCorrect ? 700 : 400 }} />
+                                  ))}
+                                </Box>
+                              )}
+                            </Box>
+                            <Tooltip title="Edit question"><IconButton size="small" sx={{ color: tokens.primary, flexShrink: 0 }}><Edit sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+                          </Paper>
+                        ))}
+                        <Button fullWidth size="small" startIcon={<Add />} onClick={() => {}}
+                          sx={{ mt: 1, borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', border: `1px dashed ${tokens.accent}`, py: 1 }}>
+                          Add Question to Section {sec.name}
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 2 }}>
+                        <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontStyle: 'italic' }}>No questions in this section.</Typography>
+                        <Button fullWidth size="small" startIcon={<Add />} onClick={() => {}}
+                          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', border: `1px dashed ${tokens.accent}`, py: 1 }}>
+                          Add First Question
+                        </Button>
+                      </Box>
+                    )}
+                  </Paper>
+                ))}
+              </Box>
+            ) : (
+              <Typography sx={{ color: tokens.textMuted, textAlign: 'center', py: 5 }}>No sections or questions to edit.</Typography>
+            )}
+          </Box>
+        )}
+
+        {/* TAB 2 — PUBLIC LINK */}
+        {tab === 2 && (
           <Box sx={{ p: 3 }}>
             <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2 }}>
               <Typography fontWeight={700} sx={{ fontSize: 14, mb: 2, fontFamily: "'DM Sans',sans-serif" }}>Share Settings</Typography>
@@ -786,8 +867,8 @@ function PublishDialog({ examId, onClose }) {
           </Box>
         )}
 
-        {/* TAB 2 — PRIVATE / INVITE */}
-        {tab === 2 && (
+        {/* TAB 3 — PRIVATE / INVITE */}
+        {tab === 3 && (
           <Box sx={{ p: 3 }}>
             <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
@@ -877,7 +958,8 @@ function PublishDialog({ examId, onClose }) {
 
       <DialogActions sx={{ px: 3, py: 2, bgcolor: 'white', borderTop: `1px solid ${tokens.surfaceBorder}`, gap: 1 }}>
         <Button onClick={onClose} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary, fontWeight: 600 }}>Close</Button>
-        {tab === 0 && <Button variant="contained" onClick={() => setTab(1)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Next: Share →</Button>}
+        {tab === 0 && <Button variant="contained" onClick={() => setTab(1)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Next: Edit →</Button>}
+        {tab === 1 && <Button variant="contained" onClick={() => setTab(2)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Next: Share →</Button>}
       </DialogActions>
 
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')} message={snack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
@@ -1091,16 +1173,10 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
 }
 
 function ExamsSection({ exams, setExams }) {
-  const [loading, setLoading] = useState(false);
   const [publishExamId, setPublishExamId] = useState(null);
   const [editExam, setEditExam] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    api.get('/admin/exams').then(r => setExams(r.data || [])).catch(() => {}).finally(() => setLoading(false));
-  }, []);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -1112,9 +1188,23 @@ function ExamsSection({ exams, setExams }) {
     finally { setDeleting(false); }
   };
 
+  const handleEditClick = async (exam) => {
+    try {
+      const res = await api.get(`/admin/exams/${exam._id}`);
+      setEditExam(res.data);
+    } catch { }
+  };
+
   const handleSaveEdit = async (updated) => {
     try {
-      const res = await api.put(`/admin/exams/${updated._id}`, { title: updated.title, description: updated.description, timeLimit: updated.timeLimit, passingScore: updated.passingScore });
+      const payload = { 
+        title: updated.title, 
+        description: updated.description, 
+        timeLimit: updated.timeLimit, 
+        passingScore: updated.passingScore,
+        sections: updated.sections
+      };
+      const res = await api.put(`/admin/exams/${updated._id}`, payload);
       setExams(p => p.map(e => e._id === updated._id ? { ...e, ...res.data } : e));
       setEditExam(null);
     } catch { }
@@ -1123,8 +1213,7 @@ function ExamsSection({ exams, setExams }) {
   return (
     <Box>
       <SectionTitle>My Exams</SectionTitle>
-      {loading ? <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress sx={{ color: tokens.accent }} /></Box> : (
-        <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden', overflowX: 'auto' }}>
+      <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden', overflowX: 'auto' }}>
           <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 650 }}>
             <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>{['Title', 'Status', 'Questions', 'Time', 'Created', 'Actions'].map(h => <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 1.5, py: 1 }}>{h}</TableCell>)}</TableRow></TableHead>
             <TableBody>
@@ -1133,33 +1222,69 @@ function ExamsSection({ exams, setExams }) {
                   <TableRow key={e._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
                     <TableCell><Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{e.title}</Typography></TableCell>
                     <TableCell><Chip label={e.status || 'draft'} size="small" sx={{ bgcolor: `${sc}14`, color: sc, fontWeight: 600, textTransform: 'capitalize' }} /></TableCell>
-                    <TableCell><Chip label={e.questions?.length || 0} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} /></TableCell>
+                    <TableCell><Chip label={e.questions || 0} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} /></TableCell>
                     <TableCell><Typography variant="body2" sx={{ color: tokens.textMuted }}>{e.timeLimit} min</Typography></TableCell>
                     <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted }}>{new Date(e.createdAt).toLocaleDateString()}</Typography></TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
                         <Tooltip title="Publish / Share"><IconButton size="small" onClick={() => setPublishExamId(e._id)} sx={{ color: tokens.accent }}><Publish sx={{ fontSize: 16 }} /></IconButton></Tooltip>
-                        <Tooltip title="Edit"><IconButton size="small" onClick={() => setEditExam({ ...e })} sx={{ color: tokens.primary }}><Edit sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+                        <Tooltip title="Edit"><IconButton size="small" onClick={() => handleEditClick(e)} sx={{ color: tokens.primary }}><Edit sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                         <Tooltip title="Delete"><IconButton size="small" onClick={() => setDeleteId(e._id)} sx={{ color: '#EF4444' }}><Delete sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                       </Box>
                     </TableCell>
                   </TableRow>); })}
             </TableBody>
           </Table></TableContainer>
-        </Paper>
-      )}
+      </Paper>
 
       {/* Edit Dialog */}
       {editExam && (
-        <Dialog open onClose={() => setEditExam(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <Dialog open onClose={() => setEditExam(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
           <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 1 }}>Edit Exam</DialogTitle>
-          <DialogContent sx={{ pt: 1 }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-              <TextField fullWidth label="Title" value={editExam.title} onChange={e => setEditExam(p => ({ ...p, title: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-              <TextField fullWidth label="Description" value={editExam.description || ''} onChange={e => setEditExam(p => ({ ...p, description: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <TextField fullWidth label="Time Limit (min)" type="number" value={editExam.timeLimit} onChange={e => setEditExam(p => ({ ...p, timeLimit: +e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                <TextField fullWidth label="Passing Score (%)" type="number" value={editExam.passingScore} onChange={e => setEditExam(p => ({ ...p, passingScore: +e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+          <DialogContent sx={{ pt: 2, maxHeight: '70vh', overflowY: 'auto' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              {/* Basic Info */}
+              <Box>
+                <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Basic Information</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <TextField fullWidth label="Title" value={editExam.title} onChange={e => setEditExam(p => ({ ...p, title: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                  <TextField fullWidth label="Description" value={editExam.description || ''} onChange={e => setEditExam(p => ({ ...p, description: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField fullWidth label="Time Limit (min)" type="number" value={editExam.timeLimit} onChange={e => setEditExam(p => ({ ...p, timeLimit: +e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                    <TextField fullWidth label="Passing Score (%)" type="number" value={editExam.passingScore} onChange={e => setEditExam(p => ({ ...p, passingScore: +e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* Sections & Questions Summary */}
+              <Box>
+                <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Sections & Questions</Typography>
+                {editExam.sections && editExam.sections.length > 0 ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {editExam.sections.map((sec, si) => (
+                      <Paper key={si} elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                          <Box>
+                            <Typography fontWeight={700} sx={{ fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
+                            <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>{sec.description}</Typography>
+                          </Box>
+                          <Chip label={`${sec.questions?.length || 0} Q`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent, fontWeight: 700 }} />
+                        </Box>
+                        {sec.questions && sec.questions.length > 0 && (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                            {sec.questions.slice(0, 5).map((q, qi) => (
+                              <Chip key={qi} label={`Q${qi + 1}`} size="small" sx={{ fontSize: 10, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }} />
+                            ))}
+                            {sec.questions.length > 5 && <Chip label={`+${sec.questions.length - 5}`} size="small" sx={{ fontSize: 10, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }} />}
+                          </Box>
+                        )}
+                      </Paper>
+                    ))}
+                  </Box>
+                ) : (
+                  <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontStyle: 'italic' }}>No sections or questions yet.</Typography>
+                )}
+                <Typography sx={{ fontSize: 11, color: tokens.textMuted, mt: 1.5, fontStyle: 'italic' }}>To edit questions and sections, use the exam preview or create a new exam.</Typography>
               </Box>
             </Box>
           </DialogContent>

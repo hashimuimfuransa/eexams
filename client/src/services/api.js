@@ -47,7 +47,13 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // Handle 401 Unauthorized errors (token expired or invalid)
+    // But skip for public share endpoints
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      // Don't redirect for public share endpoints
+      if (originalRequest.url && originalRequest.url.includes('/share/')) {
+        return Promise.reject(error);
+      }
+
       originalRequest._retry = true;
 
       // Don't try to verify if the failing request was already a verify request

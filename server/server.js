@@ -99,6 +99,7 @@ const examRoutes = require('./routes/exam');
 const profileRoutes = require('./routes/profile');
 const superAdminRoutes = require('./routes/superAdmin');
 const shareRoutes = require('./routes/share');
+const resultsRoutes = require('./routes/results');
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -108,6 +109,7 @@ app.use('/api/exam', examRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/share', shareRoutes);
+app.use('/api/results', resultsRoutes);
 
 // Log registered routes for debugging
 console.log('Registered API routes:');
@@ -118,6 +120,7 @@ console.log('- /api/exam/* (Exam routes)');
 console.log('- /api/profile/* (Profile routes)');
 console.log('- /api/superadmin/* (Super Admin routes)');
 console.log('- /api/share/* (Share/Link routes)');
+console.log('- /api/results/* (Results routes)');
 console.log('- /api/exam/test-routes (Debug route)');
 console.log('- /api/exam/:id/select-question (Question selection route)');
 

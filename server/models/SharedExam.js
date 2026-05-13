@@ -249,4 +249,9 @@ SharedExamSchema.methods.incrementStarted = function() {
   this.stats.totalStarted += 1;
 };
 
+// Increment completed count
+SharedExamSchema.methods.incrementCompleted = function() {
+  this.stats.totalCompleted += 1;
+};
+
 module.exports = mongoose.model('SharedExam', SharedExamSchema);

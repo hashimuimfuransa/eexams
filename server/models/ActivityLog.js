@@ -27,7 +27,8 @@ const ActivityLogSchema = new mongoose.Schema({
       'system_unlock',
       'export_results',
       'grade_exam',
-      'edit_profile'
+      'edit_profile',
+      'student_joined_shared_exam'
     ],
     required: true
   },

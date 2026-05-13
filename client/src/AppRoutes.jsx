@@ -22,6 +22,9 @@ import Results from './components/student/Results';
 import Profile from './components/student/Profile';
 import ExamHistory from './components/student/ExamHistory';
 
+// Public exam access
+import PublicExamAccess from './pages/PublicExamAccess';
+
 // Check if user registration is complete
 const isRegistrationComplete = (user) => {
   // Registration is complete if subscriptionPlan is selected
@@ -69,6 +72,9 @@ const AppRoutes = () => {
 
   return (
     <Routes>
+      {/* Public exam access - must be before catch-all routes */}
+      <Route path="/join/:shareToken" element={<PublicExamAccess />} />
+      
       {/* Public routes */}
       <Route path="/" element={<App />} />
       <Route path="/login" element={<Login />} />

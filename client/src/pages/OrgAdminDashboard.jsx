@@ -56,11 +56,13 @@ export default function OrgAdminDashboard() {
   const [results, setResults] = useState([]);
 
   useEffect(() => {
+    if (!user) return; // Don't fetch if user is not authenticated
+    
     api.get('/admin/dashboard-stats').then(r => setStats(r.data)).catch(() => setStats({})).finally(() => setStatsLoading(false));
     api.get('/admin/teachers').then(r => setTeachers(r.data || [])).catch(() => {});
     api.get('/admin/exams').then(r => setExams((r.data || []).slice(0, 10))).catch(() => {});
     api.get('/admin/results').then(r => setResults(Array.isArray(r.data) ? r.data : (r.data?.results || []))).catch(() => {});
-  }, []);
+  }, [user]);
 
   return (
     <DashboardShell

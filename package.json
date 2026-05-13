@@ -1,0 +1,32 @@
+{
+  "name": "nationalscore",
+  "version": "1.0.0",
+  "description": "Testify - Online Exam Management System",
+  "main": "index.js",
+  "scripts": {
+    "install:client": "cd client && npm install",
+    "install:server": "cd server && npm install",
+    "install": "npm run install:server && npm run install:client",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm install",
+    "build": "npm run build:server && npm run build:client",
+    "start:client": "cd client && npm start",
+    "start:server": "cd server && npm start",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\""
+  },
+  "keywords": [
+    "exam",
+    "management",
+    "education",
+    "ai",
+    "gemini"
+  ],
+  "author": "Tuyizere Dieudonne and Bukozi Aristote",
+  "license": "ISC",
+  "dependencies": {
+    "concurrently": "^9.1.2",
+    "google-auth-library": "^10.6.2"
+  }
+}

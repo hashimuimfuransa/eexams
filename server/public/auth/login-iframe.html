@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Iframe</title>
+</head>
+<body>
+    <form id="loginForm">
+        <input type="hidden" name="fromIframe" value="true">
+        <input type="email" name="email" id="email" placeholder="Email">
+        <input type="password" name="password" id="password" placeholder="Password">
+        <button type="submit">Login</button>
+    </form>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get the login form
+            const loginForm = document.getElementById('loginForm');
+            
+            // Listen for messages from the parent window
+            window.addEventListener('message', function(event) {
+                // Only accept messages from allowed origins
+                const allowedOrigins = [
+                    'https://testfyrwanda.vercel.app',
+                    'http://localhost:3000'
+                ];
+                
+                if (!allowedOrigins.includes(event.origin)) {
+                    return;
+                }
+                
+                // Get the credentials from the message
+                const { email, password } = event.data;
+                
+                // Fill the form
+                document.getElementById('email').value = email;
+                document.getElementById('password').value = password;
+                
+                // Submit the form
+                loginForm.submit();
+            });
+            
+            // Handle form submission
+            loginForm.addEventListener('submit', async function(event) {
+                event.preventDefault();
+                
+                // Get form data
+                const formData = new FormData(loginForm);
+                const email = formData.get('email');
+                const password = formData.get('password');
+                
+                try {
+                    // Make the login request
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ email, password })
+                    });
+                    
+                    // Parse the response
+                    const data = await response.json();
+                    
+                    // Send the response back to the parent window
+                    window.parent.postMessage(data, '*');
+                } catch (error) {
+                    // Send the error back to the parent window
+                    window.parent.postMessage({ error: error.message }, '*');
+                }
+            });
+            
+            // Notify the parent window that the iframe is ready
+            window.parent.postMessage({ iframeReady: true }, '*');
+        });
+    </script>
+</body>
+</html>

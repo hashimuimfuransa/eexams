@@ -50,7 +50,7 @@ import { getAllTeachers, createTeacher, updateTeacher, deleteTeacher } from '../
 const TeacherList = () => {
   const theme = useTheme();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
 
   const [loading, setLoading] = useState(true);
   const [teachers, setTeachers] = useState([]);

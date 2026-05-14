@@ -6,14 +6,14 @@ import {
 } from '@mui/material';
 import {
   Dashboard as DashIcon, Assignment, History, EmojiEvents,
-  Person, Settings, BarChart, School, TrendingUp, ArrowForward,
+  Person, Settings, BarChart, TrendingUp, ArrowForward,
   AccessTime, CheckCircle, PlayArrow
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { tokens, gradients } from './dashboardTokens';
-import { DashboardShell, Sidebar, Topbar, SectionTitle } from './DashboardShell';
+import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
 
 const nav = [
   { id: 'home',    label: 'Dashboard', icon: <DashIcon sx={{ fontSize: 20 }} /> },
@@ -77,12 +77,10 @@ export default function StudentDashboard() {
     onClickExtra: () => { if (item.id !== 'home') navigate(`/student/${item.id}`); }
   }));
 
-  const greeting = (() => { const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening'; })();
-
   return (
     <DashboardShell
-      sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={id => { setActiveSection(id); if (id !== 'home') navigate(`/student/${id}`); }} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Student Portal" logoIcon={<School sx={{ color:'white', fontSize:20 }} />} />}
-      topbarEl={<Topbar greeting={`${greeting}, ${user?.firstName || 'Student'} 👋`} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Student" isXs={isXs} />}
+      sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={id => { setActiveSection(id); if (id !== 'home') navigate(`/student/${id}`); }} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Student Portal" />}
+      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Student')} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Student" isXs={isXs} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
       {activeSection === 'home' && <HomeSection exams={exams} results={results} leaderboard={leaderboard} loading={loading} user={user} navigate={navigate} />}
     </DashboardShell>

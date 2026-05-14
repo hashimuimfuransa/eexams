@@ -49,7 +49,7 @@ const UserSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'teacher', 'student'],
+    enum: ['superadmin', 'admin', 'teacher', 'student'],
     default: 'teacher' // Default for individual teacher registration
   },
   // User type: individual or organization-based
@@ -66,8 +66,8 @@ const UserSchema = new mongoose.Schema({
     type: String,
     trim: true,
     required: function() {
-      // Organization is required for organization-based accounts
-      return this.userType === 'organization' || this.role === 'admin';
+      // Organization is required for organization-based accounts (admin and superadmin)
+      return this.userType === 'organization' || this.role === 'admin' || this.role === 'superadmin';
     }
   },
   // For teachers: the parent admin (organization) who created them
@@ -80,14 +80,26 @@ const UserSchema = new mongoose.Schema({
   subscriptionPlan: {
     type: String,
     enum: ['free', 'basic', 'premium', 'enterprise'],
-    default: null
+    default: 'free'
   },
   subscriptionStatus: {
     type: String,
     enum: ['active', 'pending', 'expired', 'cancelled'],
+    default: 'active'
+  },
+  subscriptionStartDate: {
+    type: Date,
+    default: null
+  },
+  subscriptionEndDate: {
+    type: Date,
     default: null
   },
   subscriptionExpiresAt: {
+    type: Date,
+    default: null
+  },
+  lastPaymentDate: {
     type: Date,
     default: null
   },
@@ -100,6 +112,10 @@ const UserSchema = new mongoose.Schema({
     default: null
   },
   isBlocked: {
+    type: Boolean,
+    default: false
+  },
+  isSuperAdmin: {
     type: Boolean,
     default: false
   },

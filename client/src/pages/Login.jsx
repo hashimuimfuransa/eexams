@@ -136,9 +136,7 @@ const Login = () => {
   const [returningUser, setReturningUser] = useState(null); // For auto-detected Google user
 
   // Google OAuth refs
-  const googleButtonRef = useRef(null);
   const googleInitialized = useRef(false);
-  const googleButtonRendered = useRef(false);
 
   const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
@@ -150,8 +148,12 @@ const Login = () => {
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     if (token && user.role) {
-      console.log('[Login] User already logged in, redirecting to dashboard');
-      navigate('/dashboard');
+      console.log('[Login] User already logged in, redirecting...');
+      if (user.role !== 'superadmin' && user.subscriptionStatus === 'pending') {
+        navigate('/pending-approval');
+      } else {
+        navigate('/dashboard');
+      }
     }
   }, [navigate]);
 
@@ -245,7 +247,11 @@ const Login = () => {
       localStorage.removeItem('loginLockoutEnd');
       setSnackbar({ open: true, message: `Welcome back, ${user.firstName || user.email}!`, severity: 'success' });
       setTimeout(() => {
-        navigate('/dashboard');
+        if (user.role !== 'superadmin' && user.subscriptionStatus === 'pending') {
+          navigate('/pending-approval');
+        } else {
+          navigate('/dashboard');
+        }
       }, 500);
     } catch (err) {
       let shouldTrackFailure = false;
@@ -321,13 +327,16 @@ const Login = () => {
         return;
       }
 
-      console.log('[GoogleLogin] Existing user, navigating to dashboard');
+      console.log('[GoogleLogin] Existing user, subscriptionStatus:', result.user.subscriptionStatus);
       const welcomeMessage = `Welcome back, ${result.user.firstName}!`;
       setSnackbar({ open: true, message: welcomeMessage, severity: 'success' });
 
       setTimeout(() => {
-        console.log('[GoogleLogin] Navigating to dashboard');
-        navigate('/dashboard');
+        if (result.user.role !== 'superadmin' && result.user.subscriptionStatus === 'pending') {
+          navigate('/pending-approval');
+        } else {
+          navigate('/dashboard');
+        }
       }, 500);
     } catch (err) {
       console.error('[GoogleLogin] Error:', err);
@@ -344,71 +353,32 @@ const Login = () => {
     }
   }, [navigate]);
 
-  // Initialize and render Google Sign-In button with dynamic script loading
+  // Initialize Google Sign-In (no button rendering — we use a custom button)
   useEffect(() => {
-    // Skip if user already logged in
-    if (localStorage.getItem('token')) {
-      console.log('[GoogleAuth] User already logged in, skipping Google init');
-      return;
-    }
+    if (localStorage.getItem('token')) return;
 
-    const loadGoogleScript = () => {
-      return new Promise((resolve, reject) => {
-        // Check if already loaded
-        if (window.google) {
-          console.log('[GoogleAuth] Google already loaded');
-          resolve();
-          return;
-        }
-
-        console.log('[GoogleAuth] Creating script tag...');
-        const script = document.createElement('script');
-        script.src = 'https://accounts.google.com/gsi/client';
-        script.async = true;
-        script.defer = true;
-
-        script.onload = () => {
-          console.log('[GoogleAuth] Script loaded successfully');
-          resolve();
-        };
-
-        script.onerror = (err) => {
-          console.error('[GoogleAuth] Script failed to load:', err);
-          reject(new Error('Failed to load Google script'));
-        };
-
-        document.head.appendChild(script);
-      });
-    };
+    const loadGoogleScript = () => new Promise((resolve, reject) => {
+      if (window.google) { resolve(); return; }
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Failed to load Google script'));
+      document.head.appendChild(script);
+    });
 
     const initGoogle = async () => {
       try {
         await loadGoogleScript();
-
         if (!googleInitialized.current && window.google) {
-          console.log('[GoogleAuth] Initializing Google accounts...');
           window.google.accounts.id.initialize({
             client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '192720000772-1qkm1i0lmg52b17vaslf0gm56lll3p0m.apps.googleusercontent.com',
             callback: handleGoogleCredentialResponse,
-            auto_select: false,  // Disable auto-select to prevent popup interference
+            auto_select: false,
             cancel_on_tap_outside: true,
           });
           googleInitialized.current = true;
-          console.log('[GoogleAuth] Initialized successfully');
-        }
-
-        if (googleButtonRef.current && window.google && googleInitialized.current && !googleButtonRendered.current) {
-          console.log('[GoogleAuth] Rendering button...');
-          googleButtonRendered.current = true;
-          window.google.accounts.id.renderButton(googleButtonRef.current, {
-            theme: isDark ? 'filled_black' : 'outline',
-            size: 'large',
-            width: 400,
-            text: 'continue_with',
-            shape: 'rectangular',
-            logo_alignment: 'left',
-          });
-          console.log('[GoogleAuth] Button rendered!');
         }
       } catch (err) {
         console.error('[GoogleAuth] Error:', err);
@@ -416,7 +386,7 @@ const Login = () => {
     };
 
     initGoogle();
-  }, [handleGoogleCredentialResponse, isDark]);
+  }, [handleGoogleCredentialResponse]);
 
   return (
     <div style={{
@@ -468,8 +438,8 @@ const Login = () => {
       </header>
 
       {/* Main card */}
-      <main style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 24px 24px', position: 'relative', zIndex: 1 }}>
-        <div style={{
+      <main className="login-main" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 24px 24px', position: 'relative', zIndex: 1 }}>
+        <div className="login-card" style={{
           width: '100%', maxWidth: 440,
           background: isDark ? tokens.dark.surface : tokens.surface,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
@@ -597,15 +567,44 @@ const Login = () => {
             <div style={{ flex: 1, height: 1, background: isDark ? tokens.dark.border : tokens.surfaceBorder }} />
           </div>
 
-          {/* Google Sign In */}
-          <div
-            ref={googleButtonRef}
+          {/* Google Sign In — custom responsive button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (window.google && googleInitialized.current) {
+                window.google.accounts.id.prompt();
+              }
+            }}
+            className="google-btn"
             style={{
               width: '100%',
               display: 'flex',
+              alignItems: 'center',
               justifyContent: 'center',
+              gap: 10,
+              padding: '12px 16px',
+              borderRadius: 12,
+              border: `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+              background: isDark ? tokens.dark.surfaceAlt : '#fff',
+              cursor: 'pointer',
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 15,
+              fontWeight: 600,
+              color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
+              transition: 'box-shadow 0.2s, border-color 0.2s',
+              boxShadow: isDark ? 'none' : '0 1px 4px rgba(15,23,42,0.08)',
             }}
-          />
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = tokens.accent; e.currentTarget.style.boxShadow = `0 0 0 3px ${tokens.accentGlow}`; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = isDark ? tokens.dark.border : tokens.surfaceBorder; e.currentTarget.style.boxShadow = isDark ? 'none' : '0 1px 4px rgba(15,23,42,0.08)'; }}
+          >
+            <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Continue with Google
+          </button>
 
           <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`, textAlign: 'center' }}>
             <span style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
@@ -632,6 +631,12 @@ const Login = () => {
         @keyframes spin { to { transform: rotate(360deg);} }
         @keyframes float1 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(12px,-20px);} }
         @keyframes float2 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(-12px,16px);} }
+        @media (max-width: 520px) {
+          .login-main { padding: 8px 12px 20px !important; }
+          .login-card { padding: 28px 20px !important; border-radius: 16px !important; }
+          .login-card h1 { font-size: 24px !important; }
+          .google-btn { font-size: 14px !important; padding: 13px 12px !important; min-height: 48px; }
+        }
       `}</style>
     </div>
   );

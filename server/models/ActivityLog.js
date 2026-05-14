@@ -28,7 +28,25 @@ const ActivityLogSchema = new mongoose.Schema({
       'export_results',
       'grade_exam',
       'edit_profile',
-      'student_joined_shared_exam'
+      'student_joined_shared_exam',
+      // Super admin actions
+      'update_user',
+      'delete_user',
+      'block_user',
+      'unblock_user',
+      'delete_organization',
+      'toggle_organization_block',
+      'block_organization',
+      'unblock_organization',
+      'update_organization_subscription',
+      // Teacher management actions
+      'add_teacher',
+      'edit_teacher',
+      'delete_teacher',
+      // Subscription actions
+      'approve_subscription',
+      'reject_subscription',
+      'submit_subscription_request'
     ],
     required: true
   },

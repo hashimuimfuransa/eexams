@@ -11,14 +11,37 @@ import NotFound from './pages/NotFound';
 import PublicExamAccess from './pages/PublicExamAccess';
 import PublicExamTaking from './pages/PublicExamTaking';
 import ExamResult from './pages/ExamResult';
+import PendingApproval from './pages/PendingApproval';
+import CompleteRegistration from './pages/CompleteRegistration';
 import { useAuth } from './context/AuthContext';
 
+// Check if user registration is complete (has a subscription plan)
+const isRegistrationComplete = (user) =>
+  user?.subscriptionPlan !== null && user?.subscriptionPlan !== undefined;
+
+// Check if account is approved and active (not pending admin review)
+const isAccountApproved = (user) =>
+  user?.subscriptionStatus === 'active';
+
 // Protected route component
-const ProtectedRoute = ({ children, requiredRole, allowedRoles }) => {
+const ProtectedRoute = ({ children, requiredRole, allowedRoles, allowIncomplete = false }) => {
   const { user, isAuthenticated } = useAuth();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" />;
+  }
+
+  // Superadmin is exempt from all subscription/registration checks
+  const isSuperAdmin = user?.role === 'superadmin';
+
+  // Redirect incomplete registrations to pending-approval (unless explicitly allowed)
+  if (!allowIncomplete && !isSuperAdmin && !isRegistrationComplete(user)) {
+    return <Navigate to="/pending-approval" />;
+  }
+
+  // Redirect unapproved accounts to pending-approval (unless explicitly allowed)
+  if (!allowIncomplete && !isSuperAdmin && !isAccountApproved(user)) {
+    return <Navigate to="/pending-approval" />;
   }
 
   // If a specific role is required and user doesn't have it
@@ -49,6 +72,10 @@ const AppRoutes = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
 
+      {/* Post-registration routes - accessible to authenticated users */}
+      <Route path="/pending-approval" element={<ProtectedRoute allowIncomplete={true}><PendingApproval /></ProtectedRoute>} />
+      <Route path="/complete-registration" element={<ProtectedRoute allowIncomplete={true}><CompleteRegistration /></ProtectedRoute>} />
+
       {/* Role-based dashboard redirect */}
       <Route
         path="/dashboard"
@@ -56,10 +83,10 @@ const AppRoutes = () => {
           <ProtectedRoute>
             {user?.role === 'student'
               ? <Navigate to="/student" replace />
-              : user?.role === 'admin' && user?.userType === 'organization'
-                ? <Navigate to="/org-admin" replace />
+              : user?.role === 'superadmin'
+                ? <Navigate to="/super-admin" replace />
                 : user?.role === 'admin'
-                  ? <Navigate to="/super-admin" replace />
+                  ? <Navigate to="/org-admin" replace />
                   : <Navigate to="/teacher" replace />}
           </ProtectedRoute>
         }
@@ -71,8 +98,8 @@ const AppRoutes = () => {
       {/* Org Admin dashboard */}
       <Route path="/org-admin/*" element={<ProtectedRoute requiredRole="admin"><OrgAdminDashboard /></ProtectedRoute>} />
 
-      {/* Super Admin dashboard */}
-      <Route path="/super-admin/*" element={<ProtectedRoute requiredRole="admin"><SuperAdminDashboard /></ProtectedRoute>} />
+      {/* Super Admin dashboard - accessible to both 'superadmin' and 'admin' roles */}
+      <Route path="/super-admin/*" element={<ProtectedRoute><SuperAdminDashboard /></ProtectedRoute>} />
 
       {/* Student routes */}
       <Route path="/student/*" element={<ProtectedRoute><StudentRoutes /></ProtectedRoute>} />

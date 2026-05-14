@@ -8,6 +8,11 @@ const ActivityLog = require('../models/ActivityLog');
 const SharedExam = require('../models/SharedExam');
 const Question = require('../models/Question');
 
+// Helper function to check if user is super admin
+const isSuperAdmin = (user) => {
+  return user && user.role === 'superadmin';
+};
+
 // Simple in-memory cache for leaderboard data (5 minute TTL)
 const leaderboardCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -117,16 +122,19 @@ const registerStudent = async (req, res) => {
   }
 };
 
-// @desc    Get all students created by this organization (admin or teacher)
+// @desc    Get all students created by this organization (admin or teacher), or all students for super admin
 // @route   GET /api/admin/students
 // @access  Private/Admin or Private/Teacher
 const getStudents = async (req, res) => {
   try {
-    // Find students created by this organization (uses orgAdminId which works for both admin and teacher)
-    const students = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId // Return students owned by the organization admin
-    }).select('-password');
+    // Check if user is super admin - if so, return all students
+    // For superadmin: req.orgAdminId is null, so show all students
+    const query = isSuperAdmin(req.user) || !req.orgAdminId
+      ? { role: 'student' }
+      : { role: 'student', createdBy: req.orgAdminId };
+
+    // Find students (all for super admin, or only this organization's students)
+    const students = await User.find(query).select('-password');
 
     res.json(students);
   } catch (error) {
@@ -774,51 +782,50 @@ const exportExamResults = async (req, res) => {
   }
 };
 
-// @desc    Get dashboard statistics for this admin
+// @desc    Get dashboard statistics for this admin (or all stats for super admin)
 // @route   GET /api/admin/dashboard-stats
 // @access  Private/Admin
 const getDashboardStats = async (req, res) => {
   try {
-    // Get count of students created by this admin
-    const studentCount = await User.countDocuments({
-      role: 'student',
-      createdBy: req.orgAdminId
-    });
+    // Check if user is super admin
+    const superAdmin = isSuperAdmin(req.user);
 
-    // Get count of exams created by this admin
-    const examCount = await Exam.countDocuments({ createdBy: req.orgAdminId });
+    // Build queries based on super admin status
+    // For superadmin: req.orgAdminId is null, so show all data
+    const studentQuery = superAdmin || !req.orgAdminId ? { role: 'student' } : { role: 'student', createdBy: req.orgAdminId };
+    const examQuery = superAdmin || !req.orgAdminId ? {} : { createdBy: req.orgAdminId };
+    const upcomingExamQuery = superAdmin || !req.orgAdminId
+      ? { scheduledFor: { $gt: new Date() }, status: 'scheduled' }
+      : { scheduledFor: { $gt: new Date() }, status: 'scheduled', createdBy: req.orgAdminId };
+    const activeExamQuery = superAdmin || !req.orgAdminId
+      ? { isLocked: false }
+      : { isLocked: false, createdBy: req.orgAdminId };
 
-    // Get count of upcoming exams created by this admin (scheduled in the future)
-    const upcomingExams = await Exam.countDocuments({
-      scheduledFor: { $gt: new Date() },
-      status: 'scheduled',
-      createdBy: req.orgAdminId
-    });
+    // Get count of students
+    const studentCount = await User.countDocuments(studentQuery);
 
-    // Get count of active exams created by this admin (not locked)
-    const activeExams = await Exam.countDocuments({
-      isLocked: false,
-      createdBy: req.orgAdminId
-    });
+    // Get count of exams
+    const examCount = await Exam.countDocuments(examQuery);
 
-    // Get students created by this admin
-    const students = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId
-    }).select('_id');
+    // Get count of upcoming exams (scheduled in the future)
+    const upcomingExams = await Exam.countDocuments(upcomingExamQuery);
 
+    // Get count of active exams (not locked)
+    const activeExams = await Exam.countDocuments(activeExamQuery);
+
+    // Get students
+    const students = await User.find(studentQuery).select('_id');
     const studentIds = students.map(student => student._id);
 
-    // Get exams created by this admin
-    const exams = await Exam.find({ createdBy: req.orgAdminId }).select('_id');
+    // Get exams
+    const exams = await Exam.find(examQuery).select('_id');
     const examIds = exams.map(exam => exam._id);
 
-    // Get results for students created by this admin taking exams created by this admin
-    const results = await Result.find({
-      isCompleted: true,
-      student: { $in: studentIds },
-      exam: { $in: examIds }
-    });
+    // Get results (super admin sees all completed results)
+    const resultQuery = superAdmin || !req.orgAdminId
+      ? { isCompleted: true, exam: { $in: examIds } }
+      : { isCompleted: true, student: { $in: studentIds }, exam: { $in: examIds } };
+    const results = await Result.find(resultQuery);
 
     // Calculate performance stats for students created by this admin
     const totalResults = results.length;
@@ -911,7 +918,7 @@ const getExamById = async (req, res) => {
   }
 };
 
-// @desc    Get all exams created by this admin
+// @desc    Get all exams created by this admin (or all exams for super admin)
 // @route   GET /api/admin/exams
 // @access  Private/Admin
 const getAllExams = async (req, res) => {
@@ -919,9 +926,13 @@ const getAllExams = async (req, res) => {
     console.log('getAllExams - req.orgAdminId:', req.orgAdminId);
     console.log('getAllExams - req.user._id:', req.user?._id);
     console.log('getAllExams - req.user.role:', req.user?.role);
-    
-    // Get all exams created by this admin with populated creator, sections, and questions
-    const exams = await Exam.find({ createdBy: req.orgAdminId })
+
+    // Check if user is super admin - if so, return all exams
+    // For superadmin: req.orgAdminId is null, so show all data
+    const query = isSuperAdmin(req.user) || !req.orgAdminId ? {} : { createdBy: req.orgAdminId };
+
+    // Get all exams (or only this admin's exams) with populated creator, sections, and questions
+    const exams = await Exam.find(query)
       .populate('createdBy', 'firstName lastName')
       .populate({ path: 'sections.questions', model: 'Question' })
       .sort({ createdAt: -1 });
@@ -2614,6 +2625,18 @@ const registerTeacher = async (req, res) => {
     // Get the admin's organization
     const admin = await User.findById(req.user._id);
 
+    // Enforce teacher limit based on org plan
+    const { getPlanConfigForUser } = require('../config/plans');
+    const planConfig = getPlanConfigForUser(admin.subscriptionPlan, 'organization');
+    const currentTeacherCount = await User.countDocuments({ parentAdmin: req.user._id, role: 'teacher' });
+    if (planConfig.maxTeachers !== Infinity && currentTeacherCount >= planConfig.maxTeachers) {
+      return res.status(403).json({
+        message: `Your ${admin.subscriptionPlan || 'free'} plan allows a maximum of ${planConfig.maxTeachers} teacher${planConfig.maxTeachers === 1 ? '' : 's'}. Please upgrade your plan to add more teachers.`,
+        limit: planConfig.maxTeachers,
+        current: currentTeacherCount
+      });
+    }
+
     // Create teacher
     const teacher = await User.create({
       firstName,
@@ -2621,11 +2644,15 @@ const registerTeacher = async (req, res) => {
       email,
       password,
       role: 'teacher',
+      userType: 'organization',   // org teacher, NOT individual
       phone,
       class: teacherClass || '',
       organization: admin.organization,
-      parentAdmin: req.user._id, // Set the admin who created this teacher
-      createdBy: req.user._id
+      parentAdmin: req.user._id,
+      createdBy: req.user._id,
+      // Teacher inherits org plan — status mirrors admin's
+      subscriptionPlan: admin.subscriptionPlan || 'free',
+      subscriptionStatus: admin.subscriptionStatus || 'active'
     });
 
     // Log the activity

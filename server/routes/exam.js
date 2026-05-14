@@ -28,6 +28,11 @@ const {
 } = require('../controllers/examController');
 const auth = require('../middleware/auth');
 const { isAdmin, isStudent, isAdminOrTeacher } = require('../middleware/role');
+const {
+  checkExamLimit,
+  requireAIFeatures,
+  requireAdvancedAI
+} = require('../middleware/planRestrictions');
 const geminiClient = require('../utils/geminiClient');
 
 // Configure multer for file uploads
@@ -72,6 +77,7 @@ router.use(auth);
 router.post(
   '/',
   isAdmin,
+  checkExamLimit,
   upload.fields([
     { name: 'examFile', maxCount: 1 },
     { name: 'answerFile', maxCount: 1 }
@@ -114,8 +120,8 @@ router.get('/test-routes', (req, res) => {
 
 
 
-// AI exam generation route
-router.post('/ai-generate', auth, isAdminOrTeacher, async (req, res) => {
+// AI exam generation route - requires Basic plan or higher
+router.post('/ai-generate', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ message: 'Prompt is required' });

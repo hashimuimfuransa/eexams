@@ -1,20 +1,21 @@
-// Middleware to check if user is an admin (organization)
+// Middleware to check if user is an admin (organization) or superadmin
 const isAdmin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
     return next();
   }
   return res.status(403).json({ message: 'Access denied. Organization admin role required.' });
 };
 
-// Middleware to check if user is an admin or teacher
+// Middleware to check if user is an admin, superadmin, or teacher
 const isAdminOrTeacher = (req, res, next) => {
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'teacher')) {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'teacher')) {
     return next();
   }
   return res.status(403).json({ message: 'Access denied. Admin or Teacher role required.' });
 };
 
 // Middleware to attach the organization admin ID to the request
+// For superadmins: null (they see all data system-wide)
 // For admins: uses their own ID
 // For organization teachers: uses parentAdmin
 // For individual teachers: uses their own ID (they are their own admin)
@@ -23,7 +24,10 @@ const attachOrgAdminId = (req, res, next) => {
     return res.status(401).json({ message: 'Not authenticated' });
   }
 
-  if (req.user.role === 'admin') {
+  if (req.user.role === 'superadmin') {
+    // Super admins have system-level access, no orgAdminId restriction
+    req.orgAdminId = null;
+  } else if (req.user.role === 'admin') {
     // Organization admins use their own ID
     req.orgAdminId = req.user._id;
   } else if (req.user.role === 'teacher') {

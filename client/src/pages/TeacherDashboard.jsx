@@ -12,7 +12,7 @@ import {
   AutoAwesome, CloudUpload, Assignment, People, BarChart, Settings,
   CheckCircle, Add, Publish, Share, Description,
   DashboardCustomize, FormatListNumbered, ShortText, ToggleOn,
-  FileUpload, School, TrendingUp, ArrowForward,
+  FileUpload, TrendingUp, ArrowForward,
   Quiz, ListAlt, NoteAlt, Delete, Edit, ContentCopy, Download,
   ExpandMore, Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close
@@ -20,7 +20,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { tokens, gradients } from './dashboardTokens';
-import { DashboardShell, Sidebar, Topbar, SectionTitle, W } from './DashboardShell';
+import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } from './DashboardShell';
 
 const nav = [
   { id: 'home',      label: 'Dashboard',  icon: <DashboardCustomize sx={{ fontSize: 20 }} /> },
@@ -130,8 +130,8 @@ export default function TeacherDashboard() {
 
   return (
     <DashboardShell
-      sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Teacher Portal" logoIcon={<School sx={{ color: 'white', fontSize: 20 }} />} />}
-      topbarEl={<Topbar greeting={`Good morning, ${user?.firstName || 'Teacher'} 👋`} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} />}
+      sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Teacher Portal" />}
+      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Teacher')} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
       {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={exams} results={results} setActiveSection={setActiveSection} />}
       {activeSection === 'exams'     && <ExamsSection exams={exams} setExams={setExams} />}

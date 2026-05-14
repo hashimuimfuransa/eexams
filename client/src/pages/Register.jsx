@@ -124,6 +124,11 @@ function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, na
 // Updated steps for both account types - both now have Plan selection
 const ORG_STEPS = ['Account', 'Profile', 'Organization', 'Plan', 'Done'];
 const TEACHER_STEPS = ['Account', 'Profile', 'Plan', 'Done'];
+// Google flow skips the credentials step (step index 1)
+const GOOGLE_ORG_STEPS = ['Account', 'Profile & Org', 'Plan', 'Done'];
+const GOOGLE_TEACHER_STEPS = ['Account', 'Profile', 'Done'];
+// Map real activeStep to display step index for Google flow (skips step 1)
+const googleStepDisplayMap = { 0: 0, 2: 1, 3: 2, 4: 3 };
 
 const Register = () => {
   const [activeStep, setActiveStep] = useState(0);
@@ -151,12 +156,16 @@ const Register = () => {
   const googleButtonRendered = useRef(false);
 
   // Initialize hooks before any effects that use them
-  const { register } = useAuth();
+  const { register, setUser } = useAuth();
   const navigate = useNavigate();
   const { mode, toggleMode } = useThemeMode();
 
   // Check if already logged in - redirect to dashboard
+  // Skip this check when arriving via Google OAuth flow so new Google users
+  // can complete registration instead of being bounced straight to the dashboard.
   useEffect(() => {
+    const isGoogleRedirect = new URLSearchParams(window.location.search).get('google') === 'true';
+    if (isGoogleRedirect) return;
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     if (token && user.role) {
@@ -194,15 +203,11 @@ const Register = () => {
       if (phone && !/^\+?[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
 
       if (accountType === 'organization') {
-        // Organization name validation for org accounts
         if (!organization) errors.organization = 'Organization/school name is required';
         else if (organization.length < 2) errors.organization = 'Too short';
-      } else {
-        // Plan selection for individual accounts
-        if (!subscriptionPlan) errors.subscriptionPlan = 'Please select a subscription plan';
       }
-    } else if (step === 3 && accountType === 'organization') {
-      // Plan step for org accounts
+    } else if (step === 3) {
+      // Step 3: Plan selection for all account types
       if (!subscriptionPlan) errors.subscriptionPlan = 'Please select a subscription plan';
     }
     return errors;
@@ -218,11 +223,21 @@ const Register = () => {
     }
     setError('');
     setValidationErrors({});
-    setActiveStep((prev) => prev + 1);
+    // For Google flow: skip Step 1 (credentials) since it is auto-filled
+    if (isGoogleFlow && activeStep === 0) {
+      setActiveStep(2);
+    } else {
+      setActiveStep((prev) => prev + 1);
+    }
   };
 
   const handleBack = () => {
-    setActiveStep((prev) => prev - 1);
+    // For Google flow: skip Step 1 when going back from Step 2
+    if (isGoogleFlow && activeStep === 2) {
+      setActiveStep(0);
+    } else {
+      setActiveStep((prev) => prev - 1);
+    }
     setError('');
   };
 
@@ -338,13 +353,13 @@ const Register = () => {
     setError('');
     setValidationErrors({});
 
-    // Validate all steps based on account type
-    let allErrors = { ...validateStep(0), ...validateStep(1) };
-    if (accountType === 'organization') {
-      allErrors = { ...allErrors, ...validateStep(2), ...validateStep(3) };
-    } else {
-      allErrors = { ...allErrors, ...validateStep(2) };
-    }
+    // Validate all steps (0-3) for both account types
+    let allErrors = {
+      ...validateStep(0),
+      ...validateStep(1),
+      ...validateStep(2),
+      ...validateStep(3),
+    };
     if (Object.keys(allErrors).length > 0) {
       setValidationErrors(allErrors);
       setError('Please fix all validation errors before submitting');
@@ -358,7 +373,7 @@ const Register = () => {
       let response;
 
       if (isGoogleFlow && googleCredential) {
-        // Google OAuth registration
+        // Google OAuth registration — sends the chosen plan/accountType to the server
         response = await api.post('/auth/google', {
           credential: googleCredential,
           accountType,
@@ -367,7 +382,7 @@ const Register = () => {
           phone
         });
 
-        // Save user data to localStorage
+        // Save completed user session to localStorage
         const user = {
           id: response.data._id,
           email: response.data.email,
@@ -377,16 +392,17 @@ const Register = () => {
           userType: response.data.userType,
           isGoogleUser: true,
           token: response.data.token,
+          subscriptionPlan: response.data.subscriptionPlan,
+          subscriptionStatus: response.data.subscriptionStatus,
         };
 
         if (response.data.organization) {
           user.organization = response.data.organization;
-          user.subscriptionPlan = response.data.subscriptionPlan;
-          user.subscriptionStatus = response.data.subscriptionStatus;
         }
 
         localStorage.setItem('user', JSON.stringify(user));
         localStorage.setItem('token', response.data.token);
+        setUser(user);
       } else {
         // Regular email/password registration
         const registrationData = {
@@ -415,24 +431,12 @@ const Register = () => {
         : `Welcome to eexams, ${firstName}! Your teacher account is ready.`;
       setSnackbar({ open: true, message: successMessage, severity: 'success' });
 
-      // Navigate to dashboard or complete registration based on plan selection
-      const finalStep = accountType === 'organization' ? 4 : 3;
-      setActiveStep(finalStep);
+      setActiveStep(4); // Success step for both account types
 
       setTimeout(() => {
-        // Check if user has a subscription plan selected
-        const savedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        if (savedUser.subscriptionPlan) {
-          // Has plan - check if paid plan needs approval
-          if (savedUser.subscriptionPlan !== 'free' && savedUser.subscriptionStatus !== 'active') {
-            navigate('/pending-approval');
-          } else {
-            navigate('/dashboard');
-          }
-        } else {
-          // No plan selected - go to complete registration
-          navigate('/complete-registration');
-        }
+        // After registration, always go to pending-approval so the user
+        // is reviewed/activated before accessing the dashboard.
+        navigate('/pending-approval');
       }, 2000);
     } catch (err) {
       let errorMessage = 'Failed to create account. Please try again.';
@@ -640,20 +644,20 @@ const Register = () => {
       );
     }
 
-    // Step 3: Subscription Plan for organizations, Step 2: Plan for individuals
-    if ((activeStep === 3 && accountType === 'organization') || (activeStep === 2 && accountType === 'individual')) {
+    // Step 3: Subscription Plan for both individuals and organizations
+    if (activeStep === 3) {
       // Different plans for individuals vs organizations
       const orgPlans = [
-        { id: 'free', name: 'Free Trial', price: '$0', period: '30 days', features: ['Up to 50 students', '5 exams', 'Basic support', 'No credit card required'], color: '#64748B', popular: false },
-        { id: 'basic', name: 'Basic', price: '$29', period: '/month', features: ['Up to 200 students', 'Unlimited exams', 'Email support', 'Basic analytics', 'Export results'], color: '#0CBD73', popular: true },
-        { id: 'premium', name: 'Premium', price: '$79', period: '/month', features: ['Up to 500 students', 'Unlimited exams', 'Priority support', 'Advanced analytics', 'Custom branding', 'AI grading'], color: '#0D406C', popular: false },
-        { id: 'enterprise', name: 'Enterprise', price: 'Custom', period: '', features: ['Unlimited students', 'Unlimited exams', '24/7 support', 'Full analytics', 'Custom integrations', 'Dedicated manager', 'SLA guarantee'], color: '#8B5CF6', popular: false }
+        { id: 'free', name: 'Free Trial', price: '0 RWF', period: '30 days', teacherLimit: '1 teacher', features: ['1 teacher account', 'Up to 30 students', '5 exams', 'Basic support', 'No credit card required'], color: '#64748B', popular: false },
+        { id: 'basic', name: 'Basic', price: '15,000 RWF', period: '/month', teacherLimit: 'Up to 5 teachers', features: ['Up to 5 teacher accounts', 'Up to 300 students', '50 exams/month', 'AI features', 'Full analytics', 'Priority email support'], color: '#0CBD73', popular: true },
+        { id: 'premium', name: 'Premium', price: '49,000 RWF', period: '/month', teacherLimit: 'Up to 20 teachers', features: ['Up to 20 teacher accounts', 'Unlimited students', 'Unlimited exams', 'Advanced AI', '24/7 priority support', 'Auto-grading'], color: '#0D406C', popular: false },
+        { id: 'enterprise', name: 'Enterprise', price: 'Custom', period: '', teacherLimit: 'Unlimited teachers', features: ['Unlimited teacher accounts', 'Unlimited students & exams', 'Everything in Premium', 'White-label & custom branding', 'Full API access', 'Dedicated account manager', 'SLA guarantee', 'On-premise option', 'Bulk import', 'Multi-school management'], color: '#8B5CF6', popular: false }
       ];
 
       const individualPlans = [
-        { id: 'free', name: 'Free', price: '$0', period: 'forever', features: ['Up to 30 students', '10 exams/month', 'Basic AI grading', 'Email support', 'Standard templates'], color: '#64748B', popular: false },
-        { id: 'pro', name: 'Pro', price: '$9', period: '/month', features: ['Up to 100 students', 'Unlimited exams', 'Advanced AI grading', 'Priority support', 'Custom branding', 'Detailed analytics'], color: '#0CBD73', popular: true },
-        { id: 'premium', name: 'Premium', price: '$19', period: '/month', features: ['Up to 300 students', 'Unlimited exams', 'Full AI features', '24/7 support', 'Custom branding', 'Advanced analytics', 'API access'], color: '#0D406C', popular: false }
+        { id: 'free', name: 'Free', price: '0 RWF', period: 'forever', features: ['Up to 30 students', '5 exams', 'Basic support', 'Standard templates'], color: '#64748B', popular: false },
+        { id: 'basic', name: 'Basic', price: '9,000 RWF', period: '/month', features: ['Up to 200 students', '30 exams', 'AI features', 'Priority support', 'Analytics'], color: '#0CBD73', popular: true },
+        { id: 'premium', name: 'Premium', price: '29,000 RWF', period: '/month', features: ['Unlimited students', 'Unlimited exams', 'Full AI features', '24/7 support', 'Advanced analytics', 'API access'], color: '#0D406C', popular: false }
       ];
 
       const plans = accountType === 'organization' ? orgPlans : individualPlans;
@@ -714,6 +718,11 @@ const Register = () => {
                     <span style={{ fontSize: 16, fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>{plan.name}</span>
                     <span style={{ fontSize: 14, fontWeight: 700, color: plan.color }}>{plan.price}<span style={{ fontSize: 12, fontWeight: 500 }}>{plan.period}</span></span>
                   </div>
+                  {plan.teacherLimit && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 4, padding: '2px 8px', borderRadius: 6, background: `${plan.color}18`, border: `1px solid ${plan.color}40` }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: plan.color }}>👥 {plan.teacherLimit}</span>
+                    </div>
+                  )}
                   <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.4 }}>
                     {plan.features.join(' • ')}
                   </div>
@@ -730,10 +739,8 @@ const Register = () => {
       );
     }
 
-    // Step 3 (individual) or Step 4 (organization) - Success
-    // For individual teachers: activeStep === 3
-    // For organizations: activeStep === 4
-    const isTeacherSuccess = accountType === 'individual' && activeStep === 3;
+    // Step 4 - Success (same for both individual and organization)
+    const isTeacherSuccess = accountType === 'individual' && activeStep === 4;
     const isOrgSuccess = accountType === 'organization' && activeStep === 4;
 
     if (isTeacherSuccess || isOrgSuccess) {
@@ -817,8 +824,8 @@ const Register = () => {
         }}>{isDark ? <Icon.Sun /> : <Icon.Moon />}</button>
       </header>
 
-      <main style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 24px 24px', position: 'relative', zIndex: 1 }}>
-        <div style={{
+      <main className="reg-main" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 24px 24px', position: 'relative', zIndex: 1 }}>
+        <div className="reg-card" style={{
           width: '100%', maxWidth: 520,
           background: isDark ? tokens.dark.surface : tokens.surface,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
@@ -854,9 +861,14 @@ const Register = () => {
 
               {/* Progress stepper - dynamic based on account type */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 32 }}>
-                {STEPS.slice(0, accountType === 'organization' ? 4 : 3).map((label, i) => {
-                  const active = i === activeStep;
-                  const completed = i < activeStep;
+                {(() => {
+                  const displaySteps = isGoogleFlow
+                    ? (accountType === 'organization' ? GOOGLE_ORG_STEPS : GOOGLE_TEACHER_STEPS).slice(0, accountType === 'organization' ? 3 : 2)
+                    : STEPS.slice(0, accountType === 'organization' ? 4 : 3);
+                  const displayActive = isGoogleFlow ? (googleStepDisplayMap[activeStep] ?? 0) : activeStep;
+                  return displaySteps.map((label, i) => {
+                  const active = i === displayActive;
+                  const completed = i < displayActive;
                   return (
                     <React.Fragment key={i}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
@@ -877,12 +889,15 @@ const Register = () => {
                           {label}
                         </span>
                       </div>
-                      {i < (accountType === 'organization' ? 3 : 2) && (
+                      {i < (isGoogleFlow
+                        ? (accountType === 'organization' ? 3 : 1)
+                        : (accountType === 'organization' ? 3 : 2)) && (
                         <div style={{ flex: 1, height: 2, margin: '0 14px', borderRadius: 2, background: completed || active ? `linear-gradient(90deg, ${tokens.success}, ${tokens.accent})` : isDark ? tokens.dark.border : tokens.surfaceBorder }} />
                       )}
                     </React.Fragment>
                   );
-                })}
+                  });
+                })()}
               </div>
             </>
           )}
@@ -902,7 +917,7 @@ const Register = () => {
           <form onSubmit={handleSubmit}>
             {renderStep()}
 
-            {activeStep < (accountType === 'organization' ? 4 : 3) && (
+            {activeStep < 4 && (
               <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
                 {activeStep > 0 && (
                   <button type="button" onClick={handleBack} style={{
@@ -929,8 +944,8 @@ const Register = () => {
                     Continue <Icon.Arrow />
                   </button>
                 )}
-                {/* Show next button for steps 1 (profile) and 2 (org info for orgs) */}
-                {(activeStep === 1) || (accountType === 'organization' && activeStep === 2) ? (
+                {/* Show next button for steps 1, 2 */}
+                {(activeStep === 1 || activeStep === 2) ? (
                   <button type="button" onClick={handleNext} style={{
                     flex: 1, padding: '14px', borderRadius: 12,
                     fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
@@ -942,8 +957,8 @@ const Register = () => {
                     Continue <Icon.Arrow />
                   </button>
                 ) : null}
-                {/* Show submit button on final step before success */}
-                {(accountType === 'individual' && activeStep === 2) || (accountType === 'organization' && activeStep === 3) ? (
+                {/* Show submit button on step 3 (plan step) for both account types */}
+                {activeStep === 3 ? (
                   <button type="submit" disabled={loading} style={{
                     flex: 1, padding: '14px', borderRadius: 12,
                     fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
@@ -1017,6 +1032,11 @@ const Register = () => {
         @keyframes scaleIn { from { opacity: 0; transform: scale(0.5);} to { opacity: 1; transform: scale(1);} }
         @keyframes float1 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(12px,-20px);} }
         @keyframes float2 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(-12px,16px);} }
+        @media (max-width: 560px) {
+          .reg-main { padding: 8px 12px 20px !important; }
+          .reg-card { padding: 24px 16px !important; border-radius: 16px !important; }
+          .reg-card h1 { font-size: 24px !important; }
+        }
       `}</style>
     </div>
   );

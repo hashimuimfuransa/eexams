@@ -136,7 +136,7 @@ const Header = () => {
           {user?.fullName || 'User'}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {user?.role === 'admin' ? 'Administrator' : 'Student'}
+          {user?.role === 'superadmin' ? 'Super Admin' : user?.role === 'admin' ? 'Administrator' : 'Student'}
         </Typography>
       </Box>
       <Divider />
@@ -168,7 +168,7 @@ const Header = () => {
         },
       }}
     >
-      {user && user.role === 'admin' && (
+      {user && (user.role === 'admin' || user.role === 'superadmin') && (
         <>
           <MenuItem
             component={RouterLink}
@@ -287,7 +287,7 @@ const Header = () => {
               {user ? (
                 <>
                   <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
-                    {user.role === 'admin' && (
+                    {(user.role === 'admin' || user.role === 'superadmin') && (
                       <>
                         <Button
                           color="inherit"

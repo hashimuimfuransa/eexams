@@ -44,16 +44,23 @@ const PLANS = [
   {
     id: 'basic',
     name: 'Basic Plan',
-    price: '$9/month',
+    price: '9,000 RWF/month',
     description: 'For growing educators with more needs',
-    features: ['Unlimited exams', 'Advanced analytics', 'Priority support', 'Custom branding']
+    features: ['Up to 30 exams', 'Advanced analytics', 'Priority support', 'AI features']
   },
   {
     id: 'premium',
     name: 'Premium Plan',
-    price: '$29/month',
+    price: '29,000 RWF/month',
     description: 'Best for schools and institutions',
-    features: ['Everything in Basic', 'Student management', 'API access', 'Dedicated support']
+    features: ['Unlimited exams', 'Everything in Basic', 'Advanced AI', 'Priority support']
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise Plan',
+    price: 'Custom Pricing',
+    description: 'For large institutions & multi-school systems',
+    features: ['Everything in Premium', 'Unlimited teachers', 'White-label & custom branding', 'Full API access', 'Dedicated account manager', 'Custom integrations', 'SLA guarantee', 'On-premise option', 'Bulk student import', 'Multi-school management']
   }
 ];
 

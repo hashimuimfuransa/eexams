@@ -47,9 +47,30 @@ export const AuthProvider = ({ children }) => {
                 return;
               }
 
-              // If token seems valid, set user without server verification
-              // Server verification will happen automatically on first API call
-              setUser(userData);
+              // Re-verify with the server to get the latest subscriptionStatus
+              // (prevents stale localStorage from bypassing pending-approval guard)
+              try {
+                const verifyRes = await api.get('/auth/verify', {
+                  headers: { Authorization: `Bearer ${savedToken}` }
+                });
+                const freshUser = {
+                  ...userData,
+                  // Always trust server for identity/role fields — never let stale localStorage win
+                  role: verifyRes.data.role || userData.role,
+                  userType: verifyRes.data.userType || userData.userType,
+                  organization: verifyRes.data.organization || userData.organization,
+                  phone: verifyRes.data.phone || userData.phone,
+                  isOrgTeacher: verifyRes.data.isOrgTeacher ?? false,
+                  // Use ?? for plan/status so superadmin null values don't overwrite localStorage
+                  subscriptionPlan: verifyRes.data.subscriptionPlan ?? userData.subscriptionPlan,
+                  subscriptionStatus: verifyRes.data.subscriptionStatus ?? userData.subscriptionStatus,
+                };
+                localStorage.setItem('user', JSON.stringify(freshUser));
+                setUser(freshUser);
+              } catch {
+                // If verify fails (network issue), fall back to localStorage data
+                setUser(userData);
+              }
             }
           } catch (parseError) {
             console.error('Error parsing saved user data:', parseError);
@@ -99,14 +120,18 @@ export const AuthProvider = ({ children }) => {
       // Create user object from response
       const user = {
         id: response.data._id,
+        _id: response.data._id,
         email: response.data.email,
         firstName: response.data.firstName,
         lastName: response.data.lastName,
         role: response.data.role,
-        userType: response.data.userType,
+        userType: response.data.userType || (response.data.role === 'admin' ? 'organization' : 'individual'),
         token: response.data.token,
         subscriptionPlan: response.data.subscriptionPlan,
         subscriptionStatus: response.data.subscriptionStatus,
+        organization: response.data.organization,
+        isOrgTeacher: response.data.isOrgTeacher ?? false,
+        phone: response.data.phone,
       };
 
       // Save user to localStorage
@@ -166,20 +191,18 @@ export const AuthProvider = ({ children }) => {
       // Create user object from response
       const user = {
         id: response.data._id,
+        _id: response.data._id,
         email: response.data.email,
         firstName: response.data.firstName,
         lastName: response.data.lastName,
         role: response.data.role,
-        userType: response.data.userType,
+        userType: response.data.userType || (response.data.role === 'admin' ? 'organization' : 'individual'),
         token: response.data.token,
         subscriptionPlan: response.data.subscriptionPlan,
         subscriptionStatus: response.data.subscriptionStatus,
+        organization: response.data.organization,
+        phone: response.data.phone,
       };
-
-      // Add organization info for organization accounts
-      if (response.data.organization) {
-        user.organization = response.data.organization;
-      }
 
       // Save user to localStorage
       localStorage.setItem('user', JSON.stringify(user));
@@ -225,10 +248,16 @@ export const AuthProvider = ({ children }) => {
         user.organization = response.data.organization;
       }
 
-      // Save user to localStorage
-      localStorage.setItem('user', JSON.stringify(user));
-      localStorage.setItem('token', response.data.token);
-      setUser(user);
+      // Only persist session for existing (returning) users.
+      // New users must complete registration first — do NOT save to
+      // localStorage so the Register page's "already logged in" guard
+      // does not fire and redirect them away to the dashboard.
+      if (!response.data.isNewUser) {
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('token', response.data.token);
+        setUser(user);
+      }
+
       setLoading(false);
       return { user, isNewUser: response.data.isNewUser };
     } catch (err) {

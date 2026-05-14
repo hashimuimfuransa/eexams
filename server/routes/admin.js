@@ -49,7 +49,13 @@ const {
 } = require('../controllers/adminController');
 const { shareExam, getExamPreview, createStudentAccounts, updateExam, deleteExam } = require('../controllers/adminController');
 const auth = require('../middleware/auth');
-const { isAdminOrTeacher, attachOrgAdminId } = require('../middleware/role');
+const { isAdminOrTeacher, attachOrgAdminId, isAdmin } = require('../middleware/role');
+const {
+  checkStudentLimit,
+  checkTeacherLimit,
+  checkExamLimit,
+  requireAnalytics
+} = require('../middleware/planRestrictions');
 
 // Apply auth and admin/teacher middleware to all routes
 // This allows both organization admins and their teachers to manage students and exams
@@ -59,7 +65,7 @@ router.use(auth, isAdminOrTeacher, attachOrgAdminId);
 router.get('/dashboard-stats', getDashboardStats);
 
 // Student management routes
-router.post('/students', registerStudent);
+router.post('/students', checkStudentLimit, registerStudent);
 router.get('/students', getStudents);
 router.get('/recent-students', getRecentStudents);
 router.get('/students/:id', getStudentById);
@@ -67,7 +73,7 @@ router.put('/students/:id', updateStudent);
 router.delete('/students/:id', deleteStudent);
 
 // Teacher management routes (admin only)
-router.post('/teachers', registerTeacher);
+router.post('/teachers', isAdmin, checkTeacherLimit, registerTeacher);
 router.get('/teachers', getTeachers);
 router.get('/teachers/:id', getTeacherById);
 router.put('/teachers/:id', updateTeacher);
@@ -123,6 +129,7 @@ const upload = multer({
 // Exam management routes
 router.post(
   '/exams',
+  checkExamLimit,
   upload.fields([
     { name: 'examFile', maxCount: 1 },
     { name: 'answerFile', maxCount: 1 }
@@ -146,8 +153,8 @@ router.get('/results/:resultId', getDetailedResult);
 router.get('/exams/:examId/results/export', exportExamResults);
 router.get('/results', getAllResults);
 
-// Analytics routes
-router.get('/analytics/student-performance', getStudentPerformanceAnalytics);
+// Analytics routes - requires Basic plan or higher
+router.get('/analytics/student-performance', requireAnalytics, getStudentPerformanceAnalytics);
 
 // Student results management for regrading
 router.get('/student-results', getStudentResultsForRegrade);

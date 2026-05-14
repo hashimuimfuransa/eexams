@@ -3,6 +3,8 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const User = require('../models/User');
 const ActivityLog = require('../models/ActivityLog');
+const SubscriptionRequest = require('../models/SubscriptionRequest');
+const { getPlanUsage } = require('../middleware/planRestrictions');
 
 // @route   PUT /api/profile
 // @desc    Update user profile
@@ -65,6 +67,107 @@ router.put('/', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Update profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/profile/subscription-request
+// @desc    Submit subscription payment request
+// @access  Private
+router.post('/subscription-request', auth, async (req, res) => {
+  try {
+    const { requestedPlan, paymentMethod, phoneNumber, transactionId, amountPaid, notes } = req.body;
+
+    // Validation
+    if (!requestedPlan || !phoneNumber || !transactionId || !amountPaid) {
+      return res.status(400).json({
+        message: 'Missing required fields: requestedPlan, phoneNumber, transactionId, amountPaid'
+      });
+    }
+
+    // Check if user already has a pending request
+    const existingRequest = await SubscriptionRequest.findOne({
+      user: req.user._id,
+      status: 'pending'
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({
+        message: 'You already have a pending subscription request. Please wait for approval.'
+      });
+    }
+
+    // Create new subscription request
+    const request = new SubscriptionRequest({
+      user: req.user._id,
+      requestedPlan,
+      paymentMethod: paymentMethod || 'momo',
+      phoneNumber,
+      transactionId,
+      amountPaid,
+      notes: notes || '',
+      status: 'pending'
+    });
+
+    await request.save();
+
+    // Log activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'submit_subscription_request',
+      details: {
+        requestId: request._id,
+        plan: requestedPlan,
+        amount: amountPaid,
+        method: paymentMethod
+      }
+    });
+
+    res.status(201).json({
+      message: 'Subscription request submitted successfully. Please wait for admin approval.',
+      request: {
+        _id: request._id,
+        requestedPlan: request.requestedPlan,
+        status: request.status,
+        createdAt: request.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Submit subscription request error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/profile/subscription-request
+// @desc    Get user's subscription request status
+// @access  Private
+router.get('/subscription-request', auth, async (req, res) => {
+  try {
+    const requests = await SubscriptionRequest.find({ user: req.user._id })
+      .sort({ createdAt: -1 })
+      .select('-__v');
+
+    res.json({ requests });
+  } catch (error) {
+    console.error('Get subscription requests error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/profile/plan-usage
+// @desc    Get user's current plan usage and limits
+// @access  Private
+router.get('/plan-usage', auth, async (req, res) => {
+  try {
+    const usage = await getPlanUsage(req.user._id);
+    
+    if (!usage) {
+      return res.status(500).json({ message: 'Failed to get plan usage' });
+    }
+    
+    res.json(usage);
+  } catch (error) {
+    console.error('Get plan usage error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -3,17 +3,18 @@ import {
   Box, Typography, Chip, Button, Paper, Grid, TextField,
   CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
   useMediaQuery, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, LinearProgress, IconButton, Tooltip, Avatar
+  TableHead, TableRow, LinearProgress, IconButton, Tooltip, Avatar,
+  Select, MenuItem
 } from '@mui/material';
 import {
   Dashboard as DashIcon, People, Assignment, BarChart, Settings,
-  SupervisorAccount, School, TrendingUp, PersonAdd, CheckCircle,
+  SupervisorAccount, TrendingUp, PersonAdd, CheckCircle,
   Delete, Edit, Close, Add, ArrowForward
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { tokens, gradients } from './dashboardTokens';
-import { DashboardShell, Sidebar, Topbar, SectionTitle } from './DashboardShell';
+import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
 
 const nav = [
   { id: 'home',     label: 'Overview',   icon: <DashIcon sx={{ fontSize: 20 }} /> },
@@ -66,8 +67,8 @@ export default function OrgAdminDashboard() {
 
   return (
     <DashboardShell
-      sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="School Admin" logoIcon={<School sx={{ color: 'white', fontSize: 20 }} />} />}
-      topbarEl={<Topbar greeting={`Good morning, ${user?.firstName || 'Admin'} 👋`} sub={user?.organization ? `${user.organization} · School Admin` : "Here's what's happening today."} user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="School Admin" />}
+      sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="School Admin" />}
+      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub={user?.organization ? `${user.organization} · School Admin` : "Here's what's happening today."} user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="School Admin" />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
       {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={teachers} exams={exams} results={results} />}
       {activeSection === 'teachers'  && <TeachersSection teachers={teachers} setTeachers={setTeachers} />}
@@ -172,49 +173,182 @@ function OverviewSection({ stats, statsLoading, teachers, exams, results }) {
 /* ── TEACHERS ── */
 function TeachersSection({ teachers, setTeachers }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const [open, setOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' });
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '' });
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [addError, setAddError] = useState('');
 
   const handleAdd = async () => {
     setSaving(true);
-    try { const r = await api.post('/admin/teachers', form); setTeachers(p => [...p, r.data]); setOpen(false); setForm({ firstName:'',lastName:'',email:'',password:'' }); }
-    catch {} finally { setSaving(false); }
+    setAddError('');
+    try {
+      const r = await api.post('/admin/teachers', form);
+      setTeachers(p => [...p, r.data]);
+      setAddOpen(false);
+      setForm({ firstName: '', lastName: '', email: '', password: '' });
+    } catch (err) {
+      setAddError(err.response?.data?.message || 'Failed to add teacher.');
+    } finally { setSaving(false); }
   };
-  const handleDelete = async (id) => {
-    try { await api.delete(`/admin/teachers/${id}`); setTeachers(p => p.filter(t => t._id !== id)); } catch {}
+
+  const handleEdit = async () => {
+    if (!editTarget) return;
+    setSaving(true);
+    try {
+      const r = await api.put(`/admin/teachers/${editTarget._id}`, editForm);
+      setTeachers(p => p.map(t => t._id === editTarget._id ? { ...t, ...r.data } : t));
+      setEditTarget(null);
+    } catch {} finally { setSaving(false); }
   };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setSaving(true);
+    try {
+      await api.delete(`/admin/teachers/${deleteTarget._id}`);
+      setTeachers(p => p.filter(t => t._id !== deleteTarget._id));
+      setDeleteTarget(null);
+    } catch {} finally { setSaving(false); }
+  };
+
+  const openEdit = (t) => {
+    setEditForm({ firstName: t.firstName || '', lastName: t.lastName || '', email: t.email || '' });
+    setEditTarget(t);
+  };
+
+  const filtered = teachers.filter(t => {
+    const matchSearch = `${t.firstName} ${t.lastName} ${t.email}`.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === '' ? true : statusFilter === 'blocked' ? t.isBlocked : !t.isBlocked;
+    return matchSearch && matchStatus;
+  });
 
   return (
     <Box>
-      <SectionTitle action={<Button variant="contained" size="small" startIcon={<Add />} onClick={() => setOpen(true)} sx={{ borderRadius: 2.5, background: gradients.brand, textTransform: 'none', fontWeight: 700 }}>Add Teacher</Button>}>Teachers</SectionTitle>
+      <SectionTitle action={
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField size="small" placeholder="Search teachers…" value={search} onChange={e => setSearch(e.target.value)}
+            sx={{ width: 180, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+          <Select size="small" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} displayEmpty
+            sx={{ borderRadius: 2, minWidth: 110, fontSize: 13 }}>
+            <MenuItem value="">All Status</MenuItem>
+            <MenuItem value="active">Active</MenuItem>
+            <MenuItem value="blocked">Blocked</MenuItem>
+          </Select>
+          <Button variant="contained" size="small" startIcon={<Add />} onClick={() => setAddOpen(true)}
+            sx={{ borderRadius: 2.5, background: gradients.brand, textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            Add Teacher
+          </Button>
+        </Box>
+      }>Teachers ({teachers.length})</SectionTitle>
+
       <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
-        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 480 }}>
-          <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>{['Teacher','Email','Status','Actions'].map(h=><TableCell key={h} sx={{ fontWeight:700, color:tokens.textSecondary, fontSize:12, whiteSpace:'nowrap' }}>{h}</TableCell>)}</TableRow></TableHead>
+        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 520 }}>
+          <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+            {['Teacher', 'Email', 'Status', 'Joined', 'Actions'].map(h =>
+              <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, whiteSpace: 'nowrap' }}>{h}</TableCell>)}
+          </TableRow></TableHead>
           <TableBody>
-            {teachers.length===0?<TableRow><TableCell colSpan={4} align="center" sx={{py:5,color:tokens.textMuted}}>No teachers yet.</TableCell></TableRow>:
-            teachers.map(t=>(
-              <TableRow key={t._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
-                <TableCell><Box sx={{display:'flex',alignItems:'center',gap:1.5}}><Avatar sx={{width:32,height:32,bgcolor:'rgba(13,64,108,0.1)',color:tokens.primary,fontWeight:700,fontSize:14}}>{t.firstName?.charAt(0)}</Avatar><Typography variant="body2" fontWeight={600} sx={{fontFamily:"'DM Sans',sans-serif"}}>{t.firstName} {t.lastName}</Typography></Box></TableCell>
-                <TableCell><Typography variant="body2" sx={{color:tokens.textMuted}}>{t.email}</Typography></TableCell>
-                <TableCell><Chip label="Active" size="small" sx={{bgcolor:'rgba(12,189,115,0.1)',color:tokens.accentDark,fontWeight:600}}/></TableCell>
-                <TableCell><Tooltip title="Delete"><IconButton size="small" onClick={()=>handleDelete(t._id)} sx={{color:'#EF4444','&:hover':{bgcolor:'rgba(239,68,68,0.08)'}}}><Delete fontSize="small"/></IconButton></Tooltip></TableCell>
-              </TableRow>))}
+            {filtered.length === 0
+              ? <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: tokens.textMuted }}>No teachers found.</TableCell></TableRow>
+              : filtered.map(t => (
+                <TableRow key={t._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(13,64,108,0.1)', color: tokens.primary, fontWeight: 700, fontSize: 14 }}>{t.firstName?.charAt(0)}</Avatar>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{t.firstName} {t.lastName}</Typography>
+                        {t.phone && <Typography variant="caption" sx={{ color: tokens.textMuted }}>📞 {t.phone}</Typography>}
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  <TableCell><Typography variant="body2" sx={{ color: tokens.textMuted }}>{t.email}</Typography></TableCell>
+                  <TableCell><Chip label={t.isBlocked ? 'Blocked' : 'Active'} size="small" sx={{ bgcolor: t.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: t.isBlocked ? '#EF4444' : tokens.accentDark, fontWeight: 600 }} /></TableCell>
+                  <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted }}>{t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</Typography></TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Tooltip title="Edit">
+                        <IconButton size="small" onClick={() => openEdit(t)} sx={{ color: tokens.primary, '&:hover': { bgcolor: 'rgba(13,64,108,0.08)' } }}><Edit fontSize="small" /></IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton size="small" onClick={() => setDeleteTarget(t)} sx={{ color: '#EF4444', '&:hover': { bgcolor: 'rgba(239,68,68,0.08)' } }}><Delete fontSize="small" /></IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
           </TableBody>
         </Table></TableContainer>
       </Paper>
-      <Dialog open={open} onClose={()=>setOpen(false)} maxWidth="xs" fullWidth fullScreen={isXs} PaperProps={{sx:{borderRadius:isXs?0:3}}}>
-        <DialogTitle sx={{fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>Add Teacher</DialogTitle>
-        <DialogContent sx={{pt:'16px !important'}}>
+
+      {/* Add Teacher Dialog */}
+      <Dialog open={addOpen} onClose={() => { setAddOpen(false); setAddError(''); }} maxWidth="xs" fullWidth fullScreen={isXs} PaperProps={{ sx: { borderRadius: isXs ? 0 : 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Add Teacher</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}>
+          {addError && (
+            <Box sx={{ p: 1.5, mb: 2, bgcolor: '#FEF2F2', borderRadius: 2, border: '1px solid #FECACA' }}>
+              <Typography variant="body2" sx={{ color: '#B91C1C', fontWeight: 600 }}>⚠️ {addError}</Typography>
+            </Box>
+          )}
           <Grid container spacing={2}>
-            {[['First Name','firstName'],['Last Name','lastName'],['Email','email'],['Password','password']].map(([label,key])=>(
-              <Grid item xs={12} key={key}><TextField fullWidth label={label} size="small" type={key==='password'?'password':'text'} value={form[key]} onChange={e=>setForm(p=>({...p,[key]:e.target.value}))} sx={{'& .MuiOutlinedInput-root':{borderRadius:2}}}/></Grid>
+            {[['First Name', 'firstName'], ['Last Name', 'lastName'], ['Email', 'email'], ['Password', 'password']].map(([label, key]) => (
+              <Grid item xs={12} key={key}>
+                <TextField fullWidth label={label} size="small" type={key === 'password' ? 'password' : 'text'} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+              </Grid>
             ))}
           </Grid>
         </DialogContent>
-        <DialogActions sx={{px:3,pb:2.5}}>
-          <Button onClick={()=>setOpen(false)} sx={{borderRadius:2,textTransform:'none'}}>Cancel</Button>
-          <Button variant="contained" onClick={handleAdd} disabled={saving} sx={{borderRadius:2,background:gradients.brand,textTransform:'none',fontWeight:700}}>{saving?'Adding…':'Add Teacher'}</Button>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => { setAddOpen(false); setAddError(''); }} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleAdd} disabled={saving} sx={{ borderRadius: 2, background: gradients.brand, textTransform: 'none', fontWeight: 700 }}>{saving ? 'Adding…' : 'Add Teacher'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Teacher Dialog */}
+      <Dialog open={!!editTarget} onClose={() => setEditTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Edit Teacher</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}>
+          <Grid container spacing={2}>
+            {[['First Name', 'firstName'], ['Last Name', 'lastName'], ['Email', 'email']].map(([label, key]) => (
+              <Grid item xs={12} key={key}>
+                <TextField fullWidth label={label} size="small" value={editForm[key]} onChange={e => setEditForm(p => ({ ...p, [key]: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+              </Grid>
+            ))}
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setEditTarget(null)} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleEdit} disabled={saving} sx={{ borderRadius: 2, background: gradients.brand, textTransform: 'none', fontWeight: 700 }}>{saving ? 'Saving…' : 'Save Changes'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete Teacher</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>Are you sure you want to <b>permanently delete</b> this teacher?</Typography>
+          <Box sx={{ p: 2, bgcolor: '#FEF2F2', borderRadius: 2, border: '1px solid #FECACA', mb: 1 }}>
+            <Typography variant="body2" fontWeight={600} sx={{ color: '#7F1D1D' }}>⚠️ This action cannot be undone.</Typography>
+          </Box>
+          {deleteTarget && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, bgcolor: '#F8FAFC', borderRadius: 2, mt: 1 }}>
+              <Avatar sx={{ width: 36, height: 36, bgcolor: 'rgba(13,64,108,0.1)', color: tokens.primary, fontWeight: 700 }}>{deleteTarget.firstName?.charAt(0)}</Avatar>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>{deleteTarget.firstName} {deleteTarget.lastName}</Typography>
+                <Typography variant="caption" sx={{ color: tokens.textMuted }}>{deleteTarget.email}</Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setDeleteTarget(null)} disabled={saving} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleDelete} disabled={saving} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' } }}>
+            {saving ? 'Deleting…' : 'Delete Permanently'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

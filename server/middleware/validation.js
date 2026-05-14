@@ -42,10 +42,12 @@ const validateRegister = [
     .isLength({ min: 1 })
     .withMessage('Last name is required'),
   body('organization')
+    .optional({ nullable: true, checkFalsy: true })
     .trim()
-    .isLength({ min: 1 })
-    .withMessage('Organization/school name is required'),
+    .isLength({ min: 2 })
+    .withMessage('Organization/school name must be at least 2 characters'),
   body('subscriptionPlan')
+    .optional({ nullable: true, checkFalsy: true })
     .trim()
     .isIn(['free', 'basic', 'premium', 'enterprise'])
     .withMessage('Subscription plan must be one of: free, basic, premium, enterprise'),

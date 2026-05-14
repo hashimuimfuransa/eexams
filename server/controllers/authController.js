@@ -53,13 +53,13 @@ const register = async (req, res) => {
         subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days free trial
       }
     } else {
-      // Individual teachers get the selected plan (or free by default)
-      subscriptionStatus = 'active';
-      // Different expiration based on plan type
+      // Individual teachers: free plan is auto-active, paid plans require admin approval
       if (finalSubscriptionPlan === 'free') {
+        subscriptionStatus = 'active';
         subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year for free plan
       } else {
-        subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days for paid plans (renewal cycle)
+        subscriptionStatus = 'pending'; // paid plan needs admin approval
+        subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       }
     }
 
@@ -146,6 +146,19 @@ const login = async (req, res) => {
     // Generate token immediately after successful authentication
     const token = generateToken(user._id);
 
+    // For org teachers: resolve effective plan/status from their parent admin
+    let effectivePlan = user.subscriptionPlan || 'free';
+    let effectiveStatus = user.subscriptionStatus || 'pending';
+    let isOrgTeacher = false;
+    if (user.role === 'teacher' && user.parentAdmin) {
+      const admin = await User.findById(user.parentAdmin).select('subscriptionPlan subscriptionStatus').lean();
+      if (admin) {
+        effectivePlan = admin.subscriptionPlan || 'free';
+        effectiveStatus = admin.subscriptionStatus || 'active';
+        isOrgTeacher = true;
+      }
+    }
+
     // Prepare response data
     const responseData = {
       _id: user._id,
@@ -153,16 +166,17 @@ const login = async (req, res) => {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
-      userType: user.userType,
+      userType: user.userType || (user.role === 'admin' ? 'organization' : 'individual'),
       token,
-      subscriptionPlan: user.subscriptionPlan,
-      subscriptionStatus: user.subscriptionStatus
+      subscriptionPlan: effectivePlan,
+      subscriptionStatus: effectiveStatus,
+      subscriptionStartDate: user.subscriptionStartDate,
+      subscriptionEndDate: user.subscriptionEndDate,
+      subscriptionExpiresAt: user.subscriptionExpiresAt,
+      lastPaymentDate: user.lastPaymentDate,
+      isOrgTeacher,
+      organization: user.organization
     };
-
-    // Include organization info for organization accounts
-    if (user.userType === 'organization') {
-      responseData.organization = user.organization;
-    }
 
     // Send response immediately - don't wait for lastLogin update
     res.json(responseData);
@@ -248,6 +262,11 @@ const updateProfile = async (req, res) => {
       user.role = accountType === 'organization' ? 'admin' : 'teacher';
     }
 
+    // Org teachers cannot change their own subscription plan
+    if (subscriptionPlan && user.role === 'teacher' && user.parentAdmin) {
+      return res.status(403).json({ message: 'Your subscription plan is managed by your organisation admin.' });
+    }
+
     // Update subscription plan if provided
     if (subscriptionPlan) {
       user.subscriptionPlan = subscriptionPlan;
@@ -299,12 +318,23 @@ const updateProfile = async (req, res) => {
 // @access  Private
 const verifyToken = async (req, res) => {
   try {
-    // If the auth middleware passes, the token is valid
-    // and req.user is set
     const user = await User.findById(req.user._id).select('-password');
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // For org teachers, inherit plan and status from their parent admin
+    let effectivePlan = user.subscriptionPlan;
+    let effectiveStatus = user.subscriptionStatus;
+    let isOrgTeacher = false;
+    if (user.role === 'teacher' && user.parentAdmin) {
+      const admin = await User.findById(user.parentAdmin).select('subscriptionPlan subscriptionStatus');
+      if (admin) {
+        effectivePlan = admin.subscriptionPlan;
+        effectiveStatus = admin.subscriptionStatus;
+        isOrgTeacher = true;
+      }
     }
 
     res.json({
@@ -313,11 +343,13 @@ const verifyToken = async (req, res) => {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
-      userType: user.userType,
+      userType: user.userType || (user.role === 'admin' ? 'organization' : 'individual'),
       isVerified: true,
-      subscriptionPlan: user.subscriptionPlan,
-      subscriptionStatus: user.subscriptionStatus,
-      organization: user.organization
+      subscriptionPlan: effectivePlan,
+      subscriptionStatus: effectiveStatus,
+      organization: user.organization,
+      phone: user.phone,
+      isOrgTeacher
     });
   } catch (error) {
     console.error('Token verification error:', error);
@@ -356,12 +388,46 @@ const googleAuth = async (req, res) => {
 
     if (user) {
       // Existing user - update Google info if needed
+      let needsSave = false;
       if (!user.googleId) {
         user.googleId = googleId;
         user.isGoogleUser = true;
         if (picture) user.googleProfilePicture = picture;
-        await user.save();
+        needsSave = true;
       }
+
+      // Apply registration data ONLY for users who haven't completed registration yet
+      // (i.e. they signed up with Google but haven't chosen account type/plan).
+      // NEVER overwrite role/userType for a returning, fully-registered user.
+      const isCompletingRegistration = !user.role || user.role === 'teacher' && !user.subscriptionPlan && !user.parentAdmin;
+      if (accountType && isCompletingRegistration) {
+        const isOrg = accountType === 'organization';
+        user.userType = isOrg ? 'organization' : 'individual';
+        user.role = isOrg ? 'admin' : 'teacher';
+        needsSave = true;
+      }
+      if (subscriptionPlan && isCompletingRegistration) {
+        user.subscriptionPlan = subscriptionPlan;
+        const isOrg = (accountType || user.userType) === 'organization';
+        if (subscriptionPlan === 'free') {
+          user.subscriptionStatus = 'active';
+          user.subscriptionExpiresAt = new Date(Date.now() + (isOrg ? 30 : 365) * 24 * 60 * 60 * 1000);
+        } else {
+          user.subscriptionStatus = 'pending';
+          user.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        }
+        needsSave = true;
+      }
+      if (organization && isCompletingRegistration && (accountType === 'organization' || user.userType === 'organization')) {
+        user.organization = organization.trim();
+        needsSave = true;
+      }
+      if (phone) {
+        user.phone = phone;
+        needsSave = true;
+      }
+
+      if (needsSave) await user.save();
 
       // Generate token
       const token = generateToken(user._id);

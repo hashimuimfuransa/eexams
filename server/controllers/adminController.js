@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
-const SystemConfig = require('../models/SystemConfig');
 const Exam = require('../models/Exam');
 const Result = require('../models/Result');
 const SecurityAlert = require('../models/SecurityAlert');
@@ -131,7 +130,7 @@ const getStudents = async (req, res) => {
     // For superadmin: req.orgAdminId is null, so show all students
     const query = isSuperAdmin(req.user) || !req.orgAdminId
       ? { role: 'student' }
-      : { role: 'student', createdBy: req.orgAdminId };
+      : { role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
 
     // Find students (all for super admin, or only this organization's students)
     const students = await User.find(query).select('-password');
@@ -900,11 +899,31 @@ const getDashboardStats = async (req, res) => {
 const getExamById = async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('Get exam by ID - id:', id);
+    console.log('Get exam by ID - req.user._id:', req.user._id);
+    console.log('Get exam by ID - req.orgAdminId:', req.orgAdminId);
+    console.log('Get exam by ID - req.user.role:', req.user.role);
+
+    // For teachers, allow accessing their own drafts; for admins, use orgAdminId
+    let query = { _id: id };
+    if (req.user.role === 'teacher' && req.orgAdminId) {
+      query.$or = [
+        { createdBy: req.orgAdminId },  // Exams created by their admin
+        { createdBy: req.user._id }    // Drafts created by the teacher themselves
+      ];
+    } else {
+      query.createdBy = req.orgAdminId || req.user._id;
+    }
 
     // Find the exam by ID with populated sections and questions
-    const exam = await Exam.findById(id)
+    const exam = await Exam.findOne(query)
       .populate('createdBy', 'firstName lastName')
       .populate({ path: 'sections.questions', model: 'Question' });
+
+    console.log('Get exam by ID - exam found:', !!exam);
+    if (exam) {
+      console.log('Get exam by ID - exam details:', { _id: exam._id, title: exam.title, status: exam.status, createdBy: exam.createdBy });
+    }
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
@@ -929,7 +948,19 @@ const getAllExams = async (req, res) => {
 
     // Check if user is super admin - if so, return all exams
     // For superadmin: req.orgAdminId is null, so show all data
-    const query = isSuperAdmin(req.user) || !req.orgAdminId ? {} : { createdBy: req.orgAdminId };
+    let query = isSuperAdmin(req.user) || !req.orgAdminId ? {} : { createdBy: req.orgAdminId };
+    
+    // For teachers, also include exams they created themselves (their drafts)
+    if (req.user.role === 'teacher' && req.orgAdminId) {
+      query = {
+        $or: [
+          { createdBy: req.orgAdminId },  // Exams created by their admin
+          { createdBy: req.user._id }    // Exams/drafts created by the teacher themselves
+        ]
+      };
+    }
+    
+    console.log('getAllExams - query:', query);
 
     // Get all exams (or only this admin's exams) with populated creator, sections, and questions
     const exams = await Exam.find(query)
@@ -938,6 +969,7 @@ const getAllExams = async (req, res) => {
       .sort({ createdAt: -1 });
     
     console.log('getAllExams - exams found:', exams.length);
+    console.log('getAllExams - exam IDs:', exams.map(e => ({ _id: e._id, title: e.title, status: e.status, createdBy: e.createdBy })));
 
     // Count students for each exam and calculate question count
     const examsWithStudentCount = await Promise.all(
@@ -3164,8 +3196,21 @@ const shareExam = async (req, res) => {
     const { examId } = req.params;
     const { shareType = 'link', settings = {} } = req.body;
 
-    const exam = await Exam.findOne({ _id: examId, createdBy: req.orgAdminId });
-    if (!exam) return res.status(404).json({ message: 'Exam not found' });
+    // Find exam - allow both admin and teacher access
+    const exam = await Exam.findOne({ _id: examId });
+    if (!exam) {
+      console.log('Share exam not found. examId:', examId);
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Check if user has permission (created the exam or is teacher in same org)
+    const isCreator = exam.createdBy && exam.createdBy.toString() === req.user._id.toString();
+    const isSameOrg = exam.createdBy && req.orgAdminId && exam.createdBy.toString() === req.orgAdminId.toString();
+    
+    if (!isCreator && !isSameOrg && req.user.role !== 'superadmin') {
+      console.log('Share permission denied. Exam createdBy:', exam.createdBy, 'User ID:', req.user._id, 'orgAdminId:', req.orgAdminId);
+      return res.status(403).json({ message: 'You do not have permission to access this exam' });
+    }
 
     // Activate the exam if it was a draft
     if (exam.status === 'draft') {
@@ -3217,7 +3262,17 @@ const shareExam = async (req, res) => {
 const getExamPreview = async (req, res) => {
   try {
     const { examId } = req.params;
-    const exam = await Exam.findOne({ _id: examId, createdBy: req.orgAdminId })
+    // For teachers, allow previewing their own drafts; for admins, use orgAdminId
+    let query = { _id: examId };
+    if (req.user.role === 'teacher' && req.orgAdminId) {
+      query.$or = [
+        { createdBy: req.orgAdminId },  // Exams created by their admin
+        { createdBy: req.user._id }    // Drafts created by the teacher themselves
+      ];
+    } else {
+      query.createdBy = req.orgAdminId || req.user._id;
+    }
+    const exam = await Exam.findOne(query)
       .populate({ path: 'sections.questions', model: 'Question' });
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
 
@@ -3238,8 +3293,21 @@ const createStudentAccounts = async (req, res) => {
     if (!Array.isArray(students) || !students.length)
       return res.status(400).json({ message: 'Students array is required' });
 
-    const exam = await Exam.findOne({ _id: examId, createdBy: req.orgAdminId });
-    if (!exam) return res.status(404).json({ message: 'Exam not found' });
+    // Find exam - allow both admin and teacher access
+    const exam = await Exam.findOne({ _id: examId });
+    if (!exam) {
+      console.log('Exam not found. examId:', examId);
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Check if user has permission (created the exam or is teacher in same org)
+    const isCreator = exam.createdBy && exam.createdBy.toString() === req.user._id.toString();
+    const isSameOrg = exam.createdBy && req.orgAdminId && exam.createdBy.toString() === req.orgAdminId.toString();
+    
+    if (!isCreator && !isSameOrg && req.user.role !== 'superadmin') {
+      console.log('Permission denied. Exam createdBy:', exam.createdBy, 'User ID:', req.user._id, 'orgAdminId:', req.orgAdminId);
+      return res.status(403).json({ message: 'You do not have permission to access this exam' });
+    }
 
     const created = [];
     const skipped = [];
@@ -3293,11 +3361,52 @@ const updateExam = async (req, res) => {
     
     // Handle sections update if provided
     if (sections && Array.isArray(sections)) {
-      exam.sections = sections.map(sec => ({
-        name: sec.name,
-        description: sec.description,
-        questions: sec.questions?.map(q => q._id || q) || []
-      }));
+      const Question = require('../models/Question');
+      const updatedSectionQuestions = [];
+
+      for (const sec of sections) {
+        const sectionQuestionIds = [];
+        for (const q of sec.questions || []) {
+          if (q._id) {
+            // Update existing question
+            const questionId = typeof q._id === 'object' ? q._id.toString() : q._id;
+            await Question.findByIdAndUpdate(questionId, {
+              text: q.text,
+              type: q.type,
+              points: q.points || q.marks || 1,
+              marks: q.marks || q.points || 1,
+              difficulty: q.difficulty,
+              correctAnswer: q.correctAnswer,
+              options: q.options,
+              explanation: q.explanation,
+              answerKey: q.answerKey,
+              gradingCriteria: q.gradingCriteria,
+              keyPoints: q.keyPoints,
+              acceptableAnswers: q.acceptableAnswers,
+              section: sec.name,
+              matchingPairs: q.matchingPairs,
+              itemsToOrder: q.itemsToOrder,
+              dragDropData: q.dragDropData
+            });
+            sectionQuestionIds.push(questionId);
+          } else {
+            // Create new question
+            const newQuestion = await Question.create({
+              ...q,
+              exam: exam._id,
+              section: sec.name
+            });
+            sectionQuestionIds.push(newQuestion._id);
+          }
+        }
+        updatedSectionQuestions.push({
+          name: sec.name,
+          description: sec.description,
+          questions: sectionQuestionIds
+        });
+      }
+
+      exam.sections = updatedSectionQuestions;
     }
     
     await exam.save();
@@ -3312,8 +3421,31 @@ const updateExam = async (req, res) => {
 
 const deleteExam = async (req, res) => {
   try {
-    const exam = await Exam.findOne({ _id: req.params.id, createdBy: req.orgAdminId });
-    if (!exam) return res.status(404).json({ message: 'Exam not found' });
+    console.log('Delete exam - req.params.id:', req.params.id);
+    console.log('Delete exam - req.user._id:', req.user._id);
+    console.log('Delete exam - req.orgAdminId:', req.orgAdminId);
+    console.log('Delete exam - req.user.role:', req.user.role);
+
+    // For teachers, allow deleting their own drafts; for admins, use orgAdminId
+    let query = { _id: req.params.id };
+    if (req.user.role === 'teacher' && req.orgAdminId) {
+      query.$or = [
+        { createdBy: req.orgAdminId },  // Exams created by their admin
+        { createdBy: req.user._id }    // Drafts created by the teacher themselves
+      ];
+    } else {
+      query.createdBy = req.orgAdminId || req.user._id;
+    }
+    
+    console.log('Delete exam - query:', query);
+    const exam = await Exam.findOne(query);
+    
+    if (!exam) {
+      console.log('Delete exam - exam not found');
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+    
+    console.log('Delete exam - exam found, deleting:', exam._id);
     await Question.deleteMany({ exam: exam._id });
     await Exam.deleteOne({ _id: exam._id });
     res.json({ message: 'Exam deleted' });
@@ -3328,3 +3460,77 @@ module.exports.getExamPreview = getExamPreview;
 module.exports.createStudentAccounts = createStudentAccounts;
 module.exports.updateExam = updateExam;
 module.exports.deleteExam = deleteExam;
+
+// @desc    Remove a student from exam access
+// @route   DELETE /api/admin/exams/:examId/students/:studentId
+// @access  Private/Admin or Private/Teacher
+const removeStudentFromExam = async (req, res) => {
+  try {
+    const { examId, studentId } = req.params;
+
+    // Find exam - allow both admin and teacher access
+    const exam = await Exam.findOne({ _id: examId });
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Check if user has permission (created the exam or is teacher in same org)
+    const isCreator = exam.createdBy && exam.createdBy.toString() === req.user._id.toString();
+    const isSameOrg = exam.createdBy && req.orgAdminId && exam.createdBy.toString() === req.orgAdminId.toString();
+    
+    if (!isCreator && !isSameOrg && req.user.role !== 'superadmin') {
+      return res.status(403).json({ message: 'You do not have permission to access this exam' });
+    }
+
+    // Remove student from exam's assignedTo array
+    exam.assignedTo = exam.assignedTo.filter(id => id.toString() !== studentId);
+    await exam.save();
+
+    res.json({ message: 'Student removed from exam successfully' });
+  } catch (err) {
+    console.error('Remove student from exam error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Update a student's access to exam (e.g., change class or reassign)
+// @route   PUT /api/admin/exams/:examId/students/:studentId
+// @access  Private/Admin or Private/Teacher
+const updateStudentInExam = async (req, res) => {
+  try {
+    const { examId, studentId } = req.params;
+    const { class: studentClass } = req.body;
+
+    // Find exam - allow both admin and teacher access
+    const exam = await Exam.findOne({ _id: examId });
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Check if user has permission (created the exam or is teacher in same org)
+    const isCreator = exam.createdBy && exam.createdBy.toString() === req.user._id.toString();
+    const isSameOrg = exam.createdBy && req.orgAdminId && exam.createdBy.toString() === req.orgAdminId.toString();
+    
+    if (!isCreator && !isSameOrg && req.user.role !== 'superadmin') {
+      return res.status(403).json({ message: 'You do not have permission to access this exam' });
+    }
+
+    // Check if student is assigned to this exam
+    if (!exam.assignedTo.map(id => id.toString()).includes(studentId)) {
+      return res.status(404).json({ message: 'Student not assigned to this exam' });
+    }
+
+    // Update student's class if provided
+    if (studentClass) {
+      await User.findByIdAndUpdate(studentId, { class: studentClass });
+    }
+
+    res.json({ message: 'Student updated successfully' });
+  } catch (err) {
+    console.error('Update student in exam error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+module.exports.removeStudentFromExam = removeStudentFromExam;
+module.exports.updateStudentInExam = updateStudentInExam;

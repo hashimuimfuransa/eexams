@@ -1,7 +1,4 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-// Initialize Gemini AI
-const geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const groqClient = require('./groqClient');
 
 /**
  * Fast chunked AI grading system that processes questions in small batches
@@ -137,38 +134,33 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
 
   // Use AI for grading with enhanced processing for sections B and C
   try {
-    const model = geminiClient.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Use flash for speed
+    // Truncate long inputs to prevent timeout
+    const MAX_LENGTH = 1000;
+    const truncatedQuestion = question.text.length > MAX_LENGTH ? question.text.substring(0, MAX_LENGTH) + '...' : question.text;
+    const truncatedAnswer = studentAnswer.length > MAX_LENGTH ? studentAnswer.substring(0, MAX_LENGTH) + '...' : studentAnswer;
+    const truncatedModelAnswer = (modelAnswer && modelAnswer.length > MAX_LENGTH) ? modelAnswer.substring(0, MAX_LENGTH) + '...' : modelAnswer || 'Evaluate based on question';
 
     // Simplified, faster prompt for all question types
     const isEssayQuestion = question.section === 'B' || question.section === 'C';
-    const prompt = `Grade this answer quickly and provide feedback:
-
-QUESTION: ${question.text}
-STUDENT ANSWER: ${studentAnswer}
-MODEL ANSWER: ${modelAnswer || 'Evaluate based on question content'}
-MAX POINTS: ${question.points}
-SECTION: ${question.section}
-
-${isEssayQuestion ? 'Provide detailed feedback for this essay/open-ended question.' : 'Provide brief feedback.'}
-
-Return ONLY valid JSON:
-{
-  "score": [0-${question.points}],
-  "feedback": "${isEssayQuestion ? '[Detailed feedback explaining score, strengths, and areas for improvement]' : '[Brief feedback]'}",
-  "correctedAnswer": "[Model answer or key points expected]"
-}`;
+    const prompt = `Grade (0-${question.points}). Q: ${truncatedQuestion}. A: ${truncatedAnswer}. Model: ${truncatedModelAnswer}. ${isEssayQuestion ? 'Detailed feedback.' : 'Brief feedback.'}
+Return JSON: {score,feedback,correctedAnswer}`;
 
     // Fast AI processing with timeout
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('AI timeout')), 3000); // 3 second timeout
     });
 
-    const aiPromise = model.generateContent(prompt);
+    const aiPromise = groqClient.generateContent(prompt, {
+      model: 'fast',
+      jsonMode: true,
+      temperature: 0.2,
+      maxTokens: 1024
+    });
     const response = await Promise.race([aiPromise, timeoutPromise]);
-    const text = response.response.text();
+    const text = response.text;
     const cleanText = text.replace(/```json\n?|\n?```/g, '').trim();
 
-    const result = JSON.parse(cleanText);
+    const result = response.parsedContent || JSON.parse(cleanText);
 
     const finalScore = Math.min(Math.max(0, result.score || 0), question.points);
     // isEssayQuestion already declared above
@@ -386,9 +378,11 @@ async function fastChunkedGrading(result, exam) {
     // Apply results
     chunkResults.forEach(({ index, grading, skipped }) => {
       if (grading) {
-        result.answers[index].score = grading.score || 0;
+        const maxPoints = result.answers[index].question.points || 1;
+        const cappedScore = Math.min(Math.max(0, grading.score || 0), maxPoints);
+        result.answers[index].score = cappedScore;
         result.answers[index].feedback = grading.feedback || 'No feedback';
-        result.answers[index].isCorrect = grading.isCorrect !== undefined ? grading.isCorrect : (grading.score >= result.answers[index].question.points);
+        result.answers[index].isCorrect = grading.isCorrect !== undefined ? grading.isCorrect : (cappedScore >= maxPoints);
         result.answers[index].correctedAnswer = grading.correctedAnswer || result.answers[index].question.correctAnswer;
         result.answers[index].gradingMethod = grading.gradingMethod || 'enhanced_grading';
 

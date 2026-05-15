@@ -9,6 +9,7 @@ const {
   verifySharePassword,
   joinSharedExam,
   submitSharedExam,
+  unlockStudentExam,
   updateShare,
   deleteShare,
   getMyShares,
@@ -41,5 +42,8 @@ router.put('/:shareId', isAdminOrTeacher, updateShare);
 
 // Delete share
 router.delete('/:shareId', isAdminOrTeacher, deleteShare);
+
+// Unlock student exam (allow retaking)
+router.post('/:shareToken/unlock/:studentId', isAdminOrTeacher, unlockStudentExam);
 
 module.exports = router;

@@ -259,6 +259,37 @@ const createExam = async (req, res) => {
         // Save the updated exam with questions
         await exam.save();
         console.log(`Exam ${exam._id} saved with directly extracted questions`);
+        console.log(`Final exam sections count: ${exam.sections.length}`);
+        exam.sections.forEach((section, idx) => {
+          console.log(`  Section ${idx} (${section.name}): ${section.questions?.length || 0} questions`);
+        });
+
+        // Ensure all three sections (A, B, C) exist even if empty
+        const requiredSections = ['A', 'B', 'C'];
+        const existingSectionNames = exam.sections.map(s => s.name);
+        let sectionsAdded = false;
+
+        requiredSections.forEach(sectionName => {
+          if (!existingSectionNames.includes(sectionName)) {
+            const descriptions = {
+              'A': 'Multiple Choice Questions',
+              'B': 'Short Answer Questions',
+              'C': 'Essay Questions'
+            };
+            exam.sections.push({
+              name: sectionName,
+              description: descriptions[sectionName] || `Section ${sectionName}`,
+              questions: []
+            });
+            console.log(`Added missing section ${sectionName} to exam after save`);
+            sectionsAdded = true;
+          }
+        });
+
+        if (sectionsAdded) {
+          await exam.save();
+          console.log(`Exam ${exam._id} re-saved with all three sections`);
+        }
       } catch (parseError) {
         console.error('Error parsing exam file:', parseError);
         // Don't delete the exam, just log the error
@@ -304,11 +335,37 @@ const createExam = async (req, res) => {
             correctAnswer = correct ? (correct.letter || correct.text) : 'Not provided';
           }
           if (!correctAnswer) correctAnswer = 'Not provided';
-          const question = await Question.create({
-            text: qd.text, type: qType, options, correctAnswer,
-            points: qd.points || 1, difficulty: qd.difficulty || 'medium',
-            exam: exam._id, section: sec.name,
-          });
+
+          // Build question data
+          const questionData = {
+            text: qd.text,
+            type: qType,
+            options,
+            correctAnswer,
+            points: qd.points || 1,
+            difficulty: qd.difficulty || 'medium',
+            exam: exam._id,
+            section: sec.name,
+          };
+
+          // Add matching-specific fields
+          if (qType === 'matching') {
+            questionData.matchingPairs = {
+              leftColumn: qd.leftItems || qd.matchingPairs?.leftColumn || [],
+              rightColumn: qd.rightItems || qd.matchingPairs?.rightColumn || [],
+              correctPairs: qd.matchingPairs?.correctPairs || qd.correctAnswer || []
+            };
+          }
+
+          // Add ordering-specific fields
+          if (qType === 'ordering') {
+            questionData.itemsToOrder = {
+              items: qd.items || qd.itemsToOrder?.items || [],
+              correctOrder: qd.itemsToOrder?.correctOrder || qd.correctAnswer || []
+            };
+          }
+
+          const question = await Question.create(questionData);
           const si = exam.sections.findIndex(s => s.name === sec.name);
           if (si !== -1) exam.sections[si].questions.push(question._id);
         }
@@ -959,28 +1016,66 @@ const startExam = async (req, res) => {
       C: allQuestions.filter(q => q.section === 'C')
     };
 
-    console.log(`Exam ${exam._id} question distribution:`, {
-      sectionA: questionsBySection.A.length,
-      sectionB: questionsBySection.B.length,
-      sectionC: questionsBySection.C.length,
+    // Seeded random number generator for consistent shuffling per student-exam pair
+    function seededRandom(seed) {
+      let x = Math.sin(seed) * 10000;
+      return function() {
+        x = Math.sin(x) * 10000;
+        return x - Math.floor(x);
+      };
+    }
+
+    // Shuffle array using seeded random for consistency
+    function shuffleArray(array, seed) {
+      const rng = seededRandom(seed);
+      const shuffled = [...array];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    }
+
+    // Generate a unique seed for this student-exam pair
+    const studentExamSeed = parseInt(req.user._id.toString().slice(-8), 16) + parseInt(exam._id.toString().slice(-8), 16);
+
+    // Shuffle questions within each section to prevent cheating
+    const shuffledQuestionsBySection = {};
+    for (const sectionName in questionsBySection) {
+      shuffledQuestionsBySection[sectionName] = shuffleArray(
+        questionsBySection[sectionName],
+        studentExamSeed + sectionName.charCodeAt(0)
+      );
+    }
+
+    console.log(`Exam ${exam._id} question distribution (shuffled for student ${req.user._id}):`, {
+      sectionA: shuffledQuestionsBySection.A.length,
+      sectionB: shuffledQuestionsBySection.B.length,
+      sectionC: shuffledQuestionsBySection.C.length,
       allowSelectiveAnswering: exam.allowSelectiveAnswering,
       sectionBRequired: exam.sectionBRequiredQuestions || 3,
       sectionCRequired: exam.sectionCRequiredQuestions || 1
     });
 
-    // Create a new result with proper selection initialization
+    // Create a new result with proper selection initialization using shuffled questions
+    const allShuffledQuestions = [
+      ...shuffledQuestionsBySection.A,
+      ...shuffledQuestionsBySection.B,
+      ...shuffledQuestionsBySection.C
+    ];
+
     const result = await Result.create({
       student: req.user._id,
       exam: exam._id,
       startTime: Date.now(),
       maxPossibleScore,
-      answers: allQuestions.map((question) => {
+      answers: allShuffledQuestions.map((question) => {
         let isSelected = true; // Default to selected for all questions
 
         // For selective answering, auto-select the required number of questions in each section
         if (exam.allowSelectiveAnswering && (question.section === 'B' || question.section === 'C')) {
-          // Get questions in this section and sort them for consistency
-          const sectionQuestions = questionsBySection[question.section];
+          // Get questions in this section (already shuffled)
+          const sectionQuestions = shuffledQuestionsBySection[question.section];
           const sortedSectionQuestions = [...sectionQuestions].sort((a, b) => a._id.toString().localeCompare(b._id.toString()));
 
           // Get required count for this section
@@ -1586,7 +1681,8 @@ const completeExam = async (req, res) => {
         'fallback_abbreviation_match', 'fallback_expansion_match', 'fallback_semantic_match',
         'fallback_keyword_matching', 'not_selected', 'fast_grading', 'fast_multiple_choice',
         'fast_ai_grading', 'fast_similarity', 'fast_keywords', 'no_selection',
-        'unsupported_type', 'fallback_error', 'exact_match', 'error'
+        'unsupported_type', 'fallback_error', 'exact_match', 'error',
+        'enhanced_ai_grading_section'
       ];
 
       // Ensure all grading methods are valid
@@ -3065,6 +3161,85 @@ function areSemanticallySimilar(text1, text2) {
   return false;
 }
 
+/**
+ * Save AI-generated exam as draft
+ * @route   POST /api/exam/save-draft
+ * @access  Private/Admin
+ */
+const saveDraftExam = async (req, res) => {
+  try {
+    const { title, description, timeLimit, passingScore, questions, totalMarks } = req.body;
+    
+    if (!title || !questions || questions.length === 0) {
+      return res.status(400).json({ message: 'Title and at least one question are required' });
+    }
+
+    // Create questions first
+    const createdQuestions = [];
+    for (const q of questions) {
+      const question = await Question.create({
+        text: q.text,
+        type: q.type || 'multiple-choice',
+        marks: q.marks || q.points || 1,
+        difficulty: q.difficulty || 'medium',
+        correctAnswer: q.correctAnswer || '',
+        options: q.options || [],
+        explanation: q.explanation || '',
+        answerKey: q.answerKey || q.explanation || '',
+        gradingCriteria: q.gradingCriteria || [],
+        keyPoints: q.keyPoints || [],
+        acceptableAnswers: q.acceptableAnswers || [],
+        createdBy: req.user._id
+      });
+      createdQuestions.push(question._id);
+    }
+
+    // Create draft exam with single section
+    const exam = await Exam.create({
+      title,
+      description: description || title,
+      timeLimit: timeLimit || 60,
+      passingScore: passingScore || 70,
+      sections: [{
+        name: 'A',
+        description: 'Generated Questions',
+        questions: createdQuestions
+      }],
+      createdBy: req.user._id,
+      status: 'draft',
+      isLocked: false,
+      totalPoints: totalMarks || createdQuestions.reduce((sum, q) => sum + (q.marks || 1), 0)
+    });
+
+    res.status(201).json({
+      message: 'Draft saved successfully',
+      exam: await Exam.findById(exam._id).populate('sections.questions')
+    });
+  } catch (error) {
+    console.error('Save draft error:', error);
+    res.status(500).json({ message: error.message || 'Failed to save draft' });
+  }
+};
+
+/**
+ * Get user's draft exams
+ * @route   GET /api/exam/drafts
+ * @access  Private/Admin
+ */
+const getDraftExams = async (req, res) => {
+  try {
+    const drafts = await Exam.find({ 
+      createdBy: req.user._id, 
+      status: 'draft' 
+    }).populate('sections.questions').sort({ createdAt: -1 });
+    
+    res.json(drafts);
+  } catch (error) {
+    console.error('Get drafts error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createExam,
   getExams,
@@ -3074,7 +3249,7 @@ module.exports = {
   toggleExamLock,
   startExam,
   submitAnswer,
-  completeExam, // New fast submission system
+  completeExam,
   gradeManually,
   triggerAIGrading,
   resetExamQuestions,
@@ -3086,5 +3261,7 @@ module.exports = {
   selectQuestion,
   fixExistingResults,
   debugResult,
-  comprehensiveAIGrading
+  comprehensiveAIGrading,
+  saveDraftExam,
+  getDraftExams
 };

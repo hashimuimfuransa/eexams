@@ -1,6 +1,7 @@
 const Exam = require('../models/Exam');
 const Result = require('../models/Result');
 const User = require('../models/User');
+const SharedExam = require('../models/SharedExam');
 
 // @desc    Get available exams for student
 // @route   GET /api/student/exams
@@ -497,6 +498,40 @@ const checkSpecificResult = async (req, res) => {
   }
 };
 
+// @desc    Get scheduled exams for student
+// @route   GET /api/student/scheduled-exams
+// @access  Private/Student
+const getScheduledExams = async (req, res) => {
+  try {
+    const studentId = req.user._id;
+    const now = new Date();
+
+    // Find all shared exams where this student has joined and are scheduled for the future
+    const sharedExams = await SharedExam.find({
+      'students.student': studentId,
+      'settings.scheduledStart': { $gt: now }
+    })
+      .populate('exam', 'title description')
+      .select('shareToken settings.scheduledStart settings.scheduledEnd');
+
+    // Format the response
+    const scheduledExams = sharedExams.map(se => ({
+      _id: se._id,
+      shareToken: se.shareToken,
+      examTitle: se.exam?.title || 'Exam',
+      title: se.exam?.title || 'Exam',
+      description: se.exam?.description,
+      scheduledStart: se.settings.scheduledStart,
+      scheduledEnd: se.settings.scheduledEnd
+    }));
+
+    res.json(scheduledExams);
+  } catch (error) {
+    console.error('Get scheduled exams error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAvailableExams,
   getStudentResults,
@@ -504,5 +539,6 @@ module.exports = {
   getCurrentExamSession,
   getClassLeaderboard,
   debugStudentResults,
-  checkSpecificResult
+  checkSpecificResult,
+  getScheduledExams
 };

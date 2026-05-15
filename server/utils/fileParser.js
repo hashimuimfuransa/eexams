@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
-// Import the centralized Gemini client for AI-assisted categorization
-const geminiClient = require('./geminiClient');
+// Import the centralized Groq client for AI-assisted categorization
+const groqClient = require('./groqClient');
 
 /**
  * Parse a PDF file
@@ -125,104 +125,52 @@ const extractQuestionsWithEnhancedAI = async (text, answerData = { answers: {} }
   try {
     console.log('Starting enhanced AI question extraction...');
 
-    // Get the Gemini model
-    const model = geminiClient.getModel('gemini-1.5-flash');
+    // Truncate text if too long to avoid timeout
+    const MAX_TEXT_LENGTH = 3000;
+    const truncatedText = text.length > MAX_TEXT_LENGTH 
+      ? text.substring(0, MAX_TEXT_LENGTH) + '... [truncated for processing]' 
+      : text;
 
-    // Create a comprehensive prompt for question extraction
-    const prompt = `
-You are an expert AI system specialized in extracting exam questions from academic documents.
-Your task is to accurately identify, extract, and categorize ALL types of questions from the provided text.
-
-SUPPORTED QUESTION TYPES:
-1. Multiple Choice Questions (MCQs) - with options A, B, C, D
-2. True/False Questions - with True/False options
-3. Fill-in-the-Blank Questions - with blanks marked by _____ or similar
-4. Short Answer Questions - requiring brief responses
-5. Essay Questions - requiring detailed responses
-6. Matching Questions - pairing items from two lists
-7. Ordering/Sequencing Questions - arranging items in correct order
-8. Multi-part Questions - questions with sub-parts (a, b, c, etc.)
-
-EXTRACTION RULES:
-- Identify question numbers accurately (1, 2, 3... or 1.1, 1.2, etc.)
-- Extract complete question text including any context or diagrams descriptions
-- For MCQs: Extract all options with their letters (A, B, C, D)
-- For True/False: Create True/False options
-- For Fill-in-blank: Preserve the blank markers (_____)
-- Determine appropriate point values based on question complexity
-- Categorize questions into sections A (objective), B (short answer), C (essay)
-- Handle multi-part questions by creating separate entries for each part
-
-SECTION CLASSIFICATION:
-- Section A: MCQs, True/False, Fill-in-blank, Matching (1-2 points each)
-- Section B: Short answer, brief explanations (3-10 points each)
-- Section C: Essay questions, detailed analysis (10-25 points each)
-
-TEXT TO ANALYZE:
-${text}
-
-RESPONSE FORMAT:
-Return a JSON object with this exact structure:
+    // Create a concise prompt for question extraction
+    const prompt = `Extract questions from text. Return JSON:
 {
   "sections": [
-    {
-      "name": "A",
-      "description": "Multiple Choice, True/False, and Fill-in-the-Blank Questions",
-      "questions": [
-        {
-          "text": "Complete question text",
-          "type": "multiple-choice|true-false|fill-in-blank|open-ended|matching|ordering",
-          "options": [
-            {"text": "Option text", "letter": "A", "isCorrect": false},
-            {"text": "Option text", "letter": "B", "isCorrect": false}
-          ],
-          "correctAnswer": "Correct answer or explanation",
-          "points": 1,
-          "questionNumber": "1",
-          "subParts": []
-        }
-      ]
-    },
-    {
-      "name": "B",
-      "description": "Short Answer Questions",
-      "questions": []
-    },
-    {
-      "name": "C",
-      "description": "Essay Questions",
-      "questions": []
-    }
+    {"name":"A","description":"Objective","questions":[{text,type,options[{text,letter,isCorrect}],correctAnswer,points,questionNumber}]},
+    {"name":"B","description":"Short Answer","questions":[]},
+    {"name":"C","description":"Essay","questions":[]}
   ]
 }
+Types: multiple-choice, true-false, fill-in-blank, open-ended, matching, ordering.
+Text: ${truncatedText}`;
 
-IMPORTANT:
-- Extract ALL questions found in the text
-- Ensure question numbering is preserved
-- For questions without clear options, infer appropriate choices based on context
-- If a question type is unclear, classify as "open-ended"
-- Assign realistic point values based on question complexity
-- Return only valid JSON, no additional text or explanations
-`;
+    console.log('Sending enhanced extraction prompt to Groq AI...');
 
-    console.log('Sending enhanced extraction prompt to Gemini AI...');
-
-    // Generate content with the AI model
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text_response = response.text();
+    // Generate content with Groq AI using JSON mode
+    const result = await groqClient.generateContent(prompt, {
+      model: 'balanced',
+      jsonMode: true,
+      temperature: 0.2,
+      maxTokens: 4096,
+      systemPrompt: 'You are an expert AI system specialized in extracting exam questions from academic documents. Always return valid JSON.'
+    });
 
     console.log('Received response from enhanced AI extraction');
 
     // Parse the JSON response
     let extractedData;
     try {
-      // Clean the response to extract JSON
-      const jsonMatch = text_response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        extractedData = JSON.parse(jsonMatch[0]);
+      if (result.parsedContent) {
+        extractedData = result.parsedContent;
+      } else if (result.text) {
+        // Clean the response to extract JSON
+        const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          extractedData = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found in AI response');
+        }
       } else {
-        throw new Error('No JSON found in AI response');
+        throw new Error('No response content received');
       }
     } catch (parseError) {
       console.error('Error parsing AI extraction response:', parseError);
@@ -369,8 +317,6 @@ const enhanceQuestionByType = async (question, answerData) => {
  */
 const generateMCQOptions = async (questionText) => {
   try {
-    const model = geminiClient.getModel('gemini-1.5-flash');
-
     const prompt = `
 Generate 4 plausible multiple choice options for this question:
 "${questionText}"
@@ -386,13 +332,23 @@ Return only a JSON array of options in this format:
 Make the options realistic and academically appropriate. Do not indicate which is correct.
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response.text();
+    const result = await groqClient.generateContent(prompt, {
+      model: 'fast',
+      jsonMode: true,
+      temperature: 0.3,
+      maxTokens: 1024
+    });
 
     // Extract JSON from response
-    const jsonMatch = response.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    let options = result.parsedContent;
+    if (!options && result.text) {
+      const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        options = JSON.parse(jsonMatch[0]);
+      }
+    }
+    if (options && Array.isArray(options)) {
+      return options;
     }
 
     // Fallback options
@@ -420,8 +376,6 @@ Make the options realistic and academically appropriate. Do not indicate which i
  */
 const identifyBlanksInText = async (questionText) => {
   try {
-    const model = geminiClient.getModel('gemini-1.5-flash');
-
     const prompt = `
 Identify where blanks should be placed in this fill-in-the-blank question:
 "${questionText}"
@@ -430,8 +384,14 @@ Return the question text with blanks marked as _____ (5 underscores).
 Only return the modified question text, no explanations.
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response.text().trim();
+    const result = await groqClient.generateContent(prompt, {
+      model: 'fast',
+      jsonMode: false,
+      temperature: 0.2,
+      maxTokens: 512
+    });
+
+    const response = result.text.trim();
 
     // If AI response looks valid, use it, otherwise return original
     if (response.includes('_____')) {
@@ -452,8 +412,14 @@ Only return the modified question text, no explanations.
  */
 const extractMatchingPairs = async (questionText) => {
   try {
-    const model = geminiClient.getModel('gemini-1.5-flash');
+    // First try regex-based extraction for common formats
+    const regexResult = extractMatchingPairsRegex(questionText);
+    if (regexResult) {
+      console.log('Extracted matching pairs using regex:', regexResult);
+      return regexResult;
+    }
 
+    // Fallback to AI extraction
     const prompt = `
 Extract matching pairs from this matching question:
 "${questionText}"
@@ -472,18 +438,69 @@ Return a JSON object with this structure:
 If you cannot identify clear matching pairs, return null.
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response.text();
+    const result = await groqClient.generateContent(prompt, {
+      model: 'balanced',
+      jsonMode: true,
+      temperature: 0.2,
+      maxTokens: 1024
+    });
 
-    // Extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    // Use parsed content or extract JSON from response
+    if (result.parsedContent) {
+      return result.parsedContent;
+    } else if (result.text) {
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
     }
 
     return null;
   } catch (error) {
     console.error('Error extracting matching pairs:', error);
+    return null;
+  }
+};
+
+/**
+ * Extract matching pairs using regex for common formats
+ * @param {string} questionText - The question text
+ * @returns {Object|null} - Matching pairs structure or null
+ */
+const extractMatchingPairsRegex = (questionText) => {
+  try {
+    // Try different separators: -, –, —, |, :, ->
+    const separators = ['-', '–', '—', '|', ':', '->'];
+    let bestMatch = null;
+    let maxPairs = 0;
+
+    for (const separator of separators) {
+      const pattern = new RegExp(`([^\\n${separator}]+)\\s*${separator}\\s*([^\\n]+)`, 'g');
+      const matches = [];
+      let match;
+
+      while ((match = pattern.exec(questionText)) !== null) {
+        const left = match[1].trim();
+        const right = match[2].trim();
+        // Skip if either side is empty or too short
+        if (left.length > 1 && right.length > 1) {
+          matches.push({ left, right });
+        }
+      }
+
+      if (matches.length > maxPairs && matches.length >= 2) {
+        maxPairs = matches.length;
+        bestMatch = {
+          leftColumn: matches.map(m => m.left),
+          rightColumn: matches.map(m => m.right),
+          correctPairs: matches.map((_, index) => ({ left: index, right: index }))
+        };
+      }
+    }
+
+    return bestMatch;
+  } catch (error) {
+    console.error('Error in regex matching pairs extraction:', error);
     return null;
   }
 };
@@ -495,8 +512,6 @@ If you cannot identify clear matching pairs, return null.
  */
 const extractOrderingItems = async (questionText) => {
   try {
-    const model = geminiClient.getModel('gemini-1.5-flash');
-
     const prompt = `
 Extract items to be ordered from this ordering/sequencing question:
 "${questionText}"
@@ -510,13 +525,21 @@ Return a JSON object with this structure:
 If you cannot identify clear items to order, return null.
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response.text();
+    const result = await groqClient.generateContent(prompt, {
+      model: 'balanced',
+      jsonMode: true,
+      temperature: 0.2,
+      maxTokens: 1024
+    });
 
-    // Extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    // Use parsed content or extract JSON from response
+    if (result.parsedContent) {
+      return result.parsedContent;
+    } else if (result.text) {
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
     }
 
     return null;
@@ -539,9 +562,6 @@ const extractOptionsWithAI = async (questions, fullText) => {
   }
 
   try {
-    // Get the Gemini model
-    const model = geminiClient.getModel('gemini-1.5-flash'); // Use flash model to avoid quota issues
-
     // Create a prompt for the AI to extract options
     const prompt = `
 You are an expert at extracting multiple choice options from exam documents in NESA format.
@@ -583,29 +603,38 @@ If you can't find the exact options in the text, make educated guesses based on 
 Only respond with valid JSON containing the options for each question. Do not include any explanations or other text.
 `;
 
-    console.log('Sending prompt to Gemini AI to extract options...');
+    console.log('Sending prompt to Groq AI to extract options...');
 
-    // Generate content with the AI model
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    // Generate content with the Groq AI
+    const result = await groqClient.generateContent(prompt, {
+      model: 'balanced',
+      jsonMode: true,
+      temperature: 0.2,
+      maxTokens: 2048
+    });
 
-    console.log('Received response from Gemini AI');
+    let extractedOptions = result.parsedContent;
+    let text = result.text;
+
+    console.log('Received response from Groq AI');
 
     // Try to parse the JSON response
     try {
-      // Extract JSON from the response (it might be wrapped in markdown code blocks)
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
+      // If we don't have parsed content from JSON mode, extract it manually
+      if (!extractedOptions && text) {
+        // Extract JSON from the response (it might be wrapped in markdown code blocks)
+        const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/) || text.match(/\[[\s\S]*\]/);
 
-      let jsonText = '';
-      if (jsonMatch) {
-        jsonText = jsonMatch[1] || jsonMatch[0];
-      } else {
-        jsonText = text;
+        let jsonText = '';
+        if (jsonMatch) {
+          jsonText = jsonMatch[1] || jsonMatch[0];
+        } else {
+          jsonText = text;
+        }
+
+        // Parse the JSON
+        extractedOptions = JSON.parse(jsonText);
       }
-
-      // Parse the JSON
-      const extractedOptions = JSON.parse(jsonText);
 
       // Process the extracted options
       if (Array.isArray(extractedOptions)) {
@@ -1377,8 +1406,8 @@ const extractQuestionsDirectly = async (text, answerData = { answers: {} }) => {
 
     // Try to use AI to extract options for all multiple choice questions
     try {
-      // Only attempt AI extraction if we have the Gemini client available
-      if (geminiClient) {
+      // Only attempt AI extraction if we have the Groq client available
+      if (groqClient) {
         console.log('Using AI to extract options for multiple choice questions...');
         await extractOptionsWithAI(sectionA.questions, text);
       }
@@ -1605,10 +1634,7 @@ const categorizeQuestionsWithAI = async (examStructure) => {
     }
 
     // Try to use a less resource-intensive model first to avoid quota limits
-    let modelName = 'gemini-1.0-pro'; // Start with a smaller model
-
-    console.log(`Using ${modelName} to categorize questions to avoid quota limits`);
-    const model = geminiClient.getModel(modelName);
+    console.log('Using Groq AI to categorize questions...');
 
     // Process questions in smaller batches to avoid hitting quota limits
     const BATCH_SIZE = 3; // Process just a few questions at a time

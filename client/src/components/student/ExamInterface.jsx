@@ -1152,6 +1152,18 @@ const ExamInterface = () => {
       return;
     }
 
+    // Sanitize input to prevent XSS
+    if (typeof value === 'string') {
+      // Basic XSS prevention - remove script tags and dangerous attributes
+      value = value
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/on\w+="[^"]*"/gi, '')
+        .replace(/javascript:/gi, '')
+        .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+        .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+        .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '');
+    }
+
     // Create new answer object
     const newAnswer = { ...answers[questionId] };
 
@@ -1261,6 +1273,31 @@ const ExamInterface = () => {
         // For non-multiple choice questions, require some content
         if (typeof value === 'string' && value.trim().length === 0) {
           throw new Error('Answer cannot be empty');
+        }
+      }
+
+      // Additional validation for different question types
+      if (actualType === 'matching') {
+        if (!value || typeof value !== 'object') {
+          throw new Error('Invalid matching answer format');
+        }
+        // Validate that all required matches are present
+        const requiredMatches = question.matchingPairs?.leftColumn?.length || 0;
+        const providedMatches = Object.keys(value).length;
+        if (providedMatches < requiredMatches) {
+          console.warn(`Incomplete matching answer: ${providedMatches}/${requiredMatches} matches provided`);
+        }
+      }
+
+      if (actualType === 'ordering') {
+        if (!value || typeof value !== 'object') {
+          throw new Error('Invalid ordering answer format');
+        }
+        // Validate that the order is complete
+        const requiredItems = question.itemsToOrder?.items?.length || 0;
+        const providedItems = Array.isArray(value) ? value.length : Object.keys(value).length;
+        if (providedItems < requiredItems) {
+          console.warn(`Incomplete ordering answer: ${providedItems}/${requiredItems} items ordered`);
         }
       }
 
@@ -4162,6 +4199,458 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
   );
 };
 
+// Matching Question Component with Drag and Drop
+const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
+  const theme = useTheme();
+  const { mode } = useThemeMode();
+
+  // Get left items (questions/prompts) and right items (answers/choices)
+  const leftItems = question.leftItems || question.options?.filter((_, i) => i % 2 === 0) || [];
+  const rightItems = question.rightItems || question.options?.filter((_, i) => i % 2 === 1) || [];
+
+  // Initialize matching answers if not set
+  const [matches, setMatches] = useState(() => {
+    const initialMatches = {};
+    leftItems.forEach((item, index) => {
+      initialMatches[index] = answer?.matchingAnswers?.[index] ?? null;
+    });
+    return initialMatches;
+  });
+
+  // Track dragged item
+  const [draggedItem, setDraggedItem] = useState(null);
+  const [dragOverSlot, setDragOverSlot] = useState(null);
+
+  const handleDragStart = (rightItemIndex) => {
+    if (disabled) return;
+    setDraggedItem(rightItemIndex);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setDragOverSlot(null);
+  };
+
+  const handleDragOver = (e, leftSlotIndex) => {
+    e.preventDefault();
+    if (disabled) return;
+    setDragOverSlot(leftSlotIndex);
+  };
+
+  const handleDrop = (e, leftSlotIndex) => {
+    e.preventDefault();
+    if (disabled || draggedItem === null) return;
+
+    const newMatches = { ...matches, [leftSlotIndex]: draggedItem };
+    setMatches(newMatches);
+    setDraggedItem(null);
+    setDragOverSlot(null);
+
+    // Notify parent of change
+    onAnswerChange(question._id, { matchingAnswers: newMatches }, 'matching');
+  };
+
+  const handleRemoveMatch = (leftSlotIndex) => {
+    if (disabled) return;
+    const newMatches = { ...matches };
+    delete newMatches[leftSlotIndex];
+    setMatches(newMatches);
+    onAnswerChange(question._id, { matchingAnswers: newMatches }, 'matching');
+  };
+
+  // Get matched right items for display in pool
+  const matchedRightItems = Object.values(matches).filter(v => v !== null);
+
+  return (
+    <Box>
+      <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 3 }}>
+        Matching Question
+      </Typography>
+
+      <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
+        <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          <HelpOutline sx={{ mr: 1, fontSize: 20, color: 'info.main' }} />
+          Drag items from the pool on the right to match them with items on the left
+        </Box>
+      </Typography>
+
+      <Grid container spacing={3}>
+        {/* Left side - Items to match with drop zones */}
+        <Grid item xs={12} md={6}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'info.main', mb: 2 }}>
+            Match These:
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {leftItems.map((item, index) => {
+              const matchedRightIndex = matches[index];
+              const matchedRightItem = matchedRightIndex !== null && matchedRightIndex !== undefined
+                ? rightItems[matchedRightIndex]
+                : null;
+
+              return (
+                <Paper
+                  key={index}
+                  elevation={matchedRightItem ? 2 : 0}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragLeave={() => setDragOverSlot(null)}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    border: `2px dashed ${dragOverSlot === index ? theme.palette.info.main : matchedRightItem ? theme.palette.success.main : theme.palette.divider}`,
+                    bgcolor: dragOverSlot === index
+                      ? alpha(theme.palette.info.main, 0.1)
+                      : matchedRightItem
+                        ? alpha(theme.palette.success.main, 0.05)
+                        : mode === 'dark'
+                          ? alpha(theme.palette.background.paper, 0.5)
+                          : theme.palette.background.paper,
+                    transition: 'all 0.2s ease',
+                    minHeight: '80px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    cursor: disabled ? 'default' : 'pointer'
+                  }}
+                >
+                  {/* Left item content */}
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body1" fontWeight="medium">
+                      {index + 1}. {typeof item === 'string' ? item : item.text}
+                    </Typography>
+                  </Box>
+
+                  {/* Arrow indicator */}
+                  <Box sx={{ color: matchedRightItem ? 'success.main' : 'text.disabled' }}>
+                    <DragIndicator />
+                  </Box>
+
+                  {/* Matched item or empty slot */}
+                  <Box
+                    sx={{
+                      minWidth: '120px',
+                      maxWidth: '150px',
+                      p: 1.5,
+                      borderRadius: 1.5,
+                      bgcolor: matchedRightItem ? 'success.main' : 'action.hover',
+                      color: matchedRightItem ? 'success.contrastText' : 'text.secondary',
+                      textAlign: 'center',
+                      position: 'relative'
+                    }}
+                  >
+                    {matchedRightItem ? (
+                      <>
+                        <Typography variant="body2" noWrap sx={{ fontWeight: 'medium' }}>
+                          {typeof matchedRightItem === 'string' ? matchedRightItem : matchedRightItem.text}
+                        </Typography>
+                        {!disabled && (
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRemoveMatch(index)}
+                            sx={{
+                              position: 'absolute',
+                              top: -8,
+                              right: -8,
+                              bgcolor: 'error.main',
+                              color: 'white',
+                              width: 20,
+                              height: 20,
+                              '&:hover': { bgcolor: 'error.dark' }
+                            }}
+                          >
+                            ×
+                          </IconButton>
+                        )}
+                      </>
+                    ) : (
+                      <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                        Drop here
+                      </Typography>
+                    )}
+                  </Box>
+                </Paper>
+              );
+            })}
+          </Box>
+        </Grid>
+
+        {/* Right side - Draggable items pool */}
+        <Grid item xs={12} md={6}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'secondary.main', mb: 2 }}>
+            Items to Match:
+          </Typography>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              bgcolor: mode === 'dark' ? alpha(theme.palette.background.paper, 0.3) : alpha(theme.palette.grey[100], 0.5),
+              borderRadius: 2,
+              minHeight: '200px'
+            }}
+          >
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+              {rightItems.map((item, index) => {
+                const isMatched = matchedRightItems.includes(index);
+                return (
+                  <Paper
+                    key={index}
+                    draggable={!disabled && !isMatched}
+                    onDragStart={() => handleDragStart(index)}
+                    onDragEnd={handleDragEnd}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 1.5,
+                      cursor: disabled || isMatched ? 'default' : 'grab',
+                      bgcolor: isMatched
+                        ? alpha(theme.palette.success.main, 0.2)
+                        : draggedItem === index
+                          ? alpha(theme.palette.info.main, 0.2)
+                          : mode === 'dark'
+                            ? theme.palette.background.paper
+                            : 'white',
+                      border: `2px solid ${isMatched
+                        ? theme.palette.success.main
+                        : draggedItem === index
+                          ? theme.palette.info.main
+                          : theme.palette.divider
+                      }`,
+                      opacity: isMatched ? 0.7 : 1,
+                      transition: 'all 0.2s ease',
+                      userSelect: 'none',
+                      minWidth: '100px',
+                      textAlign: 'center',
+                      '&:active': {
+                        cursor: disabled ? 'default' : 'grabbing'
+                      }
+                    }}
+                  >
+                    <Typography variant="body2" fontWeight="medium">
+                      {typeof item === 'string' ? item : item.text}
+                    </Typography>
+                    {isMatched && (
+                      <Chip
+                        size="small"
+                        label="Matched"
+                        color="success"
+                        sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
+                      />
+                    )}
+                  </Paper>
+                );
+              })}
+            </Box>
+          </Paper>
+
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block', textAlign: 'center' }}>
+            Drag these items to the matching slots on the left
+          </Typography>
+        </Grid>
+      </Grid>
+
+      {/* Match progress */}
+      <Box sx={{ mt: 3, p: 2, bgcolor: alpha(theme.palette.info.main, 0.05), borderRadius: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="body2" fontWeight="medium">
+            Progress
+          </Typography>
+          <Typography variant="body2" color="info.main" fontWeight="bold">
+            {Object.values(matches).filter(v => v !== null && v !== undefined).length} / {leftItems.length} matched
+          </Typography>
+        </Box>
+        <LinearProgress
+          variant="determinate"
+          value={(Object.values(matches).filter(v => v !== null && v !== undefined).length / leftItems.length) * 100}
+          sx={{
+            height: 8,
+            borderRadius: 4,
+            bgcolor: alpha(theme.palette.info.main, 0.1),
+            '& .MuiLinearProgress-bar': {
+              bgcolor: 'info.main',
+              borderRadius: 4
+            }
+          }}
+        />
+      </Box>
+
+      {/* Saved indicator */}
+      {answer?.savedToServer && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mt: 2, color: 'success.main' }}>
+          <Check fontSize="small" sx={{ mr: 0.5 }} />
+          <Typography variant="caption">
+            Answer saved
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+// Ordering Question Component with Drag and Drop
+const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
+  const theme = useTheme();
+  const { mode } = useThemeMode();
+
+  const items = question.items || question.options || [];
+
+  // Initialize order if not set
+  const [currentOrder, setCurrentOrder] = useState(() => {
+    return answer?.orderingAnswer || items.map((_, i) => i);
+  });
+
+  const [draggedIndex, setDraggedIndex] = useState(null);
+
+  const handleDragStart = (index) => {
+    if (disabled) return;
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (disabled || draggedIndex === null || draggedIndex === index) return;
+  };
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault();
+    if (disabled || draggedIndex === null || draggedIndex === dropIndex) return;
+
+    // Reorder items
+    const newOrder = [...currentOrder];
+    const [movedItem] = newOrder.splice(draggedIndex, 1);
+    newOrder.splice(dropIndex, 0, movedItem);
+
+    setCurrentOrder(newOrder);
+    setDraggedIndex(null);
+
+    // Notify parent
+    onAnswerChange(question._id, { orderingAnswer: newOrder }, 'ordering');
+  };
+
+  const moveItem = (fromIndex, direction) => {
+    if (disabled) return;
+    const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= currentOrder.length) return;
+
+    const newOrder = [...currentOrder];
+    [newOrder[fromIndex], newOrder[toIndex]] = [newOrder[toIndex], newOrder[fromIndex]];
+
+    setCurrentOrder(newOrder);
+    onAnswerChange(question._id, { orderingAnswer: newOrder }, 'ordering');
+  };
+
+  return (
+    <Box>
+      <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 3 }}>
+        Ordering Question
+      </Typography>
+
+      <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
+        <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          <SwapVert sx={{ mr: 1, fontSize: 20, color: 'secondary.main' }} />
+          Drag and drop items to arrange them in the correct order
+        </Box>
+      </Typography>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        {currentOrder.map((itemIndex, position) => {
+          const item = items[itemIndex];
+          if (!item) return null;
+
+          return (
+            <Paper
+              key={position}
+              draggable={!disabled}
+              onDragStart={() => handleDragStart(position)}
+              onDragEnd={handleDragEnd}
+              onDragOver={(e) => handleDragOver(e, position)}
+              onDrop={(e) => handleDrop(e, position)}
+              sx={{
+                p: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                borderRadius: 2,
+                cursor: disabled ? 'default' : 'grab',
+                bgcolor: draggedIndex === position
+                  ? alpha(theme.palette.secondary.main, 0.1)
+                  : mode === 'dark'
+                    ? theme.palette.background.paper
+                    : 'white',
+                border: `2px solid ${draggedIndex === position ? theme.palette.secondary.main : theme.palette.divider}`,
+                transition: 'all 0.2s ease',
+                '&:active': {
+                  cursor: disabled ? 'default' : 'grabbing'
+                }
+              }}
+            >
+              {/* Position number */}
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  bgcolor: 'secondary.main',
+                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  flexShrink: 0
+                }}
+              >
+                {position + 1}
+              </Box>
+
+              {/* Drag handle */}
+              <DragIndicator sx={{ color: 'text.secondary', flexShrink: 0 }} />
+
+              {/* Item content */}
+              <Typography variant="body1" sx={{ flex: 1 }}>
+                {typeof item === 'string' ? item : item.text}
+              </Typography>
+
+              {/* Move buttons */}
+              {!disabled && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  <IconButton
+                    size="small"
+                    onClick={() => moveItem(position, 'up')}
+                    disabled={position === 0}
+                    sx={{ p: 0.5 }}
+                  >
+                    ▲
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => moveItem(position, 'down')}
+                    disabled={position === currentOrder.length - 1}
+                    sx={{ p: 0.5 }}
+                  >
+                    ▼
+                  </IconButton>
+                </Box>
+              )}
+            </Paper>
+          );
+        })}
+      </Box>
+
+      {/* Saved indicator */}
+      {answer?.savedToServer && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mt: 2, color: 'success.main' }}>
+          <Check fontSize="small" sx={{ mr: 0.5 }} />
+          <Typography variant="caption">
+            Answer saved
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 // Enhanced AI-powered question type detection with advanced pattern recognition
 const detectQuestionType = (question) => {
   const text = question.text?.toLowerCase() || '';
@@ -4358,392 +4847,6 @@ const getQuestionTypeColor = (type, section, question = null) => {
     default:
       return section === 'B' ? 'info' : 'secondary';
   }
-};
-
-// Enhanced Matching Question Component
-const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
-  const [matches, setMatches] = useState(answer?.matchingAnswers || []);
-  const [selectedLeft, setSelectedLeft] = useState(null);
-
-  const handleMatch = (leftIndex, rightIndex) => {
-    if (disabled) return;
-
-    const newMatches = [...matches];
-
-    // Remove any existing match for this left item
-    const existingMatchIndex = newMatches.findIndex(m => m.left === leftIndex);
-    if (existingMatchIndex >= 0) {
-      newMatches.splice(existingMatchIndex, 1);
-    }
-
-    // Remove any existing match for this right item
-    const existingRightMatchIndex = newMatches.findIndex(m => m.right === rightIndex);
-    if (existingRightMatchIndex >= 0) {
-      newMatches.splice(existingRightMatchIndex, 1);
-    }
-
-    // Add new match
-    newMatches.push({ left: leftIndex, right: rightIndex });
-
-    setMatches(newMatches);
-    setSelectedLeft(null);
-    onAnswerChange(question._id, { matchingAnswers: newMatches }, 'matching');
-  };
-
-  const handleLeftClick = (leftIndex) => {
-    if (disabled) return;
-    setSelectedLeft(selectedLeft === leftIndex ? null : leftIndex);
-  };
-
-  const handleRightClick = (rightIndex) => {
-    if (disabled) return;
-    if (selectedLeft !== null) {
-      handleMatch(selectedLeft, rightIndex);
-    }
-  };
-
-  const clearMatch = (matchIndex) => {
-    if (disabled) return;
-    const newMatches = [...matches];
-    newMatches.splice(matchIndex, 1);
-    setMatches(newMatches);
-    onAnswerChange(question._id, { matchingAnswers: newMatches }, 'matching');
-  };
-
-  const leftColumn = question.matchingPairs?.leftColumn || [];
-  const rightColumn = question.matchingPairs?.rightColumn || [];
-
-  return (
-    <Box>
-      <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
-        <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          <HelpOutline sx={{ mr: 1, fontSize: 20, color: 'info.main' }} />
-          Match items from Column A with items from Column B. Click an item in Column A, then click its match in Column B.
-        </Box>
-      </Typography>
-
-      <Grid container spacing={3}>
-        <Grid item xs={12} sm={6}>
-          <Paper sx={{ p: 2, bgcolor: 'info.lighter', mb: 2 }}>
-            <Typography variant="h6" gutterBottom color="info.main" fontWeight="bold">
-              Column A
-            </Typography>
-          </Paper>
-          {leftColumn.map((item, index) => {
-            const isMatched = matches.find(m => m.left === index);
-            const isSelected = selectedLeft === index;
-
-            return (
-              <Paper
-                key={index}
-                onClick={() => handleLeftClick(index)}
-                sx={{
-                  p: 2,
-                  mb: 1,
-                  cursor: disabled ? 'default' : 'pointer',
-                  bgcolor: isMatched ? 'success.lighter' : isSelected ? 'primary.lighter' : 'background.paper',
-                  border: '2px solid',
-                  borderColor: isMatched ? 'success.main' : isSelected ? 'primary.main' : 'divider',
-                  transition: 'all 0.2s ease',
-                  '&:hover': disabled ? {} : {
-                    transform: 'translateY(-2px)',
-                    boxShadow: 2,
-                    borderColor: isMatched ? 'success.dark' : 'primary.main'
-                  }
-                }}
-              >
-                <Typography variant="body1" fontWeight={isSelected ? 'bold' : 'normal'}>
-                  <Chip
-                    label={index + 1}
-                    size="small"
-                    color={isMatched ? 'success' : isSelected ? 'primary' : 'default'}
-                    sx={{ mr: 1, fontWeight: 'bold' }}
-                  />
-                  {item}
-                </Typography>
-                {isMatched && (
-                  <Typography variant="caption" color="success.main" sx={{ display: 'block', mt: 0.5 }}>
-                    ✓ Matched with {String.fromCharCode(65 + isMatched.right)}
-                  </Typography>
-                )}
-              </Paper>
-            );
-          })}
-        </Grid>
-
-        <Grid item xs={12} sm={6}>
-          <Paper sx={{ p: 2, bgcolor: 'secondary.lighter', mb: 2 }}>
-            <Typography variant="h6" gutterBottom color="secondary.main" fontWeight="bold">
-              Column B
-            </Typography>
-          </Paper>
-          {rightColumn.map((item, index) => {
-            const isMatched = matches.find(m => m.right === index);
-
-            return (
-              <Paper
-                key={index}
-                onClick={() => handleRightClick(index)}
-                sx={{
-                  p: 2,
-                  mb: 1,
-                  cursor: disabled ? 'default' : selectedLeft !== null ? 'pointer' : 'not-allowed',
-                  bgcolor: isMatched ? 'success.lighter' : 'background.paper',
-                  border: '2px solid',
-                  borderColor: isMatched ? 'success.main' : 'divider',
-                  opacity: disabled ? 0.7 : selectedLeft !== null || isMatched ? 1 : 0.6,
-                  transition: 'all 0.2s ease',
-                  '&:hover': disabled || selectedLeft === null ? {} : {
-                    transform: 'translateY(-2px)',
-                    boxShadow: 2,
-                    borderColor: isMatched ? 'success.dark' : 'secondary.main'
-                  }
-                }}
-              >
-                <Typography variant="body1">
-                  <Chip
-                    label={String.fromCharCode(65 + index)}
-                    size="small"
-                    color={isMatched ? 'success' : 'default'}
-                    sx={{ mr: 1, fontWeight: 'bold' }}
-                  />
-                  {item}
-                </Typography>
-                {isMatched && (
-                  <Typography variant="caption" color="success.main" sx={{ display: 'block', mt: 0.5 }}>
-                    ✓ Matched with {isMatched.left + 1}
-                  </Typography>
-                )}
-              </Paper>
-            );
-          })}
-        </Grid>
-      </Grid>
-
-      {/* Instructions and Progress */}
-      <Box sx={{ mt: 3 }}>
-        {selectedLeft !== null && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Selected item {selectedLeft + 1} from Column A. Now click an item in Column B to create a match.
-          </Alert>
-        )}
-
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
-            Progress: {matches.length} of {Math.min(leftColumn.length, rightColumn.length)} matches completed
-          </Typography>
-
-          {matches.length > 0 && !disabled && (
-            <Button
-              variant="outlined"
-              size="small"
-              color="error"
-              onClick={() => {
-                setMatches([]);
-                setSelectedLeft(null);
-                onAnswerChange(question._id, { matchingAnswers: [] }, 'matching');
-              }}
-            >
-              Clear All Matches
-            </Button>
-          )}
-        </Box>
-
-        {/* Current matches summary */}
-        {matches.length > 0 && (
-          <Paper sx={{ mt: 2, p: 2, bgcolor: 'success.lighter' }}>
-            <Typography variant="subtitle2" gutterBottom color="success.main" fontWeight="bold">
-              Your Matches:
-            </Typography>
-            <Grid container spacing={1}>
-              {matches.map((match, index) => (
-                <Grid item xs={12} sm={6} key={index}>
-                  <Box sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    p: 1,
-                    bgcolor: 'background.paper',
-                    borderRadius: 1,
-                    border: '1px solid',
-                    borderColor: 'success.main'
-                  }}>
-                    <Typography variant="body2">
-                      {match.left + 1} ↔ {String.fromCharCode(65 + match.right)}
-                    </Typography>
-                    {!disabled && (
-                      <IconButton
-                        size="small"
-                        onClick={() => clearMatch(index)}
-                        color="error"
-                      >
-                        ×
-                      </IconButton>
-                    )}
-                  </Box>
-                </Grid>
-              ))}
-            </Grid>
-          </Paper>
-        )}
-      </Box>
-    </Box>
-  );
-};
-
-// Enhanced Ordering Question Component
-const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
-  const [order, setOrder] = useState(answer?.orderingAnswer || []);
-  const items = question.itemsToOrder?.items || [];
-
-  // Initialize order if empty
-  React.useEffect(() => {
-    if (order.length === 0 && items.length > 0) {
-      const initialOrder = items.map((_, index) => index);
-      setOrder(initialOrder);
-    }
-  }, [items, order.length]);
-
-  const moveItem = (fromIndex, direction) => {
-    if (disabled) return;
-
-    const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
-    if (toIndex < 0 || toIndex >= order.length) return;
-
-    const newOrder = [...order];
-    [newOrder[fromIndex], newOrder[toIndex]] = [newOrder[toIndex], newOrder[fromIndex]];
-
-    setOrder(newOrder);
-    onAnswerChange(question._id, { orderingAnswer: newOrder }, 'ordering');
-  };
-
-  const resetOrder = () => {
-    if (disabled) return;
-    const shuffledOrder = [...Array(items.length).keys()].sort(() => Math.random() - 0.5);
-    setOrder(shuffledOrder);
-    onAnswerChange(question._id, { orderingAnswer: shuffledOrder }, 'ordering');
-  };
-
-  return (
-    <Box>
-      <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
-        <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          <SwapVert sx={{ mr: 1, fontSize: 20, color: 'secondary.main' }} />
-          Arrange the following items in the correct order. Use the arrow buttons to move items up or down.
-        </Box>
-      </Typography>
-
-      <Paper sx={{ p: 2, bgcolor: 'secondary.lighter', mb: 2 }}>
-        <Typography variant="h6" gutterBottom color="secondary.main" fontWeight="bold">
-          Items to Order
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Current order: {order.length > 0 ? 'Custom arrangement' : 'Original order'}
-        </Typography>
-      </Paper>
-
-      <List sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
-        {order.map((itemIndex, position) => (
-          <ListItem
-            key={`${itemIndex}-${position}`}
-            sx={{
-              mb: 1,
-              bgcolor: 'background.paper',
-              border: '2px solid',
-              borderColor: 'divider',
-              borderRadius: 1,
-              transition: 'all 0.2s ease',
-              '&:hover': {
-                borderColor: 'secondary.main',
-                boxShadow: 1
-              }
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-              {/* Position indicator */}
-              <Chip
-                label={position + 1}
-                color="secondary"
-                size="small"
-                sx={{ mr: 2, fontWeight: 'bold', minWidth: 40 }}
-              />
-
-              {/* Item content */}
-              <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="body1">
-                  {items[itemIndex]}
-                </Typography>
-              </Box>
-
-              {/* Move buttons */}
-              {!disabled && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', ml: 2 }}>
-                  <IconButton
-                    size="small"
-                    onClick={() => moveItem(position, 'up')}
-                    disabled={position === 0}
-                    color="primary"
-                    sx={{ mb: 0.5 }}
-                  >
-                    ↑
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={() => moveItem(position, 'down')}
-                    disabled={position === order.length - 1}
-                    color="primary"
-                  >
-                    ↓
-                  </IconButton>
-                </Box>
-              )}
-            </Box>
-          </ListItem>
-        ))}
-      </List>
-
-      {/* Controls */}
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="body2" color="text.secondary">
-          Items arranged: {order.length} of {items.length}
-        </Typography>
-
-        {!disabled && (
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="outlined"
-              size="small"
-              color="secondary"
-              onClick={resetOrder}
-              startIcon={<SwapVert />}
-            >
-              Shuffle
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              color="error"
-              onClick={() => {
-                const originalOrder = items.map((_, index) => index);
-                setOrder(originalOrder);
-                onAnswerChange(question._id, { orderingAnswer: originalOrder }, 'ordering');
-              }}
-            >
-              Reset to Original
-            </Button>
-          </Box>
-        )}
-      </Box>
-
-      {/* Instructions */}
-      <Alert severity="info" sx={{ mt: 2 }}>
-        <Typography variant="body2">
-          <strong>How to use:</strong> Click the ↑ and ↓ arrows next to each item to move it up or down in the list.
-          The numbers on the left show the current position of each item.
-        </Typography>
-      </Alert>
-    </Box>
-  );
 };
 
 // Enhanced Drag Drop Question Component

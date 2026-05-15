@@ -1,6 +1,6 @@
 // Enhanced grading functions for different question types
 const { gradeOpenEndedAnswer } = require('./aiGrading');
-const geminiClient = require('./geminiClient');
+const groqClient = require('./groqClient');
 
 /**
  * Enhanced semantic equivalence mappings for technical terms
@@ -142,6 +142,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
         return gradeTrueFalse(question, answer, modelAnswer);
 
       case 'fill-in-blank':
+      case 'fill-blank':
         return gradeFillInBlank(question, answer, modelAnswer);
 
       case 'matching':
@@ -154,6 +155,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
         return gradeDragDrop(question, answer);
 
       case 'open-ended':
+      case 'short-answer':
         console.log(`🤖 AI grading open-ended question ${question._id} in section ${question.section}`);
 
         // Enhanced AI grading for sections B and C with optimized processing
@@ -178,7 +180,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
             sectionType: sectionType,
             questionType: 'open-ended',
             aiGraded: true,
-            gradingMethod: `enhanced_ai_grading_section_${question.section}`,
+            gradingMethod: 'enhanced_ai_grading_section',
             processingOptimized: true
           },
           // Ensure we have a proper corrected answer
@@ -487,9 +489,16 @@ const gradeTrueFalse = async (question, answer, modelAnswer) => {
     let isCorrect = false;
     let correctAnswer = modelAnswer;
 
+    // Try direct comparison first (more reliable for true/false)
     if (modelAnswer) {
-      // Use AI to determine correctness
-      isCorrect = await checkAnswerWithAI(question.text, selectedOption, modelAnswer, 'true-false');
+      const selectedLower = selectedOption.toLowerCase().trim();
+      const correctLower = modelAnswer.toLowerCase().trim();
+      isCorrect = selectedLower === correctLower;
+      
+      // If direct comparison fails, try AI as fallback
+      if (!isCorrect) {
+        isCorrect = await checkAnswerWithAI(question.text, selectedOption, modelAnswer, 'true-false');
+      }
     } else {
       // Use the question's options
       const correctOption = question.options.find(opt => opt.isCorrect);
@@ -643,10 +652,26 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
  */
 const gradeMatching = async (question, answer) => {
   try {
-    const studentMatches = answer.matchingAnswers || [];
+    // Handle both object format { "0": 2, "1": 0 } and array format [{ left: 0, right: 2 }]
+    let studentMatches = answer.matchingAnswers || {};
+    let normalizedMatches = [];
+
+    if (Array.isArray(studentMatches)) {
+      // Already in array format
+      normalizedMatches = studentMatches;
+    } else if (typeof studentMatches === 'object' && studentMatches !== null) {
+      // Convert object format to array format
+      normalizedMatches = Object.entries(studentMatches)
+        .filter(([key, value]) => value !== null && value !== undefined)
+        .map(([key, value]) => ({
+          left: parseInt(key),
+          right: parseInt(value)
+        }));
+    }
+
     const correctPairs = question.matchingPairs?.correctPairs || [];
 
-    if (studentMatches.length === 0) {
+    if (normalizedMatches.length === 0) {
       return {
         score: 0,
         feedback: 'No matches provided',
@@ -659,7 +684,7 @@ const gradeMatching = async (question, answer) => {
     const totalPairs = correctPairs.length;
 
     // Check each student match against correct pairs
-    for (const studentMatch of studentMatches) {
+    for (const studentMatch of normalizedMatches) {
       const isCorrect = correctPairs.some(correctPair =>
         correctPair.left === studentMatch.left && correctPair.right === studentMatch.right
       );
@@ -809,52 +834,30 @@ const checkAnswerWithAI = async (questionText, studentAnswer, modelAnswer, quest
     let prompt = '';
 
     if (questionType === 'multiple-choice') {
-      prompt = `
-Determine if the student's answer is correct for this multiple-choice question.
+      // Truncate long inputs to prevent timeout
+      const MAX_LENGTH = 500;
+      const truncatedQuestion = cleanQuestionText.length > MAX_LENGTH ? cleanQuestionText.substring(0, MAX_LENGTH) + '...' : cleanQuestionText;
+      const truncatedModel = cleanModelAnswer.length > MAX_LENGTH ? cleanModelAnswer.substring(0, MAX_LENGTH) + '...' : cleanModelAnswer;
+      const truncatedStudent = cleanStudentAnswer.length > MAX_LENGTH ? cleanStudentAnswer.substring(0, MAX_LENGTH) + '...' : cleanStudentAnswer;
 
-Question: ${cleanQuestionText}
-Correct Answer: ${cleanModelAnswer}
-Student Answer: ${cleanStudentAnswer}
-
-MULTIPLE CHOICE GRADING RULES:
-1. If the student answer contains the same letter (A, B, C, D) as the correct answer, it's CORRECT
-2. If the student answer contains the same text content as the correct answer, it's CORRECT
-3. If the student selected "A. Option Text" and the correct answer is "A. Option Text", it's CORRECT
-4. If the student selected "Option Text" and the correct answer is "A. Option Text", it's CORRECT
-5. Case doesn't matter: "a" = "A", "option text" = "Option Text"
-6. Consider semantic equivalence: "WAN" = "Wide Area Network", "CPU" = "Central Processing Unit"
-
-EXAMPLES:
-- Student: "A. Proteus", Correct: "A. Proteus" → CORRECT
-- Student: "Proteus", Correct: "A. Proteus" → CORRECT
-- Student: "A", Correct: "A. Proteus" → CORRECT
-- Student: "B. AutoCAD", Correct: "A. Proteus" → INCORRECT
-
-Respond with only "true" if the student answer is correct, or "false" if incorrect.
-`;
+      prompt = `Is this MCQ answer correct? Q: "${truncatedQuestion}". Correct: "${truncatedModel}". Student: "${truncatedStudent}". Match letter OR text, case-insensitive. Respond "true" or "false".`;
     } else {
-      prompt = `
-Determine if the student's answer is semantically equivalent to the model answer for this ${questionType} question.
+      // Truncate long inputs to prevent timeout
+      const MAX_LENGTH = 800;
+      const truncatedQuestion = cleanQuestionText.length > MAX_LENGTH ? cleanQuestionText.substring(0, MAX_LENGTH) + '...' : cleanQuestionText;
+      const truncatedModel = cleanModelAnswer.length > MAX_LENGTH ? cleanModelAnswer.substring(0, MAX_LENGTH) + '...' : cleanModelAnswer;
+      const truncatedStudent = cleanStudentAnswer.length > MAX_LENGTH ? cleanStudentAnswer.substring(0, MAX_LENGTH) + '...' : cleanStudentAnswer;
 
-Question: ${cleanQuestionText}
-Model Answer: ${cleanModelAnswer}
-Student Answer: ${cleanStudentAnswer}
-
-SEMANTIC EQUIVALENCE RULES:
-- "WAN" = "WAN (Wide Area Network)" = "Wide Area Network" (ALL CORRECT)
-- "CPU" = "CPU (Central Processing Unit)" = "Central Processing Unit" (ALL CORRECT)
-- "RAM" = "RAM (Random Access Memory)" = "Random Access Memory" (ALL CORRECT)
-- "OS" = "OS (Operating System)" = "Operating System" (ALL CORRECT)
-- Case doesn't matter: "wan" = "WAN" = "Wan" (ALL CORRECT)
-
-IMPORTANT: If the student answer is an abbreviation, expansion, or synonym of the model answer, it should be considered CORRECT.
-
-Respond with only "true" if the answers are semantically equivalent, or "false" if they are different concepts.
-`;
+      prompt = `Are these semantically equivalent? Q: "${truncatedQuestion}". Model: "${truncatedModel}". Student: "${truncatedStudent}". Abbreviations and synonyms are equivalent. Respond "true" or "false".`;
     }
 
-    // Use the enhanced generateContent function
-    const response = await geminiClient.generateContent(prompt);
+    // Use the Groq generateContent function
+    const response = await groqClient.generateContent(prompt, {
+      model: 'fast',
+      jsonMode: false,
+      temperature: 0.1,
+      maxTokens: 256
+    });
 
     // The generateContent function already returns processed text
     const responseText = response.text.trim().toLowerCase();

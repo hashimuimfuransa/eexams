@@ -540,9 +540,9 @@ Only respond with the letter of the correct option (A, B, C, or D).
 
               try {
                 const parsedResult = JSON.parse(aiResult);
-                answer.score = parsedResult.score;
+                answer.score = Math.min(Math.max(0, parsedResult.score || 0), question.points);
                 answer.feedback = parsedResult.feedback;
-                answer.isCorrect = parsedResult.isCorrect;
+                answer.isCorrect = answer.score >= question.points;
 
                 console.log(`  AI graded with score: ${answer.score}, isCorrect: ${answer.isCorrect}`);
               } catch (parseError) {
@@ -641,14 +641,15 @@ Only respond with the letter of the correct option (A, B, C, or D).
         });
 
         // Update the answer with AI grading results - ensure database consistency like regrading
-        result.answers[i].score = grading.score;
+        const cappedScore = Math.min(Math.max(0, grading.score || 0), question.points);
+        result.answers[i].score = cappedScore;
         result.answers[i].feedback = grading.feedback;
-        result.answers[i].isCorrect = grading.score >= question.points; // Full points required for "correct"
+        result.answers[i].isCorrect = cappedScore >= question.points; // Full points required for "correct"
         result.answers[i].correctedAnswer = grading.correctedAnswer || question.correctAnswer;
         result.answers[i].gradingMethod = grading.details?.gradingMethod || 'ai_grading'; // Track grading method
 
         // Add to total score
-        totalScore += grading.score;
+        totalScore += cappedScore;
 
         console.log(`Graded answer for question ${question._id}, score: ${grading.score}/${question.points}`);
 
@@ -732,13 +733,14 @@ Only respond with the letter of the correct option (A, B, C, or D).
         feedback += ` Compare your answer with the model answer to see what you might have missed.`;
 
         // Update the answer with fallback grading results
-        result.answers[i].score = score;
+        const cappedScore = Math.min(Math.max(0, score || 0), question.points);
+        result.answers[i].score = cappedScore;
         result.answers[i].feedback = `${feedback} (Note: This was graded using keyword matching due to AI unavailability)`;
-        result.answers[i].isCorrect = score >= question.points * 0.7; // 70% threshold
+        result.answers[i].isCorrect = cappedScore >= question.points * 0.7; // 70% threshold
         result.answers[i].correctedAnswer = question.correctAnswer;
 
         // Add to total score
-        totalScore += score;
+        totalScore += cappedScore;
       }
     }
 
@@ -1387,14 +1389,15 @@ Only respond with the letter of the correct option (A, B, C, or D).
         });
 
         // Update the answer with AI grading results - ensure database consistency like regrading
-        result.answers[i].score = grading.score;
+        const cappedScore = Math.min(Math.max(0, grading.score || 0), question.points);
+        result.answers[i].score = cappedScore;
         result.answers[i].feedback = grading.feedback;
-        result.answers[i].isCorrect = grading.score >= question.points; // Full points required for "correct"
+        result.answers[i].isCorrect = cappedScore >= question.points; // Full points required for "correct"
         result.answers[i].correctedAnswer = grading.correctedAnswer || question.correctAnswer;
         result.answers[i].gradingMethod = grading.details?.gradingMethod || 'regrade_ai_grading'; // Track grading method
 
         // Add to total score
-        totalScore += grading.score;
+        totalScore += cappedScore;
 
         console.log(`Graded answer for question ${question._id}, score: ${grading.score}/${question.points}`);
 
@@ -1478,13 +1481,14 @@ Only respond with the letter of the correct option (A, B, C, or D).
         feedback += ` Compare your answer with the model answer to see what you might have missed.`;
 
         // Update the answer with fallback grading results
-        result.answers[i].score = score;
+        const cappedScore = Math.min(Math.max(0, score || 0), question.points);
+        result.answers[i].score = cappedScore;
         result.answers[i].feedback = `${feedback} (Note: This was graded using keyword matching due to AI unavailability)`;
-        result.answers[i].isCorrect = score >= question.points * 0.7; // 70% threshold
+        result.answers[i].isCorrect = cappedScore >= question.points * 0.7; // 70% threshold
         result.answers[i].correctedAnswer = question.correctAnswer;
 
         // Add to total score
-        totalScore += score;
+        totalScore += cappedScore;
       }
     }
 

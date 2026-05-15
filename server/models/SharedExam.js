@@ -62,6 +62,16 @@ const SharedExamSchema = new mongoose.Schema({
     showResults: {
       type: Boolean,
       default: true
+    },
+    // Scheduled start time for the exam
+    scheduledStart: {
+      type: Date,
+      default: null // null = available immediately
+    },
+    // Scheduled end time for the exam
+    scheduledEnd: {
+      type: Date,
+      default: null // null = no end time
     }
   },
   // Students who have accessed this shared exam
@@ -90,6 +100,11 @@ const SharedExamSchema = new mongoose.Schema({
     },
     // Whether they completed the exam
     hasCompleted: {
+      type: Boolean,
+      default: false
+    },
+    // Whether the exam is locked for this student (prevents retaking)
+    isLocked: {
       type: Boolean,
       default: false
     },
@@ -199,6 +214,57 @@ SharedExamSchema.methods.isExpired = function() {
 SharedExamSchema.methods.isFull = function() {
   if (!this.settings.maxStudents) return false;
   return this.students.length >= this.settings.maxStudents;
+};
+
+// Check if exam is currently scheduled (within start and end time)
+SharedExamSchema.methods.isScheduled = function() {
+  const now = new Date();
+  const startTime = this.settings.scheduledStart;
+  const endTime = this.settings.scheduledEnd;
+
+  // If no start time, exam is available
+  if (!startTime) return true;
+
+  // If before start time, not yet available
+  if (now < startTime) return false;
+
+  // If after end time, no longer available
+  if (endTime && now > endTime) return false;
+
+  return true;
+};
+
+// Check if exam is in the future (scheduled but not yet available)
+SharedExamSchema.methods.isFuture = function() {
+  const startTime = this.settings.scheduledStart;
+  if (!startTime) return false;
+  return new Date() < startTime;
+};
+
+// Lock exam for a student (prevent retaking)
+SharedExamSchema.methods.lockStudent = function(studentId) {
+  const student = this.students.find(
+    s => s.student?.toString() === studentId || s.email === studentId
+  );
+
+  if (student) {
+    student.isLocked = true;
+    return true;
+  }
+  return false;
+};
+
+// Unlock exam for a student (allow retaking)
+SharedExamSchema.methods.unlockStudent = function(studentId) {
+  const student = this.students.find(
+    s => s.student?.toString() === studentId || s.email === studentId
+  );
+
+  if (student) {
+    student.isLocked = false;
+    return true;
+  }
+  return false;
 };
 
 // Add a student to the share

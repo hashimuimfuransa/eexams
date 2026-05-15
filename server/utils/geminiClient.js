@@ -9,6 +9,15 @@ const fs = require('fs');
 const path = require('path');
 const { processAIResponse } = require('./responseHandler');
 
+// p-queue is an ESM-only package from v8+; we installed v7 (CJS-compatible)
+const PQueue = require('p-queue').default || require('p-queue');
+
+// Global queue: max 10 AI requests per 60 seconds (free-tier safe)
+const aiQueue = new PQueue({ interval: 60000, intervalCap: 10, concurrency: 2 });
+
+// Helper: wait ms milliseconds
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Helper function to reconstruct text from character-by-character object
 const reconstructTextFromObject = (textObj) => {
   try {
@@ -119,30 +128,30 @@ const createGeminiClient = () => {
   // Create a function to get a model with the correct API version
   const getModel = (modelName = 'gemini-pro') => {
     // Map of model name variations to try - based on Google's documentation
-    // Updated to prioritize the most reliable models first
+    // gemini-2.0-flash-lite has the highest free-tier RPM quota
     const modelVariations = {
-      'gemini-pro': ['gemini-1.5-flash', 'models/gemini-1.5-flash', 'gemini-1.5-pro', 'models/gemini-1.5-pro'],
-      'gemini-1.0-pro': ['gemini-1.5-flash', 'models/gemini-1.5-flash', 'gemini-1.5-pro', 'models/gemini-1.5-pro'],
-      'gemini-1.5-pro': ['gemini-1.5-flash', 'models/gemini-1.5-flash', 'gemini-1.5-pro', 'models/gemini-1.5-pro'],
-      'gemini-1.5-flash': ['gemini-1.5-flash', 'models/gemini-1.5-flash', 'gemini-pro', 'models/gemini-pro']
+      'gemini-pro': ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+      'gemini-1.0-pro': ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+      'gemini-1.5-pro': ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+      'gemini-1.5-flash': ['gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+      'gemini-2.0-flash-lite': ['gemini-2.0-flash-lite', 'gemini-1.5-flash'],
     };
 
     // Get the variations to try based on the requested model
     const variationsToTry = modelVariations[modelName] || [modelName, `models/${modelName}`];
 
     // Log which model we're trying to create
-    console.log(`Attempting to create Gemini model with variations of ${modelName} using API version v1`);
+    console.log(`Attempting to create Gemini model with variations of ${modelName} using API version v1beta`);
 
     // Try the first variation
     const firstVariation = variationsToTry[0];
     console.log(`Using model name: ${firstVariation}`);
 
-    // Create the model with explicit API version
+    // Use v1beta — routes through global endpoint, not regional (avoids europe-west1 zero-quota)
     const model = genAI.getGenerativeModel({
       model: firstVariation
     }, {
-      // Force v1 API version in the request options
-      apiVersion: 'v1'
+      apiVersion: 'v1beta'
     });
 
     // Store the other variations to try if the first one fails
@@ -217,25 +226,15 @@ const createGeminiClient = () => {
           console.error(`Error generating content with model ${firstVariation}:`, error);
           console.error(`Error status: ${error.status}, message: ${error.message}`);
 
-          // Check if this is a rate limit error (429)
+          // On 429 rate limit: fail fast — let the route handler return a clean error
+          // Do NOT retry; retrying just stacks more quota-burning requests
           if (error.status === 429) {
-            if (retryCount < MAX_RETRIES) {
-              // Calculate backoff time: 2^retryCount * 1000ms + random jitter
-              const backoffTime = (Math.pow(2, retryCount) * 1000) + (Math.random() * 1000);
-              console.log(`Rate limit exceeded. Retrying in ${Math.round(backoffTime/1000)} seconds...`);
-
-              // Wait for the backoff period
-              await sleep(backoffTime);
-              retryCount++;
-              continue;
-            } else {
-              console.error(`Maximum retries (${MAX_RETRIES}) exceeded for rate limit errors.`);
-            }
+            throw error;
           }
 
           // If we have alternative names to try and this is a 404 or 400 error
           if (model._alternativeNames && model._alternativeNames.length > 0 &&
-              (error.status === 404 || error.status === 400 || error.status === 429)) {
+              (error.status === 404 || error.status === 400)) {
             // Get the next model name to try
             const nextModelName = model._alternativeNames.shift();
             console.log(`Current model failed. Trying alternative: ${nextModelName}`);
@@ -244,7 +243,7 @@ const createGeminiClient = () => {
             const alternativeModel = genAI.getGenerativeModel({
               model: nextModelName
             }, {
-              apiVersion: 'v1'
+              apiVersion: 'v1beta'
             });
 
             // Try with the alternative model
@@ -274,78 +273,88 @@ const createGeminiClient = () => {
     return model;
   };
 
-  // Enhanced generateContent function with better error handling and response validation
+  // Enhanced generateContent function with queue, 429 retry, and proper status propagation
   const generateContent = async (prompt, options = {}) => {
-    try {
-      // Validate input
-      if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-        throw new Error('Invalid prompt provided');
-      }
-
-      // Clean the prompt to remove any problematic characters
-      const cleanPrompt = prompt.trim().replace(/[\x00-\x1F\x7F]/g, '');
-
-      // Get the model with enhanced configuration
-      const model = getModel('gemini-1.5-flash');
-
-      console.log(`Generating content with Gemini (prompt length: ${cleanPrompt.length} chars)`);
-
-      // Generate content with timeout
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Gemini API timeout')), 25000);
-      });
-
-      const result = await Promise.race([
-        model.generateContent(cleanPrompt),
-        timeoutPromise
-      ]);
-
-      // Validate the result
-      if (!result || !result.response) {
-        throw new Error('No response received from Gemini API');
-      }
-
-      const response = result.response;
-
-      // Use the robust response handler to extract text
-      const cleanText = processAIResponse(response);
-
-      // Validate the text content
-      if (!cleanText || typeof cleanText !== 'string') {
-        console.error('Failed to extract valid text from response');
-        console.error('Response type:', typeof response);
-        console.error('Response structure:', JSON.stringify(response, null, 2).substring(0, 500));
-        throw new Error('Invalid text content received from Gemini API');
-      }
-
-      if (cleanText.length === 0) {
-        throw new Error('Empty response received from Gemini API');
-      }
-
-      console.log(`Gemini response received (${cleanText.length} chars)`);
-
-      return {
-        text: cleanText,
-        response: response,
-        usage: response.usageMetadata || null
-      };
-
-    } catch (error) {
-      console.error('Error generating content with Gemini:', error);
-
-      // Provide more specific error messages
-      if (error.message.includes('timeout')) {
-        throw new Error('Gemini API request timed out. Please try again.');
-      } else if (error.message.includes('quota')) {
-        throw new Error('Gemini API quota exceeded. Please try again later.');
-      } else if (error.message.includes('safety')) {
-        throw new Error('Content was blocked by safety filters.');
-      } else if (error.message.includes('Invalid prompt')) {
-        throw new Error('Invalid prompt provided to Gemini API.');
-      } else {
-        throw new Error(`Gemini API error: ${error.message}`);
-      }
+    // Validate input before queuing
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      throw new Error('Invalid prompt provided');
     }
+
+    const cleanPrompt = prompt.trim().replace(/[\x00-\x1F\x7F]/g, '');
+
+    // Enqueue the actual API call so concurrent requests are throttled
+    return aiQueue.add(async () => {
+      const MAX_429_RETRIES = 3;
+      const RETRY_DELAY_MS = 55000; // 55 seconds — safely past Google's 1-minute window
+
+      for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
+        try {
+          const model = getModel('gemini-2.0-flash-lite');
+
+          console.log(`Generating content with Gemini (prompt length: ${cleanPrompt.length} chars, attempt ${attempt + 1})`);
+
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Gemini API timeout')), 30000);
+          });
+
+          const result = await Promise.race([
+            model.generateContent(cleanPrompt),
+            timeoutPromise
+          ]);
+
+          if (!result || !result.response) {
+            throw new Error('No response received from Gemini API');
+          }
+
+          const response = result.response;
+          const cleanText = processAIResponse(response);
+
+          if (!cleanText || typeof cleanText !== 'string' || cleanText.length === 0) {
+            console.error('Failed to extract valid text from response');
+            throw new Error('Invalid text content received from Gemini API');
+          }
+
+          console.log(`Gemini response received (${cleanText.length} chars)`);
+
+          return {
+            text: cleanText,
+            response: response,
+            usage: response.usageMetadata || null
+          };
+
+        } catch (error) {
+          const is429 = error.status === 429 ||
+            error.message?.includes('429') ||
+            error.message?.includes('quota') ||
+            error.message?.includes('RESOURCE_EXHAUSTED');
+
+          if (is429 && attempt < MAX_429_RETRIES) {
+            console.warn(`Gemini 429 rate limit hit (attempt ${attempt + 1}/${MAX_429_RETRIES}). Waiting ${RETRY_DELAY_MS / 1000}s before retry...`);
+            await sleep(RETRY_DELAY_MS);
+            continue;
+          }
+
+          console.error('Error generating content with Gemini:', error);
+
+          // Preserve 429 status so route handlers can return the right HTTP code
+          if (is429) {
+            const quotaErr = new Error('Gemini API quota exceeded. Please wait a minute and try again.');
+            quotaErr.status = 429;
+            throw quotaErr;
+          }
+
+          if (error.message?.includes('timeout')) {
+            throw new Error('Gemini API request timed out. Please try again.');
+          } else if (error.message?.includes('safety')) {
+            throw new Error('Content was blocked by safety filters.');
+          } else if (error.message?.includes('Invalid prompt')) {
+            throw new Error('Invalid prompt provided to Gemini API.');
+          } else {
+            throw new Error(`Gemini API error: ${error.message}`);
+          }
+        }
+      }
+    });
   };
 
   return {

@@ -7,7 +7,8 @@ const {
   getCurrentExamSession,
   getClassLeaderboard,
   debugStudentResults,
-  checkSpecificResult
+  checkSpecificResult,
+  getScheduledExams
 } = require('../controllers/studentController');
 const auth = require('../middleware/auth');
 const { isStudent } = require('../middleware/role');
@@ -24,6 +25,9 @@ router.get('/results', getStudentResults);
 router.get('/results/:resultId', getDetailedResult);
 router.get('/debug-results', debugStudentResults);
 router.get('/check-result/:resultId', checkSpecificResult);
+
+// Scheduled exams route
+router.get('/scheduled-exams', getScheduledExams);
 
 // Leaderboard route
 router.get('/leaderboard', getClassLeaderboard);

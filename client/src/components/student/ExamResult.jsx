@@ -332,6 +332,7 @@ const ExamResult = () => {
                           label={`${answer?.score || 0}/${question.points}`}
                           color={isCorrect ? "success" : "error"}
                           size="small"
+                          sx={{ minWidth: 60 }}
                         />
                       </Box>
 

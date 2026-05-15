@@ -303,7 +303,7 @@ const Login = () => {
 
     try {
       // Use AuthContext's googleLogin to properly set auth state
-      const result = await googleLogin({ credential, accountType: 'individual' });
+      const result = await googleLogin({ credential });
       console.log('[GoogleLogin] AuthContext result:', result);
 
       setFailedAttempts(0);

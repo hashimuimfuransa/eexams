@@ -27,6 +27,7 @@
   "license": "ISC",
   "dependencies": {
     "concurrently": "^9.1.2",
-    "google-auth-library": "^10.6.2"
+    "google-auth-library": "^10.6.2",
+    "groq-sdk": "^1.2.0"
   }
 }

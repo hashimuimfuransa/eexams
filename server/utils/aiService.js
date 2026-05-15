@@ -1,114 +1,91 @@
 /**
- * AI Service for interacting with Google's Gemini API
+ * AI Service for interacting with Groq API
+ * Provides fast, reliable AI responses with JSON mode support
  */
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-// Initialize the Google Generative AI with the API key
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const groqClient = require('./groqClient');
 
 /**
- * Generate content using Google's Gemini API
+ * Generate content using Groq API
  * @param {string} prompt - The prompt to send to the AI
+ * @param {Object} options - Additional options (model, jsonMode, temperature, etc.)
  * @returns {Promise<Object>} - The AI response
  */
-const generateContent = async (prompt) => {
+const generateContent = async (prompt, options = {}) => {
   try {
-    console.log(`Sending prompt to Gemini AI: ${prompt.substring(0, 100)}...`);
-    
-    // Use gemini-1.5-flash only — legacy gemini-pro has 0 quota in many regions
-    const modelNames = ['gemini-1.5-flash', 'gemini-2.0-flash'];
-    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    console.log(`Sending prompt to Groq AI: ${prompt.substring(0, 100)}...`);
 
-    let lastError = null;
-    for (const modelName of modelNames) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          console.log(`Attempting generation with model: ${modelName} (attempt ${attempt + 1})`);
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const response = await model.generateContent(prompt);
-          const result = response.response;
-          console.log(`Received response from Gemini AI (${modelName})`);
-          return { text: result.text(), model: modelName };
-        } catch (err) {
-          lastError = err;
-          const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota');
-          if (is429 && attempt < 2) {
-            const delay = (attempt + 1) * 3000;
-            console.log(`Rate limit on ${modelName}, retrying in ${delay}ms...`);
-            await sleep(delay);
-          } else {
-            console.error(`Error with model ${modelName} attempt ${attempt + 1}:`, err.message);
-            break;
-          }
-        }
-      }
-    }
+    const response = await groqClient.generateContent(prompt, {
+      model: options.model || 'balanced',
+      jsonMode: options.jsonMode || false,
+      temperature: options.temperature || 0.3,
+      maxTokens: options.maxTokens || 4096,
+      systemPrompt: options.systemPrompt
+    });
 
-    throw lastError || new Error('All Gemini models failed');
+    console.log(`Received response from Groq AI (${response.model})`);
+    return {
+      text: response.text,
+      parsedContent: response.parsedContent,
+      model: response.model,
+      usage: response.usage
+    };
   } catch (error) {
-    console.error('Error generating content with Gemini AI:', error);
+    console.error('Error generating content with Groq AI:', error);
     throw error;
   }
 };
 
 /**
- * Grade an open-ended answer using Google's Gemini API
+ * Grade an open-ended answer using Groq API
  * @param {string} question - The question text
  * @param {string} answer - The student's answer
  * @param {string} modelAnswer - The model answer (if available)
  * @param {number} maxPoints - The maximum points for this question
+ * @param {string} questionType - Type of question (multiple-choice, open-ended, etc.)
+ * @param {string} section - Section identifier (A, B, C)
  * @returns {Promise<Object>} - The grading result
  */
-const gradeOpenEndedAnswer = async (question, answer, modelAnswer, maxPoints) => {
+const gradeOpenEndedAnswer = async (question, answer, modelAnswer, maxPoints, questionType = 'open-ended', section = 'B') => {
   try {
-    // Create a prompt for the AI
-    const prompt = `
-You are an expert exam grader. Please grade the following student answer to a question.
+    console.log(`Grading open-ended answer with Groq AI (section ${section}, type: ${questionType})...`);
 
-Question: ${question}
+    // Use the dedicated grading function from groqClient
+    const result = await groqClient.gradeAnswer(question, answer, modelAnswer, maxPoints, {
+      questionType,
+      section
+    });
 
-${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
-
-Student Answer: ${answer}
-
-Please grade this answer on a scale of 0 to ${maxPoints} points.
-Provide detailed feedback explaining what was good and what could be improved.
-Also provide a corrected or model answer that shows how the student should have answered.
-
-Format your response as follows:
-Score: [number]
-Feedback: [detailed feedback]
-Corrected Answer: [model answer]
-`;
-
-    // Generate content with the AI
-    const response = await generateContent(prompt);
-    
-    if (!response || !response.text) {
-      throw new Error('No response from AI');
-    }
-    
-    // Parse the response to extract the score, feedback, and corrected answer
-    const scoreMatch = response.text.match(/Score:\s*(\d+(?:\.\d+)?)/i);
-    const feedbackMatch = response.text.match(/Feedback:\s*([\s\S]*?)(?=Corrected Answer:|$)/i);
-    const correctedAnswerMatch = response.text.match(/Corrected Answer:\s*([\s\S]*?)(?=$)/i);
-    
-    const score = scoreMatch ? Math.min(parseFloat(scoreMatch[1]), maxPoints) : 0;
-    const feedback = feedbackMatch ? feedbackMatch[1].trim() : 'No feedback provided';
-    const correctedAnswer = correctedAnswerMatch ? correctedAnswerMatch[1].trim() : 'No corrected answer provided';
-    
     return {
-      score,
-      feedback,
-      correctedAnswer
+      score: result.score,
+      feedback: result.feedback,
+      correctedAnswer: result.correctedAnswer,
+      details: {
+        keyConceptsPresent: result.keyConceptsPresent,
+        keyConceptsMissing: result.keyConceptsMissing,
+        confidenceLevel: result.confidenceLevel,
+        aiGraded: result.aiGraded,
+        questionType,
+        gradingMethod: 'groq_ai'
+      }
     };
   } catch (error) {
-    console.error('Error grading open-ended answer with Gemini AI:', error);
-    throw error;
+    console.error('Error grading open-ended answer with Groq AI:', error);
+    // Return a fallback score
+    return {
+      score: 0,
+      feedback: `Error during AI grading: ${error.message}. Please review manually.`,
+      correctedAnswer: modelAnswer || 'No model answer available',
+      details: {
+        error: error.message,
+        gradingMethod: 'groq_error_fallback',
+        questionType
+      }
+    };
   }
 };
 
 module.exports = {
   generateContent,
-  gradeOpenEndedAnswer
+  gradeOpenEndedAnswer,
+  groqClient
 };

@@ -4,7 +4,7 @@
  * This module breaks down the AI grading process into smaller, more manageable chunks
  * to avoid rate limits and improve reliability.
  */
-const geminiClient = require('./geminiClient');
+const groqClient = require('./groqClient');
 
 /**
  * Grade an open-ended answer using a chunked approach with Google Gemini API
@@ -75,87 +75,32 @@ const extractKeyConcepts = async (modelAnswer, studentAnswer, questionText = '')
   try {
     console.log('Extracting key concepts...');
 
-    // Use a faster model for better performance and to avoid timeouts
-    const model = geminiClient.getModel('gemini-1.5-flash');
+    // Use fast model for better performance and to avoid timeouts
 
     // Check if model answer is missing or just says "Not provided"
     const isModelAnswerMissing = !modelAnswer || modelAnswer === "Not provided" || modelAnswer.trim() === "";
 
+    // Truncate long inputs to prevent timeout
+    const MAX_LENGTH = 1000;
+    const truncatedQuestion = questionText.length > MAX_LENGTH ? questionText.substring(0, MAX_LENGTH) + '...' : questionText;
+    const truncatedAnswer = studentAnswer.length > MAX_LENGTH ? studentAnswer.substring(0, MAX_LENGTH) + '...' : studentAnswer;
+    const truncatedModelAnswer = modelAnswer && modelAnswer.length > MAX_LENGTH ? modelAnswer.substring(0, MAX_LENGTH) + '...' : modelAnswer;
+
     let prompt;
     if (isModelAnswerMissing) {
-      // If model answer is missing, generate expected concepts based on the student answer and question
-      prompt = `
-      You are an expert AI exam grader for a computer science or IT exam with comprehensive knowledge of modern technology and educational assessment.
-
-      Question: "${questionText || 'Unknown question about computer science or IT'}"
-
-      Student Answer: "${studentAnswer}"
-
-      Based on the question and the student's answer, identify 4-8 key technical concepts, facts, and principles that would be expected in a complete and accurate answer to this question.
-
-      For each concept:
-      1. Be specific and precise (e.g., "TCP three-way handshake" rather than just "TCP")
-      2. Focus on factual information rather than vague ideas
-      3. Include technical terms where appropriate
-      4. Consider both breadth (covering all aspects of the question) and depth (important details)
-      5. Prioritize modern, current technology standards and practices
-
-      Important guidelines:
-      - Use current, up-to-date knowledge when identifying key concepts
-      - Consider that there may be multiple valid technical approaches to answering questions
-      - For example, both USB and PS/2 could be valid concepts for keyboard connections, with USB being more modern
-      - Focus on concepts that demonstrate understanding rather than specific terminology
-      - Identify concepts that would be used by expert graders to assess student understanding
-
-      Format your response as a JSON array of strings:
-      ["concept1", "concept2", "concept3", ...]
-
-      Only return the JSON array, nothing else.
-      `;
+      prompt = `Extract 4-8 key technical concepts expected for this answer. Q: "${truncatedQuestion}". A: "${truncatedAnswer}". Return JSON array: ["concept1", "concept2", ...]`;
     } else {
-      // If model answer is available, extract concepts from it
-      prompt = `
-      You are an expert AI exam grader with comprehensive knowledge of modern technology and educational assessment. Your task is to extract the key concepts from this model answer.
-
-      Model Answer: "${modelAnswer}"
-
-      Question Context: "${questionText || 'Unknown computer science/IT question'}"
-
-      Please identify 4-8 key concepts, facts, and principles that are essential to this answer. These are the specific points that would be used to assess a student's understanding.
-
-      For each concept:
-      1. Be specific and precise (e.g., "TCP three-way handshake" rather than just "TCP")
-      2. Focus on factual information rather than vague ideas
-      3. Include technical terms where appropriate
-      4. Consider both breadth (covering all aspects) and depth (important details)
-      5. Prioritize concepts that demonstrate mastery of the subject
-
-      Important guidelines:
-      - Use current, up-to-date knowledge when identifying key concepts
-      - Consider that there may be multiple valid technical approaches to answering questions
-      - Focus on concepts that demonstrate understanding rather than specific terminology
-      - Be flexible with terminology if different terms can express the same concept
-      - Identify concepts that would be used by expert graders to assess student understanding
-
-      Format your response as a JSON array of strings:
-      ["concept1", "concept2", "concept3", ...]
-
-      Only return the JSON array, nothing else.
-      `;
+      prompt = `Extract 4-8 key concepts from model answer. Model: "${truncatedModelAnswer}". Context: "${truncatedQuestion}". Return JSON array: ["concept1", "concept2", ...]`;
     }
 
-    const generationConfig = {
+    const result = await groqClient.generateContent(prompt, {
+      model: 'fast',
+      jsonMode: true,
       temperature: 0.1,
-      maxOutputTokens: 1024,
-    };
-
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig,
+      maxTokens: 1024
     });
 
-    const response = await result.response;
-    const text = response.text();
+    const text = result.text;
 
     // Extract JSON array from response
     const jsonStart = text.indexOf('[');
@@ -223,8 +168,7 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
   try {
     console.log('Analyzing student answer against key concepts...');
 
-    // Use a faster model for better performance and to avoid timeouts
-    const model = geminiClient.getModel('gemini-1.5-flash');
+    // Use fast model for better performance and to avoid timeouts
 
     // Extract technical terms from the student's answer
     const technicalTerms = extractTechnicalTerms(studentAnswer);
@@ -337,29 +281,30 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       `;
     }
 
-    const generationConfig = {
+    const result = await groqClient.generateContent(prompt, {
+      model: 'fast',
+      jsonMode: true,
       temperature: 0.1,
-      maxOutputTokens: 1024,
-    };
-
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig,
+      maxTokens: 1024
     });
 
-    const response = await result.response;
-    const text = response.text();
+    const text = result.text;
 
-    // Extract JSON object from response
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}') + 1;
+    // Parse JSON response
+    let analysis;
+    if (result.parsedContent) {
+      analysis = result.parsedContent;
+    } else {
+      const jsonStart = text.indexOf('{');
+      const jsonEnd = text.lastIndexOf('}') + 1;
 
-    if (jsonStart === -1 || jsonEnd === 0) {
-      throw new Error('No JSON object found in analysis response');
+      if (jsonStart === -1 || jsonEnd === 0) {
+        throw new Error('No JSON object found in analysis response');
+      }
+
+      const jsonText = text.substring(jsonStart, jsonEnd);
+      analysis = JSON.parse(jsonText);
     }
-
-    const jsonText = text.substring(jsonStart, jsonEnd);
-    const analysis = JSON.parse(jsonText);
 
     // If the model answer is missing and the student provided technical terms,
     // ensure a minimum score based on the number of technical terms
@@ -416,8 +361,7 @@ const generateFeedback = async (studentAnswer, modelAnswer, score, maxPoints, co
   try {
     console.log('Generating detailed feedback...');
 
-    // Use a faster model for better performance and to avoid timeouts
-    const model = geminiClient.getModel('gemini-1.5-flash');
+    // Use fast model for better performance and to avoid timeouts
 
     const prompt = `
     You are an AI exam grader for students in Rwanda with up-to-date knowledge of modern technology and computer systems. Generate helpful feedback for this student.

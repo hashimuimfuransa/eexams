@@ -7,7 +7,7 @@ const QuestionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-in-blank', 'matching', 'ordering', 'drag-drop'],
+    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'matching', 'ordering', 'drag-drop'],
     required: true
   },
   options: [{
@@ -51,8 +51,8 @@ const QuestionSchema = new mongoose.Schema({
     leftColumn: [String],
     rightColumn: [String],
     correctPairs: [{
-      left: Number,
-      right: Number
+      left: String,
+      right: String
     }]
   },
   // For ordering questions
@@ -94,6 +94,34 @@ const QuestionSchema = new mongoose.Schema({
   estimatedTime: {
     type: Number, // in minutes
     default: 2
+  },
+  // Additional fields for AI grading and detailed answers
+  explanation: {
+    type: String,
+    default: ''
+  },
+  answerKey: {
+    type: String,
+    default: ''
+  },
+  gradingCriteria: [{
+    criteria: {
+      type: String
+    },
+    points: {
+      type: Number,
+      default: 1
+    }
+  }],
+  keyPoints: [String],
+  acceptableAnswers: [String],
+  marks: {
+    type: Number,
+    default: 1
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
   createdAt: {
     type: Date,

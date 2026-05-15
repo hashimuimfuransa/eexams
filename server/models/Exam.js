@@ -74,8 +74,7 @@ const ExamSchema = new mongoose.Schema({
   sections: [{
     name: {
       type: String,
-      required: true,
-      enum: ['A', 'B', 'C']
+      required: true
     },
     description: {
       type: String

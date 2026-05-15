@@ -100,6 +100,7 @@ const profileRoutes = require('./routes/profile');
 const superAdminRoutes = require('./routes/superAdmin');
 const shareRoutes = require('./routes/share');
 const resultsRoutes = require('./routes/results');
+const studentListRoutes = require('./routes/studentList');
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -110,6 +111,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/results', resultsRoutes);
+app.use('/api/student-lists', studentListRoutes);
 
 // Log registered routes for debugging
 console.log('Registered API routes:');

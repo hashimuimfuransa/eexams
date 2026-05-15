@@ -1,0 +1,1 @@
+{"text":"The answer is: true","parsedContent":null,"usage":{"queue_time":0.044529208,"prompt_tokens":108,"prompt_time":0.018199455,"completion_tokens":6,"completion_time":0.017928611,"total_tokens":114,"total_time":0.036128066},"model":"llama-3.1-8b-instant"}

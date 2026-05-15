@@ -232,21 +232,19 @@ export const AuthProvider = ({ children }) => {
       // Create user object from response
       const user = {
         id: response.data._id,
+        _id: response.data._id,
         email: response.data.email,
         firstName: response.data.firstName,
         lastName: response.data.lastName,
         role: response.data.role,
-        userType: response.data.userType,
+        userType: response.data.userType || (response.data.role === 'admin' ? 'organization' : 'individual'),
         isGoogleUser: true,
         token: response.data.token,
         subscriptionPlan: response.data.subscriptionPlan,
         subscriptionStatus: response.data.subscriptionStatus,
+        organization: response.data.organization,
+        phone: response.data.phone,
       };
-
-      // Add organization info for organization accounts
-      if (response.data.organization) {
-        user.organization = response.data.organization;
-      }
 
       // Only persist session for existing (returning) users.
       // New users must complete registration first — do NOT save to

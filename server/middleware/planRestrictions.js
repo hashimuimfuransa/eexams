@@ -256,6 +256,7 @@ const getPlanUsage = async (userId) => {
 };
 
 module.exports = {
+  resolveEffectivePlan,
   checkExamLimit,
   checkStudentLimit,
   checkTeacherLimit,

@@ -47,7 +47,7 @@ const {
   deleteTemplate,
   getReportsSummary,
 } = require('../controllers/adminController');
-const { shareExam, getExamPreview, createStudentAccounts, updateExam, deleteExam } = require('../controllers/adminController');
+const { shareExam, getExamPreview, createStudentAccounts, removeStudentFromExam, updateStudentInExam, updateExam, deleteExam } = require('../controllers/adminController');
 const auth = require('../middleware/auth');
 const { isAdminOrTeacher, attachOrgAdminId, isAdmin } = require('../middleware/role');
 const {
@@ -189,6 +189,8 @@ router.get('/reports/summary', getReportsSummary);
 router.get('/exams/:examId/preview', getExamPreview);
 router.post('/exams/:examId/share', shareExam);
 router.post('/exams/:examId/students', createStudentAccounts);
+router.delete('/exams/:examId/students/:studentId', removeStudentFromExam);
+router.put('/exams/:examId/students/:studentId', updateStudentInExam);
 
 // Exam edit/delete routes
 router.put('/exams/:id', updateExam);

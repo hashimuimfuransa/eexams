@@ -174,7 +174,17 @@ function OrganizationsSection() {
   const [typeFilter, setTypeFilter] = useState('');
   const [sortBy, setSortBy] = useState('name');
 
-  useEffect(()=>{api.get('/superadmin/organizations').then(r=>setAllOrgs(r.data||[])).finally(()=>setLoading(false));},[]);
+  useEffect(()=>{
+    api.get('/superadmin/organizations').then(r=>{
+      const data = (r.data||[]).map(o => {
+        if (o.category) return o;
+        const isOrgAdmin = o.role === 'admin' || o.role === 'superadmin';
+        const isOrgTeacher = o.role === 'teacher' && o.parentAdmin != null;
+        return { ...o, category: isOrgAdmin ? 'organization' : isOrgTeacher ? 'org_teacher' : 'individual' };
+      });
+      setAllOrgs(data);
+    }).finally(()=>setLoading(false));
+  },[]);
 
   // Filter function
   const filterOrgs = (orgs) => {
@@ -209,13 +219,15 @@ function OrganizationsSection() {
 
   // Apply type filter first, then other filters
   const filteredAllOrgs = allOrgs.filter(o => {
-    if (typeFilter === 'organization') return o.role === 'admin' || o.role === 'superadmin';
-    if (typeFilter === 'individual') return o.role === 'teacher' && o.userType === 'individual';
+    if (typeFilter === 'organization') return o.category === 'organization';
+    if (typeFilter === 'org_teacher') return o.category === 'org_teacher';
+    if (typeFilter === 'individual') return o.category === 'individual';
     return true;
   });
 
-  const organizations = filterOrgs(filteredAllOrgs.filter(o => o.role === 'admin' || o.role === 'superadmin'));
-  const individuals = filterOrgs(filteredAllOrgs.filter(o => o.role === 'teacher' && o.userType === 'individual'));
+  const organizations = filterOrgs(filteredAllOrgs.filter(o => o.category === 'organization'));
+  const orgTeachers = filterOrgs(filteredAllOrgs.filter(o => o.category === 'org_teacher'));
+  const individuals = filterOrgs(filteredAllOrgs.filter(o => o.category === 'individual'));
 
   const handleOpen=(o)=>{setSelected(o);setPlan(o.subscriptionPlan||'free');setStatus(o.subscriptionStatus||'pending');};
   const handleSave=async()=>{
@@ -235,14 +247,14 @@ function OrganizationsSection() {
     </Box>
   );
 
-  const renderOrgCards = (data, title, isOrg) => (
+  const renderOrgCards = (data, title, isOrg, isOrgTeacher = false) => (
     <Box sx={{mb:4}}>
       <Box sx={{display:'flex',alignItems:'center',gap:1.5,mb:2}}>
-        {isOrg ? <Business sx={{color:tokens.primary,fontSize:22}}/> : <SupervisorAccount sx={{color:tokens.accent,fontSize:22}}/>}
+        {isOrg ? <Business sx={{color:tokens.primary,fontSize:22}}/> : isOrgTeacher ? <SupervisorAccount sx={{color:'#6366F1',fontSize:22}}/> : <SupervisorAccount sx={{color:tokens.accent,fontSize:22}}/>}
         <Typography variant="h6" fontWeight={700} sx={{color:tokens.textPrimary,fontFamily:"'DM Sans',sans-serif"}}>
           {title}
         </Typography>
-        <Chip label={data.length} size="small" sx={{bgcolor:isOrg?`${tokens.primary}15`:`${tokens.accent}15`,color:isOrg?tokens.primary:tokens.accent,fontWeight:700,ml:1}}/>
+        <Chip label={data.length} size="small" sx={{bgcolor:isOrg?`${tokens.primary}15`:isOrgTeacher?'rgba(99,102,241,0.12)':`${tokens.accent}15`,color:isOrg?tokens.primary:isOrgTeacher?'#6366F1':tokens.accent,fontWeight:700,ml:1}}/>
       </Box>
 
       {data.length===0?(
@@ -265,8 +277,8 @@ function OrganizationsSection() {
                   <Box sx={{display:'flex',alignItems:'flex-start',gap:1.5,mb:2}}>
                     <Avatar sx={{
                       width:44,height:44,fontSize:16,fontWeight:700,
-                      background:isSuper?gradients.brand:(isOrg?`linear-gradient(135deg,${tokens.primary}20,${tokens.primary}40)`:`linear-gradient(135deg,${tokens.accent}20,${tokens.accent}40)`),
-                      color:isSuper?'white':(isOrg?tokens.primary:tokens.accent)
+                      background:isSuper?gradients.brand:(isOrg?`linear-gradient(135deg,${tokens.primary}20,${tokens.primary}40)`:isOrgTeacher?'linear-gradient(135deg,rgba(99,102,241,0.12),rgba(99,102,241,0.25))':`linear-gradient(135deg,${tokens.accent}20,${tokens.accent}40)`),
+                      color:isSuper?'white':(isOrg?tokens.primary:isOrgTeacher?'#6366F1':tokens.accent)
                     }}>
                       {isOrg?(o.organization?.charAt(0)||'?'):o.firstName?.charAt(0)}
                     </Avatar>
@@ -280,6 +292,13 @@ function OrganizationsSection() {
                           mt:0.75,height:20,fontSize:'10px',
                           bgcolor:isSuper?'rgba(139,92,246,0.1)':`${tokens.primary}10`,
                           color:isSuper?'#8B5CF6':tokens.primary,fontWeight:600
+                        }}/>
+                      )}
+                      {isOrgTeacher && (
+                        <Chip label={`${o.organization||'Org'} Teacher`} size="small" sx={{
+                          mt:0.75,height:20,fontSize:'10px',
+                          bgcolor:'rgba(99,102,241,0.1)',
+                          color:'#6366F1',fontWeight:600
                         }}/>
                       )}
                     </Box>
@@ -368,6 +387,7 @@ function OrganizationsSection() {
               <Select label="Type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} sx={{borderRadius:2,bgcolor:'#FAFBFC'}}>
                 <MuiMenuItem value="">All Types</MuiMenuItem>
                 <MuiMenuItem value="organization">Organizations</MuiMenuItem>
+                <MuiMenuItem value="org_teacher">Organization Teachers</MuiMenuItem>
                 <MuiMenuItem value="individual">Individual Teachers</MuiMenuItem>
               </Select>
             </FormControl>
@@ -429,6 +449,7 @@ function OrganizationsSection() {
       ):(
         <>
           {(typeFilter === '' || typeFilter === 'organization') && renderOrgCards(organizations, `Organizations (Schools/Institutions) (${organizations.length})`, true)}
+          {(typeFilter === '' || typeFilter === 'org_teacher') && renderOrgCards(orgTeachers, `Organization Teachers (${orgTeachers.length})`, false, true)}
           {(typeFilter === '' || typeFilter === 'individual') && renderOrgCards(individuals, `Individual Teachers (${individuals.length})`, false)}
         </>
       )}

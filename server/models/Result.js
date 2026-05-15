@@ -131,7 +131,9 @@ const ResultSchema = new mongoose.Schema({
         'unsupported_type',
         'fallback_error',
         'exact_match',
-        'error'
+        'error',
+        // Enhanced AI grading for sections (generic, works for any section)
+        'enhanced_ai_grading_section'
       ],
       default: 'enhanced_grading'
     },

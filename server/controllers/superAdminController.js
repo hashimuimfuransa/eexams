@@ -13,14 +13,22 @@ const getAllOrganizations = async (req, res) => {
       userType: 'organization'
     }).select('-password').sort({ createdAt: -1 });
 
-    // Get all individual teachers (they act as their own organization)
+    // Get all org-created teachers (have a parentAdmin set to a real ObjectId)
+    const orgTeachers = await User.find({
+      role: 'teacher',
+      parentAdmin: { $ne: null, $exists: true }
+    }).select('-password').sort({ createdAt: -1 });
+
+    const orgTeacherIds = orgTeachers.map(t => t._id.toString());
+
+    // Get all individual teachers (self-registered, no parent org)
     const individualTeachers = await User.find({
       role: 'teacher',
-      userType: 'individual'
+      $or: [{ parentAdmin: null }, { parentAdmin: { $exists: false } }]
     }).select('-password').sort({ createdAt: -1 });
 
     // Combine all organization entities
-    const allOrgs = [...orgAdmins, ...individualTeachers];
+    const allOrgs = [...orgAdmins, ...individualTeachers, ...orgTeachers];
 
     // Get stats for each organization/individual teacher
     const organizationsWithStats = await Promise.all(
@@ -45,6 +53,10 @@ const getAllOrganizations = async (req, res) => {
           createdBy: org._id
         });
 
+        const isOrgAdmin = org.role === 'admin' || org.role === 'superadmin';
+        const isOrgTeacher = org.role === 'teacher' && org.parentAdmin != null;
+        const category = isOrgAdmin ? 'organization' : isOrgTeacher ? 'org_teacher' : 'individual';
+
         return {
           _id: org._id,
           name: org.organization || `${org.firstName} ${org.lastName} (Individual)`,
@@ -54,6 +66,9 @@ const getAllOrganizations = async (req, res) => {
           phone: org.phone,
           role: org.role,
           userType: org.userType,
+          parentAdmin: org.parentAdmin,
+          organization: org.organization,
+          category,
           subscriptionPlan: org.subscriptionPlan,
           subscriptionStatus: org.subscriptionStatus,
           subscriptionExpiresAt: org.subscriptionExpiresAt,
@@ -69,6 +84,10 @@ const getAllOrganizations = async (req, res) => {
       })
     );
 
+    console.log('[getAllOrganizations] orgAdmins:', orgAdmins.length, '| individualTeachers:', individualTeachers.length, '| orgTeachers:', orgTeachers.length);
+    console.log('[getAllOrganizations] individualTeachers detail:', individualTeachers.map(t => ({ email: t.email, userType: t.userType, parentAdmin: t.parentAdmin })));
+    console.log('[getAllOrganizations] orgTeachers detail:', orgTeachers.map(t => ({ email: t.email, userType: t.userType, parentAdmin: t.parentAdmin })));
+    console.log('[getAllOrganizations] categories:', organizationsWithStats.map(o => ({ email: o.email, category: o.category, role: o.role, userType: o.userType, parentAdmin: o.parentAdmin })));
     res.json(organizationsWithStats);
   } catch (error) {
     console.error('Get all organizations error:', error);
@@ -150,6 +169,15 @@ const updateOrganizationSubscription = async (req, res) => {
     if (subscriptionExpiresAt) organization.subscriptionExpiresAt = new Date(subscriptionExpiresAt);
 
     const updatedOrg = await organization.save();
+
+    // Cascade plan/status to all org teachers under this admin
+    const teacherUpdate = {};
+    if (subscriptionPlan) teacherUpdate.subscriptionPlan = subscriptionPlan;
+    if (subscriptionStatus) teacherUpdate.subscriptionStatus = subscriptionStatus;
+    if (subscriptionExpiresAt) teacherUpdate.subscriptionEndDate = new Date(subscriptionExpiresAt);
+    if (Object.keys(teacherUpdate).length > 0) {
+      await User.updateMany({ parentAdmin: organization._id, role: 'teacher' }, teacherUpdate);
+    }
 
     // Log the activity
     await ActivityLog.logActivity({
@@ -683,6 +711,14 @@ const updateUser = async (req, res) => {
 
     await user.save();
 
+    // If this is an org admin, cascade plan/status changes to their teachers
+    if (user.role === 'admin' && (subscriptionPlan || subscriptionStatus)) {
+      const teacherUpdate = {};
+      if (subscriptionPlan) teacherUpdate.subscriptionPlan = subscriptionPlan;
+      if (subscriptionStatus) teacherUpdate.subscriptionStatus = subscriptionStatus;
+      await User.updateMany({ parentAdmin: user._id, role: 'teacher' }, teacherUpdate);
+    }
+
     // Log the activity
     await ActivityLog.logActivity({
       user: req.user._id,
@@ -963,6 +999,17 @@ const approveSubscriptionRequest = async (req, res) => {
       subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
       lastPaymentDate: new Date()
     });
+
+    // Cascade to all org teachers under this admin so their own records stay in sync
+    await User.updateMany(
+      { parentAdmin: request.user._id, role: 'teacher' },
+      {
+        subscriptionPlan: request.requestedPlan,
+        subscriptionStatus: 'active',
+        subscriptionStartDate: new Date(),
+        subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      }
+    );
 
     // Update request status
     request.status = 'approved';

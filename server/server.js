@@ -18,7 +18,7 @@ app.use(compression());
 // CORS middleware
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? process.env.FRONTEND_URL || 'https://testfyrwanda.vercel.app'
+    ? process.env.FRONTEND_URL || 'https://eexams-z1ob.onrender.com'
     : 'http://localhost:3000',
   credentials: true
 }));

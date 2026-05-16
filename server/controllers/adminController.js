@@ -1712,7 +1712,7 @@ const createExam = async (req, res) => {
       return res.status(401).json({ message: 'Not authenticated or missing user information' });
     }
 
-    const { title, timeLimit, isLocked, passingScore } = req.body;
+    const { title, timeLimit, isLocked, passingScore, questions, sections } = req.body;
     const description = req.body.description && req.body.description.trim() ? req.body.description.trim() : 'Exam';
 
     // Validate required fields
@@ -1742,6 +1742,30 @@ const createExam = async (req, res) => {
     // Convert isLocked to boolean if it's a string
     const isLockedBool = isLocked === 'true' || isLocked === true;
 
+    // Handle questions if provided (for AI-generated exams)
+    let sectionsArray = [];
+    let totalMarks = 0;
+    let questionsData = null;
+    
+    if (questions && Array.isArray(questions) && questions.length > 0) {
+      const questionsBySection = {};
+      
+      // Group questions by section
+      questions.forEach((q, idx) => {
+        const section = q.section || 'A';
+        if (!questionsBySection[section]) {
+          questionsBySection[section] = [];
+        }
+        questionsBySection[section].push(q);
+        totalMarks += q.marks || q.points || 1;
+      });
+      
+      console.log('Questions grouped by section:', Object.keys(questionsBySection).map(k => `${k}: ${questionsBySection[k].length} questions`));
+      
+      // Store questions data for later creation after exam is created
+      questionsData = questionsBySection;
+    }
+
     console.log('Creating exam with data:', {
       title,
       description,
@@ -1749,10 +1773,12 @@ const createExam = async (req, res) => {
       passingScore: Number(passingScore) || 70,
       originalFile: examFilePath ? 'Yes' : 'No',
       answerFile: answerFilePath ? 'Yes' : 'No',
-      isLocked: isLockedBool
+      isLocked: isLockedBool,
+      sectionsCount: sectionsArray.length,
+      questionsCount: questions?.length || 0
     });
 
-    // Create exam
+    // Create exam first
     console.log('About to create exam with createdBy:', createdById);
     const exam = await Exam.create({
       title,
@@ -1763,9 +1789,103 @@ const createExam = async (req, res) => {
       answerFile: answerFilePath,
       isLocked: isLockedBool,
       createdBy: createdById,
-      status: 'draft'
+      status: 'draft',
+      sections: sectionsArray,
+      totalPoint: totalMarks
     });
     console.log('Exam created with _id:', exam._id, 'createdBy:', exam.createdBy);
+    
+    // Create questions after exam is created so we can set exam reference
+    if (questionsData) {
+      const Question = require('../models/Question');
+      
+      for (const [sectionName, sectionQuestions] of Object.entries(questionsData)) {
+        const createdQuestionIds = [];
+        
+        for (const q of sectionQuestions) {
+          // Handle gradingCriteria - ensure it's always an array of objects
+          let normalizedGradingCriteria = [];
+          if (q.gradingCriteria) {
+            if (Array.isArray(q.gradingCriteria)) {
+              normalizedGradingCriteria = q.gradingCriteria.map(gc => {
+                if (typeof gc === 'string') {
+                  return { criteria: gc, points: 1 };
+                }
+                if (typeof gc === 'object' && gc !== null) {
+                  return {
+                    criteria: gc.criteria || gc.description || '',
+                    points: gc.points || 1
+                  };
+                }
+                return { criteria: String(gc), points: 1 };
+              });
+            } else if (typeof q.gradingCriteria === 'string') {
+              if (q.gradingCriteria.startsWith('[')) {
+                try {
+                  const parsed = JSON.parse(q.gradingCriteria);
+                  if (Array.isArray(parsed)) {
+                    normalizedGradingCriteria = parsed.map(gc => {
+                      if (typeof gc === 'string') {
+                        return { criteria: gc, points: 1 };
+                      }
+                      if (typeof gc === 'object' && gc !== null) {
+                        return {
+                          criteria: gc.criteria || gc.description || '',
+                          points: gc.points || 1
+                        };
+                      }
+                      return { criteria: String(gc), points: 1 };
+                    });
+                  }
+                } catch (e) {
+                  normalizedGradingCriteria = [{ criteria: q.gradingCriteria, points: 1 }];
+                }
+              } else {
+                normalizedGradingCriteria = [{ criteria: q.gradingCriteria, points: 1 }];
+              }
+            }
+          }
+          
+          const questionData = {
+            text: q.text,
+            type: q.type || 'multiple-choice',
+            marks: q.marks || q.points || 1,
+            points: q.marks || q.points || 1,
+            difficulty: q.difficulty || 'medium',
+            correctAnswer: q.correctAnswer || '',
+            options: q.options || [],
+            explanation: q.explanation || '',
+            answerKey: q.answerKey || q.explanation || '',
+            gradingCriteria: normalizedGradingCriteria,
+            keyPoints: Array.isArray(q.keyPoints) 
+              ? q.keyPoints.map(kp => typeof kp === 'string' ? kp : JSON.stringify(kp))
+              : (typeof q.keyPoints === 'string' 
+                  ? (q.keyPoints.startsWith('[') ? JSON.parse(q.keyPoints).map(kp => typeof kp === 'string' ? kp : JSON.stringify(kp)) : [q.keyPoints])
+                  : []),
+            acceptableAnswers: q.acceptableAnswers || [],
+            exam: exam._id,
+            section: sectionName,
+            createdBy: createdById
+          };
+          
+          const question = await Question.create(questionData);
+          createdQuestionIds.push(question._id);
+        }
+        
+        sectionsArray.push({
+          name: sectionName,
+          description: `Section ${sectionName}`,
+          questions: createdQuestionIds
+        });
+      }
+      
+      // Update exam with sections and question IDs
+      exam.sections = sectionsArray;
+      exam.totalPoint = totalMarks;
+      await exam.save();
+      
+      console.log(`Created ${sectionsArray.length} sections with ${questions.length} questions`);
+    }
 
     // Log activity
     await ActivityLog.logActivity({
@@ -3971,11 +4091,13 @@ const updateExam = async (req, res) => {
       .populate({ path: 'sections.questions', model: 'Question' });
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
     
-    const { title, description, timeLimit, passingScore, sections } = req.body;
+    const { title, description, timeLimit, passingScore, sections, status, isLocked } = req.body;
     if (title) exam.title = title;
     if (description) exam.description = description;
     if (timeLimit) exam.timeLimit = Number(timeLimit);
     if (passingScore) exam.passingScore = Number(passingScore);
+    if (status) exam.status = status;
+    if (typeof isLocked === 'boolean') exam.isLocked = isLocked;
     
     // Handle sections update if provided
     if (sections && Array.isArray(sections)) {

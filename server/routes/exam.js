@@ -306,6 +306,49 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         createdQuestions[section] = [];
       }
 
+      // Handle gradingCriteria - ensure it's always an array of objects
+      let normalizedGradingCriteria = [];
+      if (q.gradingCriteria) {
+        if (Array.isArray(q.gradingCriteria)) {
+          normalizedGradingCriteria = q.gradingCriteria.map(gc => {
+            if (typeof gc === 'string') {
+              return { criteria: gc, points: 1 };
+            }
+            if (typeof gc === 'object' && gc !== null) {
+              return {
+                criteria: gc.criteria || gc.description || '',
+                points: gc.points || 1
+              };
+            }
+            return { criteria: String(gc), points: 1 };
+          });
+        } else if (typeof q.gradingCriteria === 'string') {
+          if (q.gradingCriteria.startsWith('[')) {
+            try {
+              const parsed = JSON.parse(q.gradingCriteria);
+              if (Array.isArray(parsed)) {
+                normalizedGradingCriteria = parsed.map(gc => {
+                  if (typeof gc === 'string') {
+                    return { criteria: gc, points: 1 };
+                  }
+                  if (typeof gc === 'object' && gc !== null) {
+                    return {
+                      criteria: gc.criteria || gc.description || '',
+                      points: gc.points || 1
+                    };
+                  }
+                  return { criteria: String(gc), points: 1 };
+                });
+              }
+            } catch (e) {
+              normalizedGradingCriteria = [{ criteria: q.gradingCriteria, points: 1 }];
+            }
+          } else {
+            normalizedGradingCriteria = [{ criteria: q.gradingCriteria, points: 1 }];
+          }
+        }
+      }
+
       const questionData = {
         text: q.text,
         type: q.type || 'multiple-choice',
@@ -316,8 +359,12 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         options: [],
         explanation: q.explanation || '',
         answerKey: q.answerKey || q.explanation || '',
-        gradingCriteria: q.gradingCriteria || [],
-        keyPoints: q.keyPoints || [],
+        gradingCriteria: normalizedGradingCriteria,
+        keyPoints: Array.isArray(q.keyPoints) 
+          ? q.keyPoints.map(kp => typeof kp === 'string' ? kp : JSON.stringify(kp))
+          : (typeof q.keyPoints === 'string' 
+              ? (q.keyPoints.startsWith('[') ? JSON.parse(q.keyPoints).map(kp => typeof kp === 'string' ? kp : JSON.stringify(kp)) : [q.keyPoints])
+              : []),
         acceptableAnswers: q.acceptableAnswers || [],
         exam: exam._id,
         section: section,

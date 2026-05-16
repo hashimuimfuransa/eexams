@@ -4590,6 +4590,28 @@ const detectQuestionType = (question) => {
     }
   }
 
+  // PRIORITY 0: Special question types based on data structure (highest priority)
+  // Check for matching question
+  if ((question.leftItems && question.leftItems.length > 0) || 
+      (question.rightItems && question.rightItems.length > 0) ||
+      (question.matchingPairs && question.matchingPairs.length > 0) ||
+      (text.includes('match') && (question.leftItems || question.rightItems))) {
+    return 'matching';
+  }
+
+  // Check for ordering question
+  if ((question.items && question.items.length > 0) ||
+      (question.itemsToOrder && question.itemsToOrder.items && question.itemsToOrder.items.length > 0) ||
+      (text.includes('order') || text.includes('sequence') || text.includes('arrange'))) {
+    return 'ordering';
+  }
+
+  // Check for drag-drop question
+  if (question.dragDropData && 
+      (question.dragDropData.dropZones || question.dragDropData.draggableItems)) {
+    return 'drag-drop';
+  }
+
   // PRIORITY 1: Fill-in-the-blank detection (highest priority)
   const fillInPatterns = [
     /_{3,}/, // Multiple underscores (_____)

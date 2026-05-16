@@ -1752,6 +1752,12 @@ const createExam = async (req, res) => {
                     console.log(`Using answer from answer file for question ${questionNumber}: ${correctAnswer}`);
                   }
 
+                  // Convert correctAnswer to string if it's an object (for matching questions, etc.)
+                  if (correctAnswer && typeof correctAnswer === 'object') {
+                    correctAnswer = JSON.stringify(correctAnswer);
+                    console.log(`Converted object correctAnswer to string for question ${questionNumber}`);
+                  }
+
                   // Ensure options are properly formatted based on question type
                   let options = [];
                   if (questionType === 'multiple-choice' || questionType === 'true-false') {

@@ -349,6 +349,20 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
           question.correctAnswer = answerData.answers[questionNumber];
           console.log(`Using pre-loaded answer for question ${questionNumber}: ${question.correctAnswer}`);
         }
+
+        // Convert correctAnswer to string if it's an object
+        if (question.correctAnswer && typeof question.correctAnswer === 'object') {
+          // For matching questions, move to matchingPairs field
+          if (question.type === 'matching' && !question.matchingPairs) {
+            question.matchingPairs = question.correctAnswer;
+            question.correctAnswer = 'See matching pairs';
+            console.log(`Moved object correctAnswer to matchingPairs for question ${questionNumber}`);
+          } else {
+            // For other types, stringify
+            question.correctAnswer = JSON.stringify(question.correctAnswer);
+            console.log(`Converted object correctAnswer to string for question ${questionNumber}`);
+          }
+        }
       }
     }
 

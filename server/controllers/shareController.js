@@ -498,8 +498,15 @@ const joinSharedExam = async (req, res) => {
     // For public links without email/name, check if this is a marketplace share link
     // If so, try to find the user from the associated exam request
     if (!email || !name) {
+      console.log('Looking for marketplace request with sharedExam:', sharedExam._id);
       const examRequest = await ExamRequest.findOne({ sharedExam: sharedExam._id, status: 'approved' });
-      console.log('Checking for marketplace request, sharedExam:', sharedExam._id, 'found request:', !!examRequest);
+      console.log('Marketplace request query result:', {
+        found: !!examRequest,
+        requestId: examRequest?._id,
+        hasEmail: !!examRequest?.userInfo?.email,
+        email: examRequest?.userInfo?.email
+      });
+
       if (examRequest && examRequest.userInfo.email) {
         email = examRequest.userInfo.email.toLowerCase().trim();
         name = examRequest.userInfo.name;

@@ -268,6 +268,12 @@ const approveExamRequest = async (req, res) => {
     request.sharedExam = sharedExam._id;
     request.paymentStatus = waivePayment ? 'waived' : (request.amount > 0 ? 'pending' : 'paid');
 
+    console.log('Marketplace approval - Setting sharedExam:', {
+      requestId: request._id,
+      sharedExamId: sharedExam._id,
+      shareToken: shareToken
+    });
+
     await request.save();
 
     res.json({

@@ -175,7 +175,7 @@ function Hero({ mode, isAuthenticated, user }) {
                     background: isDark ? tokens.dark.surfaceAlt : 'transparent',
                     textDecoration: 'none', whiteSpace: 'nowrap',
                   }}>
-                    Browse Marketplace
+                    Browse Exam Bank
                   </RouterLink>
                 </>
               ) : (
@@ -187,7 +187,7 @@ function Hero({ mode, isAuthenticated, user }) {
                     boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
                   }}>
-                    Browse Marketplace
+                    Browse Exam Bank
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 3h18v18H3zM9 9h6M9 12h6M9 15h6"/></svg>
                   </RouterLink>
                   <RouterLink to="/register" style={{
@@ -947,17 +947,17 @@ function Contact({ mode }) {
           <Reveal delay={100}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {[
-                { icon: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.93 12 19.79 19.79 0 0 1 1.93 3.26 2 2 0 0 1 3.9 1.07h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 15.91z"/>, label: 'Phone', value: '+250 788 123 456', color: '#0CBD73' },
-                { icon: <><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></>, label: 'Email', value: 'info@eexams.rw', color: '#0D406C' },
-                { icon: <><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></>, label: 'Office', value: 'Kigali Heights, KG 7 Ave, Kigali', color: '#5AD5A2' },
+                { icon: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.93 12 19.79 19.79 0 0 1 1.93 3.26 2 2 0 0 1 3.9 1.07h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 15.91z"/>, label: 'Phone', value: '+250 788 535 156\n+250 793 828 834\n+250 781 671 517', color: '#0CBD73', isPhone: true },
+                { icon: <><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></>, label: 'Email', value: 'info@excellencecoachinghub.com', color: '#0D406C', isEmail: true },
+                { icon: <><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></>, label: 'Office', value: 'KG 15 Ave', color: '#5AD5A2' },
               ].map((item, i) => (
-                <div key={i} style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 20 }}>
+                <div key={i} style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 20, cursor: item.isEmail ? 'pointer' : 'default' }} onClick={item.isEmail ? () => window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${item.value}`, '_blank') : undefined}>
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: `${item.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.color, flexShrink: 0 }}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{item.icon}</svg>
                   </div>
                   <div>
                     <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 4 }}>{item.label}</div>
-                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16, color: text }}>{item.value}</div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16, color: text, whiteSpace: 'pre-line' }}>{item.value}</div>
                   </div>
                 </div>
               ))}
@@ -967,12 +967,12 @@ function Contact({ mode }) {
                 <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Follow us</div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   {[
-                    { name: 'Facebook', color: '#1877F2', path: <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/> },
-                    { name: 'Twitter/X', color: '#000', path: <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/> },
-                    { name: 'LinkedIn', color: '#0A66C2', path: <><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></> },
-                    { name: 'Instagram', color: '#E4405F', path: <><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></> },
+                    { name: 'Facebook', color: '#1877F2', path: <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>, url: 'https://facebook.com/ech.info' },
+                    { name: 'Twitter/X', color: '#000', path: <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/>, url: 'https://twitter.com/ech_info' },
+                    { name: 'LinkedIn', color: '#0A66C2', path: <><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></>, url: 'https://linkedin.com/company/ech-info' },
+                    { name: 'Instagram', color: '#E4405F', path: <><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></>, url: 'https://instagram.com/ech.info' },
                   ].map((s, i) => (
-                    <button key={i} title={s.name} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${border}`, background: isDark ? '#111827' : '#F8FAFC', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isDark ? '#94A3B8' : '#64748B', transition: 'all 0.2s' }}
+                    <button key={i} title={s.name} onClick={() => window.open(s.url, '_blank')} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${border}`, background: isDark ? '#111827' : '#F8FAFC', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isDark ? '#94A3B8' : '#64748B', transition: 'all 0.2s' }}
                       onMouseEnter={e => { e.currentTarget.style.background = s.color; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = s.color; }}
                       onMouseLeave={e => { e.currentTarget.style.background = isDark ? '#111827' : '#F8FAFC'; e.currentTarget.style.color = isDark ? '#94A3B8' : '#64748B'; e.currentTarget.style.borderColor = border; }}
                     >

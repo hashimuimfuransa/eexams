@@ -102,7 +102,7 @@ const Marketplace = () => {
         {/* Header */}
         <Box sx={{ mb: 4, textAlign: 'center' }}>
           <Typography variant="h2" fontWeight={800} sx={{ mb: 2, color: '#0D406C' }}>
-            Exam Marketplace
+            Exam Bank
           </Typography>
           <Typography sx={{ color: '#64748B', maxWidth: 600, mx: 'auto', mb: 4, fontSize: 16 }}>
             Browse and request access to publicly available exams
@@ -214,7 +214,7 @@ const Marketplace = () => {
           <Box sx={{ textAlign: 'center', py: 8 }}>
             <School sx={{ fontSize: 64, color: '#CBD5E1', mb: 2 }} />
             <Typography variant="h6" sx={{ color: '#64748B', mb: 1 }}>
-              {searchTerm ? 'No exams found matching your search' : 'No exams available in the marketplace yet'}
+              {searchTerm ? 'No exams found matching your search' : 'No exams available in the exam bank yet'}
             </Typography>
             <Typography sx={{ color: '#94A3B8' }}>
               {searchTerm ? 'Try different keywords' : 'Check back later for new exams'}

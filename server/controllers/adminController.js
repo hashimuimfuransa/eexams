@@ -202,9 +202,24 @@ const registerStudent = async (req, res) => {
 // @access  Private/Admin or Private/Teacher
 const getStudents = async (req, res) => {
   try {
+    const { class: classFilter, sortBy } = req.query;
+
     // Check if user is super admin - if so, return all students
     if (isSuperAdmin(req.user) || !req.orgAdminId) {
-      const students = await User.find({ role: 'student' }).select('-password');
+      let query = User.find({ role: 'student' });
+      
+      // Apply class filter if provided
+      if (classFilter) {
+        query = query.where('class', classFilter);
+      }
+      
+      let students = await query.select('-password');
+      
+      // Apply sorting
+      if (sortBy) {
+        students = sortStudents(students, sortBy);
+      }
+      
       return res.json(students);
     }
 
@@ -219,27 +234,74 @@ const getStudents = async (req, res) => {
       const teacherIds = teachers.map(t => t._id);
 
       // Find students created by the admin OR by any teacher under the admin
-      const students = await User.find({
+      let query = User.find({
         role: 'student',
         $or: [
           { createdBy: req.orgAdminId },
           { createdBy: { $in: teacherIds } }
         ]
-      }).select('-password');
-
+      });
+      
+      // Apply class filter if provided
+      if (classFilter) {
+        query = query.where('class', classFilter);
+      }
+      
+      let students = await query.select('-password');
+      
+      // Apply sorting
+      if (sortBy) {
+        students = sortStudents(students, sortBy);
+      }
+      
       return res.json(students);
     }
 
-    // For teachers: show students created by themselves or by their admin
-    const students = await User.find({
+    // For teachers: show ALL students in the same organization
+    const teacher = await User.findById(req.user._id).select('organization');
+    
+    let query = User.find({
       role: 'student',
-      $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
-    }).select('-password');
+      organization: teacher.organization
+    });
+    
+    // Apply class filter if provided
+    if (classFilter) {
+      query = query.where('class', classFilter);
+    }
+    
+    let students = await query.select('-password');
+    
+    // Apply sorting
+    if (sortBy) {
+      students = sortStudents(students, sortBy);
+    }
 
     res.json(students);
   } catch (error) {
     console.error('Get students error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Helper function to sort students
+const sortStudents = (students, sortBy) => {
+  const sorted = [...students];
+  switch (sortBy) {
+    case 'name-asc':
+      return sorted.sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+    case 'name-desc':
+      return sorted.sort((a, b) => `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`));
+    case 'class-asc':
+      return sorted.sort((a, b) => (a.class || '').localeCompare(b.class || ''));
+    case 'class-desc':
+      return sorted.sort((a, b) => (b.class || '').localeCompare(a.class || ''));
+    case 'email-asc':
+      return sorted.sort((a, b) => a.email.localeCompare(b.email));
+    case 'email-desc':
+      return sorted.sort((a, b) => b.email.localeCompare(a.email));
+    default:
+      return sorted;
   }
 };
 

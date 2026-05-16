@@ -46,6 +46,12 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
       navigate(route);
       return;
     }
+    // If not on home page, navigate to home page with hash
+    if (currentRoute !== '/') {
+      navigate(`/#${id}`);
+      return;
+    }
+    // If on home page, scroll to the section
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
@@ -55,7 +61,7 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
     { id: 'how-it-works', label: 'How it works' },
     { id: 'faq', label: 'FAQ' },
     { id: 'contact', label: 'Contact' },
-    { id: 'marketplace', label: 'Marketplace', route: '/marketplace' },
+    { id: 'marketplace', label: 'Exam Bank', route: '/marketplace' },
   ];
 
   const navBg = isDark

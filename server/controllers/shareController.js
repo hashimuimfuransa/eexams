@@ -499,9 +499,11 @@ const joinSharedExam = async (req, res) => {
     // If so, try to find the user from the associated exam request
     if (!email || !name) {
       const examRequest = await ExamRequest.findOne({ sharedExam: sharedExam._id, status: 'approved' });
+      console.log('Checking for marketplace request, sharedExam:', sharedExam._id, 'found request:', !!examRequest);
       if (examRequest && examRequest.userInfo.email) {
         email = examRequest.userInfo.email.toLowerCase().trim();
         name = examRequest.userInfo.name;
+        isPrivate = true; // Treat as private since we have a real user
         console.log('Found marketplace user from exam request:', email);
       } else {
         // Generate temporary ones and treat as guest access
@@ -738,10 +740,22 @@ const joinSharedExam = async (req, res) => {
       })
     }));
 
-    // Generate token for guest users (public access without authentication)
+    // Generate token for guest users and marketplace users (public access without authentication)
     let token = null;
-    if (!isPrivate) {
+    // Check if this is a marketplace share by looking for associated exam request
+    const examRequest = await ExamRequest.findOne({ sharedExam: sharedExam._id, status: 'approved' });
+    const isMarketplaceShare = !!examRequest;
+
+    console.log('Token generation check:', {
+      isPrivate,
+      isMarketplaceShare,
+      studentUserId: studentUser._id,
+      willGenerateToken: !isPrivate || isMarketplaceShare
+    });
+
+    if (!isPrivate || isMarketplaceShare) {
       token = generateToken(studentUser._id);
+      console.log('Generated token for user:', studentUser._id);
     }
 
     // Create exam session (Result) for the student so ExamInterface can load it

@@ -112,13 +112,37 @@ const getAvailableExams = async (req, res) => {
 // @access  Private/Student
 const getExamById = async (req, res) => {
   try {
-    const exam = await Exam.findOne({
-      _id: req.params.examId,
-      assignedTo: req.user._id
-    })
-      .populate('createdBy', 'firstName lastName')
-      .populate('sections.questions')
-      .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
+    // Check if exam is accessible via share token (for marketplace users)
+    const { shareToken } = req.query;
+    let exam;
+
+    if (shareToken) {
+      // Check if user has access via share token
+      const sharedExam = await SharedExam.findOne({ shareToken });
+      if (sharedExam && sharedExam.exam.toString() === req.params.examId) {
+        // Check if user is in the shared exam students list
+        const isStudentInShared = sharedExam.students.some(
+          s => s.student?.toString() === req.user._id.toString()
+        );
+        if (isStudentInShared) {
+          exam = await Exam.findById(req.params.examId)
+            .populate('createdBy', 'firstName lastName')
+            .populate('sections.questions')
+            .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
+        }
+      }
+    }
+
+    // If not found via share token, check if assigned
+    if (!exam) {
+      exam = await Exam.findOne({
+        _id: req.params.examId,
+        assignedTo: req.user._id
+      })
+        .populate('createdBy', 'firstName lastName')
+        .populate('sections.questions')
+        .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
+    }
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found or not assigned to you' });

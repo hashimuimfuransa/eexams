@@ -123,8 +123,8 @@ const PublicExamAccess = () => {
       console.log('Has user:', !!res.data.user);
       console.log('Current user:', user);
 
-      // If backend returned auth token for guest user, set it directly
-      if (res.data.token && !user) {
+      // If backend returned auth token (for guest users or marketplace users), set it directly
+      if (res.data.token) {
         console.log('Setting token and redirecting...');
         localStorage.setItem('token', res.data.token);
         // Also store minimal user data for AuthContext

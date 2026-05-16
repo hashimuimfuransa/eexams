@@ -7,6 +7,7 @@
     "install:client": "cd client && npm install",
     "install:server": "cd server && npm install",
     "install": "npm run install:server && npm run install:client",
+    "postinstall": "cd server && pip3 install pdfplumber || pip install pdfplumber || echo 'Python pip not available, skipping pdfplumber installation'",
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm install",
     "build": "npm run build:server && npm run build:client",

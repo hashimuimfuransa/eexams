@@ -1792,6 +1792,21 @@ const createExam = async (req, res) => {
                   let correctAnswer = questionData.correctAnswer;
                   let subQuestions = questionData.subQuestions || [];
                   
+                  // First, handle any objects in questionData.correctAnswer
+                  if (correctAnswer && typeof correctAnswer === 'object') {
+                    const keys = Object.keys(correctAnswer);
+                    const hasLetterKeys = keys.some(k => /^[a-z]$/i.test(k));
+                    
+                    if (hasLetterKeys) {
+                      subQuestions = parseSubquestionsFromObject(correctAnswer, questionData.text);
+                      correctAnswer = 'See subquestions';
+                      console.log(`Parsed questionData object as subquestions for question ${questionNumber}`);
+                    } else {
+                      correctAnswer = JSON.stringify(correctAnswer);
+                      console.log(`Converted questionData object to string for question ${questionNumber}`);
+                    }
+                  }
+                  
                   if (answerData.answers && answerData.answers[questionNumber]) {
                     const answerFromFile = answerData.answers[questionNumber];
                     
@@ -1820,6 +1835,12 @@ const createExam = async (req, res) => {
                   if (correctAnswer && typeof correctAnswer === 'object') {
                     correctAnswer = JSON.stringify(correctAnswer);
                     console.log(`Converted object correctAnswer to string for question ${questionNumber}`);
+                  }
+
+                  // Ensure subQuestions is always an array
+                  if (subQuestions && !Array.isArray(subQuestions)) {
+                    console.warn(`subQuestions is not an array for question ${questionNumber}, converting to array`);
+                    subQuestions = [];
                   }
 
                   // Ensure options are properly formatted based on question type

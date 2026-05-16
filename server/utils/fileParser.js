@@ -287,11 +287,13 @@ ${fullText}`;
     try {
       if (result.parsedContent) {
         extractedData = result.parsedContent;
+        console.log('Successfully used parsedContent from AI response');
       } else if (result.text) {
         // Clean the response to extract JSON
         const jsonMatch = result.text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           extractedData = JSON.parse(jsonMatch[0]);
+          console.log('Successfully extracted JSON from AI response text');
         } else {
           throw new Error('No JSON found in AI response');
         }
@@ -300,6 +302,7 @@ ${fullText}`;
       }
     } catch (parseError) {
       console.error('Error parsing AI extraction response:', parseError);
+      console.error('Response text length:', result.text?.length);
       // Fallback to basic extraction
       return await extractQuestionsDirectly(text, answerData);
     }
@@ -307,7 +310,15 @@ ${fullText}`;
     // Validate and enhance the extracted data
     const enhancedData = await validateAndEnhanceExtraction(extractedData, answerData);
 
-    console.log(`Enhanced AI extraction completed. Found ${enhancedData.sections.reduce((total, section) => total + section.questions.length, 0)} questions`);
+    const totalQuestions = enhancedData.sections.reduce((total, section) => total + section.questions.length, 0);
+    console.log(`Enhanced AI extraction completed. Found ${totalQuestions} questions`);
+
+    // Log a summary instead of the full object to avoid truncation issues
+    if (enhancedData.sections) {
+      enhancedData.sections.forEach(section => {
+        console.log(`Section ${section.name}: ${section.questions?.length || 0} questions`);
+      });
+    }
 
     return enhancedData;
 
@@ -394,7 +405,7 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
           question.correctAnswer = enhanceFillInBlankAnswer(question.text, question.correctAnswer);
         }
 
-        // Convert correctAnswer to string if it's an object
+        // Convert correctAnswer to string if it's an object - do this BEFORE any other processing
         if (question.correctAnswer && typeof question.correctAnswer === 'object') {
           // Check if this is a subquestion structure (keys like a, b, c)
           const keys = Object.keys(question.correctAnswer);
@@ -411,10 +422,16 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
             question.correctAnswer = 'See matching pairs';
             console.log(`Moved object correctAnswer to matchingPairs for question ${questionNumber}`);
           } else {
-            // For other types, stringify
+            // For other types, stringify to prevent database errors
             question.correctAnswer = JSON.stringify(question.correctAnswer);
             console.log(`Converted object correctAnswer to string for question ${questionNumber}`);
           }
+        }
+
+        // Ensure subQuestions is always an array if it exists
+        if (question.subQuestions && !Array.isArray(question.subQuestions)) {
+          console.warn(`subQuestions is not an array for question ${questionNumber}, converting to array`);
+          question.subQuestions = [];
         }
       }
     }

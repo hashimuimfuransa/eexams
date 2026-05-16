@@ -15,7 +15,7 @@ const generateToken = (id) => {
 const StudentList = require('../models/StudentList');
 const ExamRequest = require('../models/ExamRequest');
 
-// Helper function to check if user has unlimited students based on their plan
+// Helper function to check if user has unlimited or high student limit based on their plan
 const hasUnlimitedStudents = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -24,7 +24,8 @@ const hasUnlimitedStudents = async (userId) => {
     const { plan } = await resolveEffectivePlan(user);
     const planConfig = getPlanConfigForUser(plan, user.userType);
     
-    return planConfig.maxStudents === Infinity;
+    // Allow unlimited for basic, premium, and enterprise plans
+    return ['basic', 'premium', 'enterprise'].includes(plan?.toLowerCase());
   } catch (error) {
     console.error('Error checking unlimited students:', error);
     return false;

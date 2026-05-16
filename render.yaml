@@ -20,4 +20,4 @@ services:
       - key: FRONTEND_URL
         value: https://eexams-z1ob.onrender.com
       - key: UPLOADS_PATH
-        value: /app/server/tmp/uploads
+        value: /app/tmp/uploads

@@ -3895,7 +3895,17 @@ const createStudentAccounts = async (req, res) => {
 
 const updateExam = async (req, res) => {
   try {
-    const exam = await Exam.findOne({ _id: req.params.id, createdBy: req.orgAdminId })
+    // For teachers, allow updating their own drafts; for admins, use orgAdminId
+    let query = { _id: req.params.id };
+    if (req.user.role === 'teacher' && req.orgAdminId) {
+      query.$or = [
+        { createdBy: req.orgAdminId },  // Exams created by their admin
+        { createdBy: req.user._id }    // Drafts created by the teacher themselves
+      ];
+    } else {
+      query.createdBy = req.orgAdminId || req.user._id;
+    }
+    const exam = await Exam.findOne(query)
       .populate({ path: 'sections.questions', model: 'Question' });
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
     

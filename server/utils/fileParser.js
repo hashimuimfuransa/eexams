@@ -56,9 +56,9 @@ const parsePdf = async (filePath) => {
 };
 
 /**
- * Parse a Word document
+ * Parse a Word document with enhanced formatting preservation
  * @param {string} filePath - Path to the Word document
- * @returns {Promise<string>} - Extracted text
+ * @returns {Promise<string>} - Extracted text with structure preserved
  */
 const parseWord = async (filePath) => {
   return new Promise((resolve, reject) => {
@@ -66,7 +66,16 @@ const parseWord = async (filePath) => {
       console.log(`Parsing Word document: ${filePath}`);
       const dataBuffer = fs.readFileSync(filePath);
 
-      mammoth.extractRawText({ buffer: dataBuffer })
+      // Use mammoth to extract raw text with better structure preservation
+      mammoth.extractRawText({ 
+        buffer: dataBuffer,
+        styleMap: [
+          "p[style-name='Heading 1'] => h1:fresh",
+          "p[style-name='Heading 2'] => h2:fresh",
+          "p[style-name='Heading 3'] => h3:fresh",
+          "p[style-name='Title'] => h1:title:fresh"
+        ]
+      })
         .then(result => {
           // Check if we got any text
           if (!result.value || result.value.trim().length === 0) {
@@ -75,15 +84,24 @@ const parseWord = async (filePath) => {
             return;
           }
 
-          console.log(`Successfully parsed Word document, extracted ${result.value.length} characters`);
-          console.log(`Word document content preview: ${result.value.substring(0, 200)}...`);
+          // Enhance the extracted text with structure markers
+          let enhancedText = result.value;
+          
+          // Add section markers for better AI parsing
+          enhancedText = enhancedText
+            .replace(/SECTION\s+[A-C]/gi, (match) => `\n--- ${match.toUpperCase()} ---\n`)
+            .replace(/PART\s+[A-C]/gi, (match) => `\n--- ${match.toUpperCase()} ---\n`)
+            .replace(/^[A-C]\.\s+/gm, (match) => `\n--- SECTION ${match[0]} ---\n${match}`);
+
+          console.log(`Successfully parsed Word document, extracted ${enhancedText.length} characters`);
+          console.log(`Word document content preview: ${enhancedText.substring(0, 200)}...`);
 
           // Log any warnings
           if (result.messages && result.messages.length > 0) {
             console.log('Word document parsing warnings:', result.messages);
           }
 
-          resolve(result.value);
+          resolve(enhancedText);
         })
         .catch(error => {
           console.error('Error parsing Word document:', error);
@@ -139,33 +157,88 @@ const extractQuestionsWithEnhancedAI = async (text, answerData = { answers: {} }
   try {
     console.log('Starting enhanced AI question extraction...');
 
-    // Truncate text if too long to avoid timeout
-    const MAX_TEXT_LENGTH = 3000;
-    const truncatedText = text.length > MAX_TEXT_LENGTH 
-      ? text.substring(0, MAX_TEXT_LENGTH) + '... [truncated for processing]' 
-      : text;
+    // Use full text to ensure all questions are captured
+    // No truncation - we want to extract ALL questions from the document
+    const fullText = text;
 
-    // Create a concise prompt for question extraction
-    const prompt = `Extract questions from text. Return JSON:
+    // Create a comprehensive prompt for question extraction
+    const prompt = `You are an expert exam document parser. Extract ALL questions and their answers from the provided text exactly as they appear in the document.
+
+CRITICAL INSTRUCTIONS:
+1. Extract EVERY question from the document - do not skip any
+2. Preserve the exact wording of questions and answers as they appear
+3. Include all options for multiple choice questions with their correct letter labels (A, B, C, D, etc.)
+4. Identify and mark the correct answer for each multiple choice question
+5. Extract question numbers if they exist
+6. Preserve the section structure (Section A, B, C, etc.)
+7. Extract all question types: multiple-choice, true-false, fill-in-blank, short answer, essay, matching, ordering
+
+Return valid JSON with this exact structure:
 {
   "sections": [
-    {"name":"A","description":"Objective","questions":[{text,type,options[{text,letter,isCorrect}],correctAnswer,points,questionNumber}]},
-    {"name":"B","description":"Short Answer","questions":[]},
-    {"name":"C","description":"Essay","questions":[]}
+    {
+      "name": "A",
+      "description": "Multiple Choice, True/False, and Fill-in-the-Blank Questions",
+      "questions": [
+        {
+          "questionNumber": 1,
+          "text": "Exact question text from document",
+          "type": "multiple-choice",
+          "options": [
+            {"letter": "A", "text": "Option text as in document", "isCorrect": false},
+            {"letter": "B", "text": "Option text as in document", "isCorrect": true},
+            {"letter": "C", "text": "Option text as in document", "isCorrect": false},
+            {"letter": "D", "text": "Option text as in document", "isCorrect": false}
+          ],
+          "correctAnswer": "B",
+          "points": 1
+        }
+      ]
+    },
+    {
+      "name": "B",
+      "description": "Short Answer Questions",
+      "questions": [
+        {
+          "questionNumber": 1,
+          "text": "Exact question text from document",
+          "type": "open-ended",
+          "correctAnswer": "Model answer if provided in document",
+          "points": 5
+        }
+      ]
+    },
+    {
+      "name": "C",
+      "description": "Essay/Long Answer Questions",
+      "questions": [
+        {
+          "questionNumber": 1,
+          "text": "Exact question text from document",
+          "type": "open-ended",
+          "correctAnswer": "Model answer if provided in document",
+          "points": 15
+        }
+      ]
+    }
   ]
 }
-Types: multiple-choice, true-false, fill-in-blank, open-ended, matching, ordering.
-Text: ${truncatedText}`;
+
+Question types: multiple-choice, true-false, fill-in-blank, open-ended, matching, ordering.
+
+Document text:
+${fullText}`;
 
     console.log('Sending enhanced extraction prompt to Groq AI...');
 
     // Generate content with Groq AI using JSON mode
+    // Use larger maxTokens to handle documents with many questions
     const result = await groqClient.generateContent(prompt, {
-      model: 'balanced',
+      model: 'smart',
       jsonMode: true,
-      temperature: 0.2,
-      maxTokens: 4096,
-      systemPrompt: 'You are an expert AI system specialized in extracting exam questions from academic documents. Always return valid JSON.'
+      temperature: 0.1, // Lower temperature for more accurate extraction
+      maxTokens: 16384, // Increased to handle larger documents with many questions
+      systemPrompt: 'You are an expert AI system specialized in extracting exam questions from academic documents. Extract ALL questions exactly as they appear. Always return valid JSON.'
     });
 
     console.log('Received response from enhanced AI extraction');
@@ -226,6 +299,20 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
       ];
     }
 
+    // Count total questions extracted
+    let totalQuestions = 0;
+    for (const section of extractedData.sections) {
+      if (!section.questions) section.questions = [];
+      totalQuestions += section.questions.length;
+    }
+
+    console.log(`Total questions extracted: ${totalQuestions}`);
+
+    // If no questions were extracted, this is likely an error
+    if (totalQuestions === 0) {
+      console.warn('No questions extracted - this may indicate an extraction failure');
+    }
+
     // Process each section
     for (const section of extractedData.sections) {
       if (!section.questions) section.questions = [];
@@ -248,6 +335,11 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
         question.options = question.options || [];
         question.correctAnswer = question.correctAnswer || 'Not provided';
 
+        // Ensure question number is set
+        if (!question.questionNumber) {
+          question.questionNumber = i + 1;
+        }
+
         // Enhance based on question type
         await enhanceQuestionByType(question, answerData);
 
@@ -259,6 +351,10 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
         }
       }
     }
+
+    // Log final question count
+    const finalTotal = extractedData.sections.reduce((total, section) => total + section.questions.length, 0);
+    console.log(`Final validated question count: ${finalTotal}`);
 
     return extractedData;
 

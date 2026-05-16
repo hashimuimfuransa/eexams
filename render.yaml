@@ -18,6 +18,6 @@ services:
       - key: GEMINI_API_KEY
         sync: false # This will be set manually in the Render dashboard
       - key: FRONTEND_URL
-        value: https://testfyrwanda.vercel.app
+        value: https://eexams-z1ob.onrender.com
       - key: UPLOADS_PATH
         value: /app/server/tmp/uploads

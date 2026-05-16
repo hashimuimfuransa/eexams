@@ -10,7 +10,7 @@ RUN pip3 install pdfplumber
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files first for better caching
 COPY package*.json ./
 
 # Install Node.js dependencies
@@ -22,7 +22,12 @@ COPY server ./server
 # Create uploads directory with proper permissions
 RUN mkdir -p /app/server/tmp/uploads && chmod 777 /app/server/tmp/uploads
 
-# Set environment variable for uploads path
+# Create cache directory
+RUN mkdir -p /app/server/cache && chmod 777 /app/server/cache
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=10000
 ENV UPLOADS_PATH=/app/server/tmp/uploads
 
 # Expose port

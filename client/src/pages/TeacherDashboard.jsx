@@ -826,6 +826,14 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [generated, setGenerated] = useState(null);
   const [generatedSections, setGeneratedSections] = useState([{ name: 'A', description: 'Section A' }]);
   const [loading, setLoading] = useState(false);
+
+  // Auto-update generatedSections when exam is loaded
+  useEffect(() => {
+    if (generated?.sections && generated.sections.length > 0) {
+      const sections = generated.sections.map(s => ({ name: s.name, description: s.description || `Section ${s.name}` }));
+      setGeneratedSections(sections);
+    }
+  }, [generated]);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadAnswer, setUploadAnswer] = useState(null);
   const [examTitle, setExamTitle] = useState('');

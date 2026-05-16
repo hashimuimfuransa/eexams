@@ -2,9 +2,8 @@ services:
   # Backend API service
   - type: web
     name: nationalscore-api
-    env: node
-    buildCommand: cd server && npm install
-    startCommand: cd server && node server.js
+    env: docker
+    plan: free
     envVars:
       - key: NODE_ENV
         value: production
@@ -14,15 +13,11 @@ services:
         sync: false # This will be set manually in the Render dashboard
       - key: JWT_SECRET
         sync: false # This will be set manually in the Render dashboard
+      - key: GROQ_API_KEY
+        sync: false # This will be set manually in the Render dashboard
       - key: GEMINI_API_KEY
         sync: false # This will be set manually in the Render dashboard
       - key: FRONTEND_URL
         value: https://testfyrwanda.vercel.app
       - key: UPLOADS_PATH
-        value: /var/data/uploads
-    # Disk configuration - this creates a persistent disk
-    # Note: The application has fallback logic if this isn't available
-    disk:
-      name: uploads
-      mountPath: /var/data/uploads
-      sizeGB: 1
+        value: /app/server/tmp/uploads

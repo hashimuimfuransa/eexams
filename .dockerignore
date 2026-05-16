@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+.env.example
+README.md
+uploads
+server/tmp
+server/cache
+client
+.DS_Store
+*.md
+test-enhanced-system.js
+test-exam-submission.js
+test-selective-answering.md
+fileParser_backup.js

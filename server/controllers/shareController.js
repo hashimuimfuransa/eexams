@@ -294,6 +294,8 @@ const getSharedExam = async (req, res) => {
       }
     }
 
+    // Note: isFull() check removed from here - it should only be enforced when joining, not when viewing exam details
+
     // Increment view count
     sharedExam.incrementViews();
     await sharedExam.save();
@@ -471,28 +473,12 @@ const joinSharedExam = async (req, res) => {
       return res.status(403).json({ message: 'Share link is not active' });
     }
 
-    // Check if full, but allow if user has unlimited students
-    const unlimitedStudents = await hasUnlimitedStudents(sharedExam.sharedBy);
-    if (sharedExam.isFull() && !unlimitedStudents) {
-      return res.status(403).json({ message: 'Maximum number of students reached' });
-    }
-
     // Check password if required
     if (sharedExam.settings.requirePassword && sharedExam.settings.password !== password) {
       return res.status(401).json({ message: 'Incorrect password' });
     }
 
     // Email invitation check removed - allow all users to join shared exams
-
-    // Check if full, but allow if students have been removed or user has unlimited students
-    if (sharedExam.isFull() && !unlimitedStudents) {
-      console.log('Join: Share is full:', {
-        studentsLength: sharedExam.students.length,
-        maxStudents: sharedExam.settings.maxStudents,
-        students: sharedExam.students
-      });
-      return res.status(403).json({ message: 'Maximum number of students reached' });
-    }
 
     // Check password if required
     if (inviteToken) {
@@ -628,6 +614,17 @@ const joinSharedExam = async (req, res) => {
         token: null,
         user: null
       });
+    }
+
+    // Check if full for NEW students only (existing students already handled above)
+    const unlimitedStudents = await hasUnlimitedStudents(sharedExam.sharedBy);
+    if (sharedExam.isFull() && !unlimitedStudents) {
+      console.log('Join: Share is full for new student:', {
+        studentsLength: sharedExam.students.length,
+        maxStudents: sharedExam.settings.maxStudents,
+        email: email
+      });
+      return res.status(403).json({ message: 'Maximum number of students reached' });
     }
 
     // Create new student user if doesn't exist

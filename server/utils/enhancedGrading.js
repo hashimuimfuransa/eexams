@@ -294,6 +294,7 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
     // Find the correct option
     let correctOption = null;
     let isCorrect = false;
+    let gradingMethod = 'letter_based';
 
     // Find the selected option in the question with enhanced matching
     let option = null;
@@ -326,57 +327,76 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
       console.log(`Matched by text/content:`, option ? `${option.letter}. ${option.text}` : 'Not found');
     }
 
-    // Direct comparison: Check if selected option is marked as correct
-    if (option && option.isCorrect) {
-      isCorrect = true;
-      console.log(`Selected option is marked as correct`);
-    } else if (option) {
-      // Option found but not marked as correct, check if it matches model answer
-      console.log(`Option found but not marked as correct, checking against model answer: "${modelAnswer}"`);
-      if (modelAnswer) {
-        const modelLower = modelAnswer.toLowerCase().trim();
-        const optTextLower = option.text.toLowerCase().trim();
-        const optLetterLower = option.letter?.toLowerCase() || '';
-        
-        isCorrect = optTextLower === modelLower || 
-                   optLetterLower === modelLower ||
-                   modelLower === `${optLetterLower}. ${optTextLower}` ||
-                   modelLower === `${optLetterLower}) ${optTextLower}`;
-        console.log(`Direct comparison result: ${isCorrect}`);
-      }
-    }
-
     // First, try to find the correct option from the question's options
     correctOption = question.options.find(opt => opt.isCorrect);
 
     // If no option is marked as correct, try to determine from modelAnswer
     if (!correctOption && modelAnswer) {
-      // Check if modelAnswer is a letter (A, B, C, D)
+      // Check if modelAnswer is a letter (A, B, C, D, E, etc.)
       const modelAnswerLetter = modelAnswer.trim().toUpperCase();
-      if (['A', 'B', 'C', 'D'].includes(modelAnswerLetter)) {
+      if (/^[A-Z]$/.test(modelAnswerLetter)) {
         correctOption = question.options.find(opt =>
           opt.letter && opt.letter.toUpperCase() === modelAnswerLetter
         );
+        console.log(`Correct option found by modelAnswer letter "${modelAnswerLetter}":`, correctOption ? `${correctOption.letter}. ${correctOption.text}` : 'Not found');
       } else {
         // modelAnswer is text, find matching option
         correctOption = question.options.find(opt =>
           opt.text && opt.text.toLowerCase().trim() === modelAnswer.toLowerCase().trim()
         );
+        console.log(`Correct option found by modelAnswer text:`, correctOption ? `${correctOption.letter}. ${correctOption.text}` : 'Not found');
       }
     }
 
-    // Use AI to determine correctness with complete information
+    // Primary: Letter-based comparison (fastest and most accurate when letters are available)
     if (option && correctOption) {
-      // Prepare detailed information for AI grading
-      const studentAnswerForAI = `${option.letter}. ${option.text}`;
-      const correctAnswerForAI = `${correctOption.letter}. ${correctOption.text}`;
+      // Compare letters directly - this is the most reliable method
+      const selectedLetter = option.letter ? option.letter.toUpperCase() : '';
+      const correctLetter = correctOption.letter ? correctOption.letter.toUpperCase() : '';
 
-      console.log(`AI Grading Input:`);
-      console.log(`- Question: ${question.text}`);
-      console.log(`- Student selected: ${studentAnswerForAI}`);
-      console.log(`- Correct answer: ${correctAnswerForAI}`);
+      if (selectedLetter && correctLetter) {
+        isCorrect = selectedLetter === correctLetter;
+        gradingMethod = 'letter_comparison';
+        console.log(`Letter-based comparison: selected="${selectedLetter}", correct="${correctLetter}", result=${isCorrect}`);
+      }
+    }
+
+    // Fallback 1: Check if selected option is marked as correct
+    if (!isCorrect && option && option.isCorrect) {
+      isCorrect = true;
+      gradingMethod = 'isCorrect_flag';
+      console.log(`Selected option is marked as correct`);
+    }
+
+    // Fallback 2: Direct comparison with modelAnswer if letter comparison failed
+    if (!isCorrect && option && modelAnswer) {
+      const modelLower = modelAnswer.toLowerCase().trim();
+      const optTextLower = option.text.toLowerCase().trim();
+      const optLetterLower = option.letter?.toLowerCase() || '';
+
+      isCorrect = optLetterLower === modelLower ||
+                 optTextLower === modelLower ||
+                 modelLower === `${optLetterLower}. ${optTextLower}` ||
+                 modelLower === `${optLetterLower}) ${optTextLower}`;
+      gradingMethod = 'modelAnswer_comparison';
+      console.log(`Model answer comparison result: ${isCorrect}`);
+    }
+
+    // Fallback 3: Use AI only if all other methods failed (rare case)
+    if (!isCorrect && option && correctOption) {
+      console.log(`All direct comparison methods failed, using AI as fallback`);
+      gradingMethod = 'ai_fallback';
 
       try {
+        // Prepare detailed information for AI grading
+        const studentAnswerForAI = `${option.letter}. ${option.text}`;
+        const correctAnswerForAI = `${correctOption.letter}. ${correctOption.text}`;
+
+        console.log(`AI Grading Input:`);
+        console.log(`- Question: ${question.text}`);
+        console.log(`- Student selected: ${studentAnswerForAI}`);
+        console.log(`- Correct answer: ${correctAnswerForAI}`);
+
         // Use AI to compare the answers with full context
         isCorrect = await checkAnswerWithAI(
           question.text,
@@ -387,26 +407,15 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
         console.log(`AI determined correctness: ${isCorrect}`);
       } catch (aiError) {
         console.error('AI grading failed, falling back to direct comparison:', aiError);
-        // Fallback to direct comparison
+        // Final fallback to direct comparison
         isCorrect = option.letter === correctOption.letter ||
                    option.text === correctOption.text ||
                    option._id === correctOption._id;
+        gradingMethod = 'direct_comparison_fallback';
       }
-    } else if (option) {
-      // Check if the selected option is marked as correct
-      isCorrect = option.isCorrect === true;
-    } else if (correctOption) {
-      // No option found for selection, but we have a correct option
-      // Check if selectedOption matches the correct option text or letter
-      const selectedLower = selectedOption.toLowerCase().trim();
-      const correctText = correctOption.text.toLowerCase().trim();
-      const correctLetter = correctOption.letter ? correctOption.letter.toLowerCase() : '';
-
-      isCorrect = selectedLower === correctText ||
-                 selectedLower === correctLetter ||
-                 selectedLower === correctLetter.toUpperCase();
-    } else {
-      // Last resort: use AI with available information
+    } else if (!isCorrect && option && !correctOption) {
+      // No correct option found, use AI with modelAnswer
+      gradingMethod = 'ai_no_correct_option';
       try {
         const studentAnswerForAI = option ? `${option.letter}. ${option.text}` : selectedOption;
         isCorrect = await checkAnswerWithAI(
@@ -476,7 +485,7 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
         correctFull: correctAnswerDisplay,
         isCorrect,
         answerType: 'multiple_choice',
-        gradingMethod: 'ai_assisted'
+        gradingMethod
       }
     };
   } catch (error) {

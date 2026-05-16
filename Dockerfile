@@ -4,6 +4,9 @@ FROM node:20-alpine
 # Install Python and required dependencies for PDF extraction
 RUN apk add --no-cache python3 py3-pip
 
+# Create python symlink for compatibility
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
 # Install pdfplumber for Python PDF extraction
 RUN pip3 install pdfplumber
 

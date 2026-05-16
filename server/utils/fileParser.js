@@ -21,7 +21,7 @@ const parsePdf = async (filePath) => {
     const scriptPath = path.join(__dirname, '../pdf_extractor.py');
     
     // Execute Python script
-    const { stdout, stderr } = await execAsync(`python "${scriptPath}" "${filePath}"`);
+    const { stdout, stderr } = await execAsync(`python3 "${scriptPath}" "${filePath}"`);
     
     if (stderr) {
       console.error('Python script stderr:', stderr);

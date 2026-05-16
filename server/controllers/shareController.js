@@ -497,6 +497,7 @@ const joinSharedExam = async (req, res) => {
 
     // For public links without email/name, check if this is a marketplace share link
     // If so, try to find the user from the associated exam request
+    let isMarketplaceUser = false;
     if (!email || !name) {
       console.log('Looking for marketplace request with sharedExam:', sharedExam._id);
       const examRequest = await ExamRequest.findOne({ sharedExam: sharedExam._id, status: 'approved' });
@@ -511,6 +512,7 @@ const joinSharedExam = async (req, res) => {
         email = examRequest.userInfo.email.toLowerCase().trim();
         name = examRequest.userInfo.name;
         isPrivate = true; // Treat as private since we have a real user
+        isMarketplaceUser = true; // Mark as marketplace user
         console.log('Found marketplace user from exam request:', email);
       } else {
         // Generate temporary ones and treat as guest access
@@ -536,103 +538,121 @@ const joinSharedExam = async (req, res) => {
     );
 
     if (existingStudent) {
-      // Check if student has an active session (currently taking the exam)
-      if (existingStudent.isActiveSession) {
-        // Check if the session has expired (more than 30 minutes since last activity)
-        const sessionTimeout = 30 * 60 * 1000; // 30 minutes
-        const now = Date.now();
-        const lastActivity = existingStudent.lastActivity || existingStudent.joinedAt;
-        
-        if (now - lastActivity < sessionTimeout) {
-          return res.status(409).json({
-            message: 'You are already taking this exam in another session. Please complete that session first or wait for it to expire.',
-            hasActiveSession: true,
-            sessionExpiresAt: lastActivity + sessionTimeout
+      // For marketplace users, remove the existing guest entry and add with proper user account
+      if (isMarketplaceUser && !existingStudent.student) {
+        console.log('Marketplace user: removing existing guest entry and adding with proper user account');
+        sharedExam.students = sharedExam.students.filter(s => s.email !== email);
+        await sharedExam.save();
+        // Continue to add student with proper account
+      } else {
+        // Check if student has an active session (currently taking the exam)
+        if (existingStudent.isActiveSession) {
+          // Check if the session has expired (more than 30 minutes since last activity)
+          const sessionTimeout = 30 * 60 * 1000; // 30 minutes
+          const now = Date.now();
+          const lastActivity = existingStudent.lastActivity || existingStudent.joinedAt;
+
+          if (now - lastActivity < sessionTimeout) {
+            return res.status(409).json({
+              message: 'You are already taking this exam in another session. Please complete that session first or wait for it to expire.',
+              hasActiveSession: true,
+              sessionExpiresAt: lastActivity + sessionTimeout
+            });
+          }
+          // Session expired, allow re-joining
+          existingStudent.isActiveSession = false;
+        }
+
+        // If multiple attempts not allowed and already completed
+        if (!sharedExam.settings.allowMultipleAttempts && existingStudent.hasCompleted) {
+          return res.status(400).json({
+            message: 'You have already completed this exam',
+            hasCompleted: true,
+            resultId: existingStudent.result
           });
         }
-        // Session expired, allow re-joining
-        existingStudent.isActiveSession = false;
-      }
 
-      // If multiple attempts not allowed and already completed
-      if (!sharedExam.settings.allowMultipleAttempts && existingStudent.hasCompleted) {
-        return res.status(400).json({
-          message: 'You have already completed this exam',
-          hasCompleted: true,
-          resultId: existingStudent.result
-        });
-      }
+        // Check if exam is locked for this student
+        if (existingStudent.isLocked) {
+          return res.status(403).json({
+            message: 'This exam has been locked. Please contact your teacher to unlock it.',
+            isLocked: true
+          });
+        }
 
-      // For private mode, always allow rejoining regardless of completion status
-      // (teacher can reset students to allow retakes)
-      if (isPrivate) {
-        console.log('Private mode: allowing student to rejoin exam');
-        // Reset completion status for private mode joins
-        existingStudent.hasCompleted = false;
-        existingStudent.result = null;
-        existingStudent.completedAt = null;
+        // For private mode, always allow rejoining regardless of completion status
+        // (teacher can reset students to allow retakes)
+        if (isPrivate) {
+          console.log('Private mode: allowing student to rejoin exam');
+          // Reset completion status for private mode joins
+          existingStudent.hasCompleted = false;
+          existingStudent.result = null;
+          existingStudent.completedAt = null;
+          await sharedExam.save();
+        }
+
+        // Mark as active session and update last activity
+        existingStudent.isActiveSession = true;
+        existingStudent.lastActivity = Date.now();
         await sharedExam.save();
-      }
 
-      // Check if exam is locked for this student
-      if (existingStudent.isLocked) {
-        return res.status(403).json({
-          message: 'This exam has been locked. Please contact your teacher to unlock it.',
-          isLocked: true
+        // For marketplace users, generate and return a token even for existing students
+        let token = null;
+        if (isMarketplaceUser) {
+          token = generateToken(existingStudent.student || existingStudent._id);
+          console.log('Generated token for marketplace user rejoin');
+        }
+
+        // Sanitize question data to remove correct answers before returning
+        const sanitizedSections = (sharedExam.exam.sections || []).map(section => ({
+          ...section,
+          questions: (section.questions || []).map(question => {
+            const sanitizedQuestion = { ...question };
+            // Remove correctOrder from itemsToOrder
+            if (sanitizedQuestion.itemsToOrder) {
+              sanitizedQuestion.itemsToOrder = {
+                items: sanitizedQuestion.itemsToOrder.items || []
+              };
+            }
+            // Remove correctPairs from matchingPairs
+            if (sanitizedQuestion.matchingPairs) {
+              sanitizedQuestion.matchingPairs = {
+                leftColumn: sanitizedQuestion.matchingPairs.leftColumn || [],
+                rightColumn: sanitizedQuestion.matchingPairs.rightColumn || []
+              };
+            }
+            // Remove correctPlacements from dragDropData
+            if (sanitizedQuestion.dragDropData) {
+              sanitizedQuestion.dragDropData = {
+                dropZones: sanitizedQuestion.dragDropData.dropZones || [],
+                draggableItems: sanitizedQuestion.dragDropData.draggableItems || []
+              };
+            }
+            // Remove correctAnswer for all question types
+            delete sanitizedQuestion.correctAnswer;
+            return sanitizedQuestion;
+          })
+        }));
+
+        // Return existing student info
+        return res.json({
+          success: true,
+          message: 'Welcome back!',
+          isNew: false,
+          studentId: existingStudent._id,
+          exam: {
+            _id: sharedExam.exam._id,
+            ...sharedExam.exam,
+            sections: sanitizedSections
+          },
+          settings: sharedExam.settings,
+          token: token,
+          user: token ? {
+            email: existingStudent.email,
+            _id: existingStudent.student || existingStudent._id
+          } : null
         });
       }
-
-      // Mark as active session and update last activity
-      existingStudent.isActiveSession = true;
-      existingStudent.lastActivity = Date.now();
-      await sharedExam.save();
-
-      // Sanitize question data to remove correct answers before returning
-      const sanitizedSections = (sharedExam.exam.sections || []).map(section => ({
-        ...section,
-        questions: (section.questions || []).map(question => {
-          const sanitizedQuestion = { ...question };
-          // Remove correctOrder from itemsToOrder
-          if (sanitizedQuestion.itemsToOrder) {
-            sanitizedQuestion.itemsToOrder = {
-              items: sanitizedQuestion.itemsToOrder.items || []
-            };
-          }
-          // Remove correctPairs from matchingPairs
-          if (sanitizedQuestion.matchingPairs) {
-            sanitizedQuestion.matchingPairs = {
-              leftColumn: sanitizedQuestion.matchingPairs.leftColumn || [],
-              rightColumn: sanitizedQuestion.matchingPairs.rightColumn || []
-            };
-          }
-          // Remove correctPlacements from dragDropData
-          if (sanitizedQuestion.dragDropData) {
-            sanitizedQuestion.dragDropData = {
-              dropZones: sanitizedQuestion.dragDropData.dropZones || [],
-              draggableItems: sanitizedQuestion.dragDropData.draggableItems || []
-            };
-          }
-          // Remove correctAnswer for all question types
-          delete sanitizedQuestion.correctAnswer;
-          return sanitizedQuestion;
-        })
-      }));
-
-      // Return existing student info
-      return res.json({
-        success: true,
-        message: 'Welcome back!',
-        isNew: false,
-        studentId: existingStudent._id,
-        exam: {
-          _id: sharedExam.exam._id,
-          ...sharedExam.exam,
-          sections: sanitizedSections
-        },
-        settings: sharedExam.settings,
-        token: null,
-        user: null
-      });
     }
 
     // Check if full for NEW students only (existing students already handled above)

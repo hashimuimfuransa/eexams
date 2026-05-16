@@ -212,7 +212,7 @@ const approveExamRequest = async (req, res) => {
       settings: {
         publicAccess: true,
         requirePassword: false,
-        maxStudents: 1, // Only this user can access
+        maxStudents: null, // Unlimited access for marketplace exams
         allowMultipleAttempts: false,
         showResults: true
       }
@@ -424,6 +424,43 @@ const resetAccessLink = async (req, res) => {
   }
 };
 
+// @desc    Delete an exam request
+// @route   DELETE /api/marketplace/exam-requests/:requestId
+// @access  Private (Teacher)
+const deleteExamRequest = async (req, res) => {
+  try {
+    const request = await ExamRequest.findById(req.params.requestId);
+
+    if (!request) {
+      return res.status(404).json({ message: 'Request not found' });
+    }
+
+    // Check if the teacher owns this request or belongs to same organization
+    const hasPermission = request.teacher.toString() === req.user._id.toString() ||
+                         request.teacher.toString() === (req.orgAdminId?.toString()) ||
+                         request.teacher.toString() === (req.user.parentAdmin?.toString());
+
+    if (!hasPermission) {
+      return res.status(403).json({ message: 'You do not have permission to delete this request' });
+    }
+
+    // If there's a shared exam, delete it
+    if (request.sharedExam) {
+      await SharedExam.findByIdAndDelete(request.sharedExam);
+    }
+
+    // Delete the request
+    await ExamRequest.findByIdAndDelete(req.params.requestId);
+
+    res.json({
+      message: 'Request deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete exam request error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get exam details by access code
 // @route   GET /api/marketplace/access/:accessCode
 // @access  Public
@@ -442,8 +479,8 @@ const getExamByAccessCode = async (req, res) => {
 
     // Check if the access code has already been used (exam completed)
     if (request.accessCodeUsed) {
-      return res.status(403).json({ 
-        message: 'This access code has already been used. The exam has been completed.' 
+      return res.status(403).json({
+        message: 'This access code has already been used. The exam has been completed.'
       });
     }
 
@@ -479,5 +516,6 @@ module.exports = {
   updateMarketplaceExamSettings,
   markPaymentReceived,
   resetAccessLink,
+  deleteExamRequest,
   getExamByAccessCode
 };

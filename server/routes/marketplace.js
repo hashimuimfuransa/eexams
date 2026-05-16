@@ -13,6 +13,7 @@ const {
   updateMarketplaceExamSettings,
   markPaymentReceived,
   resetAccessLink,
+  deleteExamRequest,
   getExamByAccessCode
 } = require('../controllers/marketplaceController');
 
@@ -32,6 +33,7 @@ router.put('/exam-requests/:requestId/approve', isAdminOrTeacher, approveExamReq
 router.put('/exam-requests/:requestId/reject', isAdminOrTeacher, rejectExamRequest);
 router.put('/exam-requests/:requestId/payment', isAdminOrTeacher, markPaymentReceived);
 router.put('/exam-requests/:requestId/reset', isAdminOrTeacher, resetAccessLink);
+router.delete('/exam-requests/:requestId', isAdminOrTeacher, deleteExamRequest);
 
 // Teacher routes for managing marketplace exam settings
 router.put('/exams/:id/settings', isAdminOrTeacher, updateMarketplaceExamSettings);

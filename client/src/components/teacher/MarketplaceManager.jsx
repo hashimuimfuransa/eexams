@@ -25,7 +25,7 @@ import {
   Paper,
   IconButton
 } from '@mui/material';
-import { Check, X, Phone, Email, Person, Refresh, ContentCopy } from '@mui/icons-material';
+import { Check, X, Phone, Email, Person, Refresh, ContentCopy, Delete } from '@mui/icons-material';
 import api from '../../services/api';
 
 const MarketplaceManager = ({ exam }) => {
@@ -39,6 +39,7 @@ const MarketplaceManager = ({ exam }) => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [rejectDialog, setRejectDialog] = useState({ open: false, requestId: null, notes: '' });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, requestId: null });
 
   useEffect(() => {
     if (exam?._id) {
@@ -125,6 +126,19 @@ const MarketplaceManager = ({ exam }) => {
     } catch (error) {
       console.error('Error resetting access:', error);
       setMessage({ type: 'error', text: 'Failed to reset access' });
+    }
+  };
+
+  const handleDelete = async (requestId) => {
+    try {
+      await api.delete(`/marketplace/exam-requests/${requestId}`);
+      setMessage({ type: 'success', text: 'Request deleted successfully' });
+      setDeleteDialog({ open: false, requestId: null });
+      fetchRequests();
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error) {
+      console.error('Error deleting request:', error);
+      setMessage({ type: 'error', text: 'Failed to delete request' });
     }
   };
 
@@ -374,6 +388,14 @@ const MarketplaceManager = ({ exam }) => {
                               >
                                 <Refresh />
                               </IconButton>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => setDeleteDialog({ open: true, requestId: request._id })}
+                                title="Delete"
+                              >
+                                <Delete />
+                              </IconButton>
                             </Box>
                           )}
                         </TableCell>
@@ -407,6 +429,25 @@ const MarketplaceManager = ({ exam }) => {
           </Button>
           <Button onClick={handleRejectSubmit} variant="contained" color="error">
             Reject
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, requestId: null })}>
+        <DialogTitle>Delete Request</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this request? This will also remove the associated exam access link.
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog({ open: false, requestId: null })}>
+            Cancel
+          </Button>
+          <Button onClick={() => handleDelete(deleteDialog.requestId)} variant="contained" color="error">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

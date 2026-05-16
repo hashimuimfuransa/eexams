@@ -1816,7 +1816,8 @@ const createExam = async (req, res) => {
                     keyPoints: questionData.keyPoints || [],
                     leftItems: questionData.leftItems || [],
                     rightItems: questionData.rightItems || [],
-                    items: questionData.items || []
+                    items: questionData.items || [],
+                    subQuestions: questionData.subQuestions || []
                   });
 
                   // Add question to the appropriate section

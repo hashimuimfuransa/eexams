@@ -183,6 +183,35 @@ SPECIAL HANDLING FOR FILL-IN-THE-BLANK QUESTIONS:
 - For geometric shapes: triangle (3), square (4), pentagon (5), hexagon (6), heptagon (7), octagon (8), nonagon (9), decagon (10)
 - For other contexts, use the surrounding text to infer the missing information
 
+SPECIAL HANDLING FOR QUESTIONS WITH SUBQUESTIONS (a, b, c, etc.):
+- Many questions in Section C have subquestions labeled a), b), c) or a., b., c.
+- When you detect subquestions, structure them in the "subQuestions" array
+- Example structure for a question with subquestions:
+{
+  "questionNumber": 1,
+  "text": "A farmer harvested 245 bags of maize. He sold 123 bags and kept the rest.",
+  "type": "open-ended",
+  "subQuestions": [
+    {
+      "text": "How many bags did he keep?",
+      "type": "open-ended",
+      "correctAnswer": "122 bags",
+      "points": 5
+    },
+    {
+      "text": "If each bag weighs 50kg, what was the total weight of the harvested maize?",
+      "type": "open-ended",
+      "correctAnswer": "12,250 kg",
+      "points": 5
+    }
+  ],
+  "points": 10
+}
+- Extract the main question text separately from subquestions
+- Each subquestion should have its own text, type, correctAnswer, and points
+- The main question's points should be the sum of all subquestion points
+- If subquestions have letter answers (a, b, c), include them in the correctAnswer field
+
 Return valid JSON with this exact structure:
 {
   "sections": [
@@ -367,8 +396,17 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
 
         // Convert correctAnswer to string if it's an object
         if (question.correctAnswer && typeof question.correctAnswer === 'object') {
-          // For matching questions, move to matchingPairs field
-          if (question.type === 'matching' && !question.matchingPairs) {
+          // Check if this is a subquestion structure (keys like a, b, c)
+          const keys = Object.keys(question.correctAnswer);
+          const hasLetterKeys = keys.some(k => /^[a-z]$/i.test(k));
+          
+          if (hasLetterKeys && !question.subQuestions) {
+            // Parse as subquestions
+            question.subQuestions = parseSubquestionsFromObject(question.correctAnswer, question.text);
+            question.correctAnswer = 'See subquestions';
+            console.log(`Parsed object correctAnswer as subquestions for question ${questionNumber}`);
+          } else if (question.type === 'matching' && !question.matchingPairs) {
+            // For matching questions, move to matchingPairs field
             question.matchingPairs = question.correctAnswer;
             question.correctAnswer = 'See matching pairs';
             console.log(`Moved object correctAnswer to matchingPairs for question ${questionNumber}`);
@@ -440,6 +478,49 @@ const enhanceFillInBlankAnswer = (questionText, currentAnswer) => {
   } catch (error) {
     console.error('Error enhancing fill-in-blank answer:', error);
     return currentAnswer;
+  }
+};
+
+/**
+ * Parse subquestions from an object with letter keys (a, b, c, etc.)
+ * @param {Object} answerObject - Object with letter keys containing answers
+ * @param {string} questionText - The main question text to extract subquestion text from
+ * @returns {Array} - Array of subquestion objects
+ */
+const parseSubquestionsFromObject = (answerObject, questionText = '') => {
+  try {
+    const subQuestions = [];
+    const letterOrder = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    
+    // Try to extract subquestion text from the main question text
+    const subquestionPatterns = questionText.match(/(?:^|\n)[\s]*[a-z][\)\.]?\s*([^.!?]*[.!?]?)/gi) || [];
+    
+    for (let i = 0; i < letterOrder.length; i++) {
+      const letter = letterOrder[i];
+      if (answerObject[letter] !== undefined) {
+        // Try to get the corresponding subquestion text from the patterns
+        let subText = '';
+        if (subquestionPatterns[i]) {
+          subText = subquestionPatterns[i].trim();
+        } else {
+          // Fallback: use a generic label
+          subText = `Subquestion ${letter.toUpperCase()}`;
+        }
+        
+        subQuestions.push({
+          text: subText,
+          type: 'open-ended',
+          correctAnswer: answerObject[letter],
+          points: 5 // Default points per subquestion
+        });
+      }
+    }
+    
+    console.log(`Parsed ${subQuestions.length} subquestions from object`);
+    return subQuestions;
+  } catch (error) {
+    console.error('Error parsing subquestions from object:', error);
+    return [];
   }
 };
 

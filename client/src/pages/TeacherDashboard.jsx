@@ -12,7 +12,7 @@ import {
   AutoAwesome, CloudUpload, Assignment, People, BarChart, Settings,
   CheckCircle, Add, Publish, Share, Description,
   DashboardCustomize, FormatListNumbered, ShortText, ToggleOn,
-  FileUpload, TrendingUp, ArrowForward,
+  FileUpload, TrendingUp, ArrowForward, ArrowUpward, ArrowDownward,
   Quiz, ListAlt, NoteAlt, Edit, ContentCopy, Download,
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
@@ -2344,6 +2344,7 @@ function PublishDialog({ examId, onClose }) {
   const allQ = exam ? exam.sections.flatMap(s => s.questions || []) : [];
 
   return (
+    <>
     <Dialog open onClose={onClose} maxWidth="md" fullWidth fullScreen={isXs} PaperProps={{ sx: { borderRadius: isXs ? 0 : 3, overflow: 'hidden' } }}>
       {/* Header */}
       <Box sx={{ background: gradients.brand, px: 3, py: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2916,117 +2917,244 @@ function PublishDialog({ examId, onClose }) {
 
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')} message={snack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Dialog>
-  );
 
-  {/* Edit Question Dialog - Separate from main dialog */}
-  if (editingQuestion) {
-    return (
-      <Dialog open onClose={() => setEditingQuestion(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Edit Question</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              fullWidth
-              label="Question Text"
-              multiline
-              rows={3}
-              value={editingQuestion.text || ''}
-              onChange={(e) => setEditingQuestion({ ...editingQuestion, text: e.target.value })}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            />
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Question Type</InputLabel>
-                <Select
-                  value={editingQuestion.type || 'multiple-choice'}
-                  label="Question Type"
-                  onChange={(e) => setEditingQuestion({ ...editingQuestion, type: e.target.value })}
-                  sx={{ borderRadius: 2 }}
-                >
-                  {['multiple-choice', 'true-false', 'short-answer', 'matching', 'ordering', 'fill-blank', 'open-ended'].map(type => (
-                    <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type.replace('-', ' ')}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                fullWidth
-                label="Points"
-                type="number"
-                value={editingQuestion.points || editingQuestion.marks || 1}
-                onChange={(e) => setEditingQuestion({ ...editingQuestion, points: +e.target.value, marks: +e.target.value })}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
-            </Box>
+    {/* Edit Question Dialog - Separate from main dialog */}
+    <Dialog open={!!editingQuestion} onClose={() => setEditingQuestion(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>Edit Question</DialogTitle>
+      <DialogContent sx={{ pt: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <TextField
+            fullWidth
+            label="Question Text"
+            multiline
+            rows={3}
+            value={editingQuestion?.text || ''}
+            onChange={(e) => setEditingQuestion({ ...editingQuestion, text: e.target.value })}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <FormControl fullWidth size="small">
-              <InputLabel>Section</InputLabel>
+              <InputLabel>Question Type</InputLabel>
               <Select
-                value={editingQuestion.section || 'A'}
-                label="Section"
-                onChange={(e) => setEditingQuestion({ ...editingQuestion, section: e.target.value })}
+                value={editingQuestion?.type || 'multiple-choice'}
+                label="Question Type"
+                onChange={(e) => setEditingQuestion({ ...editingQuestion, type: e.target.value })}
                 sx={{ borderRadius: 2 }}
               >
-                {['A', 'B', 'C'].map(section => (
-                  <MenuItem key={section} value={section}>Section {section}</MenuItem>
+                {['multiple-choice', 'true-false', 'short-answer', 'matching', 'ordering', 'fill-blank', 'open-ended'].map(type => (
+                  <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type.replace('-', ' ')}</MenuItem>
                 ))}
               </Select>
             </FormControl>
-            {editingQuestion.type === 'multiple-choice' && editingQuestion.options && (
-              <Box>
-                <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Options</Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {editingQuestion.options.map((opt, idx) => (
-                    <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={opt.text || ''}
-                        onChange={(e) => {
-                          const newOptions = [...editingQuestion.options];
-                          newOptions[idx] = { ...newOptions[idx], text: e.target.value };
-                          setEditingQuestion({ ...editingQuestion, options: newOptions });
-                        }}
-                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                      />
-                      <Checkbox
-                        checked={opt.isCorrect || false}
-                        onChange={(e) => {
-                          const newOptions = [...editingQuestion.options];
-                          newOptions[idx] = { ...newOptions[idx], isCorrect: e.target.checked };
-                          setEditingQuestion({ ...editingQuestion, options: newOptions });
-                        }}
-                      />
-                    </Box>
-                  ))}
-                </Box>
+            <TextField
+              fullWidth
+              label="Points"
+              type="number"
+              value={editingQuestion?.points || editingQuestion?.marks || 1}
+              onChange={(e) => setEditingQuestion({ ...editingQuestion, points: +e.target.value, marks: +e.target.value })}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          </Box>
+          <FormControl fullWidth size="small">
+            <InputLabel>Section</InputLabel>
+            <Select
+              value={editingQuestion?.section || 'A'}
+              label="Section"
+              onChange={(e) => setEditingQuestion({ ...editingQuestion, section: e.target.value })}
+              sx={{ borderRadius: 2 }}
+            >
+              {['A', 'B', 'C'].map(section => (
+                <MenuItem key={section} value={section}>Section {section}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          {editingQuestion?.type === 'multiple-choice' && editingQuestion?.options && (
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Options</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {editingQuestion.options.map((opt, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Typography sx={{ minWidth: 30, fontWeight: 700, color: tokens.primary }}>{String.fromCharCode(65 + idx)}.</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={opt.text || ''}
+                      onChange={(e) => {
+                        const newOptions = [...editingQuestion.options];
+                        newOptions[idx] = { ...newOptions[idx], text: e.target.value, letter: String.fromCharCode(65 + idx) };
+                        setEditingQuestion({ ...editingQuestion, options: newOptions });
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                    <Checkbox
+                      checked={opt.isCorrect || false}
+                      onChange={(e) => {
+                        const newOptions = [...editingQuestion.options];
+                        newOptions = newOptions.map((o, i) => ({
+                          ...o,
+                          isCorrect: i === idx ? e.target.checked : false
+                        }));
+                        const correctLetter = e.target.checked ? String.fromCharCode(65 + idx) : '';
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          options: newOptions,
+                          correctAnswer: correctLetter
+                        });
+                      }}
+                    />
+                  </Box>
+                ))}
               </Box>
-            )}
+            </Box>
+          )}
+
+          {editingQuestion?.type === 'true-false' && (
+            <FormControl fullWidth size="small">
+              <InputLabel>Correct Answer</InputLabel>
+              <Select
+                value={editingQuestion?.correctAnswer || ''}
+                label="Correct Answer"
+                onChange={(e) => setEditingQuestion({ ...editingQuestion, correctAnswer: e.target.value })}
+                sx={{ borderRadius: 2 }}
+              >
+                <MenuItem value="True">True</MenuItem>
+                <MenuItem value="False">False</MenuItem>
+              </Select>
+            </FormControl>
+          )}
+
+          {editingQuestion?.type === 'matching' && editingQuestion?.matchingPairs && (
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Matching Pairs</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {editingQuestion.matchingPairs.leftColumn.map((item, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={`Left ${idx + 1}`}
+                      value={item || ''}
+                      onChange={(e) => {
+                        const newLeft = [...editingQuestion.matchingPairs.leftColumn];
+                        newLeft[idx] = e.target.value;
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          matchingPairs: { ...editingQuestion.matchingPairs, leftColumn: newLeft }
+                        });
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                    <Typography sx={{ color: tokens.textSecondary }}>↔</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={`Right ${idx + 1}`}
+                      value={editingQuestion.matchingPairs.rightColumn?.[idx] || ''}
+                      onChange={(e) => {
+                        const newRight = [...(editingQuestion.matchingPairs.rightColumn || [])];
+                        newRight[idx] = e.target.value;
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          matchingPairs: { ...editingQuestion.matchingPairs, rightColumn: newRight }
+                        });
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {editingQuestion?.type === 'ordering' && editingQuestion?.itemsToOrder?.items && (
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Items to Order</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {editingQuestion.itemsToOrder.items.map((item, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Typography sx={{ minWidth: 30, fontWeight: 700, color: tokens.primary }}>{idx + 1}.</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={item || ''}
+                      onChange={(e) => {
+                        const newItems = [...editingQuestion.itemsToOrder.items];
+                        newItems[idx] = e.target.value;
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          itemsToOrder: { ...editingQuestion.itemsToOrder, items: newItems }
+                        });
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        if (idx > 0) {
+                          const newItems = [...editingQuestion.itemsToOrder.items];
+                          [newItems[idx], newItems[idx - 1]] = [newItems[idx - 1], newItems[idx]];
+                          setEditingQuestion({
+                            ...editingQuestion,
+                            itemsToOrder: { ...editingQuestion.itemsToOrder, items: newItems }
+                          });
+                        }
+                      }}
+                      disabled={idx === 0}
+                    >
+                      <ArrowUpward fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        if (idx < editingQuestion.itemsToOrder.items.length - 1) {
+                          const newItems = [...editingQuestion.itemsToOrder.items];
+                          [newItems[idx], newItems[idx + 1]] = [newItems[idx + 1], newItems[idx]];
+                          setEditingQuestion({
+                            ...editingQuestion,
+                            itemsToOrder: { ...editingQuestion.itemsToOrder, items: newItems }
+                          });
+                        }
+                      }}
+                      disabled={idx === editingQuestion.itemsToOrder.items.length - 1}
+                    >
+                      <ArrowDownward fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {editingQuestion?.type !== 'multiple-choice' && editingQuestion?.type !== 'true-false' && editingQuestion?.type !== 'matching' && editingQuestion?.type !== 'ordering' && (
             <TextField
               fullWidth
               label="Correct Answer"
               multiline
               rows={2}
-              value={editingQuestion.correctAnswer || ''}
+              value={editingQuestion?.correctAnswer || ''}
               onChange={(e) => setEditingQuestion({ ...editingQuestion, correctAnswer: e.target.value })}
+              helperText={editingQuestion?.type === 'fill-blank' ? 'Enter the word or phrase that fills the blank' : ''}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             />
-            <TextField
-              fullWidth
-              label="Explanation"
-              multiline
-              rows={2}
-              value={editingQuestion.explanation || ''}
-              onChange={(e) => setEditingQuestion({ ...editingQuestion, explanation: e.target.value })}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-          <Button onClick={() => setEditingQuestion(null)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveQuestionEdit} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Save Changes</Button>
-        </DialogActions>
-      </Dialog>
-    );
-  }
+          )}
+          <TextField
+            fullWidth
+            label="Explanation"
+            multiline
+            rows={2}
+            value={editingQuestion?.explanation || ''}
+            onChange={(e) => setEditingQuestion({ ...editingQuestion, explanation: e.target.value })}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+        <Button onClick={() => setEditingQuestion(null)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
+        <Button variant="contained" onClick={handleSaveQuestionEdit} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Save Changes</Button>
+      </DialogActions>
+    </Dialog>
+    </>
+  );
 }
 
 /* ── MANUAL EXAM BUILDER ── */

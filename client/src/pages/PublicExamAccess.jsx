@@ -97,7 +97,7 @@ const PublicExamAccess = () => {
       if (user) {
         // Check if user is a guest (has temporary email)
         const isGuestUser = user.email && user.email.includes('@exam.local');
-        
+
         // Authenticated user - use their info
         const userName = user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : (user.firstName || user.lastName || user.name || user.fullName || '');
         joinData = {
@@ -115,7 +115,10 @@ const PublicExamAccess = () => {
           isPrivate: false
         };
       }
-      
+
+      console.log('Join request data:', joinData);
+      console.log('Join URL:', `/share/${shareToken}/join`);
+
       const res = await api.post(`/share/${shareToken}/join`, joinData);
 
       console.log('Join response:', res.data);

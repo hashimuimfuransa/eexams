@@ -952,7 +952,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           }))
         };
         
-        await api.post('/exam/save-draft', draftData);
+        await api.post('/exam/save-draft', draftData, { timeout: 30000 });
         setLastAutoSave(new Date());
         console.log('Auto-saved draft successfully');
       } catch (err) {
@@ -1216,7 +1216,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
         }))
       };
       
-      const res = await api.post('/exam/save-draft', draftData);
+      const res = await api.post('/exam/save-draft', draftData, { timeout: 30000 });
       alert(`Draft saved successfully! You can find it in the "My Exams" section.`);
       
       // Refresh the exams list to show the newly saved draft

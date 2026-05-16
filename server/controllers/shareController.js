@@ -4,7 +4,8 @@ const Result = require('../models/Result');
 const User = require('../models/User');
 const ActivityLog = require('../models/ActivityLog');
 const jwt = require('jsonwebtoken');
-const { resolveEffectivePlan, getPlanConfigForUser } = require('../middleware/planRestrictions');
+const { resolveEffectivePlan } = require('../middleware/planRestrictions');
+const { getPlanConfigForUser } = require('../config/plans');
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -494,13 +495,22 @@ const joinSharedExam = async (req, res) => {
       }
     }
 
-    // For public links without email/name, generate temporary ones and treat as guest access
+    // For public links without email/name, check if this is a marketplace share link
+    // If so, try to find the user from the associated exam request
     if (!email || !name) {
-      const tempId = Math.random().toString(36).substring(2, 11);
-      email = `student-${tempId}@exam.local`;
-      name = `Student ${tempId}`;
-      isPrivate = false; // Override to false for guest access
-      console.log('Guest access detected, generated temp email:', email);
+      const examRequest = await ExamRequest.findOne({ sharedExam: sharedExam._id, status: 'approved' });
+      if (examRequest && examRequest.userInfo.email) {
+        email = examRequest.userInfo.email.toLowerCase().trim();
+        name = examRequest.userInfo.name;
+        console.log('Found marketplace user from exam request:', email);
+      } else {
+        // Generate temporary ones and treat as guest access
+        const tempId = Math.random().toString(36).substring(2, 11);
+        email = `student-${tempId}@exam.local`;
+        name = `Student ${tempId}`;
+        isPrivate = false; // Override to false for guest access
+        console.log('Guest access detected, generated temp email:', email);
+      }
     }
 
     // For private mode with email/name provided, validate they are not empty

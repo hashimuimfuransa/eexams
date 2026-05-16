@@ -3355,68 +3355,6 @@ const ExamInterface = () => {
                         } else if (detectedType === 'enhanced-fill-in-blank') {
                           return (
                         <Box>
-                          <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
-                            <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                              <HelpOutline sx={{ mr: 1, fontSize: 20, color: 'warning.main' }} />
-                              Fill in the blank with the appropriate word or phrase:
-                            </Box>
-                          </Typography>
-
-                          {/* Display the question with highlighted blank */}
-                          <Box
-                            sx={{
-                              mb: 3,
-                              p: 3,
-                              bgcolor: mode === 'dark'
-                                ? alpha(theme.palette.warning.main, 0.1)
-                                : alpha(theme.palette.warning.main, 0.05),
-                              border: '2px solid',
-                              borderColor: mode === 'dark'
-                                ? alpha(theme.palette.warning.main, 0.5)
-                                : alpha(theme.palette.warning.main, 0.3),
-                              borderRadius: 2,
-                              boxShadow: mode === 'dark'
-                                ? '0 4px 12px rgba(255,193,7,0.2)'
-                                : '0 2px 8px rgba(0,0,0,0.1)'
-                            }}
-                          >
-                            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'warning.dark' }}>
-                              Complete the sentence:
-                            </Typography>
-                            <Typography variant="body1" sx={{ fontSize: '1.1rem', lineHeight: 1.6 }}>
-                              {currentQuestion.text.split('_____').map((part, index, array) => (
-                                <React.Fragment key={index}>
-                                  {part}
-                                  {index < array.length - 1 && (
-                                    <Box
-                                      component="span"
-                                      sx={{
-                                        display: 'inline-block',
-                                        px: 2,
-                                        py: 0.5,
-                                        mx: 1,
-                                        borderBottom: '3px solid',
-                                        borderColor: answers[currentQuestion._id]?.textAnswer ? 'success.main' : 'warning.main',
-                                        backgroundColor: answers[currentQuestion._id]?.textAnswer ?
-                                          alpha(theme.palette.success.main, 0.1) :
-                                          alpha(theme.palette.warning.main, 0.1),
-                                        fontWeight: 'bold',
-                                        color: answers[currentQuestion._id]?.textAnswer ? 'success.dark' : 'warning.main',
-                                        minWidth: '120px',
-                                        textAlign: 'center',
-                                        borderRadius: 1,
-                                        transition: 'all 0.3s ease',
-                                        fontSize: '1.1rem'
-                                      }}
-                                    >
-                                      {answers[currentQuestion._id]?.textAnswer || '[ FILL IN THE BLANK ]'}
-                                    </Box>
-                                  )}
-                                </React.Fragment>
-                              ))}
-                            </Typography>
-                          </Box>
-
                           <TextField
                             fullWidth
                             placeholder="Type your answer here..."

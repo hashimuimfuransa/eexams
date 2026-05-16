@@ -4,6 +4,7 @@ const Result = require('../models/Result');
 const User = require('../models/User');
 const ActivityLog = require('../models/ActivityLog');
 const jwt = require('jsonwebtoken');
+const { resolveEffectivePlan, getPlanConfigForUser } = require('../middleware/planRestrictions');
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -13,6 +14,22 @@ const generateToken = (id) => {
 };
 const StudentList = require('../models/StudentList');
 const ExamRequest = require('../models/ExamRequest');
+
+// Helper function to check if user has unlimited students based on their plan
+const hasUnlimitedStudents = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user) return false;
+    
+    const { plan } = await resolveEffectivePlan(user);
+    const planConfig = getPlanConfigForUser(plan, user.userType);
+    
+    return planConfig.maxStudents === Infinity;
+  } catch (error) {
+    console.error('Error checking unlimited students:', error);
+    return false;
+  }
+};
 
 // @desc    Create a share link for an exam
 // @route   POST /api/share/exam/:examId
@@ -253,8 +270,9 @@ const getSharedExam = async (req, res) => {
       return res.status(403).json({ message: 'This share link has expired' });
     }
 
-    // Check if full, but allow if students have been removed
-    if (sharedExam.isFull()) {
+    // Check if full, but allow if students have been removed or user has unlimited students
+    const unlimitedStudents = await hasUnlimitedStudents(sharedExam.sharedBy);
+    if (sharedExam.isFull() && !unlimitedStudents) {
       console.log('Share is full:', {
         studentsLength: sharedExam.students.length,
         maxStudents: sharedExam.settings.maxStudents,
@@ -452,7 +470,9 @@ const joinSharedExam = async (req, res) => {
       return res.status(403).json({ message: 'Share link is not active' });
     }
 
-    if (sharedExam.isFull()) {
+    // Check if full, but allow if user has unlimited students
+    const unlimitedStudents = await hasUnlimitedStudents(sharedExam.sharedBy);
+    if (sharedExam.isFull() && !unlimitedStudents) {
       return res.status(403).json({ message: 'Maximum number of students reached' });
     }
 
@@ -463,8 +483,8 @@ const joinSharedExam = async (req, res) => {
 
     // Email invitation check removed - allow all users to join shared exams
 
-    // Check if full, but allow if students have been removed
-    if (sharedExam.isFull()) {
+    // Check if full, but allow if students have been removed or user has unlimited students
+    if (sharedExam.isFull() && !unlimitedStudents) {
       console.log('Join: Share is full:', {
         studentsLength: sharedExam.students.length,
         maxStudents: sharedExam.settings.maxStudents,

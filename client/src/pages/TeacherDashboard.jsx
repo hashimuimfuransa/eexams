@@ -622,19 +622,44 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
                     ? (isMobile ? 'Explain correct answer and why others are wrong.' : 'Explain why the correct answer is right and why each distractor is wrong. This helps the AI provide feedback on wrong answers.')
                     : (isMobile ? 'Provide correct answer and variations.' : 'Provide the correct answer and any acceptable variations.')}
               </Typography>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder={qType === 'open-ended' 
-                  ? (isMobile ? "Enter model answer..." : "Enter a comprehensive model answer here... Include all key points, examples, and structure expected in a complete answer.")
-                  : "Explanation for correct answer..."}
-                multiline
-                minRows={qType === 'open-ended' ? (isMobile ? 4 : 6) : (isMobile ? 3 : 4)}
-                maxRows={10}
-                value={localQ.explanation || localQ.answerKey || localQ.correctAnswer || ''}
-                onChange={(e) => { setLocalQ({ ...localQ, explanation: e.target.value, answerKey: e.target.value }); setEdited(true); }}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white', fontSize: isMobile ? 12 : 13, lineHeight: 1.7 } }}
-              />
+              
+              {/* Display subquestions if they exist */}
+              {localQ.subQuestions && Array.isArray(localQ.subQuestions) && localQ.subQuestions.length > 0 ? (
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textPrimary, mb: 1 }}>
+                    Subquestions ({localQ.subQuestions.length})
+                  </Typography>
+                  {localQ.subQuestions.map((subQ, idx) => (
+                    <Paper key={idx} elevation={0} sx={{ p: 1.5, mb: 1, bgcolor: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 2 }}>
+                      <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#0369A1', mb: 0.5 }}>
+                        {subQ.text || `Subquestion ${idx + 1}`}
+                      </Typography>
+                      <Typography sx={{ fontSize: 11, color: '#0C4A6E' }}>
+                        <strong>Answer:</strong> {subQ.correctAnswer || 'Not provided'}
+                      </Typography>
+                      {subQ.points && (
+                        <Typography sx={{ fontSize: 10, color: '#075985', mt: 0.5 }}>
+                          Points: {subQ.points}
+                        </Typography>
+                      )}
+                    </Paper>
+                  ))}
+                </Box>
+              ) : (
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder={qType === 'open-ended' 
+                    ? (isMobile ? "Enter model answer..." : "Enter a comprehensive model answer here... Include all key points, examples, and structure expected in a complete answer.")
+                    : "Explanation for correct answer..."}
+                  multiline
+                  minRows={qType === 'open-ended' ? (isMobile ? 4 : 6) : (isMobile ? 3 : 4)}
+                  maxRows={10}
+                  value={localQ.explanation || localQ.answerKey || localQ.correctAnswer || ''}
+                  onChange={(e) => { setLocalQ({ ...localQ, explanation: e.target.value, answerKey: e.target.value }); setEdited(true); }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white', fontSize: isMobile ? 12 : 13, lineHeight: 1.7 } }}
+                />
+              )}
             </Grid>
           </Grid>
         </Box>

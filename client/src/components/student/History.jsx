@@ -19,12 +19,12 @@ import {
 } from '@mui/material';
 import {
   School,
-  CheckCircle,
-  AccessTime,
   CalendarToday,
   ArrowForward,
   Assessment,
-  History as HistoryIcon
+  History as HistoryIcon,
+  CheckCircle,
+  Cancel
 } from '@mui/icons-material';
 import StudentLayout from './StudentLayout';
 import api from '../../services/api';
@@ -201,14 +201,77 @@ const History = () => {
                         }}
                       >
                         <Paper elevation={2} sx={{ p: 2, borderRadius: 0 }}>
-                          <Typography variant="subtitle1" fontWeight="bold">
-                            {item.type === 'result' ? item.examTitle : item.title}
+                          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                            {item.type === 'result' ? item.exam?.title : item.title}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {item.type === 'result'
-                              ? `Completed with score: ${item.score}%`
-                              : `Status: ${item.status?.replace('-', ' ') || 'Unknown'}`}
-                          </Typography>
+                          
+                          {item.type === 'result' && item.exam?.description && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                              {item.exam.description}
+                            </Typography>
+                          )}
+
+                          {item.type === 'result' ? (
+                            <>
+                              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                                <Chip
+                                  icon={item.passed ? <CheckCircle sx={{ fontSize: '0.7rem' }} /> : <Cancel sx={{ fontSize: '0.7rem' }} />}
+                                  label={item.passed ? 'Passed' : 'Failed'}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: item.passed ? 'success.lighter' : 'error.lighter',
+                                    color: item.passed ? 'success.main' : 'error.main',
+                                    fontSize: '0.7rem',
+                                    height: 20
+                                  }}
+                                />
+                                <Chip
+                                  label={`${item.percentage || Math.round((item.totalScore / item.maxPossibleScore) * 100)}%`}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: 'primary.lighter',
+                                    color: 'primary.main',
+                                    fontSize: '0.7rem',
+                                    height: 20
+                                  }}
+                                />
+                              </Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                <strong>Score:</strong> {item.totalScore}/{item.maxPossibleScore}
+                              </Typography>
+                              {item.exam?.timeLimit && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                  <strong>Time:</strong> {item.exam.timeLimit} min
+                                </Typography>
+                              )}
+                              {item.exam?.totalQuestions && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                  <strong>Questions:</strong> {item.exam.totalQuestions}
+                                </Typography>
+                              )}
+                              {item.exam?.passingScore && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                  <strong>Passing Score:</strong> {item.exam.passingScore}%
+                                </Typography>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <Typography variant="body2" color="text.secondary">
+                                Status: {item.status?.replace('-', ' ') || 'Unknown'}
+                              </Typography>
+                              {item.timeLimit && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                  <strong>Time:</strong> {item.timeLimit} min
+                                </Typography>
+                              )}
+                              {item.questions && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                  <strong>Questions:</strong> {item.questions}
+                                </Typography>
+                              )}
+                            </>
+                          )}
                           <Box sx={{ mt: 1 }}>
                             <Button
                               size="small"

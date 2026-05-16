@@ -816,7 +816,7 @@ const Exams = () => {
                       </Button>
 
                       {/* Enhanced Retake button for completed exams */}
-                      {exam.status === 'completed' && !exam.isLocked && (
+                      {exam.status === 'completed' && exam.allowRetake && (
                         <Button
                           variant="outlined"
                           component={RouterLink}

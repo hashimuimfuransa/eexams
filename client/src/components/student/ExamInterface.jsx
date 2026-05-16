@@ -254,6 +254,7 @@ const ExamInterface = () => {
   const [confirmNavigation, setConfirmNavigation] = useState(false);
   const [selectiveAnswering, setSelectiveAnswering] = useState(false);
   const [selectedQuestions, setSelectedQuestions] = useState({});
+  const [lastQuestionSaved, setLastQuestionSaved] = useState(false);
 
   // Format time remaining
   const formatTime = (milliseconds) => {
@@ -361,7 +362,7 @@ const ExamInterface = () => {
         setError(null);
 
         // First, get the exam details to check if it's locked
-        const examRes = await api.get(`/exam/${id}`);
+        const examRes = await api.get(`/student/exams/${id}`);
 
         setExam(examRes.data);
         setSelectiveAnswering(examRes.data.allowSelectiveAnswering || false);
@@ -956,6 +957,58 @@ const ExamInterface = () => {
     }
   };
 
+  // Check if current question is the last question in the exam
+  const isLastQuestion = () => {
+    if (!exam || !exam.sections) return false;
+    const questions = getCurrentSectionQuestions();
+    const sectionIndex = exam.sections.findIndex(s => s.name === activeSection);
+    const isLastSection = sectionIndex === exam.sections.length - 1;
+    const isLastQuestionInSection = activeQuestionIndex === questions.length - 1;
+    const result = isLastSection && isLastQuestionInSection;
+    console.log('isLastQuestion check:', {
+      activeSection,
+      sectionIndex,
+      totalSections: exam.sections.length,
+      isLastSection,
+      activeQuestionIndex,
+      questionsLength: questions.length,
+      isLastQuestionInSection,
+      result
+    });
+    return result;
+  };
+
+  // Handle saving the last question
+  const handleSaveLastQuestion = async () => {
+    const currentQuestion = getCurrentQuestion();
+    if (currentQuestion) {
+      const answer = answers[currentQuestion._id];
+      if (answer && answer.answered) {
+        try {
+          await saveAnswerToServer(currentQuestion._id, answer.selectedOption || answer.textAnswer || answer.matchingAnswers || answer.orderingAnswer || answer.dragDropAnswer, currentQuestion.type);
+          setLastQuestionSaved(true);
+          setSnackbar({
+            open: true,
+            message: 'Question saved. Click Submit to finish.',
+            severity: 'success'
+          });
+        } catch (error) {
+          setSnackbar({
+            open: true,
+            message: 'Failed to save question. Please try again.',
+            severity: 'error'
+          });
+        }
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'Please answer the question before saving.',
+          severity: 'warning'
+        });
+      }
+    }
+  };
+
   // Handle question navigation with enhanced error handling
   const handleNextQuestion = async () => {
     try {
@@ -973,27 +1026,6 @@ const ExamInterface = () => {
         return;
       }
 
-    // Check if there are unsaved changes for the current question
-    const currentAnswer = answers[currentQuestion._id];
-
-    // If it's an essay or fill-in-blank question with unsaved changes, save it first (no character limit)
-    // Make this non-blocking for faster navigation
-    if ((currentQuestion.type === 'open-ended' || currentQuestion.type === 'fill-in-blank' || currentQuestion.type === 'fill_in_blank') &&
-        currentAnswer &&
-        currentAnswer.hasChanges &&
-        !currentAnswer.savedToServer) {
-
-      // Save in background without blocking navigation
-      saveAnswerToServer(
-        currentQuestion._id,
-        currentAnswer.textAnswer,
-        currentQuestion.type === 'fill-in-blank' || currentQuestion.type === 'fill_in_blank' ? 'fill-in-blank' : 'open-ended'
-      ).catch(error => {
-        console.error('Error saving answer before navigation:', error);
-      });
-    }
-
-      // Now proceed with navigation
       const questions = getCurrentSectionQuestions();
       if (!questions || questions.length === 0) {
         console.warn('No questions available for navigation');
@@ -3563,20 +3595,42 @@ const ExamInterface = () => {
                         Previous
                       </Button>
 
-                      <Button
-                        variant="contained"
-                        onClick={handleNextQuestion}
-                        endIcon={<NavigateNext />}
-                        disabled={
-                          // Disable if this is the last question in the last section with questions
-                          activeQuestionIndex === getCurrentSectionQuestions().length - 1 &&
-                          !exam.sections.slice(exam.sections.findIndex(s => s.name === activeSection) + 1)
-                            .some(s => s.questions && s.questions.length > 0)
-                        }
-                        sx={{ borderRadius: 0 }} // Remove rounded corners
-                      >
-                        Next
-                      </Button>
+                      {isLastQuestion() ? (
+                        lastQuestionSaved ? (
+                          <Button
+                            variant="contained"
+                            onClick={() => setConfirmSubmit(true)}
+                            endIcon={<Send />}
+                            sx={{ borderRadius: 0 }} // Remove rounded corners
+                          >
+                            Submit Exam
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="contained"
+                            onClick={handleSaveLastQuestion}
+                            endIcon={<Save />}
+                            sx={{ borderRadius: 0 }} // Remove rounded corners
+                          >
+                            Save Question
+                          </Button>
+                        )
+                      ) : (
+                        <Button
+                          variant="contained"
+                          onClick={handleNextQuestion}
+                          endIcon={<NavigateNext />}
+                          disabled={
+                            // Disable if this is the last question in the last section with questions
+                            activeQuestionIndex === getCurrentSectionQuestions().length - 1 &&
+                            !exam.sections.slice(exam.sections.findIndex(s => s.name === activeSection) + 1)
+                              .some(s => s.questions && s.questions.length > 0)
+                          }
+                          sx={{ borderRadius: 0 }} // Remove rounded corners
+                        >
+                          Next
+                        </Button>
+                      )}
                     </Box>
                   </>
                 )}

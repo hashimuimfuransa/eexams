@@ -124,17 +124,19 @@ const Profile = () => {
         organization: formData.organization
       };
 
-      // Only include password if it was changed
-      if (formData.password) {
-        updateData.password = formData.password;
-        updateData.currentPassword = formData.currentPassword;
-      }
-
-      // Call API to update profile
-      const response = await api.put('/profile', updateData);
-
+      // Update profile information
+      const profileResponse = await api.put('/profile', updateData);
+      
       // Update local user data
-      updateUserProfile(response.data);
+      updateUserProfile(profileResponse.data);
+
+      // If password was changed, update password separately
+      if (formData.password) {
+        await api.put('/auth/change-password', {
+          currentPassword: formData.currentPassword,
+          newPassword: formData.password
+        });
+      }
 
       setSnackbar({
         open: true,
@@ -143,6 +145,13 @@ const Profile = () => {
       });
 
       setEditMode(false);
+      
+      // Reset password fields
+      setFormData(prev => ({
+        ...prev,
+        password: '',
+        currentPassword: ''
+      }));
     } catch (error) {
       console.error('Error updating profile:', error);
       setSnackbar({
@@ -786,61 +795,57 @@ const Profile = () => {
                         />
                       </Grid>
 
-                      {editMode && (
-                        <>
-                          <Grid item xs={12}>
-                            <Divider>
-                              <Chip label="Change Password (Optional)" sx={{ borderRadius: 0 }} />
-                            </Divider>
-                          </Grid>
+                      <Grid item xs={12}>
+                        <Divider sx={{ my: 3 }}>
+                          <Chip label="Change Password" sx={{ borderRadius: 0 }} />
+                        </Divider>
+                      </Grid>
 
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              fullWidth
-                              label="Current Password"
-                              name="currentPassword"
-                              type={showPassword ? 'text' : 'password'}
-                              value={formData.currentPassword}
-                              onChange={handleChange}
-                              InputProps={{
-                                endAdornment: (
-                                  <InputAdornment position="end">
-                                    <IconButton
-                                      onClick={handleToggleShowPassword}
-                                      edge="end"
-                                    >
-                                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                                    </IconButton>
-                                  </InputAdornment>
-                                ),
-                              }}
-                            />
-                          </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Current Password"
+                          name="currentPassword"
+                          type={showPassword ? 'text' : 'password'}
+                          value={formData.currentPassword}
+                          onChange={handleChange}
+                          InputProps={{
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <IconButton
+                                  onClick={handleToggleShowPassword}
+                                  edge="end"
+                                >
+                                  {showPassword ? <VisibilityOff /> : <Visibility />}
+                                </IconButton>
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      </Grid>
 
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              fullWidth
-                              label="New Password"
-                              name="password"
-                              type={showPassword ? 'text' : 'password'}
-                              value={formData.password}
-                              onChange={handleChange}
-                              InputProps={{
-                                endAdornment: (
-                                  <InputAdornment position="end">
-                                    <IconButton
-                                      onClick={handleToggleShowPassword}
-                                      edge="end"
-                                    >
-                                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                                    </IconButton>
-                                  </InputAdornment>
-                                ),
-                              }}
-                            />
-                          </Grid>
-                        </>
-                      )}
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="New Password"
+                          name="password"
+                          type={showPassword ? 'text' : 'password'}
+                          value={formData.password}
+                          onChange={handleChange}
+                          InputProps={{
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <IconButton
+                                  onClick={handleToggleShowPassword}
+                                  edge="end"
+                                >
+                                  {showPassword ? <VisibilityOff /> : <Visibility />}
+                                </IconButton>
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      </Grid>
                     </Grid>
 
                     {editMode && (

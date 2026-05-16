@@ -765,7 +765,7 @@ const deleteExam = async (req, res) => {
 
 // @desc    Toggle exam lock status
 // @route   PUT /api/exam/:id/toggle-lock
-// @access  Private/Admin
+// @access  Private/Admin/Teacher
 const toggleExamLock = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id);
@@ -774,15 +774,20 @@ const toggleExamLock = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    exam.isLocked = !exam.isLocked;
+    // Check if user is admin or the creator of the exam
+    if (req.user.role === 'admin' || req.user.role === 'superadmin' || 
+        exam.createdBy.toString() === req.user._id.toString()) {
+      exam.isLocked = !exam.isLocked;
+      const updatedExam = await exam.save();
 
-    const updatedExam = await exam.save();
-
-    res.json({
-      _id: updatedExam._id,
-      isLocked: updatedExam.isLocked,
-      message: `Exam ${updatedExam.isLocked ? 'locked' : 'unlocked'} successfully`
-    });
+      res.json({
+        _id: updatedExam._id,
+        isLocked: updatedExam.isLocked,
+        message: `Exam ${updatedExam.isLocked ? 'locked' : 'unlocked'} successfully`
+      });
+    } else {
+      return res.status(403).json({ message: 'Access denied. You can only lock/unlock your own exams.' });
+    }
   } catch (error) {
     console.error('Toggle exam lock error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -834,8 +839,8 @@ const startExam = async (req, res) => {
 
     // If there's an existing result and it's completed
     if (existingResult && existingResult.isCompleted) {
-      // Check if the exam allows retakes (not locked)
-      if (!exam.isLocked) {
+      // Check if the exam allows retakes
+      if (exam.allowRetake) {
         console.log(`Student ${req.user._id} is retaking exam ${exam._id} that was previously completed`);
 
         // Ensure the exam has questions before allowing retake
@@ -853,9 +858,10 @@ const startExam = async (req, res) => {
         // Allow retake by creating a new attempt with the same questions
         // Continue to the code below that creates a new result
       } else {
-        return res.status(400).json({
-          message: 'You have already completed this exam and it is locked for retakes',
-          isCompleted: true
+        return res.status(403).json({
+          message: 'You have already completed this exam. Retakes are not allowed unless enabled by your teacher.',
+          isCompleted: true,
+          allowRetake: false
         });
       }
     } else if (existingResult && !existingResult.isCompleted) {

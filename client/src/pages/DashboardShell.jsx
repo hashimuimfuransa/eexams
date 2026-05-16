@@ -254,8 +254,22 @@ export function Sidebar({ user, logout, activeSection, setActiveSection, onClose
 }
 
 // ─── Topbar ───────────────────────────────────────────────────────────────────
-export function Topbar({ greeting, sub, user, onMenuClick, onLogout, roleLabel }) {
+export function Topbar({ greeting, sub, user, onMenuClick, onLogout, roleLabel, onSearch }) {
   const [anchorEl, setAnchorEl] = useState(null);
+  const [notificationAnchorEl, setNotificationAnchorEl] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+    if (onSearch) {
+      onSearch(e.target.value);
+    }
+  };
+
+  const handleNotificationClick = (e) => {
+    setNotificationAnchorEl(e.currentTarget);
+  };
+
   return (
     <Box sx={{
       height: 64, px: { xs: 1.5, sm: 3 }, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 },
@@ -269,17 +283,35 @@ export function Topbar({ greeting, sub, user, onMenuClick, onLogout, roleLabel }
         <Typography fontWeight={700} noWrap sx={{ color: tokens.textPrimary, lineHeight: 1.25, fontSize: { xs: '0.9rem', sm: '1.05rem' }, fontFamily: "'DM Sans',sans-serif" }}>{greeting}</Typography>
         {sub && <Typography variant="caption" noWrap sx={{ color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", display: { xs: 'none', sm: 'block' } }}>{sub}</Typography>}
       </Box>
-      <TextField size="small" placeholder="Search anything…"
+      <TextField 
+        size="small" 
+        placeholder="Search anything…" 
+        value={searchQuery}
+        onChange={handleSearchChange}
         InputProps={{
           startAdornment: <InputAdornment position="start"><Search fontSize="small" sx={{ color: tokens.textMuted }} /></InputAdornment>,
           sx: { borderRadius: 3, bgcolor: '#F8FAFC', fontSize: 13, fontFamily: "'DM Sans',sans-serif", '& fieldset': { border: `1px solid ${tokens.surfaceBorder}` } }
         }}
         sx={{ width: 220, display: { xs: 'none', md: 'block' } }}
       />
-      <IconButton size="small" sx={{ bgcolor: 'rgba(13,64,108,0.06)', position: 'relative' }}>
+      <IconButton 
+        size="small" 
+        sx={{ bgcolor: 'rgba(13,64,108,0.06)', position: 'relative' }}
+        onClick={handleNotificationClick}
+      >
         <NotificationsNone fontSize="small" sx={{ color: tokens.primary }} />
         <Box sx={{ width: 8, height: 8, bgcolor: '#EF4444', borderRadius: '50%', position: 'absolute', top: 6, right: 6, border: '1.5px solid white' }} />
       </IconButton>
+      <Menu
+        anchorEl={notificationAnchorEl}
+        open={Boolean(notificationAnchorEl)}
+        onClose={() => setNotificationAnchorEl(null)}
+        PaperProps={{ sx: { borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 280 } }}
+      >
+        <MenuItem disabled sx={{ fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: tokens.textMuted }}>
+          No new notifications
+        </MenuItem>
+      </Menu>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={e => setAnchorEl(e.currentTarget)}>
         <Avatar sx={{ width: 34, height: 34, background: gradients.brand, fontSize: 13, fontWeight: 700 }}>{user?.firstName?.charAt(0)}</Avatar>
         <Box sx={{ display: { xs: 'none', sm: 'block' } }}>

@@ -50,6 +50,11 @@ export default function SuperAdminDashboard() {
   const [activeSection, setActiveSection] = useState('home');
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+  };
 
   useEffect(() => {
     api.get('/superadmin/dashboard-stats').then(r => setStats(r.data)).catch(() => setStats({})).finally(() => setStatsLoading(false));
@@ -58,11 +63,11 @@ export default function SuperAdminDashboard() {
   return (
     <DashboardShell
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Super Admin" />}
-      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub="Platform-wide activity and management" user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Super Admin" />}
+      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub="Platform-wide activity and management" user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Super Admin" onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
-      {activeSection === 'home'          && <OverviewSection stats={stats} statsLoading={statsLoading} />}
-      {activeSection === 'organizations' && <OrganizationsSection />}
-      {activeSection === 'users'         && <AllUsersSection />}
+      {activeSection === 'home'          && <OverviewSection stats={stats} statsLoading={statsLoading} searchQuery={searchQuery} />}
+      {activeSection === 'organizations' && <OrganizationsSection searchQuery={searchQuery} />}
+      {activeSection === 'users'         && <AllUsersSection searchQuery={searchQuery} />}
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
       {activeSection === 'analytics'     && <AnalyticsSection stats={stats} />}
       {activeSection === 'settings'      && <SettingsSection user={user} />}

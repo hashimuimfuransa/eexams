@@ -54,6 +54,10 @@ const ExamSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  allowRetake: {
+    type: Boolean,
+    default: false
+  },
   sectionBRequiredQuestions: {
     type: Number,
     default: 3

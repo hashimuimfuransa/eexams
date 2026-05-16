@@ -746,6 +746,11 @@ export default function TeacherDashboard() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [exams, setExams] = useState([]);
   const [results, setResults] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+  };
 
   useEffect(() => {
     if (!user) return; // Don't fetch if user is not authenticated
@@ -774,19 +779,25 @@ export default function TeacherDashboard() {
       });
   }, [user]);
 
+  const filteredExams = exams.filter(exam =>
+    !searchQuery || 
+    exam.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    exam.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <DashboardShell
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Teacher Portal" />}
-      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Teacher')} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} />}
+      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Teacher')} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
-      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={exams} results={results} setActiveSection={setActiveSection} setExams={setExams} />}
-      {activeSection === 'exams'     && <ExamsSection exams={exams} setExams={setExams} />}
+      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} />}
+      {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} />}
       {activeSection === 'students'  && <StudentManagement />}
       {activeSection === 'questions' && <QuestionsSection />}
       {activeSection === 'results'   && <ResultsSection results={results} />}
       {activeSection === 'reports'   && <ReportsSection />}
-      {activeSection === 'templates' && <TemplatesSection exams={exams} setExams={setExams} />}
-      {activeSection === 'analytics' && <AnalyticsSection results={results} exams={exams} />}
+      {activeSection === 'templates' && <TemplatesSection exams={filteredExams} setExams={setExams} />}
+      {activeSection === 'analytics' && <AnalyticsSection results={results} exams={filteredExams} />}
       {activeSection === 'settings'  && <SettingsSection user={user} />}
     </DashboardShell>
   );

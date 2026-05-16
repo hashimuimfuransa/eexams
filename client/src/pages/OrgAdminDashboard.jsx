@@ -55,6 +55,11 @@ export default function OrgAdminDashboard() {
   const [teachers, setTeachers] = useState([]);
   const [exams, setExams] = useState([]);
   const [results, setResults] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+  };
 
   useEffect(() => {
     if (!user) return; // Don't fetch if user is not authenticated
@@ -65,17 +70,30 @@ export default function OrgAdminDashboard() {
     api.get('/admin/results').then(r => setResults(Array.isArray(r.data) ? r.data : (r.data?.results || []))).catch(() => {});
   }, [user]);
 
+  const filteredExams = exams.filter(exam =>
+    !searchQuery ||
+    exam.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    exam.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredTeachers = teachers.filter(teacher =>
+    !searchQuery ||
+    teacher.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    teacher.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    teacher.email?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <DashboardShell
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="School Admin" />}
-      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub={user?.organization ? `${user.organization} · School Admin` : "Here's what's happening today."} user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="School Admin" />}
+      topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub={user?.organization ? `${user.organization} · School Admin` : "Here's what's happening today."} user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="School Admin" onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
-      {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={teachers} exams={exams} results={results} />}
-      {activeSection === 'teachers'  && <TeachersSection teachers={teachers} setTeachers={setTeachers} />}
+      {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={filteredTeachers} exams={filteredExams} results={results} />}
+      {activeSection === 'teachers'  && <TeachersSection teachers={filteredTeachers} setTeachers={setTeachers} />}
       {activeSection === 'students'  && <StudentsSection />}
-      {activeSection === 'exams'     && <ExamsSection exams={exams} />}
+      {activeSection === 'exams'     && <ExamsSection exams={filteredExams} />}
       {activeSection === 'results'   && <ResultsSection results={results} />}
-      {activeSection === 'analytics' && <AnalyticsSection results={results} exams={exams} teachers={teachers} />}
+      {activeSection === 'analytics' && <AnalyticsSection results={results} exams={filteredExams} teachers={filteredTeachers} />}
       {activeSection === 'settings'  && <SettingsSection user={user} />}
     </DashboardShell>
   );

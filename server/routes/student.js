@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getAvailableExams,
+  getExamById,
   getStudentResults,
   getDetailedResult,
   getCurrentExamSession,
@@ -18,6 +19,7 @@ router.use(auth, isStudent);
 
 // Exam routes
 router.get('/exams', getAvailableExams);
+router.get('/exams/:examId', getExamById); // Get specific exam by ID
 router.get('/exams/:examId/session', getCurrentExamSession);
 
 // Results routes

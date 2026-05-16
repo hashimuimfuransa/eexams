@@ -163,7 +163,10 @@ const Results = () => {
         setLoading(false);
       } catch (err) {
         console.error('Error fetching results:', err);
-        setError('Failed to load results. Please try again later.');
+        console.error('Error response:', err.response);
+        console.error('Error message:', err.message);
+        console.error('Error status:', err.response?.status);
+        setError(`Failed to load results: ${err.response?.data?.message || err.message || 'Please try again later.'}`);
         setLoading(false);
       }
     };
@@ -568,6 +571,17 @@ const Results = () => {
                                           </Typography>
                                         </>
                                       )}
+
+                                      {answer.feedback && (
+                                        <>
+                                          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                                            <strong>Feedback:</strong>
+                                          </Typography>
+                                          <Typography variant="body1">
+                                            {answer.feedback}
+                                          </Typography>
+                                        </>
+                                      )}
                                     </>
                                   ) : (
                                     <>
@@ -874,7 +888,26 @@ const Results = () => {
                             {result.exam.title}
                           </Typography>
 
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                            {result.exam.description}
+                          </Typography>
+
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Chip
+                              icon={result.passed ? <CheckCircle sx={{ fontSize: '0.8rem' }} /> : <Cancel sx={{ fontSize: '0.8rem' }} />}
+                              label={result.passed ? 'Passed' : 'Failed'}
+                              size="small"
+                              sx={{
+                                bgcolor: result.passed ? alpha(theme.palette.success.main, 0.1) : alpha(theme.palette.error.main, 0.1),
+                                color: result.passed ? theme.palette.success.main : theme.palette.error.main,
+                                fontWeight: 'medium',
+                                fontSize: '0.7rem',
+                                height: 20,
+                                '& .MuiChip-icon': {
+                                  color: result.passed ? theme.palette.success.main : theme.palette.error.main
+                                }
+                              }}
+                            />
                             <Chip
                               icon={<WorkspacePremium sx={{ fontSize: '0.8rem' }} />}
                               label="Completed"
@@ -944,13 +977,21 @@ const Results = () => {
                         >
                           <AccessTime sx={{ fontSize: '1rem' }} />
                         </Avatar>
-                        <Box>
+                        <Box sx={{ flex: 1 }}>
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', fontWeight: 'medium' }}>
-                            Completed on
+                            Completed on {formatDate(result.endTime)}
                           </Typography>
-                          <Typography variant="body2" fontWeight="bold" sx={{ fontSize: '0.85rem' }}>
-                            {formatDate(result.endTime)}
-                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              <strong>Time:</strong> {result.exam.timeLimit} min
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              <strong>Questions:</strong> {result.exam.totalQuestions || 'N/A'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              <strong>Passing Score:</strong> {result.exam.passingScore}%
+                            </Typography>
+                          </Box>
                         </Box>
                       </Box>
 

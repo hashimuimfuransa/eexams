@@ -95,7 +95,7 @@ router.put(
   updateExam
 );
 router.delete('/:id', isAdmin, deleteExam);
-router.put('/:id/toggle-lock', isAdmin, toggleExamLock);
+router.put('/:id/toggle-lock', isAdminOrTeacher, toggleExamLock);
 router.post('/grade/:resultId', isAdmin, gradeManually);
 router.post('/ai-grade/:resultId', isAdmin, triggerAIGrading);
 router.get('/:id/debug', isAdmin, debugExamContent);

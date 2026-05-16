@@ -18,7 +18,11 @@ import {
   Assessment,
   CheckCircle,
   Cancel,
-  Schedule
+  Schedule,
+  PlayArrow,
+  Lock,
+  School,
+  AccessTime
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -29,6 +33,7 @@ const Dashboard = () => {
   const { user } = useContext(AuthContext);
   const [results, setResults] = useState([]);
   const [scheduledExams, setScheduledExams] = useState([]);
+  const [availableExams, setAvailableExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -39,6 +44,15 @@ const Dashboard = () => {
         // Fetch results
         const resultsRes = await api.get('/student/results');
         setResults(resultsRes.data);
+
+        // Fetch available exams (assigned exams)
+        try {
+          const examsRes = await api.get('/student/exams');
+          setAvailableExams(Array.isArray(examsRes.data) ? examsRes.data : []);
+        } catch (examsErr) {
+          console.error('Error fetching available exams:', examsErr);
+          setAvailableExams([]);
+        }
 
         // Fetch scheduled exams (exams that are scheduled for the future)
         try {
@@ -115,11 +129,146 @@ const Dashboard = () => {
     <StudentLayout>
       <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>
         <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
-          My Exam Results
+          My Dashboard
         </Typography>
         <Typography variant="body1" color="text.secondary" paragraph>
-          Welcome, {user?.firstName || 'Student'}! Here are your exam results and scheduled exams.
+          Welcome, {user?.firstName || 'Student'}! Here are your available exams and results.
         </Typography>
+
+        {/* Available Exams Section */}
+        <Box sx={{ mt: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h5" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <School color="primary" />
+              Available Exams
+            </Typography>
+            <Button
+              variant="text"
+              component={RouterLink}
+              to="/student/exams"
+              size="small"
+              sx={{ color: 'primary.main', fontWeight: 'bold' }}
+            >
+              View All →
+            </Button>
+          </Box>
+          
+          {availableExams.filter(e => e.status !== 'completed').length === 0 ? (
+            <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mb: 4, bgcolor: 'grey.50' }}>
+              <School sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" fontWeight="bold">
+                No Available Exams
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                All assigned exams have been completed. Check back later for new exams.
+              </Typography>
+            </Paper>
+          ) : (
+            <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
+              {availableExams.filter(e => e.status !== 'completed').map((exam) => {
+                const canStart = !exam.isLocked && exam.status !== 'in-progress' && exam.status !== 'completed';
+                const getStatusLabel = () => {
+                  if (exam.status === 'completed') return 'Completed';
+                  if (exam.status === 'in-progress') return 'In Progress';
+                  if (exam.isLocked) return 'Locked';
+                  if (exam.availability === 'upcoming') return 'Upcoming';
+                  if (exam.availability === 'expired') return 'Expired';
+                  return 'Available';
+                };
+                const getStatusColor = () => {
+                  if (exam.status === 'completed') return 'success';
+                  if (exam.status === 'in-progress') return 'warning';
+                  if (exam.isLocked || exam.availability === 'expired') return 'error';
+                  if (exam.availability === 'upcoming') return 'info';
+                  return 'success';
+                };
+                return (
+                  <Card 
+                    key={exam._id} 
+                    elevation={canStart ? 3 : 1} 
+                    sx={{ 
+                      mb: 0, 
+                      bgcolor: 'background.paper',
+                      border: canStart ? '2px solid' : '1px solid',
+                      borderColor: canStart ? 'primary.main' : 'divider',
+                      transition: 'all 0.2s ease-in-out',
+                      '&:hover': canStart ? {
+                        transform: 'translateY(-4px)',
+                        boxShadow: 6
+                      } : {}
+                    }}
+                  >
+                    <CardContent>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
+                            {exam.title || 'Exam'}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                            <Chip
+                              icon={<School fontSize="small" />}
+                              label={`${exam.questions || 0} Questions`}
+                              size="small"
+                              variant="outlined"
+                            />
+                            {exam.timeLimit && (
+                              <Chip
+                                icon={<AccessTime fontSize="small" />}
+                                label={`${exam.timeLimit} minutes`}
+                                size="small"
+                                variant="outlined"
+                              />
+                            )}
+                          </Box>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Chip
+                            label={getStatusLabel()}
+                            color={getStatusColor()}
+                            size="medium"
+                            sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}
+                          />
+                          {canStart ? (
+                            <Button
+                              variant="contained"
+                              component={RouterLink}
+                              to={`/student/exam/${exam._id}`}
+                              size="large"
+                              startIcon={<PlayArrow />}
+                              sx={{
+                                fontWeight: 'bold',
+                                px: 3,
+                                py: 1.5,
+                                textTransform: 'none'
+                              }}
+                            >
+                              Start Exam
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outlined"
+                              disabled
+                              size="large"
+                              startIcon={<Lock />}
+                              sx={{
+                                fontWeight: 'bold',
+                                px: 3,
+                                py: 1.5,
+                                textTransform: 'none'
+                              }}
+                            >
+                              Not Available
+                            </Button>
+                          )}
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Box>
+          )}
+        </Box>
 
         {/* Scheduled Exams Section */}
         {scheduledExams.length > 0 && (

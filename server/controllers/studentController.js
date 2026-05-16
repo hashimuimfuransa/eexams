@@ -8,12 +8,13 @@ const SharedExam = require('../models/SharedExam');
 // @access  Private/Student
 const getAvailableExams = async (req, res) => {
   try {
-    // Get all exams assigned to this student (including locked ones)
+    // Get all exams assigned to this student with populated sections and questions
     const exams = await Exam.find({
       assignedTo: req.user._id
     })
       .populate('createdBy', 'firstName lastName')
-      .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering sectionBRequiredQuestions sectionCRequiredQuestions');
+      .populate('sections.questions')
+      .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
 
     // Log selective answering status for debugging
     if (exams.length > 0) {
@@ -42,11 +43,28 @@ const getAvailableExams = async (req, res) => {
       assignedTo: req.user._id
     })
       .populate('createdBy', 'firstName lastName')
-      .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering sectionBRequiredQuestions sectionCRequiredQuestions');
+      .populate('sections.questions')
+      .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
 
     // Add status to each exam
     const examsWithStatus = updatedExams.map(exam => {
       const examObj = exam.toObject();
+
+      // Calculate total questions from all sections
+      const totalQuestions = exam.sections?.reduce((sum, section) => {
+        return sum + (section.questions?.length || 0);
+      }, 0) || 0;
+      examObj.questions = totalQuestions;
+
+      // Debug logging
+      console.log(`Exam ${exam._id} (${exam.title}):`);
+      console.log(`  - Sections count: ${exam.sections?.length || 0}`);
+      console.log(`  - Total questions calculated: ${totalQuestions}`);
+      if (exam.sections && exam.sections.length > 0) {
+        exam.sections.forEach((section, idx) => {
+          console.log(`  - Section ${idx}: ${section.name}, questions: ${section.questions?.length || 0}`);
+        });
+      }
 
       // Add completion status
       if (completedExams.includes(exam._id.toString())) {
@@ -72,9 +90,6 @@ const getAvailableExams = async (req, res) => {
         examObj.availability = 'unknown';
       }
 
-      // Log selective answering info for debugging
-      console.log(`Exam ${exam._id} - allowSelectiveAnswering: ${exam.allowSelectiveAnswering}, sectionB: ${exam.sectionBRequiredQuestions}, sectionC: ${exam.sectionCRequiredQuestions}`);
-
       return examObj;
     });
 
@@ -82,11 +97,83 @@ const getAvailableExams = async (req, res) => {
     if (examsWithStatus.length > 0) {
       console.log('First exam fields:', Object.keys(examsWithStatus[0]));
       console.log('First exam selective answering:', examsWithStatus[0].allowSelectiveAnswering);
+      console.log('First exam questions count:', examsWithStatus[0].questions);
     }
 
     res.json(examsWithStatus);
   } catch (error) {
     console.error('Get available exams error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get specific exam by ID for student
+// @route   GET /api/student/exams/:examId
+// @access  Private/Student
+const getExamById = async (req, res) => {
+  try {
+    const exam = await Exam.findOne({
+      _id: req.params.examId,
+      assignedTo: req.user._id
+    })
+      .populate('createdBy', 'firstName lastName')
+      .populate('sections.questions')
+      .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found or not assigned to you' });
+    }
+
+    const examObj = exam.toObject();
+
+    // Calculate total questions from all sections
+    const totalQuestions = exam.sections?.reduce((sum, section) => {
+      return sum + (section.questions?.length || 0);
+    }, 0) || 0;
+    examObj.questions = totalQuestions;
+
+    // Get results for this student
+    const results = await Result.find({
+      student: req.user._id
+    }).select('exam isCompleted');
+
+    // Map results to exam IDs
+    const completedExams = results
+      .filter(result => result.isCompleted)
+      .map(result => result.exam.toString());
+
+    const inProgressExams = results
+      .filter(result => !result.isCompleted)
+      .map(result => result.exam.toString());
+
+    // Add completion status
+    if (completedExams.includes(exam._id.toString())) {
+      examObj.status = 'completed';
+    } else if (inProgressExams.includes(exam._id.toString())) {
+      examObj.status = 'in-progress';
+    } else {
+      examObj.status = 'not-started';
+    }
+
+    // Add availability status
+    const now = new Date();
+    if (exam.isLocked) {
+      examObj.availability = 'locked';
+    } else if (exam.startTime && exam.endTime) {
+      if (now < exam.startTime) {
+        examObj.availability = 'upcoming';
+      } else if (now >= exam.startTime && now <= exam.endTime) {
+        examObj.availability = 'available';
+      } else {
+        examObj.availability = 'expired';
+      }
+    } else {
+      examObj.availability = 'unknown';
+    }
+
+    res.json(examObj);
+  } catch (error) {
+    console.error('Get exam by ID error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -100,10 +187,41 @@ const getStudentResults = async (req, res) => {
       student: req.user._id,
       isCompleted: true
     })
-      .populate('exam', 'title description timeLimit')
+      .populate('exam', 'title description timeLimit passingScore sections')
       .select('-answers');
 
-    res.json(results);
+    // Add additional exam details to each result
+    const enrichedResults = results.map(result => {
+      const resultObj = result.toObject();
+      
+      // Calculate total questions from exam sections
+      const totalQuestions = result.exam.sections?.reduce((sum, section) => {
+        return sum + (section.questions?.length || 0);
+      }, 0) || 0;
+      
+      // Calculate percentage
+      const percentage = result.maxPossibleScore > 0 
+        ? Math.round((result.totalScore / result.maxPossibleScore) * 100) 
+        : 0;
+      
+      // Determine pass/fail
+      const passed = result.exam.passingScore 
+        ? percentage >= result.exam.passingScore 
+        : percentage >= 50; // Default 50% if no passing score set
+      
+      return {
+        ...resultObj,
+        exam: {
+          ...resultObj.exam,
+          totalQuestions,
+          passingScore: result.exam.passingScore || 50
+        },
+        percentage,
+        passed
+      };
+    });
+
+    res.json(enrichedResults);
   } catch (error) {
     console.error('Get student results error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -249,7 +367,8 @@ const getCurrentExamSession = async (req, res) => {
     }).populate('exam', 'title description timeLimit');
 
     if (!result) {
-      return res.status(404).json({ message: 'No active exam session found' });
+      // Return null instead of 404 to allow frontend to start a new session
+      return res.json(null);
     }
 
     // Calculate time remaining
@@ -534,6 +653,7 @@ const getScheduledExams = async (req, res) => {
 
 module.exports = {
   getAvailableExams,
+  getExamById,
   getStudentResults,
   getDetailedResult,
   getCurrentExamSession,

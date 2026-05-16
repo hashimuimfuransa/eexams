@@ -5,7 +5,7 @@ FROM node:20-alpine
 RUN apk add --no-cache python3 py3-pip
 
 # Install pdfplumber for Python PDF extraction
-RUN pip3 install pdfplumber
+RUN pip3 install --break-system-packages pdfplumber
 
 # Set working directory
 WORKDIR /app

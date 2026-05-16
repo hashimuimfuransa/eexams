@@ -71,6 +71,23 @@ const ExamSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Public publishing settings
+  isPubliclyListed: {
+    type: Boolean,
+    default: false
+  },
+  publicPrice: {
+    type: Number,
+    default: 0
+  },
+  publicDescription: {
+    type: String,
+    default: null
+  },
+  targetAudience: {
+    type: String,
+    default: null
+  },
   sections: [{
     name: {
       type: String,

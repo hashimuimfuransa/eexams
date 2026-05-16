@@ -3,6 +3,9 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const { isAdminOrTeacher } = require('../middleware/role');
 const {
+  getMyStudents,
+  deleteMyStudent,
+  deleteAllMyStudents,
   createStudentList,
   getStudentLists,
   getStudentList,
@@ -15,6 +18,11 @@ const {
 
 // Apply auth and teacher middleware to all routes
 router.use(auth, isAdminOrTeacher);
+
+// Get students created by teacher (from User collection)
+router.get('/my-students', getMyStudents);
+router.delete('/my-students/:studentId', deleteMyStudent);
+router.delete('/my-students', deleteAllMyStudents);
 
 // Student list CRUD routes
 router.post('/', createStudentList);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { useThemeMode } from './context/ThemeContext';
+import Nav from './components/Nav';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const tokens = {
@@ -68,162 +69,6 @@ function Reveal({ children, delay = 0, style = {} }) {
     }}>
       {children}
     </div>
-  );
-}
-
-// ─── Nav ──────────────────────────────────────────────────────────────────────
-function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout }) {
-  const [open, setOpen] = useState(false);
-  const isDark = mode === 'dark';
-
-  const scrollTo = (id) => {
-    setOpen(false);
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const navLinks = [
-    { id: 'features', label: 'Features' },
-    { id: 'how-it-works', label: 'How it works' },
-    { id: 'faq', label: 'FAQ' },
-    { id: 'contact', label: 'Contact' },
-  ];
-
-  const navBg = isDark
-    ? `rgba(6,11,24,${scrolled ? 0.98 : 0.7})`
-    : `rgba(255,255,255,${scrolled ? 0.98 : 0.85})`;
-
-  return (
-    <>
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        backdropFilter: 'blur(20px)',
-        background: navBg,
-        borderBottom: `1px solid ${isDark ? 'rgba(30,41,59,0.8)' : 'rgba(226,232,240,0.8)'}`,
-        transition: 'background 0.3s ease, box-shadow 0.3s ease',
-        boxShadow: scrolled ? (isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(15,23,42,0.08)') : 'none',
-      }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px', height: 'auto', minHeight: 68, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
-          {/* Logo */}
-          <button onClick={() => scrollTo('home')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0, flexShrink: 0 }}>
-            <img src="/logo.png" alt="eexams" style={{ width: 'clamp(50px, 8vw, 70px)', height: 'clamp(50px, 8vw, 70px)', borderRadius: 12, objectFit: 'cover', backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent', padding: isDark ? '4px' : '0', boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.1)' }} />
-          </button>
-
-          {/* Desktop links */}
-          <div style={{ flex: 1, display: 'none', alignItems: 'center', gap: 4 }} className="desktop-nav-links">
-            {navLinks.map(l => (
-              <button key={l.id} onClick={() => scrollTo(l.id)} style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: '6px 14px', borderRadius: 8,
-                fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
-                color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-                transition: 'color 0.2s, background 0.2s',
-              }}
-                onMouseEnter={e => { e.target.style.color = tokens.accent; e.target.style.background = tokens.accentGlow; }}
-                onMouseLeave={e => { e.target.style.color = isDark ? tokens.dark.textSecondary : tokens.textSecondary; e.target.style.background = 'none'; }}
-              >{l.label}</button>
-            ))}
-          </div>
-
-          {/* Right side */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {/* Theme toggle */}
-            <button onClick={toggleMode} style={{
-              width: 'clamp(36px, 8vw, 38px)', height: 'clamp(36px, 8vw, 38px)', borderRadius: 10, border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-              background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-              transition: 'all 0.2s', flexShrink: 0,
-            }}>
-              {isDark
-                ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              }
-            </button>
-
-            {isAuthenticated ? (
-              <>
-                <RouterLink to="/dashboard" style={{
-                  padding: '8px 16px', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(12px, 2vw, 14px)',
-                  border: `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                  color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
-                  textDecoration: 'none', transition: 'all 0.2s',
-                  background: isDark ? tokens.dark.surfaceAlt : 'transparent',
-                  display: 'none',
-                }} className="desktop-auth">Dashboard</RouterLink>
-                <button onClick={handleLogout} style={{
-                  padding: '8px 16px', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(12px, 2vw, 14px)',
-                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                  color: 'white', border: 'none', cursor: 'pointer', display: 'none',
-                }} className="desktop-auth">Logout</button>
-              </>
-            ) : (
-              <>
-                <RouterLink to="/login" style={{
-                  padding: '8px 16px', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(12px, 2vw, 14px)',
-                  border: `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                  color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
-                  textDecoration: 'none', background: isDark ? tokens.dark.surfaceAlt : 'transparent',
-                  display: 'none',
-                }} className="desktop-auth">Log in</RouterLink>
-                <RouterLink to="/register" style={{
-                  padding: '8px 16px', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(12px, 2vw, 14px)',
-                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                  color: 'white', textDecoration: 'none',
-                  boxShadow: '0 4px 14px rgba(12,189,115,0.35)',
-                  display: 'none',
-                }} className="desktop-auth">Get started</RouterLink>
-              </>
-            )}
-
-            {/* Mobile hamburger */}
-            <button onClick={() => setOpen(o => !o)} style={{
-              display: 'none', width: 'clamp(36px, 8vw, 38px)', height: 'clamp(36px, 8vw, 38px)', borderRadius: 10,
-              border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-              background: 'none', cursor: 'pointer',
-              alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }} className="mobile-menu-btn">
-              {open
-                ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#94A3B8' : '#64748B'} strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#94A3B8' : '#64748B'} strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-              }
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      {/* Mobile menu overlay */}
-      {open && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 99,
-          background: isDark ? 'rgba(6,11,24,0.98)' : 'rgba(255,255,255,0.98)',
-          paddingTop: 'clamp(60px, 15vw, 80px)', display: 'flex', flexDirection: 'column', gap: 4, padding: `clamp(60px, 15vw, 80px) 16px 24px`, overflowY: 'auto',
-        }}>
-          {navLinks.map(l => (
-            <button key={l.id} onClick={() => scrollTo(l.id)} style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '14px 16px', borderRadius: 12, textAlign: 'left',
-              fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(16px, 4vw, 18px)',
-              color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
-            }}>{l.label}</button>
-          ))}
-          <div style={{ height: 1, background: isDark ? tokens.dark.border : tokens.surfaceBorder, margin: '12px 0' }} />
-          {isAuthenticated ? (
-            <>
-              <RouterLink to="/dashboard" onClick={() => setOpen(false)} style={{ padding: '14px 16px', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(16px, 4vw, 18px)', color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, textDecoration: 'none', display: 'block' }}>Dashboard</RouterLink>
-              <button onClick={handleLogout} style={{ padding: '14px 16px', borderRadius: 12, background: tokens.accent, color: 'white', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(16px, 4vw, 18px)', textAlign: 'left', width: '100%' }}>
-                Logout
-              </button>
-            </>
-          ) : (
-            <>
-              <RouterLink to="/login" onClick={() => setOpen(false)} style={{ padding: '14px 16px', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(16px, 4vw, 18px)', color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, textDecoration: 'none', display: 'block' }}>Log in</RouterLink>
-              <RouterLink to="/register" onClick={() => setOpen(false)} style={{ padding: '14px 16px', borderRadius: 12, background: tokens.accent, color: 'white', textDecoration: 'none', display: 'block', fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(16px, 4vw, 18px)' }}>Get started free</RouterLink>
-            </>
-          )}
-        </div>
-      )}
-    </>
   );
 }
 
@@ -312,18 +157,39 @@ function Hero({ mode, isAuthenticated, user }) {
 
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', animation: 'fadeInUp 0.6s 0.3s ease both', marginBottom: 'clamp(32px, 8vw, 52px)' }} className="hero-buttons">
               {isAuthenticated ? (
-                <RouterLink to="/dashboard" style={{
-                  padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
-                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                  color: 'white', textDecoration: 'none',
-                  boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
-                  display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                }}>
-                  Go to Dashboard
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </RouterLink>
+                <>
+                  <RouterLink to="/dashboard" style={{
+                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
+                    background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                    color: 'white', textDecoration: 'none',
+                    boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+                    display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+                  }}>
+                    Go to Dashboard
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                  </RouterLink>
+                  <RouterLink to="/marketplace" style={{
+                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    border: `1.5px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                    color: isDark ? '#94A3B8' : '#64748B',
+                    background: isDark ? tokens.dark.surfaceAlt : 'transparent',
+                    textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}>
+                    Browse Marketplace
+                  </RouterLink>
+                </>
               ) : (
                 <>
+                  <RouterLink to="/marketplace" style={{
+                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
+                    background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                    color: 'white', textDecoration: 'none',
+                    boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+                    display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+                  }}>
+                    Browse Marketplace
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 3h18v18H3zM9 9h6M9 12h6M9 15h6"/></svg>
+                  </RouterLink>
                   <RouterLink to="/register" style={{
                     padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
                     background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
@@ -334,12 +200,6 @@ function Hero({ mode, isAuthenticated, user }) {
                     Start for free
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </RouterLink>
-                  <button onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })} style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
-                    border: `1.5px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
-                    color: isDark ? '#94A3B8' : '#64748B',
-                    background: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}>See how it works</button>
                 </>
               )}
             </div>
@@ -534,6 +394,157 @@ function DashboardMockup({ isDark }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Marketplace Showcase ─────────────────────────────────────────────────────
+function MarketplaceShowcase({ mode }) {
+  const isDark = mode === 'dark';
+  const bg = isDark ? '#030712' : '#FFFFFF';
+  const cardBg = isDark ? '#111827' : '#FFFFFF';
+  const border = isDark ? '#1E293B' : '#E2E8F0';
+  const text = isDark ? '#94A3B8' : '#0F172A';
+  
+  const [exams, setExams] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMarketplaceExams();
+  }, []);
+
+  const fetchMarketplaceExams = async () => {
+    try {
+      const response = await fetch('/api/marketplace/exams');
+      const data = await response.json();
+      setExams(data.slice(0, 6)); // Show only first 6 exams
+    } catch (err) {
+      console.error('Error fetching marketplace exams:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateTotalQuestions = (sections) => {
+    return sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
+  };
+
+  if (loading) {
+    return null;
+  }
+
+  if (exams.length === 0) {
+    return null;
+  }
+
+  return (
+    <section style={{ padding: 'clamp(60px, 12vw, 100px) 0', background: bg }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
+        <Reveal>
+          <div style={{ textAlign: 'center', marginBottom: 64 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`, marginBottom: 20 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Marketplace</span>
+            </div>
+            <h2 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 800, fontSize: 'clamp(2rem, 4vw, 3rem)', letterSpacing: '-0.03em', color: text, marginBottom: 16 }}>
+              Browse Public Exams
+            </h2>
+            <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 18, color: isDark ? '#94A3B8' : '#64748B', maxWidth: 560, margin: '0 auto', lineHeight: 1.7 }}>
+              Discover exams shared by teachers across Rwanda. Request access and start learning today.
+            </p>
+          </div>
+        </Reveal>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 28, marginBottom: 48 }}>
+          {exams.map((exam, i) => (
+            <Reveal key={exam._id} delay={i * 80}>
+              <div style={{
+                padding: 28, borderRadius: 24,
+                background: cardBg,
+                border: `1px solid ${border}`,
+                transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                cursor: 'pointer',
+              }}
+                onClick={() => window.location.href = `/marketplace/exams/${exam._id}/request`}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-6px)';
+                  e.currentTarget.style.boxShadow = isDark ? '0 24px 48px rgba(0,0,0,0.4)' : '0 24px 48px rgba(15,23,42,0.12)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                {/* Header with badge */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                  <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 100, background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)', color: 'white', fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.04em' }}>
+                    Public Exam
+                  </div>
+                  {exam.targetAudience && (
+                    <div style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 8, background: isDark ? 'rgba(13,71,161,0.2)' : 'rgba(13,71,161,0.1)', color: '#0D406C', fontFamily: 'DM Sans, sans-serif' }}>
+                      {exam.targetAudience}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Title */}
+                <h3 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, fontSize: 20, color: text, marginBottom: 12, lineHeight: 1.3 }}>
+                  {exam.title}
+                </h3>
+                
+                {/* Description */}
+                <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, lineHeight: 1.6, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 20, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {exam.publicDescription || exam.description}
+                </p>
+                
+                {/* Stats */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20, padding: '16px', borderRadius: 12, background: isDark ? 'rgba(30,41,59,0.5)' : 'rgba(241,245,249,0.8)' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: '#0D406C', lineHeight: 1, marginBottom: 4 }}>
+                      {calculateTotalQuestions(exam.sections)}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Questions
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: '#0CBD73', lineHeight: 1, marginBottom: 4 }}>
+                      {exam.timeLimit}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Minutes
+                    </div>
+                  </div>
+                </div>
+
+                {/* Price if applicable */}
+                {exam.publicPrice > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(245,158,11,0.1)' : 'rgba(245,158,11,0.08)', border: `1px solid ${isDark ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.2)'}` }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B' }}>Price</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#F59E0B' }}>
+                    RWF {exam.publicPrice.toLocaleString()}
+                  </span>
+                </div>
+                )}
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        <Reveal>
+          <div style={{ textAlign: 'center' }}>
+            <RouterLink to="/marketplace" style={{
+              padding: '14px 32px', borderRadius: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 700, fontSize: 16,
+              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+              color: 'white', textDecoration: 'none',
+              boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+            }}>
+              View All Exams
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </RouterLink>
+          </div>
+        </Reveal>
+      </div>
+    </section>
   );
 }
 
@@ -1068,9 +1079,11 @@ function App() {
         isAuthenticated={isAuthenticated}
         user={user}
         handleLogout={handleLogout}
+        currentRoute="/"
       />
       <main>
         <Hero mode={mode} isAuthenticated={isAuthenticated} user={user} />
+        <MarketplaceShowcase mode={mode} />
         <Features mode={mode} />
         <HowItWorks mode={mode} />
         <CTABanner mode={mode} />

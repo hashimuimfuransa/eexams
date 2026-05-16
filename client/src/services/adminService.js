@@ -382,6 +382,28 @@ export const bulkRegradeResults = async (resultIds, method = 'comprehensive', fo
   }
 };
 
+// Reset student exam for retake
+export const resetStudentExam = async (shareToken, studentId) => {
+  try {
+    const response = await api.post(`/share/${shareToken}/unlock/${studentId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error resetting student exam:', error);
+    throw error;
+  }
+};
+
+// Reset share link expiration
+export const resetShareExpiration = async (shareId, newExpiresAt = null) => {
+  try {
+    const response = await api.post(`/share/${shareId}/reset-expiration`, { newExpiresAt });
+    return response.data;
+  } catch (error) {
+    console.error('Error resetting share expiration:', error);
+    throw error;
+  }
+};
+
 // Default export with all functions
 const adminService = {
   getDashboardStats,
@@ -413,6 +435,8 @@ const adminService = {
   getExamLeaderboard,
   getOverallLeaderboard,
   bulkRegradeResults,
+  resetStudentExam,
+  resetShareExpiration,
   // Teacher management
   getAllTeachers,
   createTeacher,

@@ -17,17 +17,21 @@ import {
   TableHead,
   TableRow,
   CircularProgress,
-  Alert
+  Alert,
+  Snackbar
 } from '@mui/material';
 import { CheckCircle, Cancel, Home } from '@mui/icons-material';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const ExamResult = () => {
   const { resultId } = useParams();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [logoutWarning, setLogoutWarning] = useState(false);
 
   useEffect(() => {
     const fetchResult = async () => {
@@ -35,6 +39,17 @@ const ExamResult = () => {
         const response = await api.get(`/results/${resultId}`);
         setResult(response.data);
         setLoading(false);
+
+        // Auto-logout after viewing results (for security)
+        if (user && user.role === 'student') {
+          setLogoutWarning(true);
+          const logoutTimer = setTimeout(() => {
+            logout();
+            navigate('/');
+          }, 10000); // 10 seconds to view results
+
+          return () => clearTimeout(logoutTimer);
+        }
       } catch (err) {
         console.error('Error loading result:', err);
         setError('Failed to load exam result');
@@ -43,7 +58,7 @@ const ExamResult = () => {
     };
 
     fetchResult();
-  }, [resultId]);
+  }, [resultId, user, logout, navigate]);
 
   if (loading) {
     return (
@@ -78,6 +93,16 @@ const ExamResult = () => {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F9', py: 4 }}>
+      <Snackbar
+        open={logoutWarning}
+        autoHideDuration={10000}
+        onClose={() => setLogoutWarning(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="info">
+          You will be automatically logged out in 10 seconds for security.
+        </Alert>
+      </Snackbar>
       <Container maxWidth="lg">
         {/* Score Card */}
         <Paper sx={{ p: 4, mb: 4, bgcolor: 'white', textAlign: 'center' }}>

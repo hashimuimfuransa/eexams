@@ -23,7 +23,8 @@ import {
   ListItemIcon,
   Tooltip,
   LinearProgress,
-  useTheme
+  useTheme,
+  Snackbar
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import {
@@ -45,15 +46,18 @@ import {
 } from '@mui/icons-material';
 import api from '../../utils/api';
 import { formatDate } from '../../utils/formatters';
+import { useAuth } from '../../context/AuthContext';
 
 const ExamResult = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const theme = useTheme();
+  const { user, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [exam, setExam] = useState(null);
+  const [logoutWarning, setLogoutWarning] = useState(false);
 
   // Function to determine color based on score percentage
   const getScoreColor = (scoreRatio) => {
@@ -73,6 +77,17 @@ const ExamResult = () => {
         setResult(response.data.result);
         setExam(response.data.exam);
         setLoading(false);
+
+        // Auto-logout after viewing results (for security)
+        if (user && user.role === 'student') {
+          setLogoutWarning(true);
+          const logoutTimer = setTimeout(() => {
+            logout();
+            navigate('/');
+          }, 10000); // 10 seconds to view results
+
+          return () => clearTimeout(logoutTimer);
+        }
       } catch (err) {
         console.error('Error fetching exam result:', err);
         setError('Failed to load exam results. Please try again later.');
@@ -81,7 +96,7 @@ const ExamResult = () => {
     };
 
     fetchResult();
-  }, [id]);
+  }, [id, user, logout, navigate]);
 
   if (loading) {
     return (
@@ -97,6 +112,16 @@ const ExamResult = () => {
   if (error) {
     return (
       <Container maxWidth="md" sx={{ mt: 8 }}>
+        <Snackbar
+          open={logoutWarning}
+          autoHideDuration={10000}
+          onClose={() => setLogoutWarning(false)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert severity="info">
+            You will be automatically logged out in 10 seconds for security.
+          </Alert>
+        </Snackbar>
         <Paper elevation={3} sx={{ p: 4, textAlign: 'center', borderRadius: 0 }}>
           <Typography variant="h5" component="h1" fontWeight="bold" gutterBottom color="error.main">
             Error
@@ -157,6 +182,16 @@ const ExamResult = () => {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>
+      <Snackbar
+        open={logoutWarning}
+        autoHideDuration={10000}
+        onClose={() => setLogoutWarning(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="info">
+          You will be automatically logged out in 10 seconds for security.
+        </Alert>
+      </Snackbar>
       {/* Result Summary */}
       <Paper elevation={3} sx={{ p: 4, mb: 4, borderRadius: 0, position: 'relative', overflow: 'hidden' }}>
         <Box

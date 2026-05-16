@@ -3,7 +3,16 @@ const SharedExam = require('../models/SharedExam');
 const Result = require('../models/Result');
 const User = require('../models/User');
 const ActivityLog = require('../models/ActivityLog');
+const jwt = require('jsonwebtoken');
+
+// Generate JWT token
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: '30d'
+  });
+};
 const StudentList = require('../models/StudentList');
+const ExamRequest = require('../models/ExamRequest');
 
 // @desc    Create a share link for an exam
 // @route   POST /api/share/exam/:examId
@@ -244,7 +253,13 @@ const getSharedExam = async (req, res) => {
       return res.status(403).json({ message: 'This share link has expired' });
     }
 
+    // Check if full, but allow if students have been removed
     if (sharedExam.isFull()) {
+      console.log('Share is full:', {
+        studentsLength: sharedExam.students.length,
+        maxStudents: sharedExam.settings.maxStudents,
+        students: sharedExam.students
+      });
       return res.status(403).json({ message: 'Maximum number of students reached' });
     }
 
@@ -343,7 +358,12 @@ const getSharedExam = async (req, res) => {
 const verifySharePassword = async (req, res) => {
   try {
     const { shareToken } = req.params;
-    const { password } = req.body;
+    let { email, name, password, inviteToken, isPrivate } = req.body;
+
+    console.log('Join request received:');
+    console.log('  isPrivate from request:', isPrivate);
+    console.log('  email:', email);
+    console.log('  name:', name);
 
     const sharedExam = await SharedExam.findOne({ shareToken });
 
@@ -375,10 +395,14 @@ const joinSharedExam = async (req, res) => {
     const { shareToken } = req.params;
     let { email, name, password, inviteToken, isPrivate } = req.body;
 
+    console.log('Join request - isPrivate from body:', isPrivate);
+    console.log('Join request - email:', email);
+    console.log('Join request - name:', name);
+
     const sharedExam = await SharedExam.findOne({ shareToken })
       .populate({
         path: 'exam',
-        select: 'title description timeLimit totalPoints passingScore questions sections',
+        select: 'title description timeLimit totalPoints passingScore questions sections assignedTo',
         populate: {
           path: 'sections.questions',
           model: 'Question'
@@ -437,12 +461,19 @@ const joinSharedExam = async (req, res) => {
       return res.status(401).json({ message: 'Incorrect password' });
     }
 
-    // Check if email-based access is required
-    if (sharedExam.shareType === 'email' && !inviteToken) {
-      return res.status(403).json({ message: 'This exam requires an email invitation' });
+    // Email invitation check removed - allow all users to join shared exams
+
+    // Check if full, but allow if students have been removed
+    if (sharedExam.isFull()) {
+      console.log('Join: Share is full:', {
+        studentsLength: sharedExam.students.length,
+        maxStudents: sharedExam.settings.maxStudents,
+        students: sharedExam.students
+      });
+      return res.status(403).json({ message: 'Maximum number of students reached' });
     }
 
-    // Validate invite token if provided
+    // Check password if required
     if (inviteToken) {
       const invitedEmail = sharedExam.invitedEmails.find(
         inv => inv.inviteToken === inviteToken
@@ -456,16 +487,18 @@ const joinSharedExam = async (req, res) => {
       }
     }
 
-    // For private mode, email and name are required
-    if (isPrivate && (!email || !name)) {
-      return res.status(400).json({ message: 'Email and name are required for private exam access' });
-    }
-
-    // For public links without email/name, generate temporary ones
+    // For public links without email/name, generate temporary ones and treat as guest access
     if (!email || !name) {
       const tempId = Math.random().toString(36).substring(2, 11);
       email = `student-${tempId}@exam.local`;
       name = `Student ${tempId}`;
+      isPrivate = false; // Override to false for guest access
+      console.log('Guest access detected, generated temp email:', email);
+    }
+
+    // For private mode with email/name provided, validate they are not empty
+    if (isPrivate && (!email || !name)) {
+      return res.status(400).json({ message: 'Email and name are required for private exam access' });
     }
 
     // Normalize email
@@ -502,6 +535,17 @@ const joinSharedExam = async (req, res) => {
           hasCompleted: true,
           resultId: existingStudent.result
         });
+      }
+
+      // For private mode, always allow rejoining regardless of completion status
+      // (teacher can reset students to allow retakes)
+      if (isPrivate) {
+        console.log('Private mode: allowing student to rejoin exam');
+        // Reset completion status for private mode joins
+        existingStudent.hasCompleted = false;
+        existingStudent.result = null;
+        existingStudent.completedAt = null;
+        await sharedExam.save();
       }
 
       // Check if exam is locked for this student
@@ -555,32 +599,44 @@ const joinSharedExam = async (req, res) => {
         isNew: false,
         studentId: existingStudent._id,
         exam: {
+          _id: sharedExam.exam._id,
           ...sharedExam.exam,
           sections: sanitizedSections
         },
-        settings: sharedExam.settings
+        settings: sharedExam.settings,
+        token: null,
+        user: null
       });
     }
 
     // Create new student user if doesn't exist
     let studentUser = await User.findOne({ email });
+    let isNewUser = false;
+    let tempPassword = null;
 
     if (!studentUser) {
       // Create a temporary student account
-      const randomPassword = Math.random().toString(36).slice(-8);
+      tempPassword = Math.random().toString(36).slice(-8);
       const nameParts = name.split(' ');
       const firstName = nameParts[0] || 'Student';
       const lastName = nameParts.slice(1).join(' ') || 'User';
       
       studentUser = await User.create({
         email: email.toLowerCase().trim(),
-        password: randomPassword,
+        password: tempPassword,
         firstName,
         lastName,
         role: 'student',
         userType: 'individual',
         createdBy: sharedExam.sharedBy
       });
+      isNewUser = true;
+    } else {
+      // For existing users, retrieve their password if it's a temporary account
+      // This is for guest users who are rejoining
+      if (!isPrivate) {
+        tempPassword = studentUser.password;
+      }
     }
 
     // Add student to share
@@ -654,16 +710,79 @@ const joinSharedExam = async (req, res) => {
       })
     }));
 
+    // Generate token for guest users (public access without authentication)
+    let token = null;
+    if (!isPrivate) {
+      token = generateToken(studentUser._id);
+    }
+
+    // Create exam session (Result) for the student so ExamInterface can load it
+    const Result = require('../models/Result');
+    let resultId = null;
+
+    try {
+      // Check if there's an existing incomplete result for this student and exam
+      const existingResult = await Result.findOne({
+        student: studentUser._id,
+        exam: sharedExam.exam._id,
+        isCompleted: false
+      });
+
+      if (!existingResult) {
+        // Calculate max possible score
+        const maxPossibleScore = sharedExam.exam.sections?.reduce((total, section) => {
+          const sectionQuestions = section.questions || [];
+          return total + sectionQuestions.reduce((sectionTotal, q) => sectionTotal + (q.points || 1), 0);
+        }, 0) || 0;
+
+        // Create new result
+        const result = await Result.create({
+          student: studentUser._id,
+          exam: sharedExam.exam._id,
+          startTime: Date.now(),
+          maxPossibleScore,
+          answers: [],
+          isCompleted: false
+        });
+        resultId = result._id;
+
+        // Store resultId in shared exam students
+        const studentIndex = sharedExam.students.findIndex(s => 
+          s.studentId && s.studentId.toString() === studentUser._id.toString()
+        );
+        if (studentIndex !== -1) {
+          sharedExam.students[studentIndex].result = resultId;
+        }
+        await sharedExam.save();
+
+        console.log('Created exam session (Result) for student:', resultId);
+      } else {
+        resultId = existingResult._id;
+        console.log('Using existing exam session (Result):', resultId);
+      }
+    } catch (resultError) {
+      console.error('Error creating exam session:', resultError);
+      // Continue without result - frontend will handle error
+    }
+
     res.status(201).json({
       success: true,
       message: 'Successfully joined the exam',
       isNew: true,
       studentId: studentUser._id,
+      resultId: resultId, // Include resultId for ExamInterface
       exam: {
+        _id: sharedExam.exam._id,
         ...sharedExam.exam,
         sections: sanitizedSections
       },
-      settings: sharedExam.settings
+      settings: sharedExam.settings,
+      token: token,
+      user: token ? {
+        email: studentUser.email,
+        tempPassword: tempPassword,
+        _id: studentUser._id
+      } : null
     });
 
   } catch (error) {
@@ -839,6 +958,42 @@ const getShareStats = async (req, res) => {
   }
 };
 
+// @desc    Get all shared exams for a teacher (including orphaned ones)
+// @route   GET /api/share/all
+// @access  Private (Teacher)
+const getAllSharedExams = async (req, res) => {
+  try {
+    const sharedExams = await SharedExam.find({ sharedBy: req.user._id })
+      .populate('exam', 'title')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      sharedExams: sharedExams.map(se => ({
+        _id: se._id,
+        shareToken: se.shareToken,
+        shareType: se.shareType,
+        examTitle: se.examTitle || (se.exam?.title || 'Unknown'),
+        isExamDeleted: se.isExamDeleted,
+        examDeletedAt: se.examDeletedAt,
+        studentsCount: se.students.length,
+        students: se.students.map(s => ({
+          _id: s._id,
+          name: s.name,
+          email: s.email,
+          hasCompleted: s.hasCompleted,
+          firstAccessedAt: s.firstAccessedAt
+        })),
+        createdAt: se.createdAt,
+        isActive: se.isActive
+      }))
+    });
+  } catch (error) {
+    console.error('Get all shared exams error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Submit shared exam answers
 // @route   POST /api/share/:shareToken/submit
 // @access  Public
@@ -850,6 +1005,8 @@ const submitSharedExam = async (req, res) => {
     console.log('Submit exam - shareToken:', shareToken);
     console.log('Submit exam - studentId:', studentId);
     console.log('Submit exam - answers:', Object.keys(answers).length);
+    console.log('Submit exam - answer keys:', Object.keys(answers));
+    console.log('Submit exam - sample answer:', Object.values(answers)[0]);
 
     const sharedExam = await SharedExam.findOne({ shareToken })
       .populate('students.student', 'email firstName lastName')
@@ -936,18 +1093,33 @@ const submitSharedExam = async (req, res) => {
       totalPoints += points;
 
       const studentAnswer = answers[question._id];
+      
+      console.log(`Processing question ${question._id}, studentAnswer:`, studentAnswer);
+      
+      // Handle answer object format from frontend
+      let actualAnswer = studentAnswer;
+      if (studentAnswer && typeof studentAnswer === 'object') {
+        // Frontend sends answer objects with selectedOption/textAnswer fields
+        actualAnswer = studentAnswer.selectedOption || studentAnswer.textAnswer || studentAnswer;
+        console.log(`Extracted actualAnswer from object:`, actualAnswer);
+      }
+      
       const answerObj = {
-        question: question._id,
-        questionData: { ...question, section: question.section || 'A' } // Include section info
+        question: question._id
       };
 
       // Prepare answer object based on question type
       if (question.type === 'multiple-choice' || question.type === 'true-false') {
-        answerObj.selectedOption = studentAnswer || 'Not answered';
+        answerObj.selectedOption = actualAnswer || 'Not answered';
+        answerObj.selectedOptionLetter = typeof actualAnswer === 'string' ? actualAnswer.match(/^[A-D]/i)?.[0]?.toUpperCase() || null : null;
         answerObj.correctedAnswer = question.correctAnswer;
-      } else if (question.type === 'open-ended' || question.type === 'fill-in-blank') {
-        answerObj.textAnswer = studentAnswer || 'Not answered';
+      } else if (question.type === 'open-ended' || question.type === 'fill-in-blank' || question.type === 'short-answer') {
+        answerObj.textAnswer = actualAnswer || 'Not answered';
         answerObj.correctedAnswer = question.correctAnswer;
+      } else if (question.type === 'matching') {
+        answerObj.matchingAnswers = actualAnswer || [];
+      } else if (question.type === 'ordering') {
+        answerObj.orderingAnswer = actualAnswer || [];
       }
 
       // Use enhanced grading for all question types
@@ -1030,6 +1202,14 @@ const submitSharedExam = async (req, res) => {
     studentData.isLocked = true; // Lock exam after completion to prevent retaking
     await sharedExam.save();
 
+    // Mark the access code as used if this exam was accessed via marketplace access code
+    const examRequest = await ExamRequest.findOne({ shareToken, status: 'approved' });
+    if (examRequest && !examRequest.accessCodeUsed) {
+      examRequest.accessCodeUsed = true;
+      await examRequest.save();
+      console.log('Access code marked as used for request:', examRequest._id);
+    }
+
     // Increment completed count
     sharedExam.incrementCompleted();
     await sharedExam.save();
@@ -1038,8 +1218,9 @@ const submitSharedExam = async (req, res) => {
       success: true,
       message: 'Exam submitted successfully',
       resultId: result._id,
+      totalScore: earnedPoints,  // Frontend expects this as earned points
+      maxPossibleScore: totalPoints,  // Frontend expects this as max possible
       score: earnedPoints,
-      totalScore: totalPoints,
       percentage: Math.round(percentage),
       isPassed
     });
@@ -1063,8 +1244,13 @@ const unlockStudentExam = async (req, res) => {
       return res.status(404).json({ message: 'Share link not found' });
     }
 
-    // Check if the user is the teacher who shared the exam
-    if (sharedExam.sharedBy.toString() !== req.user._id.toString()) {
+    // Check if the user is the teacher who shared the exam OR their admin
+    const isAuthorized = sharedExam.sharedBy.toString() === req.user._id.toString() ||
+      (req.user.role === 'admin' && sharedExam.sharedBy.toString() === req.user._id.toString()) ||
+      (req.user.role === 'admin' && req.user._id.toString() === req.orgAdminId?.toString()) ||
+      (req.user.role === 'teacher' && req.user.parentAdmin && sharedExam.sharedBy.toString() === req.user.parentAdmin.toString());
+
+    if (!isAuthorized) {
       return res.status(403).json({ message: 'Not authorized to unlock this exam' });
     }
 
@@ -1088,6 +1274,113 @@ const unlockStudentExam = async (req, res) => {
   }
 };
 
+// @desc    Reset expired share link (extend expiration)
+// @route   POST /api/share/:shareId/reset-expiration
+// @access  Private (Teacher)
+const resetShareExpiration = async (req, res) => {
+  try {
+    const { shareId } = req.params;
+    const { newExpiresAt } = req.body;
+
+    const sharedExam = await SharedExam.findById(shareId);
+
+    if (!sharedExam) {
+      return res.status(404).json({ message: 'Share not found' });
+    }
+
+    // Check ownership
+    if (sharedExam.sharedBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    // If newExpiresAt is provided, use it; otherwise extend by 7 days from now
+    if (newExpiresAt) {
+      sharedExam.settings.expiresAt = new Date(newExpiresAt);
+    } else {
+      const extendedDate = new Date();
+      extendedDate.setDate(extendedDate.getDate() + 7);
+      sharedExam.settings.expiresAt = extendedDate;
+    }
+
+    // Ensure the share is active
+    sharedExam.isActive = true;
+
+    await sharedExam.save();
+
+    // Generate share URL
+    const shareUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/exam/${sharedExam.shareToken}`;
+
+    res.json({
+      success: true,
+      message: 'Share link expiration reset successfully',
+      shareData: {
+        shareId: sharedExam._id,
+        shareToken: sharedExam.shareToken,
+        shareUrl,
+        expiresAt: sharedExam.settings.expiresAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Reset share expiration error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Remove a student from a shared exam
+// @route   DELETE /api/share/:shareToken/students/:studentId
+// @access  Private (Teacher)
+const removeStudentFromShare = async (req, res) => {
+  try {
+    const { shareToken, studentId } = req.params;
+
+    const sharedExam = await SharedExam.findOne({ shareToken });
+
+    if (!sharedExam) {
+      return res.status(404).json({ message: 'Share link not found' });
+    }
+
+    // Check ownership or admin permission
+    const isAuthorized = sharedExam.sharedBy.toString() === req.user._id.toString() ||
+      (req.user.role === 'admin' && sharedExam.sharedBy.toString() === req.user._id.toString()) ||
+      (req.user.role === 'admin' && req.user._id.toString() === req.orgAdminId?.toString()) ||
+      (req.user.role === 'teacher' && req.user.parentAdmin && sharedExam.sharedBy.toString() === req.user.parentAdmin.toString());
+
+    if (!isAuthorized) {
+      return res.status(403).json({ message: 'Not authorized to remove students from this exam' });
+    }
+
+    // Remove the student
+    const removed = sharedExam.removeStudent(studentId);
+
+    if (!removed) {
+      return res.status(404).json({ message: 'Student not found in this exam' });
+    }
+
+    await sharedExam.save();
+
+    // Log activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'remove_student_from_share',
+      details: {
+        sharedExamId: sharedExam._id,
+        studentId: studentId,
+        shareToken: shareToken
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Student removed successfully'
+    });
+
+  } catch (error) {
+    console.error('Remove student from share error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   createShare,
   getExamShares,
@@ -1099,5 +1392,8 @@ module.exports = {
   updateShare,
   deleteShare,
   getMyShares,
-  getShareStats
+  getShareStats,
+  resetShareExpiration,
+  removeStudentFromShare,
+  getAllSharedExams
 };

@@ -1,6 +1,81 @@
 const StudentList = require('../models/StudentList');
 const User = require('../models/User');
 
+// @desc    Get students created by the teacher (from User collection)
+// @route   GET /api/student-lists/my-students
+// @access  Private (Teacher)
+const getMyStudents = async (req, res) => {
+  try {
+    const students = await User.find({
+      role: 'student',
+      createdBy: req.user._id
+    }).select('-password').sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      students
+    });
+  } catch (error) {
+    console.error('Get my students error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Delete a student user created by the teacher
+// @route   DELETE /api/student-lists/my-students/:studentId
+// @access  Private (Teacher)
+const deleteMyStudent = async (req, res) => {
+  try {
+    const student = await User.findOne({
+      _id: req.params.studentId,
+      role: 'student'
+    });
+
+    if (!student) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Check if the teacher created this student or is an admin
+    const isOwner = student.createdBy && student.createdBy.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ message: 'You do not have permission to delete this student' });
+    }
+
+    await student.deleteOne();
+
+    res.json({
+      success: true,
+      message: 'Student deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete student error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Delete all students created by the teacher
+// @route   DELETE /api/student-lists/my-students
+// @access  Private (Teacher)
+const deleteAllMyStudents = async (req, res) => {
+  try {
+    const result = await User.deleteMany({
+      role: 'student',
+      createdBy: req.user._id
+    });
+
+    res.json({
+      success: true,
+      message: `${result.deletedCount} students deleted successfully`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Delete all students error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Create a new student list
 // @route   POST /api/student-lists
 // @access  Private (Teacher)
@@ -291,6 +366,9 @@ const sortStudentList = async (req, res) => {
 };
 
 module.exports = {
+  getMyStudents,
+  deleteMyStudent,
+  deleteAllMyStudents,
   createStudentList,
   getStudentLists,
   getStudentList,

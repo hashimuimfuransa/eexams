@@ -17,13 +17,14 @@ import {
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
-  DragIndicator, SwapVert, Mic, MicOff, Stop
+  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } from './DashboardShell';
 import StudentManagement from '../components/teacher/StudentManagement';
+import MarketplaceManager from '../components/teacher/MarketplaceManager';
 
 // Question Editor Component for Generated Exams
 const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, sections, onSectionChange }) => {
@@ -802,6 +803,8 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [loading, setLoading] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadAnswer, setUploadAnswer] = useState(null);
+  const [examTitle, setExamTitle] = useState('');
+  const [examTimeLimit, setExamTimeLimit] = useState('');
   const [publishExamId, setPublishExamId] = useState(null);
   const fileRef = useRef();
   const ansRef = useRef();
@@ -1071,8 +1074,8 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     { label: 'Open Question',   color: '#EC4899',       count: stats?.questionTypes?.open_question ?? 1 },
   ];
   const qTotal = qDist.reduce((s, q) => s + q.count, 0);
-  const perfData = results.slice(-7).map(r => Math.round(r.percentage ?? 0));
-  const avgPerf = perfData.length ? Math.round(perfData.reduce((a, b) => a + b, 0) / perfData.length) : (stats?.avgScore ? Math.round(stats.avgScore) : 78);
+  const perfData = results.slice(-7).map(r => Math.round(r.percentage ?? r.scores?.percentage ?? 0));
+  const avgPerf = results.length ? Math.round(results.reduce((s, r) => s + ((r.percentage ?? r.scores?.percentage ?? 0)), 0) / results.length) : (stats?.avgScore ? Math.round(stats.avgScore) : 0);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -1089,13 +1092,22 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
   const handleUpload = async () => {
     if (!uploadFile) return;
+    if (!examTitle.trim() || !examTimeLimit.trim()) {
+      setAiError('Please provide title and time limit');
+      return;
+    }
     setAiLoading(true); setAiError('');
     try {
       const fd = new FormData();
       fd.append('examFile', uploadFile);
+      fd.append('title', examTitle);
+      fd.append('timeLimit', examTimeLimit);
       if (uploadAnswer) fd.append('answerFile', uploadAnswer);
       const res = await api.post('/admin/exams', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 90000 });
       setGenerated(res.data);
+      if (res.data.parsingFailed) {
+        setAiError('PDF parsing failed due to file corruption. You can manually add questions using the editor below.');
+      }
     } catch (err) { setAiError(err.response?.data?.message || 'Upload failed.'); }
     finally { setAiLoading(false); }
   };
@@ -1222,8 +1234,8 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const statCards = [
     { label: 'Exams Created',  value: stats?.totalExams    ?? 0,    sub: '+3 this week',  subColor: tokens.accent,  iconBg: 'rgba(12,189,115,0.1)',  icon: <Assignment sx={{ color: tokens.accent, fontSize: { xs: 20, sm: 24 } }} />,  spark: [5,8,6,10,9,12,10] },
     { label: 'Total Students', value: stats?.totalStudents ?? 0,    sub: '+18 this week', subColor: '#6366F1',       iconBg: 'rgba(99,102,241,0.1)',  icon: <People sx={{ color: '#6366F1', fontSize: { xs: 20, sm: 24 } }} />,           spark: [200,220,230,240,244,246,248] },
-    { label: 'Average Score',  value: `${Math.round(stats?.avgScore ?? 0)}%`, sub: '+6% this week', subColor: tokens.warning, iconBg: 'rgba(245,158,11,0.1)', icon: <BarChart sx={{ color: tokens.warning, fontSize: { xs: 20, sm: 24 } }} />, spark: [65,70,68,75,72,78,75] },
-    { label: 'Active Exams',   value: stats?.activeExams   ?? 0,    sub: '2 ending soon', subColor: '#EC4899',       iconBg: 'rgba(236,72,153,0.1)',  icon: <TrendingUp sx={{ color: '#EC4899', fontSize: { xs: 20, sm: 24 } }} />,        spark: [2,3,4,5,4,6,5] },
+    { label: 'Average Score',  value: `${Math.round(stats?.averageScore ?? 0)}%`, sub: '+6% this week', subColor: tokens.warning, iconBg: 'rgba(245,158,11,0.1)', icon: <BarChart sx={{ color: tokens.warning, fontSize: { xs: 20, sm: 24 } }} />, spark: [65,70,68,75,72,78,75] },
+    { label: 'Pass Rate',      value: `${stats?.passRate ?? 0}%`,     sub: '+4% this week', subColor: '#EC4899',       iconBg: 'rgba(236,72,153,0.1)',  icon: <CheckCircle sx={{ color: '#EC4899', fontSize: { xs: 20, sm: 24 } }} />,        spark: [70,72,74,76,75,78,77] },
   ];
 
   return (
@@ -1596,6 +1608,32 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
             </>
           ) : (
             <>
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Exam Title *"
+                    placeholder="Enter exam title"
+                    value={examTitle}
+                    onChange={(e) => setExamTitle(e.target.value)}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Time Limit (minutes) *"
+                    placeholder="e.g., 60"
+                    type="number"
+                    inputProps={{ min: 1 }}
+                    value={examTimeLimit}
+                    onChange={(e) => setExamTimeLimit(e.target.value)}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
+                </Grid>
+              </Grid>
               <Grid container spacing={2} sx={{ mb: 2 }}>
                 {[{ ref: fileRef, file: uploadFile, set: setUploadFile, label: 'Upload Exam Document', sub: 'PDF, Word or TXT' },
                   { ref: ansRef, file: uploadAnswer, set: setUploadAnswer, label: 'Upload Answer Sheet', sub: 'Optional' }].map((item, i) => (
@@ -2082,6 +2120,8 @@ function PublishDialog({ examId, onClose }) {
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [assignedStudents, setAssignedStudents] = useState([]);
   const [loadingAssigned, setLoadingAssigned] = useState(false);
+  const [resettingExpiration, setResettingExpiration] = useState(false);
+  const [shareStats, setShareStats] = useState(null);
 
   useEffect(() => {
     api.get(`/admin/exams/${examId}/preview`).then(r => {
@@ -2097,6 +2137,12 @@ function PublishDialog({ examId, onClose }) {
       fetchExistingStudents();
     }
   }, [studentSelectionMode]);
+
+  useEffect(() => {
+    if (shareResult?.shareId) {
+      fetchShareStats(shareResult.shareId);
+    }
+  }, [shareResult]);
 
   const fetchExistingStudents = async () => {
     setLoadingStudents(true);
@@ -2141,9 +2187,56 @@ function PublishDialog({ examId, onClose }) {
     try {
       const settings = { ...shareSettings, maxStudents: shareSettings.maxStudents ? +shareSettings.maxStudents : null, expiresAt: shareSettings.expiresAt || null };
       const r = await api.post(`/admin/exams/${examId}/share`, { shareType: type, settings });
-      setShareResult(r.data);
+      setShareResult(r.data.shareData);
     } catch (err) { setSnack(err.response?.data?.message || 'Failed to create share link'); }
     finally { setSharing(false); }
+  };
+
+  const isShareExpired = () => {
+    const expiresAt = shareResult?.expiresAt || shareResult?.settings?.expiresAt;
+    if (!expiresAt) return false;
+    return new Date() > new Date(expiresAt);
+  };
+
+  const handleResetExpiration = async () => {
+    if (!shareResult?.shareId) return;
+    setResettingExpiration(true);
+    try {
+      const r = await api.post(`/share/${shareResult.shareId}/reset-expiration`);
+      setShareResult(prev => ({
+        ...prev,
+        expiresAt: r.data.shareData.expiresAt,
+        settings: { ...prev.settings, expiresAt: r.data.shareData.expiresAt }
+      }));
+      setSnack('Share link expiration reset successfully. Students can now join the exam.');
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to reset expiration');
+    } finally {
+      setResettingExpiration(false);
+    }
+  };
+
+  const handleRemoveSharedStudent = async (shareToken, studentId) => {
+    try {
+      await api.delete(`/share/${shareToken}/students/${studentId}`);
+      setSnack('Student removed successfully');
+      // Refresh share stats to update student list
+      if (shareResult?.shareId) {
+        fetchShareStats(shareResult.shareId);
+      }
+    } catch (err) {
+      console.error('Error removing student:', err);
+      setSnack(err.response?.data?.message || 'Failed to remove student');
+    }
+  };
+
+  const fetchShareStats = async (shareId) => {
+    try {
+      const res = await api.get(`/share/${shareId}/stats`);
+      setShareStats(res.data.stats);
+    } catch (err) {
+      console.error('Error fetching share stats:', err);
+    }
   };
 
   const copyLink = (link, label) => { navigator.clipboard.writeText(link); setCopied(label); setTimeout(() => setCopied(''), 2500); };
@@ -2174,7 +2267,7 @@ function PublishDialog({ examId, onClose }) {
     try {
       const r = await api.post(`/admin/exams/${examId}/students`, { students: valid });
       setCreateResult(r.data);
-      if (!shareResult) handleShare('link');
+      if (!shareResult) handleShare('email');
       // Refresh assigned students list
       fetchAssignedStudents(preview?.exam?.assignedTo || []);
       // Refresh existing students list to include newly created accounts
@@ -2242,6 +2335,7 @@ function PublishDialog({ examId, onClose }) {
           <Tab label="✏️ Edit Questions" />
           <Tab label="🔗 Public Link" />
           <Tab label="🔒 Private / Invite" />
+          <Tab label="🌐 Public Marketplace" />
         </Tabs>
       </Box>
 
@@ -2371,11 +2465,32 @@ function PublishDialog({ examId, onClose }) {
             </Paper>
 
             {shareResult ? (
-              <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1.5px solid ${tokens.accent}`, bgcolor: 'rgba(12,189,115,0.03)' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                  <CheckCircle sx={{ color: tokens.accent }} />
-                  <Typography fontWeight={700} sx={{ color: tokens.accentDark, fontFamily: "'DM Sans',sans-serif" }}>Public link created!</Typography>
+              <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1.5px solid ${isShareExpired() ? '#EF4444' : tokens.accent}`, bgcolor: isShareExpired() ? 'rgba(239, 68, 68, 0.03)' : 'rgba(12,189,115,0.03)' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {isShareExpired() ? <ErrorOutline sx={{ color: '#EF4444' }} /> : <CheckCircle sx={{ color: tokens.accent }} />}
+                    <Typography fontWeight={700} sx={{ color: isShareExpired() ? '#EF4444' : tokens.accentDark, fontFamily: "'DM Sans',sans-serif" }}>
+                      {isShareExpired() ? 'Link expired!' : 'Public link created!'}
+                    </Typography>
+                  </Box>
+                  {isShareExpired() && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={resettingExpiration ? <CircularProgress size={14} color="inherit" /> : <RestartAlt sx={{ fontSize: 14 }} />}
+                      onClick={handleResetExpiration}
+                      disabled={resettingExpiration}
+                      sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', borderColor: '#EF4444', color: '#EF4444', whiteSpace: 'nowrap', px: 2, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.05)' } }}
+                    >
+                      {resettingExpiration ? 'Resetting...' : 'Reset Link'}
+                    </Button>
+                  )}
                 </Box>
+                {(shareResult.expiresAt || shareResult.settings?.expiresAt) && (
+                  <Typography sx={{ fontSize: 11.5, color: isShareExpired() ? '#EF4444' : tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mb: 2 }}>
+                    Expires: {new Date(shareResult.expiresAt || shareResult.settings?.expiresAt).toLocaleString()}
+                  </Typography>
+                )}
                 {[{ label: 'Public Link', value: shareResult.publicLink }].map(l => (
                   <Box key={l.label} sx={{ mb: 1.5 }}>
                     <Typography sx={{ fontSize: 12, color: tokens.textMuted, mb: 0.5, fontFamily: "'DM Sans',sans-serif" }}>{l.label}</Typography>
@@ -2398,6 +2513,69 @@ function PublishDialog({ examId, onClose }) {
                 sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', py: 1.5, fontSize: 15 }}>
                 {sharing ? 'Generating Link…' : 'Generate Public Link'}
               </Button>
+            )}
+
+            {/* Show students who joined via public link */}
+            {shareResult && shareResult.shareId && (
+              <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mt: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>
+                    Students Who Joined via Link
+                  </Typography>
+                  <Button size="small" onClick={() => fetchShareStats(shareResult.shareId)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.primary }}>
+                    Refresh
+                  </Button>
+                </Box>
+                {shareStats?.students && shareStats.students.length > 0 ? (
+                  <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Name</TableCell>
+                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Email</TableCell>
+                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Status</TableCell>
+                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Score</TableCell>
+                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {shareStats.students.map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell sx={{ fontSize: 12 }}>{student.name}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{student.email}</TableCell>
+                            <TableCell>
+                              <Chip
+                                label={student.hasCompleted ? 'Completed' : 'In Progress'}
+                                size="small"
+                                color={student.hasCompleted ? 'success' : 'default'}
+                                sx={{ fontWeight: 600, textTransform: 'capitalize', fontSize: 11 }}
+                              />
+                            </TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>
+                              {student.score ? `${student.score.total}/${student.score.max} (${Math.round(student.score.percentage)}%)` : '-'}
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="Remove student">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleRemoveSharedStudent(shareResult.shareToken, student.id)}
+                                  sx={{ color: '#EF4444' }}
+                                >
+                                  <Delete fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Box>
+                ) : (
+                  <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontStyle: 'italic', py: 2 }}>
+                    No students have joined via this link yet.
+                  </Typography>
+                )}
+              </Paper>
             )}
           </Box>
         )}
@@ -2597,7 +2775,60 @@ function PublishDialog({ examId, onClose }) {
               <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mt: 2.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                   <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>Assigned Students ({assignedStudents.length})</Typography>
+                  {!shareResult && (
+                    <Button size="small" onClick={() => handleShare('email')} disabled={sharing}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', fontSize: 12 }}>
+                      {sharing ? 'Generating...' : 'Generate Share Link'}
+                    </Button>
+                  )}
                 </Box>
+                
+                {shareResult && (
+                  <Box sx={{ mb: 1.5, p: 1.5, bgcolor: isShareExpired() ? 'rgba(239, 68, 68, 0.05)' : 'rgba(12,189,115,0.05)', borderRadius: 2, border: `1px solid ${isShareExpired() ? '#EF4444' : tokens.accent}` }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography sx={{ fontSize: 12, color: tokens.textMuted }}>Private Link (share with invited students)</Typography>
+                      {isShareExpired() ? (
+                        <Chip
+                          icon={<ErrorOutline sx={{ fontSize: 12 }} />}
+                          label="Expired"
+                          size="small"
+                          sx={{ bgcolor: '#EF4444', color: 'white', fontSize: 10, fontWeight: 700, height: 22 }}
+                        />
+                      ) : (
+                        <Chip
+                          icon={<CheckCircleOutline sx={{ fontSize: 12 }} />}
+                          label="Active"
+                          size="small"
+                          sx={{ bgcolor: tokens.accent, color: 'white', fontSize: 10, fontWeight: 700, height: 22 }}
+                        />
+                      )}
+                    </Box>
+                    {(shareResult.expiresAt || shareResult.settings?.expiresAt) && (
+                      <Typography sx={{ fontSize: 11, color: isShareExpired() ? '#EF4444' : tokens.textMuted, mb: 0.5 }}>
+                        Expires: {new Date(shareResult.expiresAt || shareResult.settings?.expiresAt).toLocaleString()}
+                      </Typography>
+                    )}
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <TextField fullWidth size="small" value={shareResult.privateLink} InputProps={{ readOnly: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }} />
+                      <Button variant="contained" onClick={() => copyLink(shareResult.privateLink, 'private')}
+                        sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: copied === 'private' ? tokens.accent : gradients.brand, boxShadow: 'none', whiteSpace: 'nowrap', px: 2 }}>
+                        {copied === 'private' ? '✓ Copied' : 'Copy'}
+                      </Button>
+                      {isShareExpired() && (
+                        <Button
+                          variant="outlined"
+                          startIcon={resettingExpiration ? <CircularProgress size={14} color="inherit" /> : <RestartAlt sx={{ fontSize: 14 }} />}
+                          onClick={handleResetExpiration}
+                          disabled={resettingExpiration}
+                          sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', borderColor: '#EF4444', color: '#EF4444', whiteSpace: 'nowrap', px: 2, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.05)' } }}
+                        >
+                          {resettingExpiration ? 'Resetting...' : 'Reset Link'}
+                        </Button>
+                      )}
+                    </Box>
+                  </Box>
+                )}
+                
                 <Box sx={{ maxHeight: 200, overflowY: 'auto' }}>
                   <Table size="small">
                     <TableHead>
@@ -2633,6 +2864,13 @@ function PublishDialog({ examId, onClose }) {
                 </Box>
               </Paper>
             )}
+          </Box>
+        )}
+
+        {/* TAB 4 — PUBLIC MARKETPLACE */}
+        {tab === 4 && (
+          <Box sx={{ p: 3 }}>
+            <MarketplaceManager exam={exam} />
           </Box>
         )}
       </DialogContent>
@@ -3424,35 +3662,419 @@ function StudentsSection() {
 function ResultsSection({ results }) {
   const [data, setData] = useState(results);
   const [loading, setLoading] = useState(!results.length);
+  const [selectedResult, setSelectedResult] = useState(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailData, setDetailData] = useState(null);
+  const [regrading, setRegrading] = useState(false);
+  const [regradeSuccess, setRegradeSuccess] = useState('');
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
   useEffect(()=>{if(!results.length)api.get('/admin/results').then(r=>setData(Array.isArray(r.data)?r.data:(r.data?.results||[]))).finally(()=>setLoading(false));else setData(results);},[results]);
+
+  const handleViewDetails = async (resultId) => {
+    try {
+      setDetailLoading(true);
+      setDetailDialogOpen(true);
+      setRegradeSuccess('');
+      const response = await api.get(`/admin/results/${resultId}`);
+      setDetailData(response.data);
+    } catch (err) {
+      console.error('Error fetching detailed result:', err);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleRegrade = async () => {
+    if (!detailData) return;
+    
+    try {
+      setRegrading(true);
+      const response = await api.post(`/exam/regrade/${detailData._id}`, { forceRegrade: true }, { timeout: 120000 }); // 2 minute timeout
+      
+      if (response.data.result) {
+        const { newScore, maxScore, improvement } = response.data.result;
+        const percentage = Math.round((newScore / maxScore) * 100);
+        
+        if (improvement > 0) {
+          setRegradeSuccess(`✅ Successfully regraded! Score improved by ${improvement.toFixed(1)} points (${newScore}/${maxScore} - ${percentage}%)`);
+        } else if (improvement < 0) {
+          setRegradeSuccess(`⚠️ Regraded. Score changed by ${improvement.toFixed(1)} points (${newScore}/${maxScore} - ${percentage}%)`);
+        } else {
+          setRegradeSuccess(`✓ Regraded. Score remained the same (${newScore}/${maxScore} - ${percentage}%)`);
+        }
+        
+        // Refresh the detailed result
+        await handleViewDetails(detailData._id);
+        
+        // Refresh the results list
+        api.get('/admin/results').then(r=>setData(Array.isArray(r.data)?r.data:(r.data?.results||[])));
+      }
+    } catch (err) {
+      console.error('Error regrading:', err);
+      setRegradeSuccess('❌ Failed to regrade. Please try again.');
+    } finally {
+      setRegrading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!detailData || !detailData.shareToken || !detailData.student?._id) {
+      alert('Cannot reset: Missing required information');
+      return;
+    }
+    
+    try {
+      setResetting(true);
+      const response = await api.post(`/share/${detailData.shareToken}/unlock/${detailData.student._id}`);
+      
+      alert(`Successfully reset ${detailData.student?.firstName} ${detailData.student?.lastName}'s exam for ${detailData.exam?.title}. They can now retake the exam.`);
+      
+      setResetDialogOpen(false);
+      setDetailDialogOpen(false);
+      
+      // Refresh the results list
+      api.get('/admin/results').then(r=>setData(Array.isArray(r.data)?r.data:(r.data?.results||[])));
+    } catch (err) {
+      console.error('Error resetting exam:', err);
+      alert('Failed to reset exam: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    setDownloadingPdf(true);
+    try {
+      // Create a printable HTML content
+      const printContent = `
+        <html>
+          <head>
+            <title>Student Result Report</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+              .header h1 { margin: 0; color: #333; }
+              .header p { margin: 5px 0; color: #666; }
+              .section { margin-bottom: 20px; }
+              .section h2 { color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+              .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+              .info-item { padding: 10px; background: #f5f5f5; border-radius: 5px; }
+              .info-item strong { display: block; color: #333; }
+              .weakness { background: #fee2e2; padding: 10px; margin: 10px 0; border-left: 4px solid #dc2626; border-radius: 5px; }
+              .question { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 5px; }
+              .question.correct { border-left: 4px solid #22c55e; }
+              .question.incorrect { border-left: 4px solid #ef4444; }
+              .question-text { font-weight: bold; margin-bottom: 5px; }
+              .question-meta { color: #666; font-size: 12px; margin-bottom: 5px; }
+              .footer { margin-top: 30px; text-align: center; color: #666; font-size: 12px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Student Exam Result Report</h1>
+              <p>Generated on ${new Date().toLocaleDateString()}</p>
+            </div>
+            
+            <div class="section">
+              <h2>Student Information</h2>
+              <div class="info-grid">
+                <div class="info-item"><strong>Name:</strong> ${detailData.student?.firstName} ${detailData.student?.lastName}</div>
+                <div class="info-item"><strong>Exam:</strong> ${detailData.exam?.title}</div>
+                <div class="info-item"><strong>Score:</strong> ${detailData.totalScore}/${detailData.maxPossibleScore} (${detailData.percentage}%)</div>
+                <div class="info-item"><strong>Grade:</strong> ${detailData.grade}</div>
+                ${detailData.timeTaken ? `<div class="info-item"><strong>Time Taken:</strong> ${detailData.timeTaken} minutes</div>` : ''}
+                ${detailData.endTime ? `<div class="info-item"><strong>Completed:</strong> ${new Date(detailData.endTime).toLocaleDateString()}</div>` : ''}
+              </div>
+            </div>
+
+            ${detailData.analysis && getWeaknesses(detailData.analysis).length > 0 ? `
+            <div class="section">
+              <h2>Identified Weaknesses</h2>
+              ${getWeaknesses(detailData.analysis).map(w => `<div class="weakness">${w.message}</div>`).join('')}
+            </div>
+            ` : ''}
+
+            <div class="section">
+              <h2>Question-by-Question Analysis</h2>
+              ${detailData.answers?.map((answer, idx) => `
+                <div class="question ${answer.isCorrect ? 'correct' : 'incorrect'}">
+                  <div class="question-text">Q${idx + 1}: ${answer.question?.text || 'Question text not available'}</div>
+                  <div class="question-meta">
+                    Type: ${answer.question?.type} | Points: ${answer.question?.points} | 
+                    <span style="color: ${answer.isCorrect ? '#22c55e' : '#ef4444'}; font-weight: bold;">
+                      ${answer.isCorrect ? 'Correct' : 'Incorrect'}
+                    </span>
+                  </div>
+                  ${answer.question?.section ? `<div class="question-meta">Section: ${answer.question.section}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+
+            ${detailData.analysis?.bySection ? `
+            <div class="section">
+              <h2>Performance by Section</h2>
+              ${Object.entries(detailData.analysis.bySection).map(([section, data]) => {
+                const accuracy = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
+                return `<div class="info-item"><strong>${section}:</strong> ${data.correct}/${data.total} correct (${accuracy}%)</div>`;
+              }).join('')}
+            </div>
+            ` : ''}
+
+            <div class="footer">
+              <p>This report was generated by the eExams platform</p>
+            </div>
+          </body>
+        </html>
+      `;
+
+      // Create a new window for printing
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      alert('Failed to generate PDF report');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const getWeaknesses = (analysis) => {
+    if (!analysis) return [];
+    const weaknesses = [];
+    
+    // Analyze by section
+    Object.entries(analysis.bySection || {}).forEach(([section, data]) => {
+      const accuracy = data.total > 0 ? (data.correct / data.total) * 100 : 0;
+      if (accuracy < 60) {
+        weaknesses.push({
+          type: 'section',
+          name: section,
+          accuracy: Math.round(accuracy),
+          message: `Weak in ${section} (${Math.round(accuracy)}% accuracy)`
+        });
+      }
+    });
+
+    // Analyze by question type
+    Object.entries(analysis.byType || {}).forEach(([type, data]) => {
+      const accuracy = data.total > 0 ? (data.correct / data.total) * 100 : 0;
+      if (accuracy < 60) {
+        weaknesses.push({
+          type: 'question-type',
+          name: type,
+          accuracy: Math.round(accuracy),
+          message: `Struggles with ${type} questions (${Math.round(accuracy)}% accuracy)`
+        });
+      }
+    });
+
+    return weaknesses;
+  };
+
   return(
     <Box>
       <SectionTitle>Results</SectionTitle>
       {loading?<Box sx={{display:'flex',justifyContent:'center',mt:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>:(
         <Paper elevation={0} sx={{borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',overflow:'hidden'}}>
-          <TableContainer sx={{overflowX:'auto'}}><Table sx={{minWidth:440}}>
-            <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Student','Exam','Score','Date'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
+          <TableContainer sx={{overflowX:'auto'}}><Table sx={{minWidth:500}}>
+            <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Student','Exam','Score','Time','Date','Actions'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
             <TableBody>
-              {data.length===0?<TableRow><TableCell colSpan={4} align="center" sx={{py:5,color:tokens.textMuted}}>No results.</TableCell></TableRow>:
-              data.slice(0,50).map(r=>{const pct=Math.round(r.percentage??0);return(
+              {data.length===0?<TableRow><TableCell colSpan={6} align="center" sx={{py:5,color:tokens.textMuted}}>No results.</TableCell></TableRow>:
+              data.slice(0,50).map(r=>{const pct=Math.round(r.percentage??r.scores?.percentage??0);return(
                 <TableRow key={r._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
                   <TableCell sx={{fontSize:13}}>{r.student?.firstName} {r.student?.lastName}</TableCell>
                   <TableCell sx={{fontSize:13,color:tokens.textMuted}}>{r.exam?.title}</TableCell>
                   <TableCell><Box sx={{display:'flex',alignItems:'center',gap:1}}><LinearProgress variant="determinate" value={pct} sx={{width:60,height:6,borderRadius:3,bgcolor:'#EEF2FF','& .MuiLinearProgress-bar':{bgcolor:pct>=70?tokens.accent:'#EF4444',borderRadius:3}}}/><Typography sx={{fontSize:12,fontWeight:700,color:pct>=70?tokens.accentDark:'#EF4444'}}>{pct}%</Typography></Box></TableCell>
+                  <TableCell><Typography variant="caption" sx={{color:tokens.textMuted}}>{r.timeTaken?`${r.timeTaken}min`:'-'}</Typography></TableCell>
                   <TableCell><Typography variant="caption" sx={{color:tokens.textMuted}}>{new Date(r.submittedAt||r.createdAt).toLocaleDateString()}</Typography></TableCell>
+                  <TableCell>
+                    <Button 
+                      size="small" 
+                      variant="outlined"
+                      onClick={() => handleViewDetails(r._id)}
+                      sx={{fontSize:11,py:0.5}}
+                    >
+                      View Details
+                    </Button>
+                  </TableCell>
                 </TableRow>);})}
             </TableBody>
           </Table></TableContainer>
         </Paper>
       )}
+
+      {/* Detailed Result Dialog */}
+      <Dialog 
+        open={detailDialogOpen} 
+        onClose={() => setDetailDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Student Result Details</DialogTitle>
+        <DialogContent>
+          {detailLoading ? (
+            <Box sx={{display:'flex',justifyContent:'center',py:6}}><CircularProgress /></Box>
+          ) : detailData ? (
+            <Box>
+              {/* Overview */}
+              <Paper sx={{p:2,mb:2,bgcolor:'#F8FAFC'}}>
+                <Typography variant="subtitle2" fontWeight="bold">Overview</Typography>
+                <Grid container spacing={2} sx={{mt:1}}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2">Student: {detailData.student?.firstName} {detailData.student?.lastName}</Typography>
+                    <Typography variant="body2">Exam: {detailData.exam?.title}</Typography>
+                    {detailData.timeTaken && (
+                      <Typography variant="body2">Time Taken: {detailData.timeTaken} minutes</Typography>
+                    )}
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2">Score: {detailData.totalScore}/{detailData.maxPossibleScore} ({detailData.percentage}%)</Typography>
+                    <Typography variant="body2">Grade: {detailData.grade}</Typography>
+                    {detailData.endTime && (
+                      <Typography variant="body2">Completed: {new Date(detailData.endTime).toLocaleDateString()}</Typography>
+                    )}
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Weaknesses */}
+              {detailData.analysis && getWeaknesses(detailData.analysis).length > 0 && (
+                <Paper sx={{p:2,mb:2,bgcolor:'#FEF2F2',border:1,borderColor:'#FCA5A5'}}>
+                  <Typography variant="subtitle2" fontWeight="bold" color="#DC2626">Identified Weaknesses</Typography>
+                  <Box sx={{mt:1}}>
+                    {getWeaknesses(detailData.analysis).map((weakness, idx) => (
+                      <Typography key={idx} variant="body2" sx={{color:'#991B1B'}}>
+                        • {weakness.message}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Paper>
+              )}
+
+              {/* Question-by-Question Analysis */}
+              <Paper sx={{p:2}}>
+                <Typography variant="subtitle2" fontWeight="bold">Question-by-Question Analysis</Typography>
+                <Box sx={{mt:1,maxHeight:400,overflowY:'auto'}}>
+                  {detailData.answers?.map((answer, idx) => (
+                    <Paper key={idx} sx={{p:1.5,mb:1,bgcolor:answer.isCorrect?'#F0FDF4':'#FEF2F2'}}>
+                      <Typography variant="body2" fontWeight="medium">{answer.question?.text || 'Question text not available'}</Typography>
+                      <Box sx={{display:'flex',gap:2,mt:0.5}}>
+                        <Typography variant="caption" color="text.secondary">Type: {answer.question?.type}</Typography>
+                        <Typography variant="caption" color="text.secondary">Points: {answer.question?.points}</Typography>
+                        <Typography variant="caption" sx={{color:answer.isCorrect?'#166534':'#991B1B',fontWeight:600}}>
+                          {answer.isCorrect?'Correct':'Incorrect'}
+                        </Typography>
+                      </Box>
+                      {answer.question?.section && (
+                        <Typography variant="caption" color="text.secondary">Section: {answer.question.section}</Typography>
+                      )}
+                    </Paper>
+                  ))}
+                </Box>
+              </Paper>
+
+              {/* Section Analysis */}
+              {detailData.analysis?.bySection && (
+                <Paper sx={{p:2,mt:2}}>
+                  <Typography variant="subtitle2" fontWeight="bold">Performance by Section</Typography>
+                  <Box sx={{mt:1}}>
+                    {Object.entries(detailData.analysis.bySection).map(([section, data]) => {
+                      const accuracy = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
+                      return (
+                        <Box key={section} sx={{mb:1}}>
+                          <Typography variant="body2">{section}: {data.correct}/{data.total} correct ({accuracy}%)</Typography>
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={accuracy} 
+                            sx={{height:6,borderRadius:3,mt:0.5}}
+                          />
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                </Paper>
+              )}
+            </Box>
+          ) : (
+            <Typography>No detailed data available</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {regradeSuccess && (
+            <Alert severity={regradeSuccess.startsWith('✅') || regradeSuccess.startsWith('✓') ? 'success' : regradeSuccess.startsWith('⚠️') ? 'warning' : 'error'} sx={{flex: 1, mr: 2}}>
+              {regradeSuccess}
+            </Alert>
+          )}
+          <Button 
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            startIcon={downloadingPdf ? <CircularProgress size={16} /> : <Download />}
+          >
+            {downloadingPdf ? 'Generating...' : 'Download PDF'}
+          </Button>
+          <Button onClick={() => setDetailDialogOpen(false)}>Close</Button>
+          <Button 
+            onClick={() => setResetDialogOpen(true)}
+            variant="outlined"
+            color="error"
+            startIcon={<RestartAlt />}
+          >
+            Reset for Retake
+          </Button>
+          <Button 
+            onClick={handleRegrade}
+            variant="contained"
+            disabled={regrading}
+            startIcon={regrading ? <CircularProgress size={16} /> : <AutoAwesome />}
+          >
+            {regrading ? 'Regrading...' : 'Regrade'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog
+        open={resetDialogOpen}
+        onClose={() => setResetDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Reset Exam for Retake</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{mb: 2}}>
+            This action will reset the student's exam progress, allowing them to retake the exam from scratch. Their previous result will be cleared.
+          </Alert>
+          <Typography variant="body2">
+            Are you sure you want to reset <strong>{detailData?.student?.firstName} {detailData?.student?.lastName}</strong>'s exam for <strong>{detailData?.exam?.title}</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleReset}
+            variant="contained"
+            color="error"
+            disabled={resetting}
+            startIcon={resetting ? <CircularProgress size={16} /> : <RestartAlt />}
+          >
+            {resetting ? 'Resetting...' : 'Reset Exam'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
 
 function AnalyticsSection({ results, exams }) {
-  const avg = results.length?Math.round(results.reduce((s,r)=>s+(r.percentage??0),0)/results.length):0;
-  const passRate = results.length?Math.round((results.filter(r=>(r.percentage??0)>=50).length/results.length)*100):0;
-  const perfData = results.slice(-7).map(r=>Math.round(r.percentage??0));
+  const avg = results.length?Math.round(results.reduce((s,r)=>s+((r.percentage??r.scores?.percentage??0)),0)/results.length):0;
+  const passRate = results.length?Math.round((results.filter(r=>((r.percentage??r.scores?.percentage??0))>=50).length/results.length)*100):0;
+  const perfData = results.slice(-7).map(r=>Math.round(r.percentage??r.scores?.percentage??0));
   return(
     <Box>
       <SectionTitle>Analytics</SectionTitle>

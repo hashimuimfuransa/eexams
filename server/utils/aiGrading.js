@@ -303,9 +303,10 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
   }
 
   // Calculate match percentage with a minimum score to avoid zero scores
+  // Increased minimum to 40% for fairer grading
   const matchPercentage = modelKeywords.length > 0
-    ? Math.max(0.2, matchCount / modelKeywords.length) // Minimum 20% score
-    : 0.2;
+    ? Math.max(0.4, matchCount / modelKeywords.length) // Minimum 40% score
+    : 0.4;
 
   // Assign score based on keyword match percentage
   const score = Math.round(matchPercentage * maxPoints);

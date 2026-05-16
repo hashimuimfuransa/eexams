@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Exam = require('../models/Exam');
 const Question = require('../models/Question');
 const Result = require('../models/Result');
+const SharedExam = require('../models/SharedExam');
 const { parseExamFile } = require('../utils/fileParser');
 const { gradeOpenEndedAnswer } = require('../utils/aiGrading');
 const { gradeQuestionByType } = require('../utils/enhancedGrading');
@@ -423,12 +424,29 @@ const getExamById = async (req, res) => {
       });
     }
 
-    const exam = await Exam.findById(examId)
+    let exam = await Exam.findById(examId)
       .populate('createdBy', 'fullName')
       .populate({
         path: 'sections.questions',
         select: 'text type options points section'
       });
+
+    // If exam not found, check if it's a result ID
+    if (!exam) {
+      console.log(`Exam not found with ID ${examId}, checking if it's a result ID`);
+      const Result = require('../models/Result');
+      const result = await Result.findById(examId).populate('exam');
+      
+      if (result && result.exam) {
+        console.log(`Found result, loading exam ${result.exam._id}`);
+        exam = await Exam.findById(result.exam._id)
+          .populate('createdBy', 'fullName')
+          .populate({
+            path: 'sections.questions',
+            select: 'text type options points section'
+          });
+      }
+    }
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
@@ -709,6 +727,16 @@ const deleteExam = async (req, res) => {
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
+
+    // Mark associated SharedExams as having a deleted exam
+    await SharedExam.updateMany(
+      { exam: exam._id },
+      {
+        isExamDeleted: true,
+        examTitle: exam.title,
+        examDeletedAt: new Date()
+      }
+    );
 
     // Delete associated questions
     await Question.deleteMany({ exam: exam._id });
@@ -2291,8 +2319,14 @@ const regradeExamResult = async (req, res) => {
     }
 
     // Check if the user is authorized to regrade this result
-    // Allow if user is admin or if the result belongs to the student
-    if (req.user.role !== 'admin' && result.student.toString() !== req.user._id.toString()) {
+    // Allow if user is admin, teacher, or if the result belongs to the student
+    const exam = await Exam.findById(result.exam);
+    const isExamCreator = exam && exam.createdBy.toString() === req.user._id.toString();
+    
+    if (req.user.role !== 'admin' && 
+        req.user.role !== 'teacher' && 
+        !isExamCreator &&
+        result.student.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Not authorized to regrade this exam' });
     }
 

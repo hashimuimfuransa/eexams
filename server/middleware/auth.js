@@ -23,6 +23,7 @@ const auth = async (req, res, next) => {
     
     // Add user to request object
     req.user = user;
+    req.orgAdminId = user.parentAdmin;
     next();
   } catch (error) {
     res.status(401).json({ message: 'Token is not valid' });

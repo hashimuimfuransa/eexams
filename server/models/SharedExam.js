@@ -7,6 +7,21 @@ const SharedExamSchema = new mongoose.Schema({
     ref: 'Exam',
     required: true
   },
+  // Whether the original exam has been deleted
+  isExamDeleted: {
+    type: Boolean,
+    default: false
+  },
+  // Exam title (saved for reference even if exam is deleted)
+  examTitle: {
+    type: String,
+    default: null
+  },
+  // When the exam was deleted
+  examDeletedAt: {
+    type: Date,
+    default: null
+  },
   // The teacher who shared the exam
   sharedBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -262,6 +277,11 @@ SharedExamSchema.methods.unlockStudent = function(studentId) {
 
   if (student) {
     student.isLocked = false;
+    student.hasCompleted = false;
+    student.result = null;
+    student.completedAt = null;
+    student.isActiveSession = false;
+    student.lastActivity = null;
     return true;
   }
   return false;
@@ -318,6 +338,26 @@ SharedExamSchema.methods.incrementStarted = function() {
 // Increment completed count
 SharedExamSchema.methods.incrementCompleted = function() {
   this.stats.totalCompleted += 1;
+};
+
+// Remove a student from the share
+SharedExamSchema.methods.removeStudent = function(studentId) {
+  const studentIndex = this.students.findIndex(
+    s => s.student?.toString() === studentId || 
+         s._id?.toString() === studentId ||
+         s.email === studentId
+  );
+
+  if (studentIndex !== -1) {
+    const removedStudent = this.students[studentIndex];
+    this.students.splice(studentIndex, 1);
+    // If student was completed, decrement completed count
+    if (removedStudent.hasCompleted) {
+      this.stats.totalCompleted = Math.max(0, this.stats.totalCompleted - 1);
+    }
+    return true;
+  }
+  return false;
 };
 
 module.exports = mongoose.model('SharedExam', SharedExamSchema);

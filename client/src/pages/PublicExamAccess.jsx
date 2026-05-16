@@ -8,39 +8,27 @@ const PublicExamAccess = () => {
   const { shareToken } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, login } = useContext(AuthContext);
+  const { user, login, logout } = useContext(AuthContext);
   const [loading, setLoading] = useState(true);
   const [exam, setExam] = useState(null);
   const [error, setError] = useState(null);
   const [password, setPassword] = useState('');
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
   const [passwordRequired, setPasswordRequired] = useState(false);
   const [joining, setJoining] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [loginError, setLoginError] = useState('');
-  const [postLoginLoading, setPostLoginLoading] = useState(false);
-  const isPrivateMode = searchParams.get('mode') === 'private';
+  const [showLogoutPrompt, setShowLogoutPrompt] = useState(false);
+  const [accessCode, setAccessCode] = useState('');
+  const [usingAccessCode, setUsingAccessCode] = useState(false);
 
   useEffect(() => {
     console.log('PublicExamAccess useEffect triggered');
     console.log('  shareToken:', shareToken);
-    console.log('  mode:', isPrivateMode ? 'private' : 'public');
     console.log('  user:', user ? `${user.email} (${user._id})` : 'null');
     console.log('  current error:', error);
     
     if (!shareToken) {
       console.error('No shareToken provided');
-      setError('Invalid share link');
-      setLoading(false);
-      return;
-    }
-
-    // For private mode, wait for user to log in before fetching exam
-    if (isPrivateMode && !user) {
-      console.log('Private mode: waiting for user to log in');
+      // Check if user might be trying to use access code instead
+      setUsingAccessCode(true);
       setLoading(false);
       return;
     }
@@ -49,15 +37,6 @@ const PublicExamAccess = () => {
     if (error) {
       console.log('Clearing previous error before fetching exam');
       setError(null);
-    }
-
-    // Pre-fill form with user data if authenticated
-    if (user) {
-      setEmail(user.email || '');
-      const fullName = user.firstName && user.lastName 
-        ? `${user.firstName} ${user.lastName}` 
-        : (user.firstName || user.lastName || user.name || user.fullName || '');
-      setName(fullName);
     }
 
     console.log('Fetching exam data from /share/' + shareToken);
@@ -69,7 +48,6 @@ const PublicExamAccess = () => {
         if (r.data.shareData?.settings?.requirePassword) {
           setPasswordRequired(true);
         }
-        // Don't automatically join - let user click the button
       })
       .catch(err => {
         console.error('Error loading exam:', err);
@@ -81,51 +59,114 @@ const PublicExamAccess = () => {
         console.log('Finished loading exam data');
         setLoading(false);
       });
-  }, [shareToken, isPrivateMode, user]);
+  }, [shareToken, user]);
+
+  const handleAccessCodeSubmit = async () => {
+    if (!accessCode.trim()) {
+      setError('Please enter an access code');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await api.get(`/marketplace/access/${accessCode.trim()}`);
+      console.log('Exam data fetched via access code:', response.data);
+      
+      setExam(response.data);
+      if (response.data.shareData?.settings?.requirePassword) {
+        setPasswordRequired(true);
+      }
+      
+      // Update the URL with the shareToken for consistency
+      navigate(`/exam/${response.data.shareToken}`, { replace: true });
+    } catch (err) {
+      console.error('Error loading exam with access code:', err);
+      setError(err.response?.data?.message || 'Invalid access code. Please check and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleJoin = async (pwd = null) => {
     setJoining(true);
     try {
-      // For private mode, use authenticated user's info
-      const userName = user && isPrivateMode
-        ? (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : (user.firstName || user.lastName || user.name || user.fullName || ''))
-        : (name.trim() || undefined);
-      
-      const joinData = {
-        email: isPrivateMode && user ? user.email : (email.trim() || undefined),
-        name: userName,
-        password: pwd,
-        isPrivate: isPrivateMode
-      };
-      
-      const res = await api.post(`/share/${shareToken}/join`, joinData);
-      
-      // Store the exam session in localStorage for public access
-      if (res.data) {
-        localStorage.setItem('publicExamSession', JSON.stringify({
-          shareToken,
-          studentId: res.data.studentId,
-          exam: res.data.exam,
-          settings: res.data.settings,
-          joinedAt: new Date().toISOString()
-        }));
+      let joinData;
+
+      if (user) {
+        // Check if user is a guest (has temporary email)
+        const isGuestUser = user.email && user.email.includes('@exam.local');
+        
+        // Authenticated user - use their info
+        const userName = user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : (user.firstName || user.lastName || user.name || user.fullName || '');
+        joinData = {
+          email: user.email,
+          name: userName,
+          password: pwd,
+          isPrivate: !isGuestUser // Don't treat guest users as private
+        };
+      } else {
+        // Unauthenticated user - let backend create guest account
+        joinData = {
+          email: undefined,
+          name: undefined,
+          password: pwd,
+          isPrivate: false
+        };
       }
       
-      // Redirect to exam taking page
-      if (res.data?.resultId) {
-        // For authenticated students, redirect to student exam interface
-        navigate(`/student/exam/${res.data.resultId}`);
-      } else if (user && user.role === 'student') {
-        // Authenticated student should use student exam interface even without resultId
-        // Create a student exam session and redirect
-        navigate(`/student/exam/${res.data.exam._id}`);
+      const res = await api.post(`/share/${shareToken}/join`, joinData);
+
+      console.log('Join response:', res.data);
+      console.log('Has token:', !!res.data.token);
+      console.log('Has user:', !!res.data.user);
+      console.log('Current user:', user);
+
+      // If backend returned auth token for guest user, set it directly
+      if (res.data.token && !user) {
+        console.log('Setting token and redirecting...');
+        localStorage.setItem('token', res.data.token);
+        // Also store minimal user data for AuthContext
+        if (res.data.user) {
+          localStorage.setItem('user', JSON.stringify({
+            ...res.data.user,
+            token: res.data.token,
+            role: 'student',
+            userType: 'individual'
+          }));
+        }
+        // Store shareToken for submission
+        localStorage.setItem('currentShareToken', shareToken);
+        // Force page reload to update auth context with new token
+        // Always use examId since ExamInterface expects exam ID
+        // Pass shareToken in URL as fallback
+        window.location.href = `/student/exam/${res.data.exam._id}?shareToken=${shareToken}`;
+        return;
+      }
+
+      // Redirect all students to main exam interface
+      // Always use examId since ExamInterface expects exam ID
+      // Store shareToken if available for submission
+      if (shareToken) {
+        localStorage.setItem('currentShareToken', shareToken);
+        navigate(`/student/exam/${res.data.exam._id}?shareToken=${shareToken}`);
       } else {
-        // Navigate to public exam page for unauthenticated users
-        navigate(`/exam/${shareToken}`);
+        navigate(`/student/exam/${res.data.exam._id}`);
       }
     } catch (err) {
       console.error('Error joining exam:', err);
-      setError(err.response?.data?.message || 'Failed to join exam');
+      console.error('Error status:', err.response?.status);
+      console.error('Error message:', err.response?.data?.message);
+      console.error('Error data:', err.response?.data);
+      
+      // If 403 error and user is logged in, show logout prompt
+      if (err.response?.status === 403 && user) {
+        setShowLogoutPrompt(true);
+        setError('You are logged in as a different user. Please logout and login with the correct account to access this exam.');
+      } else {
+        setError(err.response?.data?.message || 'Failed to join exam');
+      }
     } finally {
       setJoining(false);
     }
@@ -139,34 +180,7 @@ const PublicExamAccess = () => {
     await handleJoin(password);
   };
 
-  const handleLogin = async () => {
-    if (!loginEmail.trim() || !loginPassword.trim()) {
-      setLoginError('Please enter both email and password');
-      return;
-    }
-
-    setIsLoggingIn(true);
-    setLoginError('');
-    setError(null); // Clear any previous errors
-
-    try {
-      await login({ email: loginEmail.trim(), password: loginPassword });
-      console.log('Login successful, user should now be authenticated');
-      
-      // Give AuthContext time to update user state
-      setPostLoginLoading(true);
-      setTimeout(() => {
-        setPostLoginLoading(false);
-        console.log('Post-login loading complete, user state should be updated');
-      }, 500);
-    } catch (err) {
-      setLoginError(err.message || 'Login failed. Please check your credentials.');
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  if (loading || postLoginLoading) {
+  if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9' }}>
         <CircularProgress />
@@ -174,55 +188,49 @@ const PublicExamAccess = () => {
     );
   }
 
-  // Show login form for private mode when not authenticated
-  if (isPrivateMode && !user) {
+  // Show access code input form if using access code
+  if (usingAccessCode && !exam) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9', p: 2 }}>
-        <Paper elevation={0} sx={{ p: 4, borderRadius: 3, maxWidth: 400, border: '1px solid #e2e8f0' }}>
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 3, maxWidth: 450, border: '1px solid #e2e8f0' }}>
           <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
-            🔒 Private Exam Login
+            🔑 Enter Access Code
           </Typography>
           <Typography sx={{ color: '#64748b', mb: 3, fontSize: 14 }}>
-            Please enter your credentials to access this private exam.
+            Enter the 6-digit code provided by your teacher to access this exam.
           </Typography>
 
-          {loginError && (
+          {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              {loginError}
+              {error}
             </Alert>
           )}
 
           <TextField
             fullWidth
-            label="Email Address"
-            type="email"
-            value={loginEmail}
-            onChange={e => setLoginEmail(e.target.value)}
-            onKeyPress={e => e.key === 'Enter' && handleLogin()}
-            disabled={isLoggingIn}
-            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
-
-          <TextField
-            fullWidth
-            label="Password"
-            type="password"
-            value={loginPassword}
-            onChange={e => setLoginPassword(e.target.value)}
-            onKeyPress={e => e.key === 'Enter' && handleLogin()}
-            disabled={isLoggingIn}
+            label="Access Code"
+            value={accessCode}
+            onChange={(e) => setAccessCode(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleAccessCodeSubmit()}
+            disabled={loading}
+            placeholder="Enter 6-digit code"
+            inputProps={{ maxLength: 6, style: { letterSpacing: '0.5em', textAlign: 'center', fontSize: '1.5rem', fontWeight: 700 } }}
             sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
 
           <Button
             fullWidth
             variant="contained"
-            onClick={handleLogin}
-            disabled={isLoggingIn || !loginEmail.trim() || !loginPassword.trim()}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+            onClick={handleAccessCodeSubmit}
+            disabled={loading || !accessCode.trim()}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, py: 1.5 }}
           >
-            {isLoggingIn ? 'Logging in…' : 'Login'}
+            {loading ? 'Verifying…' : 'Access Exam'}
           </Button>
+
+          <Typography sx={{ mt: 3, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+            Don't have an access code? Contact your teacher.
+          </Typography>
         </Paper>
       </Box>
     );
@@ -283,10 +291,38 @@ const PublicExamAccess = () => {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9', p: 2 }}>
       <Paper elevation={0} sx={{ p: 4, borderRadius: 3, maxWidth: 500, border: '1px solid #e2e8f0' }}>
-        {isPrivateMode && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            <Typography variant="body2">
-              🔒 Private Exam Access - You are joining as an authenticated student
+        {showLogoutPrompt && (
+          <>
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              <Typography variant="body2" fontWeight={600}>
+                Account Conflict Detected
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                You are logged in as <strong>{user?.email}</strong>. This exam requires you to login with a different account. Please logout first and then access this link again.
+              </Typography>
+            </Alert>
+            <Button
+              variant="contained"
+              color="error"
+              fullWidth
+              onClick={() => {
+                logout();
+                navigate('/login');
+              }}
+              sx={{ mb: 3, borderRadius: 2, textTransform: 'none', fontWeight: 700, py: 1.5 }}
+            >
+              Logout and Login Again
+            </Button>
+          </>
+        )}
+
+        {!user && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2" fontWeight={600}>
+              Guest Access
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              You can join this exam as a guest. A temporary account will be created automatically.
             </Typography>
           </Alert>
         )}
@@ -307,26 +343,13 @@ const PublicExamAccess = () => {
           </Typography>
         </Box>
 
-        <TextField
-          fullWidth
-          label="Full Name"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          disabled={isPrivateMode && user}
-          sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          helperText={isPrivateMode && user ? 'Using your account name' : ''}
-        />
-        
-        <TextField
-          fullWidth
-          label="Email Address"
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          disabled={isPrivateMode && user}
-          sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          helperText={isPrivateMode && user ? 'Using your account email' : ''}
-        />
+        {user && (
+          <Box sx={{ bgcolor: '#EFF6FF', p: 2, borderRadius: 2, mb: 3 }}>
+            <Typography sx={{ fontSize: 13, color: '#1E40AF' }}>
+              <strong>Logged in as:</strong> {user.email}
+            </Typography>
+          </Box>
+        )}
 
         <Button
           fullWidth
@@ -335,7 +358,7 @@ const PublicExamAccess = () => {
           disabled={joining}
           sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, py: 1.5 }}
         >
-          {joining ? 'Starting…' : 'Start Exam'}
+          {joining ? 'Starting…' : user ? 'Start Exam' : 'Join as Guest'}
         </Button>
       </Paper>
     </Box>

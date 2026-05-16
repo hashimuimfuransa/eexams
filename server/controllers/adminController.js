@@ -12,6 +12,39 @@ const isSuperAdmin = (user) => {
   return user && user.role === 'superadmin';
 };
 
+// Helper function to get all student IDs for an admin (including students created by teachers under that admin)
+const getAllStudentIdsForAdmin = async (adminId, userRole) => {
+  try {
+    // For super admin, return all student IDs (no filter)
+    if (userRole === 'superadmin') {
+      const allStudents = await User.find({ role: 'student' }).select('_id').lean();
+      return allStudents.map(s => s._id);
+    }
+
+    // Find all teachers under this admin (teachers with parentAdmin = adminId)
+    const teachers = await User.find({
+      role: 'teacher',
+      parentAdmin: adminId
+    }).select('_id').lean();
+
+    const teacherIds = teachers.map(t => t._id);
+
+    // Find students created by the admin OR by any teacher under the admin
+    const students = await User.find({
+      role: 'student',
+      $or: [
+        { createdBy: adminId },
+        { createdBy: { $in: teacherIds } }
+      ]
+    }).select('_id').lean();
+
+    return students.map(s => s._id);
+  } catch (error) {
+    console.error('Error getting all student IDs for admin:', error);
+    return [];
+  }
+};
+
 // Simple in-memory cache for leaderboard data (5 minute TTL)
 const leaderboardCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -127,13 +160,38 @@ const registerStudent = async (req, res) => {
 const getStudents = async (req, res) => {
   try {
     // Check if user is super admin - if so, return all students
-    // For superadmin: req.orgAdminId is null, so show all students
-    const query = isSuperAdmin(req.user) || !req.orgAdminId
-      ? { role: 'student' }
-      : { role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      const students = await User.find({ role: 'student' }).select('-password');
+      return res.json(students);
+    }
 
-    // Find students (all for super admin, or only this organization's students)
-    const students = await User.find(query).select('-password');
+    // For admins: get all students including those created by teachers under this admin
+    if (req.user.role === 'admin') {
+      // Find all teachers under this admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
+
+      const teacherIds = teachers.map(t => t._id);
+
+      // Find students created by the admin OR by any teacher under the admin
+      const students = await User.find({
+        role: 'student',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      }).select('-password');
+
+      return res.json(students);
+    }
+
+    // For teachers: show students created by themselves or by their admin
+    const students = await User.find({
+      role: 'student',
+      $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+    }).select('-password');
 
     res.json(students);
   } catch (error) {
@@ -149,9 +207,34 @@ const getStudentById = async (req, res) => {
   try {
     const student = await User.findById(req.params.id).select('-password');
 
-    // Check if student exists, is a student, and belongs to this organization
-    if (student && student.role === 'student' &&
-        (student.createdBy && student.createdBy.toString() === req.orgAdminId.toString())) {
+    // Check if student exists and is a student
+    if (!student || student.role !== 'student') {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Check if student belongs to this organization
+    let isAuthorized = false;
+    if (req.user.role === 'admin') {
+      // For admins: check if student was created by admin or by teachers under the admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
+
+      const teacherIds = teachers.map(t => t._id);
+      isAuthorized = student.createdBy && (
+        student.createdBy.toString() === req.orgAdminId.toString() ||
+        teacherIds.some(tid => tid.toString() === student.createdBy.toString())
+      );
+    } else {
+      // For teachers: check if student was created by themselves or by their admin
+      isAuthorized = student.createdBy && (
+        student.createdBy.toString() === req.orgAdminId.toString() ||
+        student.createdBy.toString() === req.user._id.toString()
+      );
+    }
+
+    if (isAuthorized) {
       res.json(student);
     } else {
       res.status(404).json({ message: 'Student not found or not authorized to access this student' });
@@ -171,9 +254,34 @@ const updateStudent = async (req, res) => {
 
     const student = await User.findById(req.params.id);
 
-    // Check if student exists, is a student, and belongs to this organization
-    if (student && student.role === 'student' &&
-        (student.createdBy && student.createdBy.toString() === req.orgAdminId.toString())) {
+    // Check if student exists and is a student
+    if (!student || student.role !== 'student') {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Check if student belongs to this organization
+    let isAuthorized = false;
+    if (req.user.role === 'admin') {
+      // For admins: check if student was created by admin or by teachers under the admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
+
+      const teacherIds = teachers.map(t => t._id);
+      isAuthorized = student.createdBy && (
+        student.createdBy.toString() === req.orgAdminId.toString() ||
+        teacherIds.some(tid => tid.toString() === student.createdBy.toString())
+      );
+    } else {
+      // For teachers: check if student was created by themselves or by their admin
+      isAuthorized = student.createdBy && (
+        student.createdBy.toString() === req.orgAdminId.toString() ||
+        student.createdBy.toString() === req.user._id.toString()
+      );
+    }
+
+    if (isAuthorized) {
       // Update student fields
       if (firstName) student.firstName = firstName;
       if (lastName) student.lastName = lastName;
@@ -221,9 +329,34 @@ const deleteStudent = async (req, res) => {
   try {
     const student = await User.findById(req.params.id);
 
-    // Check if student exists, is a student, and belongs to this organization
-    if (student && student.role === 'student' &&
-        (student.createdBy && student.createdBy.toString() === req.orgAdminId.toString())) {
+    // Check if student exists and is a student
+    if (!student || student.role !== 'student') {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Check if student belongs to this organization
+    let isAuthorized = false;
+    if (req.user.role === 'admin') {
+      // For admins: check if student was created by admin or by teachers under the admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
+
+      const teacherIds = teachers.map(t => t._id);
+      isAuthorized = student.createdBy && (
+        student.createdBy.toString() === req.orgAdminId.toString() ||
+        teacherIds.some(tid => tid.toString() === student.createdBy.toString())
+      );
+    } else {
+      // For teachers: check if student was created by themselves or by their admin
+      isAuthorized = student.createdBy && (
+        student.createdBy.toString() === req.orgAdminId.toString() ||
+        student.createdBy.toString() === req.user._id.toString()
+      );
+    }
+
+    if (isAuthorized) {
       const studentName = `${student.firstName} ${student.lastName}`;
       await student.deleteOne();
 
@@ -310,15 +443,36 @@ const getExamResults = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found or not authorized' });
     }
 
-    // Get students created by this admin
-    const students = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId
-    }).select('_id');
+    // Get students created by this admin OR by teachers under this admin
+    let studentIds;
+    if (req.user.role === 'admin') {
+      // For admins: include students created by teachers under this admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
 
-    const studentIds = students.map(student => student._id);
+      const teacherIds = teachers.map(t => t._id);
+      const students = await User.find({
+        role: 'student',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      }).select('_id');
 
-    // Get results for this exam from students created by this admin
+      studentIds = students.map(student => student._id);
+    } else {
+      // For teachers: show students created by themselves or by their admin
+      const students = await User.find({
+        role: 'student',
+        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+      }).select('_id');
+
+      studentIds = students.map(student => student._id);
+    }
+
+    // Get results for this exam from students created by this admin or their teachers
     const results = await Result.find({
       exam: examId,
       student: { $in: studentIds }
@@ -386,13 +540,35 @@ const getOverallLeaderboard = async (req, res) => {
       return res.json(cachedData);
     }
 
-    // Get students created by this admin with lean query for better performance
-    const students = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId
-    }).select('_id').lean();
+    // Get students created by this admin OR by teachers under this admin
+    let studentIds;
+    if (req.user.role === 'admin') {
+      // For admins: include students created by teachers under this admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
 
-    const studentIds = students.map(student => student._id);
+      const teacherIds = teachers.map(t => t._id);
+      const students = await User.find({
+        role: 'student',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      }).select('_id').lean();
+
+      studentIds = students.map(student => student._id);
+    } else {
+      // For teachers: show students created by themselves or by their admin
+      const students = await User.find({
+        role: 'student',
+        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+      }).select('_id').lean();
+
+      studentIds = students.map(student => student._id);
+    }
+
     console.log(`Found ${studentIds.length} students for admin`);
 
     // Get exams created by this admin with lean query
@@ -543,15 +719,36 @@ const getExamLeaderboard = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found or access denied' });
     }
 
-    // Get students created by this admin
-    const students = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId
-    }).select('_id').lean();
+    // Get students created by this admin OR by teachers under this admin
+    let studentIds;
+    if (req.user.role === 'admin') {
+      // For admins: include students created by teachers under this admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
 
-    const studentIds = students.map(student => student._id);
+      const teacherIds = teachers.map(t => t._id);
+      const students = await User.find({
+        role: 'student',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      }).select('_id').lean();
 
-    // Get completed results for this exam from admin's students only
+      studentIds = students.map(student => student._id);
+    } else {
+      // For teachers: show students created by themselves or by their admin
+      const students = await User.find({
+        role: 'student',
+        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+      }).select('_id').lean();
+
+      studentIds = students.map(student => student._id);
+    }
+
+    // Get completed results for this exam from admin's students and students of their teachers
     const results = await Result.find({
       exam: examId,
       isCompleted: true,
@@ -643,8 +840,8 @@ const getDetailedResult = async (req, res) => {
     const { resultId } = req.params;
 
     const result = await Result.findById(resultId)
-      .populate('student', 'fullName firstName lastName studentId email organization studentClass')
-      .populate('exam', 'title description totalPoints timeLimit')
+      .populate('student', 'fullName firstName lastName studentId email organization studentClass createdBy')
+      .populate('exam', 'title description totalPoints timeLimit createdBy')
       .populate({
         path: 'answers.question',
         select: 'text type options correctAnswer points section'
@@ -654,12 +851,44 @@ const getDetailedResult = async (req, res) => {
       return res.status(404).json({ message: 'Result not found' });
     }
 
-    // Check if this result belongs to an exam created by this organization
+    // Check if this result belongs to an exam created by this organization or teacher
     const exam = await Exam.findById(result.exam._id);
 
-    if (!exam || exam.createdBy.toString() !== req.orgAdminId.toString()) {
+    // Allow access if exam was created by org admin or by the teacher themselves
+    const isExamAuthorized = exam && (
+      exam.createdBy.toString() === req.orgAdminId.toString() ||
+      exam.createdBy.toString() === req.user._id.toString()
+    );
+
+    if (!isExamAuthorized) {
       return res.status(403).json({ message: 'Not authorized to view this result' });
     }
+
+    // For admins: also check if the student belongs to their organization (created by admin or by teachers under admin)
+    if (req.user.role === 'admin') {
+      // Find all teachers under this admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
+
+      const teacherIds = teachers.map(t => t._id);
+
+      // Check if student was created by admin or by any teacher under the admin
+      const isStudentAuthorized = result.student.createdBy && (
+        result.student.createdBy.toString() === req.orgAdminId.toString() ||
+        teacherIds.some(tid => tid.toString() === result.student.createdBy.toString())
+      );
+
+      if (!isStudentAuthorized) {
+        return res.status(403).json({ message: 'Not authorized to view this student result' });
+      }
+    }
+
+    // Fetch shareToken from SharedExam collection for reset functionality
+    const SharedExam = require('../models/SharedExam');
+    const sharedExam = await SharedExam.findOne({ exam: result.exam._id });
+    const shareToken = sharedExam ? sharedExam.shareToken : null;
 
     // Calculate additional statistics
     const percentage = result.maxPossibleScore > 0
@@ -729,7 +958,8 @@ const getDetailedResult = async (req, res) => {
         good: percentage >= 70 && percentage < 90,
         average: percentage >= 50 && percentage < 70,
         poor: percentage < 50
-      }
+      },
+      shareToken // Include shareToken for reset functionality
     };
 
     res.json(enhancedResult);
@@ -791,7 +1021,31 @@ const getDashboardStats = async (req, res) => {
 
     // Build queries based on super admin status
     // For superadmin: req.orgAdminId is null, so show all data
-    const studentQuery = superAdmin || !req.orgAdminId ? { role: 'student' } : { role: 'student', createdBy: req.orgAdminId };
+    // For admins: show students created by them OR by teachers under them
+    // For teachers: show students created by themselves or by their admin
+    let studentQuery;
+    if (superAdmin || !req.orgAdminId) {
+      studentQuery = { role: 'student' };
+    } else if (req.user.role === 'admin') {
+      // For admins: include students created by teachers under this admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
+
+      const teacherIds = teachers.map(t => t._id);
+      studentQuery = {
+        role: 'student',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      };
+    } else {
+      // For teachers: show students created by themselves or by their admin
+      studentQuery = { role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
+
     const examQuery = superAdmin || !req.orgAdminId ? {} : { createdBy: req.orgAdminId };
     const upcomingExamQuery = superAdmin || !req.orgAdminId
       ? { scheduledFor: { $gt: new Date() }, status: 'scheduled' }
@@ -826,37 +1080,40 @@ const getDashboardStats = async (req, res) => {
       : { isCompleted: true, student: { $in: studentIds }, exam: { $in: examIds } };
     const results = await Result.find(resultQuery);
 
+    // Helper function to calculate percentage from result
+    const getPercentage = (r) => {
+      if (r.percentage !== undefined && r.percentage !== null) return r.percentage;
+      if (r.maxPossibleScore > 0) {
+        return (r.totalScore / r.maxPossibleScore) * 100;
+      }
+      return 0;
+    };
+
     // Calculate performance stats for students created by this admin
     const totalResults = results.length;
     const averageScore = totalResults > 0
-      ? Math.round(results.reduce((sum, result) => {
-          const percentage = result.maxPossibleScore > 0
-            ? (result.totalScore / result.maxPossibleScore) * 100
-            : 0;
-          return sum + percentage;
-        }, 0) / totalResults)
+      ? Math.round(results.reduce((sum, result) => sum + getPercentage(result), 0) / totalResults)
       : 0;
 
     // Count performance levels
-    const excellentCount = results.filter(r => {
-      const percentage = r.maxPossibleScore > 0 ? (r.totalScore / r.maxPossibleScore) * 100 : 0;
-      return percentage >= 90;
-    }).length;
+    const excellentCount = results.filter(r => getPercentage(r) >= 90).length;
 
     const goodCount = results.filter(r => {
-      const percentage = r.maxPossibleScore > 0 ? (r.totalScore / r.maxPossibleScore) * 100 : 0;
-      return percentage >= 70 && percentage < 90;
+      const pct = getPercentage(r);
+      return pct >= 70 && pct < 90;
     }).length;
 
     const averageCount = results.filter(r => {
-      const percentage = r.maxPossibleScore > 0 ? (r.totalScore / r.maxPossibleScore) * 100 : 0;
-      return percentage >= 50 && percentage < 70;
+      const pct = getPercentage(r);
+      return pct >= 50 && pct < 70;
     }).length;
 
-    const poorCount = results.filter(r => {
-      const percentage = r.maxPossibleScore > 0 ? (r.totalScore / r.maxPossibleScore) * 100 : 0;
-      return percentage < 50;
-    }).length;
+    const poorCount = results.filter(r => getPercentage(r) < 50).length;
+
+    // Calculate pass rate (percentage of students scoring >= 50%)
+    const passRate = totalResults > 0
+      ? Math.round(((excellentCount + goodCount + averageCount) / totalResults) * 100)
+      : 0;
 
     // Get count of unresolved security alerts
     const securityAlerts = await SecurityAlert.countDocuments({ status: 'unresolved' });
@@ -878,6 +1135,7 @@ const getDashboardStats = async (req, res) => {
       upcomingExams,
       totalResults,
       averageScore,
+      passRate,
       performanceBreakdown: {
         excellent: excellentCount,
         good: goodCount,
@@ -1414,29 +1672,48 @@ const createExam = async (req, res) => {
       }
     });
 
+    // Ensure default sections exist even if parsing fails
+    if (!exam.sections || exam.sections.length === 0) {
+      exam.sections = [
+        { name: 'A', description: 'Multiple Choice Questions', questions: [] },
+        { name: 'B', description: 'Short Answer Questions', questions: [] },
+        { name: 'C', description: 'Long Answer Questions', questions: [] }
+      ];
+      await exam.save();
+      console.log('Created default sections for exam');
+    }
+
+    // Process answer file first if it exists
+    let answerData = { answers: {} };
+    if (answerFilePath) {
+      try {
+        console.log('Processing answer file:', answerFilePath);
+        const { parseAnswerFile } = require('../utils/fileParser');
+        answerData = await parseAnswerFile(answerFilePath);
+        console.log(`Answer file processed, found ${Object.keys(answerData.answers).length} answers`);
+        Object.entries(answerData.answers).forEach(([qNum, ans]) => {
+          console.log(`  Question ${qNum}: ${ans}`);
+        });
+      } catch (answerError) {
+        console.error('Error processing answer file:', answerError);
+        console.log('Continuing without answer file data');
+      }
+    }
+
     // Parse the exam file to extract questions if it exists
+    let parsingFailed = false;
     if (examFilePath) {
       try {
         const { parseFile } = require('../utils/fileParser');
         console.log('Attempting to parse exam file:', examFilePath);
 
-        const parsedExam = await parseFile(examFilePath);
+        const parsedExam = await parseFile(examFilePath, answerData);
         console.log('Exam file parsed successfully');
-
-        // Create default sections if they don't exist
-        if (!exam.sections || exam.sections.length === 0) {
-          exam.sections = [
-            { name: 'A', description: 'Multiple Choice Questions', questions: [] },
-            { name: 'B', description: 'Short Answer Questions', questions: [] },
-            { name: 'C', description: 'Long Answer Questions', questions: [] }
-          ];
-          await exam.save();
-          console.log('Created default sections for exam');
-        }
 
         // Create questions for each section
         if (parsedExam && parsedExam.sections) {
           const Question = require('../models/Question');
+          let globalQuestionNumber = 1; // Global question counter across all sections
 
           for (const section of parsedExam.sections) {
             if (section.questions && section.questions.length > 0) {
@@ -1458,40 +1735,66 @@ const createExam = async (req, res) => {
                   // Validate question data before creating
                   let questionType = questionData.type || 'multiple-choice';
 
-                  // Ensure type is valid
-                  if (!['multiple-choice', 'open-ended'].includes(questionType)) {
+                  // Ensure type is valid - support all question types
+                  const validTypes = ['multiple-choice', 'true-false', 'fill-in-blank', 'open-ended', 'short-answer', 'matching', 'ordering'];
+                  if (!validTypes.includes(questionType)) {
                     console.warn(`Invalid question type: ${questionType}, defaulting to multiple-choice`);
                     questionType = 'multiple-choice';
                   }
 
-                  // Ensure options are properly formatted for multiple-choice questions
+                  // Get question number from data (if available), otherwise use global counter
+                  const questionNumber = questionData.number || globalQuestionNumber;
+
+                  // Use answer from answer file if available
+                  let correctAnswer = questionData.correctAnswer;
+                  if (answerData.answers && answerData.answers[questionNumber]) {
+                    correctAnswer = answerData.answers[questionNumber];
+                    console.log(`Using answer from answer file for question ${questionNumber}: ${correctAnswer}`);
+                  }
+
+                  // Ensure options are properly formatted based on question type
                   let options = [];
-                  if (questionType === 'multiple-choice') {
+                  if (questionType === 'multiple-choice' || questionType === 'true-false') {
                     if (Array.isArray(questionData.options)) {
                       // Check if options are already in the correct format
                       if (questionData.options.length > 0 && typeof questionData.options[0] === 'object' && 'text' in questionData.options[0]) {
                         options = questionData.options;
                       } else {
-                        // Convert simple string array to proper format
+                        // Convert simple string array to proper format and mark correct answer
                         options = questionData.options.map(opt => ({
                           text: opt,
-                          isCorrect: opt === questionData.correctAnswer
+                          isCorrect: opt === correctAnswer
                         }));
                       }
-                    } else {
-                      // Default options if none provided
+                    } else if (questionType === 'true-false') {
+                      // Default True/False options with correct answer marked
                       options = [
-                        { text: 'Option A', isCorrect: true },
-                        { text: 'Option B', isCorrect: false },
-                        { text: 'Option C', isCorrect: false },
-                        { text: 'Option D', isCorrect: false }
+                        { text: 'True', isCorrect: correctAnswer === 'True' },
+                        { text: 'False', isCorrect: correctAnswer === 'False' }
+                      ];
+                    } else {
+                      // Default options for multiple-choice if none provided
+                      options = [
+                        { text: 'Option A', isCorrect: correctAnswer === 'A' || correctAnswer === 'Option A' },
+                        { text: 'Option B', isCorrect: correctAnswer === 'B' || correctAnswer === 'Option B' },
+                        { text: 'Option C', isCorrect: correctAnswer === 'C' || correctAnswer === 'Option C' },
+                        { text: 'Option D', isCorrect: correctAnswer === 'D' || correctAnswer === 'Option D' }
                       ];
                     }
                   }
 
-                  // Ensure correctAnswer is provided
-                  const correctAnswer = questionData.correctAnswer ||
-                    (questionType === 'multiple-choice' ? 'Option A' : 'Sample answer');
+                  // Ensure correctAnswer is provided based on question type
+                  if (!correctAnswer) {
+                    if (questionType === 'multiple-choice') {
+                      correctAnswer = 'Option A';
+                    } else if (questionType === 'true-false') {
+                      correctAnswer = 'True';
+                    } else if (questionType === 'fill-in-blank') {
+                      correctAnswer = 'answer';
+                    } else {
+                      correctAnswer = 'Sample answer';
+                    }
+                  }
 
                   // Create the question with validated data
                   const question = await Question.create({
@@ -1501,7 +1804,13 @@ const createExam = async (req, res) => {
                     correctAnswer: correctAnswer,
                     points: questionData.points || 1,
                     exam: exam._id,
-                    section: section.name
+                    section: section.name,
+                    explanation: questionData.explanation || '',
+                    gradingCriteria: questionData.gradingCriteria || [],
+                    keyPoints: questionData.keyPoints || [],
+                    leftItems: questionData.leftItems || [],
+                    rightItems: questionData.rightItems || [],
+                    items: questionData.items || []
                   });
 
                   // Add question to the appropriate section
@@ -1511,6 +1820,9 @@ const createExam = async (req, res) => {
                   }
 
                   console.log('Created question:', question._id, 'for section', section.name);
+                  
+                  // Increment global question counter for next question
+                  globalQuestionNumber++;
                 } catch (questionError) {
                   console.error('Error creating question:', questionError);
                   // Continue with next question instead of failing the whole process
@@ -1527,6 +1839,7 @@ const createExam = async (req, res) => {
         console.error('Error parsing exam file:', parseError);
         // Don't delete the exam, just log the error
         console.log('Continuing without parsing questions');
+        parsingFailed = true;
       }
     }
 
@@ -1598,7 +1911,55 @@ const createExam = async (req, res) => {
       console.log('Manual exam completed with sections and questions');
     }
 
-    res.status(201).json(exam);
+    // Populate questions with full data for editing (same format as AI generate)
+    await exam.populate({
+      path: 'sections.questions',
+      select: 'text type options correctAnswer points difficulty section explanation gradingCriteria keyPoints leftItems rightItems items'
+    });
+
+    // Flatten questions array for the editor (same format as AI generate)
+    const allQuestions = [];
+    if (exam.sections && Array.isArray(exam.sections)) {
+      exam.sections.forEach(section => {
+        if (section.questions && Array.isArray(section.questions)) {
+          section.questions.forEach(question => {
+            if (question && typeof question === 'object') {
+              allQuestions.push({
+                _id: question._id,
+                text: question.text,
+                type: question.type,
+                marks: question.points || 1,
+                difficulty: question.difficulty || 'medium',
+                correctAnswer: question.correctAnswer,
+                options: question.options || [],
+                explanation: question.explanation || '',
+                gradingCriteria: question.gradingCriteria || [],
+                keyPoints: question.keyPoints || [],
+                section: section.name,
+                leftItems: question.leftItems || [],
+                rightItems: question.rightItems || [],
+                items: question.items || []
+              });
+            }
+          });
+        }
+      });
+    }
+
+    // Return exam in the same format as AI generate endpoint
+    const responseData = {
+      _id: exam._id,
+      title: exam.title,
+      description: exam.description,
+      timeLimit: exam.timeLimit,
+      passingScore: exam.passingScore,
+      questions: allQuestions,
+      totalMarks: allQuestions.reduce((sum, q) => sum + (q.marks || 1), 0),
+      sections: exam.sections,
+      parsingFailed: parsingFailed
+    };
+
+    res.status(201).json(responseData);
   } catch (error) {
     console.error('Create exam error:', error);
 
@@ -1950,16 +2311,45 @@ const updateScheduledExam = async (req, res) => {
 // @access  Private/Admin
 const getAllResults = async (req, res) => {
   try {
-    // Get students created by this admin
-    const students = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId
-    }).select('_id');
+    // Get students created by this admin OR by teachers under this admin
+    let studentIds;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      // For super admin: get all students
+      const students = await User.find({ role: 'student' }).select('_id');
+      studentIds = students.map(student => student._id);
+    } else if (req.user.role === 'admin') {
+      // For admins: include students created by teachers under this admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
 
-    const studentIds = students.map(student => student._id);
+      const teacherIds = teachers.map(t => t._id);
+      const students = await User.find({
+        role: 'student',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      }).select('_id');
 
-    // Get all exams created by this admin
-    const exams = await Exam.find({ createdBy: req.orgAdminId }).select('_id');
+      studentIds = students.map(student => student._id);
+    } else {
+      // For teachers: show students created by themselves or by their admin
+      const students = await User.find({
+        role: 'student',
+        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+      }).select('_id');
+
+      studentIds = students.map(student => student._id);
+    }
+
+    // Get all exams created by this admin or teacher
+    const examQuery = isSuperAdmin(req.user) || !req.orgAdminId
+      ? {}
+      : { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+
+    const exams = await Exam.find(examQuery).select('_id');
     const examIds = exams.map(exam => exam._id);
 
     // Get all results for students created by this admin taking exams created by this admin
@@ -2371,6 +2761,15 @@ const getStudentResultsForRegrade = async (req, res) => {
       })
       .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 });
 
+    // Get share tokens for exams
+    const SharedExam = require('../models/SharedExam');
+    const resultExamIds = [...new Set(results.map(r => r.exam._id))];
+    const sharedExams = await SharedExam.find({ exam: { $in: resultExamIds } });
+    const shareTokenMap = {};
+    sharedExams.forEach(se => {
+      shareTokenMap[se.exam.toString()] = se.shareToken;
+    });
+
     // Format results with enhanced data for regrading
     const formattedResults = results.map(result => {
       const percentage = result.maxPossibleScore > 0
@@ -2421,6 +2820,7 @@ const getStudentResultsForRegrade = async (req, res) => {
         },
         exam: {
           _id: result.exam._id,
+          shareToken: shareTokenMap[result.exam._id.toString()] || null,
           title: result.exam.title,
           description: result.exam.description,
           totalPoints: result.exam.totalPoints,
@@ -3078,13 +3478,22 @@ const deleteTemplate = async (req, res) => {
 // @access  Private/Admin or Teacher
 const getReportsSummary = async (req, res) => {
   try {
-    const exams = await Exam.find({ createdBy: req.orgAdminId, status: { $ne: 'template' } }).lean();
+    const superAdmin = isSuperAdmin(req.user);
+    
+    // Include exams created by both orgAdminId and teacher's own ID
+    const examQuery = superAdmin || !req.orgAdminId
+      ? { status: { $ne: 'template' } }
+      : { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }], status: { $ne: 'template' } };
+    
+    const exams = await Exam.find(examQuery).lean();
     const examIds = exams.map(e => e._id);
 
-    const students = await User.find({
-      $or: [{ createdBy: req.orgAdminId }, { orgAdmin: req.orgAdminId }],
-      role: 'student'
-    }).select('_id firstName lastName email class').lean();
+    // Include students created by both orgAdminId and teacher's own ID
+    const studentQuery = superAdmin || !req.orgAdminId
+      ? { role: 'student' }
+      : { role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    
+    const students = await User.find(studentQuery).select('_id firstName lastName email class').lean();
     const studentIds = students.map(s => s._id);
 
     const results = await Result.find({
@@ -3092,13 +3501,55 @@ const getReportsSummary = async (req, res) => {
       exam: { $in: examIds }
     }).populate('exam', 'title').lean();
 
+    console.log(`Reports Summary Debug: Found ${results.length} results for ${exams.length} exams and ${students.length} students`);
+    if (results.length > 0) {
+      console.log('Sample result:', JSON.stringify(results[0], null, 2));
+    }
+
+    // Helper function to calculate percentage from result
+    const getPercentage = (r) => {
+      // First check if percentage is already calculated
+      if (r.percentage !== undefined && r.percentage !== null && !isNaN(r.percentage)) {
+        return r.percentage;
+      }
+      // Calculate from totalScore and maxPossibleScore
+      let totalScore = r.totalScore;
+      if (totalScore === undefined || totalScore === null) {
+        totalScore = r.answers?.reduce((sum, a) => sum + (a.score || 0), 0) || 0;
+      }
+      const maxPossibleScore = r.maxPossibleScore ?? 0;
+      
+      if (maxPossibleScore > 0 && totalScore >= 0) {
+        return Math.round((totalScore / maxPossibleScore) * 100);
+      }
+      
+      // Fallback: calculate from answers
+      if (r.answers && r.answers.length > 0) {
+        const answersTotal = r.answers.reduce((sum, a) => sum + (a.score || 0), 0);
+        const answersMax = r.answers.reduce((sum, a) => {
+          const question = a.question;
+          if (question && question.points) {
+            return sum + question.points;
+          }
+          return sum;
+        }, 0);
+        
+        if (answersMax > 0) {
+          return Math.round((answersTotal / answersMax) * 100);
+        }
+      }
+      
+      console.log(`Could not calculate percentage for result ${r._id}: totalScore=${totalScore}, maxPossibleScore=${maxPossibleScore}`);
+      return 0;
+    };
+
     // per-exam stats
     const examStats = exams.map(exam => {
       const examResults = results.filter(r => r.exam?._id?.toString() === exam._id.toString());
       const avg = examResults.length
-        ? Math.round(examResults.reduce((s, r) => s + (r.percentage ?? 0), 0) / examResults.length)
+        ? Math.round(examResults.reduce((s, r) => s + getPercentage(r), 0) / examResults.length)
         : null;
-      const passed = examResults.filter(r => (r.percentage ?? 0) >= (exam.passingScore ?? 70)).length;
+      const passed = examResults.filter(r => getPercentage(r) >= (exam.passingScore ?? 70)).length;
       return {
         _id: exam._id,
         title: exam.title,
@@ -3113,16 +3564,19 @@ const getReportsSummary = async (req, res) => {
     // per-student stats
     const studentStats = students.map(s => {
       const sr = results.filter(r => r.student?.toString() === s._id.toString());
-      const avg = sr.length ? Math.round(sr.reduce((acc, r) => acc + (r.percentage ?? 0), 0) / sr.length) : null;
+      const avg = sr.length ? Math.round(sr.reduce((acc, r) => acc + getPercentage(r), 0) / sr.length) : null;
       return { ...s, examsCompleted: sr.length, avgScore: avg };
     }).sort((a, b) => (b.avgScore ?? -1) - (a.avgScore ?? -1));
 
     const overallAvg = results.length
-      ? Math.round(results.reduce((s, r) => s + (r.percentage ?? 0), 0) / results.length)
+      ? Math.round(results.reduce((s, r) => s + getPercentage(r), 0) / results.length)
       : 0;
     const overallPass = results.length
-      ? Math.round((results.filter(r => (r.percentage ?? 0) >= 70).length / results.length) * 100)
+      ? Math.round((results.filter(r => getPercentage(r) >= 70).length / results.length) * 100)
       : 0;
+
+    console.log(`Reports Summary Stats: overallAvg=${overallAvg}, overallPass=${overallPass}, totalResults=${results.length}`);
+    console.log(`Sample percentages: ${results.map(r => getPercentage(r)).join(', ')}`);
 
     res.json({
       summary: {

@@ -54,7 +54,9 @@ import {
   Star as StarIcon,
   AutoAwesome as AIIcon,
   Speed as SpeedIcon,
-  Analytics as AnalyticsIcon
+  Analytics as AnalyticsIcon,
+  RestartAlt as ResetIcon,
+  Share as ShareIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import adminService from '../../../services/adminService';
@@ -91,8 +93,19 @@ const StudentResultsManager = () => {
     method: 'comprehensive'
   });
 
+  // Reset exam dialog
+  const [resetDialog, setResetDialog] = useState({
+    open: false,
+    resultId: null,
+    studentId: null,
+    studentName: '',
+    examTitle: '',
+    shareToken: null
+  });
+
   const [regrading, setRegrading] = useState(false);
   const [bulkRegrading, setBulkRegrading] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     fetchResults();
@@ -181,6 +194,54 @@ const StudentResultsManager = () => {
       examTitle: result.exam.title,
       method: 'comprehensive'
     });
+  };
+
+  const handleReset = async () => {
+    try {
+      setResetting(true);
+      setError('');
+
+      const response = await adminService.resetStudentExam(
+        resetDialog.shareToken,
+        resetDialog.studentId
+      );
+
+      setSuccess(`Successfully reset ${resetDialog.studentName}'s exam for ${resetDialog.examTitle}. They can now retake the exam.`);
+
+      setResetDialog({ open: false, resultId: null, studentId: null, studentName: '', examTitle: '', shareToken: null });
+
+      // Refresh results
+      fetchResults();
+    } catch (err) {
+      console.error('Error resetting exam:', err);
+      setError('Failed to reset exam: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const openResetDialog = (result) => {
+    setResetDialog({
+      open: true,
+      resultId: result._id,
+      studentId: result.student._id,
+      studentName: result.student.name,
+      examTitle: result.exam.title,
+      shareToken: result.shareToken
+    });
+  };
+
+  const handleShare = (result) => {
+    if (result.shareToken) {
+      const shareLink = `${window.location.origin}/join/${result.shareToken}`;
+      navigator.clipboard.writeText(shareLink).then(() => {
+        setSuccess('Share link copied to clipboard!');
+      }).catch(() => {
+        setError('Failed to copy share link');
+      });
+    } else {
+      setError('No share link available for this exam');
+    }
   };
 
   const handleBulkRegrade = async () => {
@@ -885,6 +946,40 @@ const StudentResultsManager = () => {
                                 <GradeIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
+
+                            <Tooltip title="Reset for Retake" arrow>
+                              <IconButton
+                                size="small"
+                                onClick={() => openResetDialog(result)}
+                                sx={{
+                                  color: theme.palette.error.main,
+                                  transition: 'all 0.2s ease',
+                                  '&:hover': {
+                                    backgroundColor: alpha(theme.palette.error.main, 0.1),
+                                    transform: 'scale(1.1)'
+                                  }
+                                }}
+                              >
+                                <ResetIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+
+                            <Tooltip title="Copy Share Link" arrow>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleShare(result)}
+                                sx={{
+                                  color: theme.palette.info.main,
+                                  transition: 'all 0.2s ease',
+                                  '&:hover': {
+                                    backgroundColor: alpha(theme.palette.info.main, 0.1),
+                                    transform: 'scale(1.1)'
+                                  }
+                                }}
+                              >
+                                <ShareIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
                           </Stack>
                         </TableCell>
                       </TableRow>
@@ -1120,6 +1215,130 @@ const StudentResultsManager = () => {
             }}
           >
             {regrading ? 'AI Regrading in Progress...' : 'Start AI Regrade'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reset Exam Dialog */}
+      <Dialog
+        open={resetDialog.open}
+        onClose={() => setResetDialog({ ...resetDialog, open: false })}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: `linear-gradient(135deg, ${theme.palette.background.paper} 0%, ${alpha(theme.palette.error.main, 0.02)} 100%)`
+          }
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <Box
+              sx={{
+                width: 48,
+                height: 48,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.error.main, 0.1),
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <ResetIcon sx={{ fontSize: 28, color: theme.palette.error.main }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" fontWeight="bold" color="error.main">
+                Reset Exam for Retake
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Allow student to retake this exam
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <Divider />
+
+        <DialogContent sx={{ pt: 3 }}>
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              This action will reset the student's exam progress, allowing them to retake the exam from scratch. Their previous result will be cleared.
+            </Typography>
+          </Alert>
+
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  bgcolor: alpha(theme.palette.primary.main, 0.05),
+                  borderRadius: 2,
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`
+                }}
+              >
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                  Student
+                </Typography>
+                <Typography variant="body1" fontWeight="bold" color="text.primary">
+                  {resetDialog.studentName}
+                </Typography>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  bgcolor: alpha(theme.palette.secondary.main, 0.05),
+                  borderRadius: 2,
+                  border: `1px solid ${alpha(theme.palette.secondary.main, 0.1)}`
+                }}
+              >
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                  Exam
+                </Typography>
+                <Typography variant="body1" fontWeight="bold" color="text.primary">
+                  {resetDialog.examTitle}
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button
+            onClick={() => setResetDialog({ ...resetDialog, open: false })}
+            variant="outlined"
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 'bold',
+              px: 3
+            }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            onClick={handleReset}
+            variant="contained"
+            disabled={resetting}
+            startIcon={resetting ? <CircularProgress size={20} color="inherit" /> : <ResetIcon />}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 'bold',
+              px: 4,
+              bgcolor: theme.palette.error.main,
+              '&:hover': {
+                bgcolor: theme.palette.error.dark
+              }
+            }}
+          >
+            {resetting ? 'Resetting...' : 'Reset Exam'}
           </Button>
         </DialogActions>
       </Dialog>

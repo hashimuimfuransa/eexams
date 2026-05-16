@@ -279,12 +279,17 @@ const createGroqClient = () => {
    * @returns {Promise<Object>} - Grading result with score, feedback, etc.
    */
   const gradeAnswer = async (question, answer, modelAnswer, maxPoints, options = {}) => {
+    const questionType = options.questionType || 'open-ended';
+    const section = options.section || 'A';
+
     const systemPrompt = `You are an expert exam grader specializing in academic assessment. You grade fairly and generously, always giving students the benefit of the doubt. Recognize semantic equivalence, abbreviations, synonyms, and partial understanding. Always return valid JSON.`;
 
     const prompt = `
 You are an expert exam grader. Please grade the following student answer to a question.
 
 Question: ${question}
+Question Type: ${questionType}
+Section: ${section}
 
 ${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
 
@@ -301,9 +306,17 @@ FAIR AND GENEROUS GRADING GUIDELINES:
 6. CASE INSENSITIVE: "cpu" = "CPU" = "Cpu" (all equivalent)
 7. PARTIAL EXPANSIONS: "Hard disk" = "Hard disk drive" = "HDD" (all correct)
 8. PARTIAL CREDIT: If the student includes some correct concepts from the model answer, award partial points (at least 50% if they demonstrate understanding)
-9. MINIMUM CREDIT: If the student provides a reasonable attempt that shows some understanding, award at least 20-30% of points
+9. MINIMUM CREDIT: If the student provides a reasonable attempt that shows some understanding, award at least 30-40% of points
 10. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
 11. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
+
+SPECIAL GUIDELINES FOR OPEN-ENDED/EXPLANATION QUESTIONS:
+- For questions asking to "describe" or "explain": Look for key concepts and understanding, not exact wording
+- Example: "Describe the water cycle" - Student mentioning evaporation, condensation, precipitation should get 70-80% even if incomplete
+- Example: "Explain adaptation" - Student mentioning survival, environment, traits should get 70-80% even if missing examples
+- Award 60-70% if the student has the right general idea but missing some details
+- Award 80-90% if the student understands the concept well but uses different words
+- Award full points if the student demonstrates complete understanding, even if phrasing differs from model answer
 
 PARTIAL CREDIT EXAMPLES:
 - Model: "Plants need water, sunlight, and soil to survive"
@@ -312,6 +325,16 @@ PARTIAL CREDIT EXAMPLES:
 - Student: "photosynthesis makes energy from sun" → Award 80-90% (correct concept, simplified explanation)
 - Model: "RAM is volatile memory used for temporary storage"
 - Student: "RAM stores data temporarily" → Award 70-80% (correct concept, less detail)
+- Model: "Describe the water cycle: evaporation, condensation, precipitation"
+- Student: "water evaporates, forms clouds, falls as rain" → Award 85-90% (correct understanding, different wording)
+- Model: "Explain adaptation: traits that help organisms survive in their environment"
+- Student: "adaptation is when animals change to survive" → Award 75-80% (correct concept, simplified)
+
+IMPORTANT FOR SECTIONS B & C:
+- These sections often have open-ended questions requiring explanations
+- Be especially generous with partial credit - minimum 40% for any reasonable attempt
+- Focus on understanding of concepts rather than exact terminology
+- If the student's answer is relevant and shows effort, award at least 50-60%
 
 Format your response as valid JSON with this exact structure:
 {

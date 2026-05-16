@@ -101,6 +101,8 @@ const superAdminRoutes = require('./routes/superAdmin');
 const shareRoutes = require('./routes/share');
 const resultsRoutes = require('./routes/results');
 const studentListRoutes = require('./routes/studentList');
+const publicExamRoutes = require('./routes/publicExam');
+const marketplaceRoutes = require('./routes/marketplace');
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -112,6 +114,8 @@ app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/results', resultsRoutes);
 app.use('/api/student-lists', studentListRoutes);
+app.use('/api/public', publicExamRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
 
 // Log registered routes for debugging
 console.log('Registered API routes:');
@@ -126,6 +130,8 @@ console.log('  - DELETE /api/superadmin/users/:id');
 console.log('  - PUT /api/superadmin/users/:id/toggle-block');
 console.log('- /api/share/* (Share/Link routes)');
 console.log('- /api/results/* (Results routes)');
+console.log('- /api/public/* (Public exam routes)');
+console.log('- /api/marketplace/* (Marketplace routes)');
 console.log('- /api/exam/test-routes (Debug route)');
 console.log('- /api/exam/:id/select-question (Question selection route)');
 

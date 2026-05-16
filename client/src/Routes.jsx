@@ -9,10 +9,12 @@ import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import StudentRoutes from './StudentRoutes';
 import NotFound from './pages/NotFound';
 import PublicExamAccess from './pages/PublicExamAccess';
-import PublicExamTaking from './pages/PublicExamTaking';
+import PublicExamList from './pages/PublicExamList';
 import ExamResult from './pages/ExamResult';
 import PendingApproval from './pages/PendingApproval';
 import CompleteRegistration from './pages/CompleteRegistration';
+import Marketplace from './pages/Marketplace';
+import ExamRequest from './pages/ExamRequest';
 import { useAuth } from './context/AuthContext';
 
 // Check if user registration is complete (has a subscription plan)
@@ -64,13 +66,17 @@ const AppRoutes = () => {
     <Routes>
       {/* Public exam access - must be before catch-all routes */}
       <Route path="/join/:shareToken" element={<PublicExamAccess />} />
-      <Route path="/exam/:shareToken" element={<PublicExamTaking />} />
+      <Route path="/exam/:shareToken" element={<PublicExamAccess />} />
+      <Route path="/access-code" element={<PublicExamAccess />} />
       <Route path="/exam-result/:resultId" element={<ExamResult />} />
       
       {/* Public routes */}
       <Route path="/" element={<App />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/public-exams" element={<PublicExamList />} />
+      <Route path="/marketplace" element={<Marketplace />} />
+      <Route path="/marketplace/exams/:examId/request" element={<ExamRequest />} />
 
       {/* Post-registration routes - accessible to authenticated users */}
       <Route path="/pending-approval" element={<ProtectedRoute allowIncomplete={true}><PendingApproval /></ProtectedRoute>} />

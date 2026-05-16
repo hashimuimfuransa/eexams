@@ -120,6 +120,7 @@ const ResultSchema = new mongoose.Schema({
         'fallback_expansion_match',
         'fallback_semantic_match',
         'fallback_keyword_matching',
+        'groq_ai',
         'not_selected',
         // New fast grading methods
         'fast_grading',

@@ -13,8 +13,14 @@ const {
   updateShare,
   deleteShare,
   getMyShares,
-  getShareStats
+  getShareStats,
+  resetShareExpiration,
+  removeStudentFromShare,
+  getAllSharedExams
 } = require('../controllers/shareController');
+
+// Get all shared exams for teacher (including orphaned ones) - must be before /:shareToken routes
+router.get('/all', auth, isAdminOrTeacher, getAllSharedExams);
 
 // Public routes (for students accessing shared exams)
 router.get('/:shareToken', getSharedExam);
@@ -34,9 +40,6 @@ router.get('/exam/:examId/shares', isAdminOrTeacher, getExamShares);
 // Get all shares created by the teacher
 router.get('/my-shares', isAdminOrTeacher, getMyShares);
 
-// Get share statistics
-router.get('/:shareId/stats', isAdminOrTeacher, getShareStats);
-
 // Update share settings
 router.put('/:shareId', isAdminOrTeacher, updateShare);
 
@@ -44,6 +47,15 @@ router.put('/:shareId', isAdminOrTeacher, updateShare);
 router.delete('/:shareId', isAdminOrTeacher, deleteShare);
 
 // Unlock student exam (allow retaking)
-router.post('/:shareToken/unlock/:studentId', isAdminOrTeacher, unlockStudentExam);
+router.post('/:shareId/unlock-student/:studentId', isAdminOrTeacher, unlockStudentExam);
+
+// Get share statistics
+router.get('/:shareId/stats', isAdminOrTeacher, getShareStats);
+
+// Reset share expiration
+router.post('/:shareId/reset-expiration', isAdminOrTeacher, resetShareExpiration);
+
+// Remove student from shared exam
+router.delete('/:shareToken/students/:studentId', isAdminOrTeacher, removeStudentFromShare);
 
 module.exports = router;

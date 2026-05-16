@@ -63,6 +63,7 @@ import {
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
 import { useThemeMode } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 // Import security CSS
 import './ExamSecurity.css';
@@ -221,7 +222,8 @@ const ExamInterface = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const theme = useTheme();
-  const { mode } = useThemeMode();
+  const { toggleTheme, mode } = useThemeMode();
+  const { user } = useAuth();
 
   // Security state variables
   const [securityActive, setSecurityActive] = useState(false);
@@ -974,8 +976,8 @@ const ExamInterface = () => {
     // Check if there are unsaved changes for the current question
     const currentAnswer = answers[currentQuestion._id];
 
-    // If it's an essay question with unsaved changes, save it first (no character limit)
-    if (currentQuestion.type === 'open-ended' &&
+    // If it's an essay or fill-in-blank question with unsaved changes, save it first (no character limit)
+    if ((currentQuestion.type === 'open-ended' || currentQuestion.type === 'fill-in-blank' || currentQuestion.type === 'fill_in_blank') &&
         currentAnswer &&
         currentAnswer.hasChanges &&
         !currentAnswer.savedToServer) {
@@ -992,7 +994,7 @@ const ExamInterface = () => {
         await saveAnswerToServer(
           currentQuestion._id,
           currentAnswer.textAnswer,
-          'open-ended'
+          currentQuestion.type === 'fill-in-blank' || currentQuestion.type === 'fill_in_blank' ? 'fill-in-blank' : 'open-ended'
         );
       } catch (error) {
         console.error('Error saving answer before navigation:', error);
@@ -1714,6 +1716,31 @@ const ExamInterface = () => {
 
       console.log(`Submitting exam ${id} for completion (${answeredQuestions}/${totalAnswers} questions answered)`);
 
+      // Check if this is a shared exam (guest user)
+      let shareToken = localStorage.getItem('currentShareToken');
+      
+      // Also check URL parameters for shareToken
+      if (!shareToken) {
+        const urlParams = new URLSearchParams(window.location.search);
+        shareToken = urlParams.get('shareToken');
+        // Store it in localStorage for future use
+        if (shareToken) {
+          localStorage.setItem('currentShareToken', shareToken);
+        }
+      }
+      
+      const isSharedExam = !!shareToken;
+
+      console.log(`🔍 Is shared exam: ${isSharedExam}, shareToken: ${shareToken}`);
+      console.log(`🔍 User email: ${user?.email}`);
+      console.log(`🔍 Is guest user: ${user?.email?.includes('@exam.local')}`);
+
+      // Also check if user is a guest based on email
+      const isGuestUser = user?.email?.includes('@exam.local');
+      const shouldUseShareEndpoint = isSharedExam || isGuestUser;
+
+      console.log(`🔍 Should use share endpoint: ${shouldUseShareEndpoint}`);
+
       // Enhanced retry logic with exponential backoff
       let retries = 3;
       let success = false;
@@ -1729,17 +1756,36 @@ const ExamInterface = () => {
             setTimeout(() => reject(new Error('Submission timeout after 20 seconds')), 20000);
           });
 
-          // Log the submission request details
-          console.log(`📤 Submitting to: /exam/${id}/complete`);
+          // Determine which endpoint to use
+          let submitEndpoint, submitPayload;
+          if (isSharedExam) {
+            // Use share submission endpoint for guest users
+            submitEndpoint = `/share/${shareToken}/submit`;
+            submitPayload = {
+              answers: answers,
+              studentId: user?._id
+            };
+            console.log(`📤 Submitting to: ${submitEndpoint} (shared exam)`);
+          } else {
+            // Use regular exam completion endpoint
+            submitEndpoint = `/exam/${id}/complete`;
+            submitPayload = {};
+            console.log(`📤 Submitting to: ${submitEndpoint} (regular exam)`);
+          }
           console.log(`📊 Submission data: ${answeredQuestions}/${totalAnswers} questions answered`);
 
           response = await Promise.race([
-            api.post(`/exam/${id}/complete`),
+            api.post(submitEndpoint, submitPayload),
             timeoutPromise
           ]);
 
           success = true;
           console.log('✅ Exam submitted successfully:', response.data);
+
+          // Clear shareToken after successful submission
+          if (shouldUseShareEndpoint) {
+            localStorage.removeItem('currentShareToken');
+          }
         } catch (submitError) {
           lastError = submitError;
 
@@ -1790,6 +1836,11 @@ const ExamInterface = () => {
       setExamResult(response.data);
       setSubmitting(false);
 
+      // Store resultId for navigation
+      if (response.data.resultId) {
+        localStorage.setItem('lastResultId', response.data.resultId);
+      }
+
       // Show success message with score if available
       const successMessage = response.data.percentage !== undefined
         ? `Exam submitted successfully! Score: ${response.data.percentage.toFixed(1)}%`
@@ -1800,6 +1851,14 @@ const ExamInterface = () => {
         message: successMessage,
         severity: 'success'
       });
+
+      // Auto-redirect to detailed results page after 2 seconds
+      setTimeout(() => {
+        const resultId = localStorage.getItem('lastResultId') || session?._id;
+        if (resultId) {
+          navigate(`/student/results/${resultId}`);
+        }
+      }, 2000);
 
     } catch (err) {
       console.error('Error submitting exam:', err);
@@ -2346,7 +2405,10 @@ const ExamInterface = () => {
               <Button
                 variant="contained"
                 color="primary"
-                onClick={() => navigate(`/student/results/${session._id}`)}
+                onClick={() => {
+                  const resultId = localStorage.getItem('lastResultId') || session._id;
+                  navigate(`/student/results/${resultId}`);
+                }}
                 endIcon={<ArrowForward />}
                 sx={{ borderRadius: 0 }} // Remove rounded corners
               >

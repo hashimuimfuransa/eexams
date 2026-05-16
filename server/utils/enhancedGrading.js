@@ -298,6 +298,8 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
     // Find the selected option in the question with enhanced matching
     let option = null;
 
+    console.log(`Grading multiple choice - selectedOption: "${selectedOption}", selectedOptionLetter: "${selectedOptionLetter}"`);
+
     // First try to match by letter if we have selectedOptionLetter
     if (selectedOptionLetter) {
       option = question.options.find(opt =>
@@ -322,6 +324,26 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
                selected.includes(optText);
       });
       console.log(`Matched by text/content:`, option ? `${option.letter}. ${option.text}` : 'Not found');
+    }
+
+    // Direct comparison: Check if selected option is marked as correct
+    if (option && option.isCorrect) {
+      isCorrect = true;
+      console.log(`Selected option is marked as correct`);
+    } else if (option) {
+      // Option found but not marked as correct, check if it matches model answer
+      console.log(`Option found but not marked as correct, checking against model answer: "${modelAnswer}"`);
+      if (modelAnswer) {
+        const modelLower = modelAnswer.toLowerCase().trim();
+        const optTextLower = option.text.toLowerCase().trim();
+        const optLetterLower = option.letter?.toLowerCase() || '';
+        
+        isCorrect = optTextLower === modelLower || 
+                   optLetterLower === modelLower ||
+                   modelLower === `${optLetterLower}. ${optTextLower}` ||
+                   modelLower === `${optLetterLower}) ${optTextLower}`;
+        console.log(`Direct comparison result: ${isCorrect}`);
+      }
     }
 
     // First, try to find the correct option from the question's options

@@ -1,44 +1,58 @@
 const fs = require('fs');
 const path = require('path');
-const pdfParse = require('pdf-parse');
+const { exec } = require('child_process');
+const { promisify } = require('util');
 const mammoth = require('mammoth');
 // Import the centralized Groq client for AI-assisted categorization
 const groqClient = require('./groqClient');
 
+const execAsync = promisify(exec);
+
 /**
- * Parse a PDF file
+ * Parse a PDF file using Python script
  * @param {string} filePath - Path to the PDF file
  * @returns {Promise<string>} - Extracted text
  */
 const parsePdf = async (filePath) => {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log(`Parsing PDF file: ${filePath}`);
-      const dataBuffer = fs.readFileSync(filePath);
-
-      pdfParse(dataBuffer)
-        .then(data => {
-          // Check if we got any text
-          if (!data.text || data.text.trim().length === 0) {
-            console.error('PDF parsing returned empty text');
-            reject(new Error('PDF parsing returned empty text'));
-            return;
-          }
-
-          console.log(`Successfully parsed PDF, extracted ${data.text.length} characters`);
-          console.log(`PDF content preview: ${data.text.substring(0, 200)}...`);
-
-          resolve(data.text);
-        })
-        .catch(error => {
-          console.error('Error parsing PDF:', error);
-          reject(new Error(`Failed to parse PDF file: ${error.message}`));
-        });
-    } catch (error) {
-      console.error('Error reading PDF file:', error);
-      reject(new Error(`Failed to read PDF file: ${error.message}`));
+  try {
+    console.log(`Parsing PDF file using Python: ${filePath}`);
+    
+    // Path to the Python script
+    const scriptPath = path.join(__dirname, '../pdf_extractor.py');
+    
+    // Execute Python script
+    const { stdout, stderr } = await execAsync(`python "${scriptPath}" "${filePath}"`);
+    
+    if (stderr) {
+      console.error('Python script stderr:', stderr);
     }
-  });
+    
+    // Parse the JSON output
+    const result = JSON.parse(stdout);
+    
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    
+    if (!result.text || result.text.trim().length === 0) {
+      console.error('PDF parsing returned empty text');
+      throw new Error('PDF parsing returned empty text. The PDF may be image-based or corrupted.');
+    }
+
+    console.log(`Successfully parsed PDF, extracted ${result.text.length} characters`);
+    console.log(`PDF content preview: ${result.text.substring(0, 200)}...`);
+
+    return result.text;
+  } catch (error) {
+    console.error('Error parsing PDF:', error);
+    
+    // Check if Python is not available
+    if (error.message.includes('python') || error.message.includes('Python')) {
+      throw new Error('Python is not installed or not in PATH. Please install Python and pdfplumber (pip install pdfplumber).');
+    }
+    
+    throw new Error(`Failed to parse PDF file: ${error.message}. The PDF may be image-based, corrupted, or password-protected.`);
+  }
 };
 
 /**
@@ -1943,7 +1957,7 @@ const parseFile = async (filePath, answerData = { answers: {} }) => {
 };
 
 /**
- * Parse an answer file to extract correct answers
+ * Parse an answer file using AI to intelligently extract answers
  * @param {string} filePath - Path to the answer file
  * @returns {Promise<Object>} - Structured answers
  */
@@ -1969,314 +1983,164 @@ const parseAnswerFile = async (filePath) => {
       throw new Error(`Unsupported file type: ${fileExtension}`);
     }
 
-    // Extract answers from the text
-    const answerMap = {};
+    console.log(`Answer file extracted, length: ${text.length}`);
 
-    // Log the full text for debugging
-    console.log(`Answer file full text (first 500 chars): ${text.substring(0, 500)}`);
+    // Use AI to extract answers intelligently
+    try {
+      const prompt = `Extract answers from this answer key document. Return JSON:
+{
+  "answers": {
+    "1": "answer for question 1",
+    "2": "answer for question 2",
+    ...
+  }
+}
 
-    // HARDCODED ANSWERS FOR TESTING
-    // This is a temporary solution to ensure we have answers for testing
-    answerMap[1] = 'C'; // Web browsing is NOT a function of OS
-    answerMap[2] = 'B'; // ALU performs arithmetic operations
-    answerMap[3] = 'C'; // ROM = Read-Only Memory
-    answerMap[4] = 'A'; // Microsoft Word is application software
-    answerMap[5] = 'A'; // POST = Power On Self Test
-    answerMap[6] = 'C'; // Motherboard is main circuit board
-    answerMap[7] = 'A'; // USB is common for keyboard
-    answerMap[8] = 'B'; // Higher cost per GB is disadvantage of SSD
-    answerMap[9] = 'D'; // RAM is volatile memory
-    answerMap[10] = 'A'; // Compiler translates high-level code
+Handle these answer types:
+- Multiple choice: single letter (A, B, C, D)
+- True/False: True or False
+- Short answer: text answer
+- Fill-in-blank: word or phrase
+- Essay: model answer text
 
-    console.log("ADDED HARDCODED ANSWERS FOR TESTING");
+Document text:
+${text.substring(0, 4000)}`;
 
-    // First look for a simple pattern of "1. A" or "1) A" which is very common in answer keys
-    const simpleAnswerPattern = /(\d+)[\.\s\)\-:]+([A-D])/gi;
-    let match;
-    while ((match = simpleAnswerPattern.exec(text)) !== null) {
-      const questionNumber = parseInt(match[1]);
-      const answer = match[2].toUpperCase();
+      console.log('Using AI to extract answers from answer file...');
+      const result = await groqClient.generateContent(prompt, {
+        model: 'balanced',
+        jsonMode: true,
+        temperature: 0.2,
+        maxTokens: 4096,
+        systemPrompt: 'You are an expert at extracting answers from answer key documents. Always return valid JSON with question numbers as keys and answers as values.'
+      });
 
-      if (!isNaN(questionNumber) && answer) {
-        answerMap[questionNumber] = answer;
-        console.log(`Found simple answer for question ${questionNumber}: ${answer}`);
-      }
-    }
-
-    // Look for NESA format pattern: "1. c)" or "1. c" or "1) c)" or "1) c"
-    const nesaPattern = /(\d+)[\.\s\)\-:]+([a-dA-D])[\.\s\)\-:]*/gi;
-    while ((match = nesaPattern.exec(text)) !== null) {
-      const questionNumber = parseInt(match[1]);
-      const answer = match[2].toUpperCase();
-
-      if (!isNaN(questionNumber) && answer) {
-        answerMap[questionNumber] = answer;
-        console.log(`Found NESA format answer for question ${questionNumber}: ${answer}`);
-      }
-    }
-
-    // Look for a pattern of just letters on separate lines
-    const lines = text.split('\n');
-    const letterLines = lines
-      .map(line => line.trim())
-      .filter(line => /^[A-D][\.\s\)\-:]*$/.test(line));
-
-    if (letterLines.length >= 3) {
-      console.log(`Found ${letterLines.length} lines with just letters, might be answers in order`);
-
-      // Assign these letters to questions in order
-      for (let i = 0; i < letterLines.length; i++) {
-        const questionNum = i + 1;
-        const letter = letterLines[i].charAt(0).toUpperCase();
-
-        if (!answerMap[questionNum]) {
-          answerMap[questionNum] = letter;
-          console.log(`Assigned answer for question ${questionNum}: ${letter} (from letter lines)`);
+      let extractedData;
+      if (result.parsedContent) {
+        extractedData = result.parsedContent;
+      } else if (result.text) {
+        const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          extractedData = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found in AI response');
         }
-      }
-    }
-
-    // First try to find an answer key section
-    const answerKeySection = text.match(/ANSWER KEY|MARKING SCHEME|ANSWERS:|SOLUTIONS:|MODEL ANSWERS|SECTION A ANSWERS|MULTIPLE CHOICE ANSWERS/i);
-
-    // If we found an answer key section, focus on that part of the text
-    let processText = text;
-    if (answerKeySection && answerKeySection.index) {
-      processText = text.substring(answerKeySection.index);
-      console.log('Found answer key section, focusing on that part of the document');
-    }
-
-    // Print the first 200 characters of the processed text for debugging
-    console.log(`Answer file content preview: ${processText.substring(0, 200)}...`);
-
-    // If the text contains "SECTION A" followed by numbers and letters, it's likely an answer key
-    if (processText.match(/SECTION A[\s\S]*?(\d+)[\s\.\)-:]+([A-D])/i)) {
-      console.log('Detected Section A answer pattern in the document');
-    }
-
-    // Match patterns like "1. A" or "1) B" or "Question 1: C"
-    const answerPatterns = [
-      /(\d+)[\.\)]\s*([A-D])/g,                    // 1. A or 1) B
-      /Question\s*(\d+):\s*([A-D])/gi,             // Question 1: C
-      /Answer\s*(\d+):\s*([A-D])/gi,               // Answer 1: D
-      /(\d+)\s*-\s*([A-D])/g,                      // 1 - A
-      /^(\d+)\s+([A-D])$/gm,                       // 1 A (on a line by itself)
-      /Answer to question\s*(\d+)\s*is\s*([A-D])/gi, // Answer to question 1 is B
-      /(\d+)[:\s]+([A-D])[,\s]/g,                  // 1: A, or 1 A,
-      /Section A[:\s]+(\d+)[.\s]+([A-D])/gi,       // Section A: 1. A
-      /Section A[:\s]+(\d+)[)\s]+([A-D])/gi,       // Section A: 1) A
-      /Multiple Choice[:\s]+(\d+)[.\s]+([A-D])/gi, // Multiple Choice: 1. A
-      /Multiple Choice[:\s]+(\d+)[)\s]+([A-D])/gi, // Multiple Choice: 1) A
-      /SECTION A[\s\S]*?(\d+)[\s\.\)-:]+([A-D])/gi, // NESA format: SECTION A followed by numbered answers
-      /MULTIPLE CHOICE[\s\S]*?(\d+)[\s\.\)-:]+([A-D])/gi, // NESA format: MULTIPLE CHOICE followed by numbered answers
-      /^(\d+)[\.\s\)\-:]*([A-D])[\.\s\)\-:]*$/gm,  // Just "1. A" or "1) A" on a line
-      /^([A-D])[\.\s\)\-:]*$/gm,                   // Just "A." or "A)" on a line
-      /^([A-D])$/gm,                               // Just "A" on a line
-      /(\d+)\.[\s]*([A-D])[\.\)]/g,                // 1. A. or 1. A)
-      /(\d+)[\.\s\)\-:]+([A-D])[\.\s\)\-:]/g       // 1. A. or 1) A) or 1: A:
-    ];
-
-    // Apply each pattern
-    for (const pattern of answerPatterns) {
-      let match;
-      while ((match = pattern.exec(processText)) !== null) {
-        const questionNumber = parseInt(match[1]);
-        const answer = match[2].toUpperCase();
-
-        if (!isNaN(questionNumber) && answer) {
-          answerMap[questionNumber] = answer;
-          console.log(`Found answer for question ${questionNumber}: ${answer}`);
-        }
-      }
-    }
-
-    // If we didn't find many answers, try a more aggressive approach
-    if (Object.keys(answerMap).length < 5) {
-      console.log('Few answers found, trying more aggressive pattern matching');
-
-      // Look for lines with just a number and a letter
-      const lines = processText.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-
-        // Check for patterns like "1. A" at the start of a line
-        const simpleMatch = line.match(/^(\d+)[\.\s\)\-:]+([A-D])/i);
-        if (simpleMatch) {
-          const questionNumber = parseInt(simpleMatch[1]);
-          const answer = simpleMatch[2].toUpperCase();
-
-          if (!isNaN(questionNumber) && answer && !answerMap[questionNumber]) {
-            answerMap[questionNumber] = answer;
-            console.log(`Found answer for question ${questionNumber}: ${answer} (simple match)`);
-          }
-        }
-
-        // Check for section headers followed by answers
-        if (line.match(/Section A|Multiple Choice|SECTION A/i)) {
-          console.log(`Found section header at line ${i}: "${line}"`);
-          // Look at the next few lines for answers
-          for (let j = i + 1; j < Math.min(i + 30, lines.length); j++) {
-            const answerLine = lines[j].trim();
-
-            // Skip empty lines
-            if (!answerLine) continue;
-
-            console.log(`Checking line ${j}: "${answerLine}"`);
-
-            // Try different patterns for answer lines
-            const patterns = [
-              /^(\d+)[\.\s\)\-:]+([A-D])/i,  // Standard format: 1. A
-              /(\d+)[\.\s\)\-:]+([A-D])/i,   // Number and letter anywhere in line
-              /^([A-D])$/i,                  // Just a letter on its own line
-              /^([A-D])[\.\s\)\-:]/i         // Letter at start of line
-            ];
-
-            let foundMatch = false;
-            for (const pattern of patterns) {
-              const answerMatch = answerLine.match(pattern);
-              if (answerMatch) {
-                // If the pattern has 2 groups, it's a number + letter pattern
-                if (answerMatch.length > 2) {
-                  const questionNumber = parseInt(answerMatch[1]);
-                  const answer = answerMatch[2].toUpperCase();
-
-                  if (!isNaN(questionNumber) && answer && !answerMap[questionNumber]) {
-                    answerMap[questionNumber] = answer;
-                    console.log(`Found answer for question ${questionNumber}: ${answer} (section match)`);
-                    foundMatch = true;
-                    break;
-                  }
-                }
-                // If it's just a letter, use the line number relative to the section header
-                else if (j - i >= 1 && j - i <= 10) {
-                  const questionNumber = j - i; // Question number based on position after header
-                  const answer = answerMatch[1].toUpperCase();
-
-                  if (!answerMap[questionNumber]) {
-                    answerMap[questionNumber] = answer;
-                    console.log(`Found answer for question ${questionNumber}: ${answer} (position-based match)`);
-                    foundMatch = true;
-                    break;
-                  }
-                }
-              }
-            }
-
-            // If we found a match, or the line looks like a new section, stop processing
-            if (foundMatch || answerLine.match(/Section B|Short Answer|SECTION B/i)) {
-              if (answerLine.match(/Section B|Short Answer|SECTION B/i)) {
-                console.log(`Found next section at line ${j}, stopping Section A processing`);
-              }
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // Special handling for NESA format answer keys
-    // If we have a document with "ANSWER KEY" and "SECTION A" but still few answers
-    if (Object.keys(answerMap).length < 5 &&
-        processText.match(/ANSWER KEY|MARKING SCHEME|MODEL ANSWERS/i) &&
-        processText.match(/SECTION A|MULTIPLE CHOICE/i)) {
-
-      console.log('Trying NESA-specific answer extraction');
-
-      // Special case: Look for a sequence of just letters (A, B, C, D) in order
-      // This is common in answer keys where they just list the answers in order
-      const letterSequenceMatch = processText.match(/([A-D])[\s\n]*([A-D])[\s\n]*([A-D])[\s\n]*([A-D])[\s\n]*([A-D])/i);
-      if (letterSequenceMatch) {
-        console.log('Found a sequence of letters that might be answers');
-
-        // Assign these letters to questions 1-5
-        for (let i = 1; i <= 5; i++) {
-          if (letterSequenceMatch[i] && !answerMap[i]) {
-            answerMap[i] = letterSequenceMatch[i].toUpperCase();
-            console.log(`Assigned answer for question ${i}: ${answerMap[i]} (from letter sequence)`);
-          }
-        }
+      } else {
+        throw new Error('No response content received');
       }
 
-      // Look for a pattern of letters on separate lines
-      const letterLines = processText.split('\n')
-        .map(line => line.trim())
-        .filter(line => /^[A-D][\.\s\)\-:]*$/.test(line));
-
-      if (letterLines.length >= 3) {
-        console.log(`Found ${letterLines.length} lines with just letters, might be answers in order`);
-
-        // Assign these letters to questions in order
-        for (let i = 0; i < letterLines.length; i++) {
-          const questionNum = i + 1;
-          const letter = letterLines[i].charAt(0).toUpperCase();
-
-          if (!answerMap[questionNum]) {
-            answerMap[questionNum] = letter;
-            console.log(`Assigned answer for question ${questionNum}: ${letter} (from letter lines)`);
-          }
-        }
+      if (extractedData && extractedData.answers) {
+        console.log(`AI extracted ${Object.keys(extractedData.answers).length} answers`);
+        Object.entries(extractedData.answers).forEach(([qNum, ans]) => {
+          console.log(`  Question ${qNum}: ${ans}`);
+        });
+        return { answers: extractedData.answers };
+      } else {
+        throw new Error('AI did not return answers in expected format');
       }
-
-      // Split into lines and look for patterns
-      const lines = processText.split('\n');
-      let inSectionA = false;
-      let questionNumber = 1;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-
-        // Check if we're entering Section A
-        if (line.match(/SECTION A|MULTIPLE CHOICE/i)) {
-          inSectionA = true;
-          questionNumber = 1; // Reset question counter
-          console.log(`Found Section A marker at line ${i}`);
-          continue;
-        }
-
-        // Check if we're leaving Section A
-        if (inSectionA && line.match(/SECTION B|SHORT ANSWER/i)) {
-          inSectionA = false;
-          console.log(`Found Section B marker at line ${i}, ending Section A processing`);
-          break;
-        }
-
-        // If we're in Section A, look for answers
-        if (inSectionA) {
-          // Check if the line contains just a letter (A, B, C, D)
-          const letterMatch = line.match(/^([A-D])$/i);
-          if (letterMatch) {
-            const answer = letterMatch[1].toUpperCase();
-            if (!answerMap[questionNumber]) {
-              answerMap[questionNumber] = answer;
-              console.log(`Found answer for question ${questionNumber}: ${answer} (NESA format)`);
-              questionNumber++; // Move to next question
-            }
-          }
-
-          // Check if the line contains a number followed by a letter
-          const numberLetterMatch = line.match(/(\d+)[\.\s\)\-:]+([A-D])/i);
-          if (numberLetterMatch) {
-            const num = parseInt(numberLetterMatch[1]);
-            const answer = numberLetterMatch[2].toUpperCase();
-
-            if (!isNaN(num) && !answerMap[num]) {
-              answerMap[num] = answer;
-              console.log(`Found answer for question ${num}: ${answer} (NESA format with number)`);
-
-              // Update question counter to the highest number found
-              questionNumber = Math.max(questionNumber, num + 1);
-            }
-          }
-        }
-      }
+    } catch (aiError) {
+      console.error('AI answer extraction failed, falling back to regex patterns:', aiError);
+      
+      // Fallback to regex patterns
+      return await parseAnswerFileWithRegex(text);
     }
-
-    console.log(`Extracted ${Object.keys(answerMap).length} answers from answer file`);
-    return { answers: answerMap };
   } catch (error) {
     console.error('Error parsing answer file:', error);
     return { answers: {} };
   }
+};
+
+/**
+ * Parse answer file using regex patterns (fallback method)
+ * @param {string} text - Extracted text from answer file
+ * @returns {Promise<Object>} - Structured answers
+ */
+const parseAnswerFileWithRegex = async (text) => {
+  const answerMap = {};
+
+  // Log the full text for debugging
+  console.log(`Answer file full text (first 500 chars): ${text.substring(0, 500)}`);
+  console.log(`Answer file full text (last 500 chars): ${text.substring(text.length - 500)}`);
+
+  // First try to find an answer key section
+  const answerKeySection = text.match(/ANSWER KEY|MARKING SCHEME|ANSWERS:|SOLUTIONS:|MODEL ANSWERS|SECTION A ANSWERS|MULTIPLE CHOICE ANSWERS/i);
+
+  // If we found an answer key section, focus on that part of the text
+  let processText = text;
+  if (answerKeySection && answerKeySection.index) {
+    processText = text.substring(answerKeySection.index);
+    console.log('Found answer key section, focusing on that part');
+  }
+
+  // Pattern 1: Multiple choice answers - "1. A" or "1) A" or "1. A)" or "1) A"
+  const mcAnswerPattern = /(\d+)[\.\s\)\-:]+([A-Da-d])[\.\s\)\-:]*/gi;
+  let match;
+  while ((match = mcAnswerPattern.exec(processText)) !== null) {
+    const questionNumber = parseInt(match[1]);
+    const answer = match[2].toUpperCase();
+
+    if (!isNaN(questionNumber) && answer) {
+      answerMap[questionNumber] = answer;
+      console.log(`Found MC answer for question ${questionNumber}: ${answer}`);
+    }
+  }
+
+  // Pattern 2: True/False answers - "1. True" or "1) False"
+  const tfAnswerPattern = /(\d+)[\.\s\)\-:]+(True|False|T|F)(?:[\.\s\)\-:]|$)/gi;
+  while ((match = tfAnswerPattern.exec(processText)) !== null) {
+    const questionNumber = parseInt(match[1]);
+    const answer = match[2].toUpperCase();
+
+    if (!isNaN(questionNumber) && answer) {
+      // Normalize T/F to True/False
+      const normalizedAnswer = answer === 'T' ? 'True' : (answer === 'F' ? 'False' : answer);
+      answerMap[questionNumber] = normalizedAnswer;
+      console.log(`Found TF answer for question ${questionNumber}: ${normalizedAnswer}`);
+    }
+  }
+
+  // Pattern 3: Short answer/essay answers - "1. [answer text]" or "1) [answer text]"
+  const shortAnswerPattern = /(\d+)[\.\s\)\-:]+(.+?)(?=\n\d+[\.\s\)\-:]|$)/gis;
+  while ((match = shortAnswerPattern.exec(processText)) !== null) {
+    const questionNumber = parseInt(match[1]);
+    const answer = match[2].trim();
+
+    if (!isNaN(questionNumber) && answer && answer.length > 2) {
+      // Only use if it's not just a single letter (those are MC answers)
+      if (!/^[A-D]$/.test(answer)) {
+        answerMap[questionNumber] = answer;
+        console.log(`Found short answer for question ${questionNumber}: ${answer.substring(0, 50)}...`);
+      }
+    }
+  }
+
+  // Pattern 4: Enhanced short answer pattern
+  const enhancedShortAnswerPattern = /(?:Question\s*)?(\d+)[\.\s\:]+(.+?)(?=\n\s*(?:Question\s*)?\d+[\.\s\:]|$)/gis;
+  while ((match = enhancedShortAnswerPattern.exec(processText)) !== null) {
+    const questionNumber = parseInt(match[1]);
+    const answer = match[2].trim();
+
+    if (!isNaN(questionNumber) && answer && answer.length > 5) {
+      if (!/^[A-D]$/.test(answer)) {
+        answerMap[questionNumber] = answer;
+        console.log(`Found enhanced short answer for question ${questionNumber}: ${answer.substring(0, 50)}...`);
+      }
+    }
+  }
+
+  // Pattern 5: Model answers / marking scheme patterns
+  const modelAnswerPattern = /(?:Model\s+Answer|Answer|Solution|Expected\s+Answer)[\s\:]+(.+?)(?=\n\s*(?:Model\s+Answer|Answer|Solution|Expected\s+Answer|\d+[\.\s\)\-:]|$))/gis;
+  while ((match = modelAnswerPattern.exec(processText)) !== null) {
+    const answer = match[1].trim();
+    if (answer && answer.length > 5) {
+      const nextQuestionNum = Object.keys(answerMap).length + 1;
+      answerMap[nextQuestionNum] = answer;
+      console.log(`Found model answer for question ${nextQuestionNum}: ${answer.substring(0, 50)}...`);
+    }
+  }
+
+  console.log(`Regex extracted ${Object.keys(answerMap).length} answers`);
+  return { answers: answerMap };
 };
 
 /**

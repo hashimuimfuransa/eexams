@@ -408,24 +408,98 @@ function ExamsSection({ exams }) {
 }
 
 function ResultsSection({ results }) {
+  const [selectedResult, setSelectedResult] = useState(null);
+  const [detailedResult, setDetailedResult] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const handleViewDetails = async (result) => {
+    setSelectedResult(result);
+    setLoadingDetail(true);
+    try {
+      const response = await api.get(`/admin/results/${result._id}`);
+      setDetailedResult(response.data);
+    } catch (error) {
+      console.error('Error fetching detailed result:', error);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleCloseDetail = () => {
+    setSelectedResult(null);
+    setDetailedResult(null);
+  };
+
   return(
     <Box>
       <SectionTitle>Results</SectionTitle>
       <Paper elevation={0} sx={{borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',overflow:'hidden'}}>
         <TableContainer sx={{overflowX:'auto'}}><Table sx={{minWidth:440}}>
-          <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Student','Exam','Score','Date'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
+          <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Student','Exam','Score','Date','Actions'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
           <TableBody>
-            {results.length===0?<TableRow><TableCell colSpan={4} align="center" sx={{py:5,color:tokens.textMuted}}>No results.</TableCell></TableRow>:
+            {results.length===0?<TableRow><TableCell colSpan={5} align="center" sx={{py:5,color:tokens.textMuted}}>No results.</TableCell></TableRow>:
             results.slice(0,50).map(r=>{const pct=Math.round(r.percentage??0);return(
               <TableRow key={r._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
                 <TableCell>{r.student?.firstName} {r.student?.lastName}</TableCell>
                 <TableCell sx={{color:tokens.textMuted}}>{r.exam?.title}</TableCell>
                 <TableCell><Box sx={{display:'flex',alignItems:'center',gap:1}}><LinearProgress variant="determinate" value={pct} sx={{width:60,height:6,borderRadius:3,bgcolor:'#EEF2FF','& .MuiLinearProgress-bar':{bgcolor:pct>=70?tokens.accent:'#EF4444',borderRadius:3}}}/><Typography sx={{fontSize:12,fontWeight:700,color:pct>=70?tokens.accentDark:'#EF4444'}}>{pct}%</Typography></Box></TableCell>
                 <TableCell><Typography variant="caption" sx={{color:tokens.textMuted}}>{new Date(r.submittedAt||r.createdAt).toLocaleDateString()}</Typography></TableCell>
+                <TableCell>
+                  <Button size="small" onClick={() => handleViewDetails(r)} sx={{textTransform:'none',fontWeight:600,fontSize:11}}>
+                    View Details
+                  </Button>
+                </TableCell>
               </TableRow>);})}
           </TableBody>
         </Table></TableContainer>
       </Paper>
+
+      {/* Detailed Result Dialog */}
+      <Dialog open={!!selectedResult} onClose={handleCloseDetail} maxWidth="md" fullWidth PaperProps={{sx:{borderRadius:3}}}>
+        <DialogTitle sx={{fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>
+          Detailed Result - {selectedResult?.student?.firstName} {selectedResult?.student?.lastName}
+        </DialogTitle>
+        <DialogContent sx={{pt:'16px !important'}}>
+          {loadingDetail?<Box sx={{display:'flex',justifyContent:'center',py:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>:
+          detailedResult?(
+            <Box>
+              <Box sx={{mb:3,p:2,bgcolor:'#F8FAFC',borderRadius:2}}>
+                <Typography fontWeight={600} sx={{mb:1}}>Exam: {detailedResult.exam?.title}</Typography>
+                <Typography variant="body2" sx={{color:tokens.textMuted}}>
+                  Score: {detailedResult.totalScore}/{detailedResult.maxPossibleScore} ({detailedResult.percentage}%) | 
+                  Time: {detailedResult.timeTaken} min | 
+                  Grade: {detailedResult.grade}
+                </Typography>
+              </Box>
+              
+              <Typography fontWeight={600} sx={{mb:2}}>Answer Analysis</Typography>
+              {detailedResult.answers?.map((answer,idx)=>(
+                <Box key={idx} sx={{mb:2,p:2,border:`1px solid ${tokens.surfaceBorder}`,borderRadius:2}}>
+                  <Box sx={{display:'flex',justifyContent:'space-between',alignItems:'center',mb:1}}>
+                    <Typography variant="body2" fontWeight={600}>Question {idx+1}</Typography>
+                    <Chip 
+                      label={answer.isCorrect?'Correct':'Incorrect'} 
+                      size="small" 
+                      sx={{bgcolor:answer.isCorrect?'rgba(12,189,115,0.1)':'rgba(239,68,68,0.1)',color:answer.isCorrect?tokens.accent:'#EF4444',fontWeight:600}}
+                    />
+                  </Box>
+                  <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mb:1}}>
+                    Points: {answer.score}/{answer.question?.points} | Method: {answer.gradingMethod}
+                  </Typography>
+                  {answer.feedback && (
+                    <Typography variant="body2" sx={{color:tokens.textSecondary,fontSize:12}}>
+                      Feedback: {answer.feedback}
+                    </Typography>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          ):<Typography sx={{color:tokens.textMuted}}>No detailed data available.</Typography>}
+        </DialogContent>
+        <DialogActions sx={{px:3,pb:2.5}}>
+          <Button onClick={handleCloseDetail} sx={{borderRadius:2,textTransform:'none'}}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

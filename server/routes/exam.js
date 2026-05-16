@@ -474,7 +474,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
     res.status(201).json({
       message: 'Draft saved successfully',
       examId: exam._id,
-      exam: await Exam.findById(exam._id).populate('sections.questions')
+      exam: await Exam.findById(exam._id)
     });
   } catch (error) {
     console.error('Save draft error:', error);
@@ -489,7 +489,7 @@ router.get('/drafts', auth, isAdminOrTeacher, async (req, res) => {
     const drafts = await Exam.find({ 
       createdBy: req.user._id, 
       status: 'draft' 
-    }).populate('sections.questions').sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 });
     
     res.json(drafts);
   } catch (error) {

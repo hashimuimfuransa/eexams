@@ -7,6 +7,49 @@ const ActivityLog = require('../models/ActivityLog');
 const SharedExam = require('../models/SharedExam');
 const Question = require('../models/Question');
 
+/**
+ * Parse subquestions from an object with letter keys (a, b, c, etc.)
+ * @param {Object} answerObject - Object with letter keys containing answers
+ * @param {string} questionText - The main question text to extract subquestion text from
+ * @returns {Array} - Array of subquestion objects
+ */
+const parseSubquestionsFromObject = (answerObject, questionText = '') => {
+  try {
+    const subQuestions = [];
+    const letterOrder = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    
+    // Try to extract subquestion text from the main question text
+    const subquestionPatterns = questionText.match(/(?:^|\n)[\s]*[a-z][\)\.]?\s*([^.!?]*[.!?]?)/gi) || [];
+    
+    for (let i = 0; i < letterOrder.length; i++) {
+      const letter = letterOrder[i];
+      if (answerObject[letter] !== undefined) {
+        // Try to get the corresponding subquestion text from the patterns
+        let subText = '';
+        if (subquestionPatterns[i]) {
+          subText = subquestionPatterns[i].trim();
+        } else {
+          // Fallback: use a generic label
+          subText = `Subquestion ${letter.toUpperCase()}`;
+        }
+        
+        subQuestions.push({
+          text: subText,
+          type: 'open-ended',
+          correctAnswer: answerObject[letter],
+          points: 5 // Default points per subquestion
+        });
+      }
+    }
+    
+    console.log(`Parsed ${subQuestions.length} subquestions from object`);
+    return subQuestions;
+  } catch (error) {
+    console.error('Error parsing subquestions from object:', error);
+    return [];
+  }
+};
+
 // Helper function to check if user is super admin
 const isSuperAdmin = (user) => {
   return user && user.role === 'superadmin';
@@ -1747,12 +1790,33 @@ const createExam = async (req, res) => {
 
                   // Use answer from answer file if available
                   let correctAnswer = questionData.correctAnswer;
+                  let subQuestions = questionData.subQuestions || [];
+                  
                   if (answerData.answers && answerData.answers[questionNumber]) {
-                    correctAnswer = answerData.answers[questionNumber];
-                    console.log(`Using answer from answer file for question ${questionNumber}: ${correctAnswer}`);
+                    const answerFromFile = answerData.answers[questionNumber];
+                    
+                    // Check if the answer from file is an object with letter keys (subquestions)
+                    if (answerFromFile && typeof answerFromFile === 'object') {
+                      const keys = Object.keys(answerFromFile);
+                      const hasLetterKeys = keys.some(k => /^[a-z]$/i.test(k));
+                      
+                      if (hasLetterKeys) {
+                        // Parse as subquestions
+                        subQuestions = parseSubquestionsFromObject(answerFromFile, questionData.text);
+                        correctAnswer = 'See subquestions';
+                        console.log(`Parsed answer file object as subquestions for question ${questionNumber}`);
+                      } else {
+                        // For other objects, stringify
+                        correctAnswer = JSON.stringify(answerFromFile);
+                        console.log(`Converted answer file object to string for question ${questionNumber}`);
+                      }
+                    } else {
+                      correctAnswer = answerFromFile;
+                      console.log(`Using answer from answer file for question ${questionNumber}: ${correctAnswer}`);
+                    }
                   }
 
-                  // Convert correctAnswer to string if it's an object (for matching questions, etc.)
+                  // Convert correctAnswer to string if it's still an object (for matching questions, etc.)
                   if (correctAnswer && typeof correctAnswer === 'object') {
                     correctAnswer = JSON.stringify(correctAnswer);
                     console.log(`Converted object correctAnswer to string for question ${questionNumber}`);
@@ -1817,7 +1881,7 @@ const createExam = async (req, res) => {
                     leftItems: questionData.leftItems || [],
                     rightItems: questionData.rightItems || [],
                     items: questionData.items || [],
-                    subQuestions: questionData.subQuestions || []
+                    subQuestions: subQuestions.length > 0 ? subQuestions : (questionData.subQuestions || [])
                   });
 
                   // Add question to the appropriate section

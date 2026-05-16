@@ -25,6 +25,16 @@ def extract_text_from_pdf(pdf_path):
                 if text:
                     # Add page separator for better structure
                     full_text += f"\n--- PAGE {page_num} ---\n"
+                    # Preserve underscores and blank markers by replacing common OCR artifacts
+                    # Replace common OCR patterns that might replace underscores
+                    text = text.replace('_____', '_____')
+                    text = text.replace('____', '____')
+                    text = text.replace('___', '___')
+                    text = text.replace('__', '__')
+                    # Add explicit blank markers where patterns suggest fill-in-blank
+                    import re
+                    # Look for patterns like "with ______" and ensure blanks are preserved
+                    text = re.sub(r'(\w+)\s+([_]{3,})', r'\1 \2', text)
                     full_text += text + "\n"
                 
                 # Also try to extract tables if present (for structured data)

@@ -173,6 +173,16 @@ CRITICAL INSTRUCTIONS:
 6. Preserve the section structure (Section A, B, C, etc.)
 7. Extract all question types: multiple-choice, true-false, fill-in-blank, short answer, essay, matching, ordering
 
+SPECIAL HANDLING FOR FILL-IN-THE-BLANK QUESTIONS:
+- When you see patterns like "with ______ ______ sides", the blanks represent missing numbers or words
+- Infer the missing information from context (e.g., "shape with ______ sides" → likely needs a number like "8" for octagon)
+- Preserve the blank markers (_____) in the question text
+- Include the inferred answer in the correctAnswer field
+- Example: If question is "Name the shape with ______ sides" and answer is "Octagon", the correctAnswer should be "8" or "Octagon (8 sides)"
+- Use context clues to determine what number or word belongs in the blank
+- For geometric shapes: triangle (3), square (4), pentagon (5), hexagon (6), heptagon (7), octagon (8), nonagon (9), decagon (10)
+- For other contexts, use the surrounding text to infer the missing information
+
 Return valid JSON with this exact structure:
 {
   "sections": [
@@ -350,6 +360,11 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
           console.log(`Using pre-loaded answer for question ${questionNumber}: ${question.correctAnswer}`);
         }
 
+        // Post-processing for fill-in-blank questions to infer missing numbers
+        if (question.type === 'fill-in-blank' || (question.text && question.text.includes('_____'))) {
+          question.correctAnswer = enhanceFillInBlankAnswer(question.text, question.correctAnswer);
+        }
+
         // Convert correctAnswer to string if it's an object
         if (question.correctAnswer && typeof question.correctAnswer === 'object') {
           // For matching questions, move to matchingPairs field
@@ -375,6 +390,56 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
   } catch (error) {
     console.error('Error validating extracted data:', error);
     return extractedData; // Return as-is if validation fails
+  }
+};
+
+/**
+ * Enhance fill-in-blank answers by inferring missing numbers from context
+ * @param {string} questionText - The question text
+ * @param {string} currentAnswer - The current answer
+ * @returns {string} - Enhanced answer
+ */
+const enhanceFillInBlankAnswer = (questionText, currentAnswer) => {
+  try {
+    // Common shape patterns and their side counts
+    const shapePatterns = {
+      'triangle': 3,
+      'square': 4,
+      'rectangle': 4,
+      'pentagon': 5,
+      'hexagon': 6,
+      'heptagon': 7,
+      'octagon': 8,
+      'nonagon': 9,
+      'decagon': 10,
+      'dodecagon': 12
+    };
+
+    const lowerText = questionText.toLowerCase();
+    const lowerAnswer = currentAnswer.toLowerCase();
+
+    // Check if answer is a shape name but missing the number
+    for (const [shape, sides] of Object.entries(shapePatterns)) {
+      if (lowerAnswer.includes(shape) && !lowerAnswer.includes(sides.toString())) {
+        console.log(`Inferring number ${sides} for shape ${shape} in fill-in-blank question`);
+        return `${currentAnswer} (${sides} sides)`;
+      }
+    }
+
+    // Check if question asks for number of sides and answer is just the shape
+    if (lowerText.includes('sides') && lowerText.includes('shape')) {
+      for (const [shape, sides] of Object.entries(shapePatterns)) {
+        if (lowerAnswer.includes(shape)) {
+          console.log(`Inferring number ${sides} sides for shape ${shape}`);
+          return `${currentAnswer} (${sides} sides)`;
+        }
+      }
+    }
+
+    return currentAnswer;
+  } catch (error) {
+    console.error('Error enhancing fill-in-blank answer:', error);
+    return currentAnswer;
   }
 };
 

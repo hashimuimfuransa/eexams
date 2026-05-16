@@ -1087,7 +1087,10 @@ const submitSharedExam = async (req, res) => {
     console.log('Total questions:', allQuestions.length);
 
     // Grade the exam using enhanced grading
-    const detailedAnswers = [];
+    // Separate questions into AI-graded (open-ended) and simple-graded (multiple-choice, etc.)
+    const aiGradedQuestions = [];
+    const simpleGradedQuestions = [];
+    
     for (const question of allQuestions) {
       const points = question.points || 1;
       totalPoints += points;
@@ -1096,16 +1099,20 @@ const submitSharedExam = async (req, res) => {
       
       console.log(`Processing question ${question._id}, studentAnswer:`, studentAnswer);
       
-      // Handle answer object format from frontend
+      // Handle answer object format from frontend - improved extraction
       let actualAnswer = studentAnswer;
       if (studentAnswer && typeof studentAnswer === 'object') {
         // Frontend sends answer objects with selectedOption/textAnswer fields
-        actualAnswer = studentAnswer.selectedOption || studentAnswer.textAnswer || studentAnswer;
+        actualAnswer = studentAnswer.selectedOption || studentAnswer.textAnswer || JSON.stringify(studentAnswer);
         console.log(`Extracted actualAnswer from object:`, actualAnswer);
+      } else if (studentAnswer === undefined || studentAnswer === null) {
+        actualAnswer = 'Not answered';
+        console.log(`StudentAnswer is undefined/null, setting to 'Not answered'`);
       }
       
       const answerObj = {
-        question: question._id
+        question: question._id,
+        points: points
       };
 
       // Prepare answer object based on question type
@@ -1113,66 +1120,123 @@ const submitSharedExam = async (req, res) => {
         answerObj.selectedOption = actualAnswer || 'Not answered';
         answerObj.selectedOptionLetter = typeof actualAnswer === 'string' ? actualAnswer.match(/^[A-D]/i)?.[0]?.toUpperCase() || null : null;
         answerObj.correctedAnswer = question.correctAnswer;
+        simpleGradedQuestions.push({ question, answerObj });
       } else if (question.type === 'open-ended' || question.type === 'fill-in-blank' || question.type === 'short-answer') {
         answerObj.textAnswer = actualAnswer || 'Not answered';
         answerObj.correctedAnswer = question.correctAnswer;
+        aiGradedQuestions.push({ question, answerObj });
       } else if (question.type === 'matching') {
         answerObj.matchingAnswers = actualAnswer || [];
+        simpleGradedQuestions.push({ question, answerObj });
       } else if (question.type === 'ordering') {
         answerObj.orderingAnswer = actualAnswer || [];
+        simpleGradedQuestions.push({ question, answerObj });
+      } else {
+        // Default to simple grading for unknown types
+        answerObj.textAnswer = actualAnswer || 'Not answered';
+        answerObj.correctedAnswer = question.correctAnswer;
+        simpleGradedQuestions.push({ question, answerObj });
       }
+    }
 
-      // Use enhanced grading for all question types
+    console.log(`📊 Question breakdown: ${aiGradedQuestions.length} AI-graded, ${simpleGradedQuestions.length} simple-graded`);
+
+    // Grade simple questions in parallel (fast)
+    const simpleGradingPromises = simpleGradedQuestions.map(async ({ question, answerObj }) => {
       try {
-        const gradingResult = await gradeQuestionByType(
-          question,
-          answerObj,
-          question.correctAnswer
-        );
-
-        answerObj.isCorrect = gradingResult.score === points;
-        answerObj.score = Math.min(Math.max(0, gradingResult.score || 0), points); // Cap score at max points
+        const gradingResult = await gradeQuestionByType(question, answerObj, question.correctAnswer);
+        
+        answerObj.isCorrect = gradingResult.score === answerObj.points;
+        answerObj.score = Math.min(Math.max(0, gradingResult.score || 0), answerObj.points);
         answerObj.feedback = gradingResult.feedback;
         answerObj.details = gradingResult.details;
-
+        
         if (gradingResult.correctedAnswer) {
           answerObj.correctedAnswer = gradingResult.correctedAnswer;
         }
-
-        // Add AI grading details if available
-        if (gradingResult.details?.keyConceptsPresent) {
-          answerObj.conceptsPresent = gradingResult.details.keyConceptsPresent;
-        }
-        if (gradingResult.details?.keyConceptsMissing) {
-          answerObj.conceptsMissing = gradingResult.details.keyConceptsMissing;
-        }
+        
         if (gradingResult.details?.gradingMethod) {
           answerObj.gradingMethod = gradingResult.details.gradingMethod;
         }
-
-        earnedPoints += answerObj.score;
+        
+        return answerObj;
       } catch (gradingError) {
-        console.error('Error grading question:', gradingError);
-        // Fallback to simple grading
-        let isCorrect = false;
-        if (question.type === 'multiple-choice') {
-          const selectedOption = question.options?.find(opt => opt.text === studentAnswer);
-          if (selectedOption) {
-            isCorrect = selectedOption.isCorrect || selectedOption.letter === question.correctAnswer;
-          }
-        } else if (question.type === 'true-false') {
-          isCorrect = studentAnswer === question.correctAnswer;
-        } else {
-          isCorrect = studentAnswer?.toLowerCase().trim() === question.correctAnswer?.toLowerCase().trim();
-        }
-
-        answerObj.isCorrect = isCorrect;
-        answerObj.score = isCorrect ? points : 0;
-        earnedPoints += answerObj.score;
+        console.error('Error grading simple question:', gradingError);
+        // Fallback grading
+        answerObj.isCorrect = false;
+        answerObj.score = 0;
+        answerObj.feedback = 'Grading error';
+        answerObj.gradingMethod = 'error_fallback';
+        return answerObj;
       }
+    });
 
-      detailedAnswers.push(answerObj);
+    // Grade AI questions in parallel batches (to avoid overwhelming the API)
+    const BATCH_SIZE = 5; // Process 5 AI questions at a time
+    const detailedAnswers = [];
+    let aiGradedCount = 0;
+
+    for (let i = 0; i < aiGradedQuestions.length; i += BATCH_SIZE) {
+      const batch = aiGradedQuestions.slice(i, i + BATCH_SIZE);
+      console.log(`🤖 Processing AI grading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(aiGradedQuestions.length / BATCH_SIZE)} (${batch.length} questions)`);
+      
+      const batchPromises = batch.map(async ({ question, answerObj }) => {
+        try {
+          const gradingResult = await gradeQuestionByType(question, answerObj, question.correctAnswer);
+          
+          answerObj.isCorrect = gradingResult.score === answerObj.points;
+          answerObj.score = Math.min(Math.max(0, gradingResult.score || 0), answerObj.points);
+          answerObj.feedback = gradingResult.feedback;
+          answerObj.details = gradingResult.details;
+          
+          if (gradingResult.correctedAnswer) {
+            answerObj.correctedAnswer = gradingResult.correctedAnswer;
+          }
+          
+          // Add AI grading details if available
+          if (gradingResult.details?.keyConceptsPresent) {
+            answerObj.conceptsPresent = gradingResult.details.keyConceptsPresent;
+          }
+          if (gradingResult.details?.keyConceptsMissing) {
+            answerObj.conceptsMissing = gradingResult.details.keyConceptsMissing;
+          }
+          if (gradingResult.details?.gradingMethod) {
+            answerObj.gradingMethod = gradingResult.details.gradingMethod;
+          }
+          
+          return answerObj;
+        } catch (gradingError) {
+          console.error('Error grading AI question:', gradingError);
+          // Fallback to simple grading
+          let isCorrect = false;
+          if (answerObj.textAnswer && question.correctAnswer) {
+            isCorrect = answerObj.textAnswer.toLowerCase().trim() === question.correctAnswer.toLowerCase().trim();
+          }
+          
+          answerObj.isCorrect = isCorrect;
+          answerObj.score = isCorrect ? answerObj.points : 0;
+          answerObj.feedback = isCorrect ? 'Correct' : 'Incorrect (AI grading failed, used fallback)';
+          answerObj.gradingMethod = 'ai_error_fallback';
+          return answerObj;
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      detailedAnswers.push(...batchResults);
+      aiGradedCount += batchResults.length;
+      console.log(`✅ Completed batch ${Math.floor(i / BATCH_SIZE) + 1}, graded ${batchResults.length} questions`);
     }
+
+    // Add simple-graded results
+    const simpleResults = await Promise.all(simpleGradingPromises);
+    detailedAnswers.push(...simpleResults);
+
+    // Calculate total earned points
+    detailedAnswers.forEach(answer => {
+      earnedPoints += answer.score || 0;
+    });
+
+    console.log(`✅ Grading complete: ${detailedAnswers.length} total questions, ${aiGradedCount} AI-graded, ${simpleResults.length} simple-graded`);
 
     const percentage = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0;
     const isPassed = percentage >= (sharedExam.exam?.passingScore || 70);

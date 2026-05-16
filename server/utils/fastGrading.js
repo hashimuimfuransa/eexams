@@ -147,7 +147,7 @@ Return JSON: {score,feedback,correctedAnswer}`;
 
     // Fast AI processing with timeout
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('AI timeout')), 3000); // 3 second timeout
+      setTimeout(() => reject(new Error('AI timeout')), 15000); // Increased from 3 to 15 seconds for better reliability
     });
 
     const aiPromise = groqClient.generateContent(prompt, {
@@ -304,7 +304,7 @@ async function fastChunkedGrading(result, exam) {
 
   let processedCount = 0;
   let aiGradedCount = 0;
-  const chunkSize = 2; // Process 2 questions at a time for faster processing
+  const chunkSize = 5; // Increased from 2 to 5 for faster parallel processing
 
   // Process questions in chunks
   for (let i = 0; i < result.answers.length; i += chunkSize) {
@@ -401,7 +401,7 @@ async function fastChunkedGrading(result, exam) {
 
     // Minimal delay between chunks
     if (i + chunkSize < result.answers.length) {
-      await new Promise(resolve => setTimeout(resolve, 50)); // Reduced delay
+      await new Promise(resolve => setTimeout(resolve, 100)); // Increased from 50 to 100ms for better stability
     }
   }
 

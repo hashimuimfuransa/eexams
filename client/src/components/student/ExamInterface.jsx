@@ -977,29 +977,20 @@ const ExamInterface = () => {
     const currentAnswer = answers[currentQuestion._id];
 
     // If it's an essay or fill-in-blank question with unsaved changes, save it first (no character limit)
+    // Make this non-blocking for faster navigation
     if ((currentQuestion.type === 'open-ended' || currentQuestion.type === 'fill-in-blank' || currentQuestion.type === 'fill_in_blank') &&
         currentAnswer &&
         currentAnswer.hasChanges &&
         !currentAnswer.savedToServer) {
 
-      // Show saving message
-      setSnackbar({
-        open: true,
-        message: 'Saving your answer before moving to the next question...',
-        severity: 'info'
-      });
-
-      try {
-        // Save the current answer - no character limit validation
-        await saveAnswerToServer(
-          currentQuestion._id,
-          currentAnswer.textAnswer,
-          currentQuestion.type === 'fill-in-blank' || currentQuestion.type === 'fill_in_blank' ? 'fill-in-blank' : 'open-ended'
-        );
-      } catch (error) {
+      // Save in background without blocking navigation
+      saveAnswerToServer(
+        currentQuestion._id,
+        currentAnswer.textAnswer,
+        currentQuestion.type === 'fill-in-blank' || currentQuestion.type === 'fill_in_blank' ? 'fill-in-blank' : 'open-ended'
+      ).catch(error => {
         console.error('Error saving answer before navigation:', error);
-        // Continue with navigation even if save fails
-      }
+      });
     }
 
       // Now proceed with navigation
@@ -2868,10 +2859,8 @@ const ExamInterface = () => {
 
                   <Typography variant="body2" color="text.secondary">
                     {activeSection === 'A' ?
-                      'This section contains multiple-choice questions. Select the best answer for each question.' :
-                      activeSection === 'B' ?
-                      'This section contains short answer questions. Provide concise responses addressing the key points.' :
-                      'This section contains essay questions. Provide detailed responses with clear structure and examples.'
+                      'Select the best answer for each question.' :
+                      'Provide your answer below.'
                     }
                   </Typography>
 
@@ -3499,7 +3488,7 @@ const ExamInterface = () => {
                             }
                           />
 
-                          {/* Character count and save button for fill-in-blank */}
+                          {/* Character count for fill-in-blank */}
                           <Box sx={{ mt: 1 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <Typography variant="caption" color="text.secondary">
@@ -3512,41 +3501,6 @@ const ExamInterface = () => {
                                 </Typography>
                               )}
                             </Box>
-
-                            {answers[currentQuestion._id]?.hasChanges && (
-                              <Button
-                                variant="contained"
-                                color="warning"
-                                size="medium"
-                                onClick={() => saveAnswerToServer(
-                                  currentQuestion._id,
-                                  answers[currentQuestion._id].textAnswer,
-                                  'fill-in-blank'
-                                )}
-                                startIcon={<Save />}
-                                sx={{
-                                  mt: 2,
-                                  width: '100%',
-                                  py: 1.5,
-                                  fontWeight: 'bold',
-                                  borderRadius: '8px',
-                                  background: mode === 'dark'
-                                    ? `linear-gradient(135deg, ${theme.palette.warning.main}, ${theme.palette.warning.dark})`
-                                    : `linear-gradient(135deg, ${theme.palette.warning.main}, ${theme.palette.warning.dark})`,
-                                  boxShadow: mode === 'dark'
-                                    ? '0 6px 20px rgba(255, 152, 0, 0.3)'
-                                    : '0 4px 12px rgba(255, 152, 0, 0.2)',
-                                  '&:hover': {
-                                    transform: 'translateY(-2px)',
-                                    boxShadow: mode === 'dark'
-                                      ? '0 8px 25px rgba(255, 152, 0, 0.4)'
-                                      : '0 6px 16px rgba(255, 152, 0, 0.3)',
-                                  }
-                                }}
-                              >
-                                Save Fill-in Answer
-                              </Button>
-                            )}
                           </Box>
 
                           {/* Saved indicator for fill-in-blank */}
@@ -3590,53 +3544,11 @@ const ExamInterface = () => {
                         } else {
                           return (
                         <Box sx={{ mt: 2 }}>
-                          <Typography variant="body1" color="text.secondary" gutterBottom>
-                            <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                              <HelpOutline sx={{ mr: 1, fontSize: 20, color: currentQuestion.section === 'B' ? 'info.main' : 'secondary.main' }} />
-                              Answer Guidelines:
-                            </Box>
-                            {currentQuestion.section === 'B' ? (
-                              <Box sx={{
-                                p: 2,
-                                bgcolor: 'info.lighter',
-                                borderLeft: '4px solid',
-                                borderColor: 'info.main',
-                                borderRadius: 1,
-                                mb: 2
-                              }}>
-                                <Typography variant="body2">
-                                  <strong>Short Answer Question:</strong> Provide a concise answer addressing the key points of the question. Aim for 3-5 sentences.
-                                </Typography>
-                              </Box>
-                            ) : (
-                              <Box sx={{
-                                p: 2,
-                                bgcolor: 'secondary.lighter',
-                                borderLeft: '4px solid',
-                                borderColor: 'secondary.main',
-                                borderRadius: 1,
-                                mb: 2
-                              }}>
-                                <Typography variant="body2">
-                                  <strong>Essay Question:</strong> Write a detailed response with clear structure. Include:
-                                </Typography>
-                                <ul style={{ marginTop: '8px', marginBottom: '8px' }}>
-                                  <li>Introduction to the topic</li>
-                                  <li>Main points with examples</li>
-                                  <li>Conclusion summarizing your answer</li>
-                                </ul>
-                              </Box>
-                            )}
-                          </Typography>
-
                           <TextField
                             fullWidth
                             multiline
                             rows={currentQuestion.section === 'C' ? 12 : 6}
-                            placeholder={currentQuestion.section === 'C' ?
-                              "Write your detailed answer here...\n\nInclude an introduction, main points with examples, and a conclusion." :
-                              "Type your answer here..."
-                            }
+                            placeholder="Type your answer here..."
                             value={answers[currentQuestion._id]?.textAnswer || ''}
                             onChange={(e) => handleAnswerChange(
                               currentQuestion._id,
@@ -3690,29 +3602,6 @@ const ExamInterface = () => {
                                 </Box>
                               )}
                             </Box>
-
-                            {/* Save button for essay questions - no character limit */}
-                            {answers[currentQuestion._id]?.hasChanges && (
-                              <Button
-                                variant={currentQuestion.section === 'B' ? "outlined" : "contained"}
-                                color={currentQuestion.section === 'B' ? "info" : "secondary"}
-                                size="medium"
-                                onClick={() => saveAnswerToServer(
-                                  currentQuestion._id,
-                                  answers[currentQuestion._id].textAnswer,
-                                  'open-ended'
-                                )}
-                                startIcon={<Save />}
-                                sx={{
-                                  mt: 2,
-                                  width: '100%',
-                                  py: 1,
-                                  boxShadow: currentQuestion.section === 'C' ? 2 : 0
-                                }}
-                              >
-                                Save Answer
-                              </Button>
-                            )}
                           </Box>
                         </Box>
                           );
@@ -4228,26 +4117,6 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
         />
       </Box>
 
-      {/* Save Button */}
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Button
-          variant="contained"
-          color="warning"
-          onClick={() => onAnswerChange(question._id, localAnswer, 'fill-in-blank')}
-          disabled={disabled || !localAnswer.trim()}
-          startIcon={<Save />}
-          sx={{
-            borderRadius: '12px',
-            px: 4,
-            py: 1,
-            fontWeight: 'bold',
-            textTransform: 'none',
-            boxShadow: mode === 'dark' ? '0 4px 12px rgba(255, 152, 0, 0.3)' : '0 2px 8px rgba(255, 152, 0, 0.2)'
-          }}
-        >
-          Save Answer
-        </Button>
-      </Box>
 
       {/* Status indicator */}
       {answer?.answered && (

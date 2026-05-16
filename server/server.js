@@ -39,8 +39,8 @@ app.use(cors({
 }));
 
 // Body parsing middleware with optimized limits
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' })); // Increased from 10mb to 50mb for large exam submissions
+app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Increased from 10mb to 50mb
 
 // Serve uploaded files - adjust for Render deployment
 let uploadsPath;
@@ -165,11 +165,11 @@ mongoose.set('bufferCommands', false); // Disable mongoose buffering for faster 
 // Connect to MongoDB with optimized settings for faster performance
 mongoose.connect(process.env.MONGODB_URI, {
   // Connection pool settings for better performance
-  maxPoolSize: 10, // Maintain up to 10 socket connections
-  serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
-  socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+  maxPoolSize: 20, // Increased from 10 to 20 for better concurrent processing
+  serverSelectionTimeoutMS: 10000, // Increased from 5000 to 10000 for slower connections
+  socketTimeoutMS: 120000, // Increased from 45000 to 120000 (2 minutes) for long grading operations
   // Optimize for faster authentication
-  connectTimeoutMS: 10000, // Give up initial connection after 10 seconds
+  connectTimeoutMS: 15000, // Increased from 10000 to 15000
 })
   .then(() => {
     console.log('Connected to MongoDB with optimized settings');

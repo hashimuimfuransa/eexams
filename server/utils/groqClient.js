@@ -15,6 +15,9 @@ const PQueue = require('p-queue').default || require('p-queue');
 // Global queue: max 30 AI requests per 60 seconds (Groq has higher limits)
 const aiQueue = new PQueue({ interval: 60000, intervalCap: 30, concurrency: 5 });
 
+// Request deduplication map to prevent duplicate in-flight requests
+const inFlightRequests = new Map();
+
 // Helper: wait ms milliseconds
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -133,7 +136,17 @@ const createGroqClient = () => {
     const temperature = options.temperature ?? 0.3; // Lower temperature for more consistent outputs
     const maxTokens = options.maxTokens || 4096;
 
-    return aiQueue.add(async () => {
+    // Generate cache key for deduplication
+    const cacheKey = generateCacheKey({ prompt: cleanPrompt, model: getModel(modelType), jsonMode: useJsonMode });
+
+    // Check if there's already an identical request in flight
+    if (inFlightRequests.has(cacheKey) && !options.skipCache) {
+      console.log(`🔄 Request already in flight, waiting for existing promise for key ${cacheKey.substring(0, 8)}...`);
+      return inFlightRequests.get(cacheKey);
+    }
+
+    // Create the request promise
+    const requestPromise = aiQueue.add(async () => {
       const MAX_RETRIES = 3;
       const RETRY_DELAY_MS = 2000; // 2 seconds between retries
 
@@ -170,8 +183,7 @@ const createGroqClient = () => {
             console.log('JSON mode enabled for structured output');
           }
 
-          // Generate cache key
-          const cacheKey = generateCacheKey({ prompt: cleanPrompt, model: modelName, jsonMode: useJsonMode });
+          // Check cache first
           const cachedResponse = getFromCache(cacheKey);
           if (cachedResponse && !options.skipCache) {
             console.log(`Using cached response for request`);
@@ -225,7 +237,6 @@ const createGroqClient = () => {
           }
 
           return result;
-
         } catch (error) {
           console.error(`Error generating content with Groq (attempt ${attempt + 1}):`, error);
 
@@ -267,6 +278,20 @@ const createGroqClient = () => {
         }
       }
     });
+
+    // Store the promise in the in-flight map
+    if (!options.skipCache) {
+      inFlightRequests.set(cacheKey, requestPromise);
+    }
+
+    // Clean up the in-flight map when the promise resolves or rejects
+    requestPromise.finally(() => {
+      if (!options.skipCache) {
+        inFlightRequests.delete(cacheKey);
+      }
+    });
+
+    return requestPromise;
   };
 
   /**

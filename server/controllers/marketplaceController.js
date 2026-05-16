@@ -198,12 +198,43 @@ const approveExamRequest = async (req, res) => {
       return res.status(400).json({ message: 'Request has already been processed' });
     }
 
+    // Create or find the user account
+    let studentUser;
+    if (request.userInfo.email) {
+      studentUser = await User.findOne({ email: request.userInfo.email.toLowerCase().trim() });
+    }
+
+    if (!studentUser) {
+      // Create a new student account
+      const tempPassword = Math.random().toString(36).slice(-8);
+      const nameParts = request.userInfo.name.split(' ');
+      const firstName = nameParts[0] || 'Student';
+      const lastName = nameParts.slice(1).join(' ') || 'User';
+
+      studentUser = await User.create({
+        email: request.userInfo.email ? request.userInfo.email.toLowerCase().trim() : `student-${Date.now()}@exam.local`,
+        password: tempPassword,
+        firstName,
+        lastName,
+        role: 'student',
+        userType: 'individual',
+        createdBy: req.user._id
+      });
+    }
+
+    // Assign the exam to the user
+    const exam = await Exam.findById(request.exam);
+    if (exam && !exam.assignedTo.includes(studentUser._id)) {
+      exam.assignedTo.push(studentUser._id);
+      await exam.save();
+    }
+
     // Create a SharedExam for the approved user
     const shareToken = SharedExam.generateShareToken();
-    
+
     // Generate a unique 6-digit access code
     const accessCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     const sharedExam = await SharedExam.create({
       exam: request.exam,
       sharedBy: req.user._id,
@@ -220,9 +251,9 @@ const approveExamRequest = async (req, res) => {
 
     // Add the student to the shared exam
     sharedExam.students.push({
-      student: null,
-      email: request.userInfo.email || null,
-      name: request.userInfo.name,
+      student: studentUser._id,
+      email: studentUser.email,
+      name: studentUser.firstName + ' ' + studentUser.lastName,
       accessMethod: 'link',
       firstAccessedAt: new Date()
     });
@@ -243,7 +274,11 @@ const approveExamRequest = async (req, res) => {
       message: 'Request approved successfully',
       request,
       shareToken,
-      accessCode
+      accessCode,
+      studentUser: {
+        email: studentUser.email,
+        name: studentUser.firstName + ' ' + studentUser.lastName
+      }
     });
   } catch (error) {
     console.error('Approve exam request error:', error);

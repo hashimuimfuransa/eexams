@@ -382,52 +382,79 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
       console.log(`Model answer comparison result: ${isCorrect}`);
     }
 
-    // Fallback 3: Use AI only if all other methods failed (rare case)
+    // Fallback 3: Skip AI fallback for multiple-choice when letters are clearly different
+    // If we have both option and correctOption with letters, and they don't match, it's incorrect
+    // Only use AI in edge cases where comparison is ambiguous
     if (!isCorrect && option && correctOption) {
-      console.log(`All direct comparison methods failed, using AI as fallback`);
-      gradingMethod = 'ai_fallback';
+      // If we have clear letter mismatch, skip AI - it's definitively wrong
+      if (option.letter && correctOption.letter && option.letter !== correctOption.letter) {
+        console.log(`Clear letter mismatch (${option.letter} vs ${correctOption.letter}), skipping AI fallback`);
+        gradingMethod = 'letter_comparison_failed';
+        isCorrect = false;
+      } else if (!option.letter || !correctOption.letter) {
+        // Only use AI if letters are missing (ambiguous case)
+        console.log(`Letters missing, using AI as fallback`);
+        gradingMethod = 'ai_fallback';
 
-      try {
-        // Prepare detailed information for AI grading
-        const studentAnswerForAI = `${option.letter}. ${option.text}`;
-        const correctAnswerForAI = `${correctOption.letter}. ${correctOption.text}`;
+        try {
+          // Prepare detailed information for AI grading
+          const studentAnswerForAI = `${option.letter || ''}. ${option.text}`;
+          const correctAnswerForAI = `${correctOption.letter || ''}. ${correctOption.text}`;
 
-        console.log(`AI Grading Input:`);
-        console.log(`- Question: ${question.text}`);
-        console.log(`- Student selected: ${studentAnswerForAI}`);
-        console.log(`- Correct answer: ${correctAnswerForAI}`);
+          console.log(`AI Grading Input:`);
+          console.log(`- Question: ${question.text}`);
+          console.log(`- Student selected: ${studentAnswerForAI}`);
+          console.log(`- Correct answer: ${correctAnswerForAI}`);
 
-        // Use AI to compare the answers with full context
-        isCorrect = await checkAnswerWithAI(
-          question.text,
-          studentAnswerForAI,
-          correctAnswerForAI,
-          'multiple-choice'
-        );
-        console.log(`AI determined correctness: ${isCorrect}`);
-      } catch (aiError) {
-        console.error('AI grading failed, falling back to direct comparison:', aiError);
-        // Final fallback to direct comparison
-        isCorrect = option.letter === correctOption.letter ||
-                   option.text === correctOption.text ||
-                   option._id === correctOption._id;
-        gradingMethod = 'direct_comparison_fallback';
+          // Use AI to compare the answers with full context
+          isCorrect = await checkAnswerWithAI(
+            question.text,
+            studentAnswerForAI,
+            correctAnswerForAI,
+            'multiple-choice'
+          );
+          console.log(`AI determined correctness: ${isCorrect}`);
+        } catch (aiError) {
+          console.error('AI grading failed, falling back to direct comparison:', aiError);
+          // Final fallback to direct comparison
+          isCorrect = option.letter === correctOption.letter ||
+                     option.text === correctOption.text ||
+                     option._id === correctOption._id;
+          gradingMethod = 'direct_comparison_fallback';
+        }
       }
     } else if (!isCorrect && option && !correctOption) {
-      // No correct option found, use AI with modelAnswer
-      gradingMethod = 'ai_no_correct_option';
-      try {
-        const studentAnswerForAI = option ? `${option.letter}. ${option.text}` : selectedOption;
-        isCorrect = await checkAnswerWithAI(
-          question.text,
-          studentAnswerForAI,
-          modelAnswer || 'No model answer available',
-          'multiple-choice'
-        );
-        console.log(`AI fallback grading result: ${isCorrect}`);
-      } catch (aiError) {
-        console.error('AI fallback grading failed:', aiError);
-        isCorrect = false;
+      // No correct option found, try direct text comparison first before AI
+      if (modelAnswer) {
+        const modelLower = modelAnswer.toLowerCase().trim();
+        const optTextLower = option.text.toLowerCase().trim();
+        const optLetterLower = option.letter?.toLowerCase() || '';
+        
+        isCorrect = optLetterLower === modelLower ||
+                   optTextLower === modelLower ||
+                   modelLower === `${optLetterLower}. ${optTextLower}` ||
+                   modelLower === `${optLetterLower}) ${optTextLower}`;
+        
+        if (isCorrect) {
+          gradingMethod = 'modelAnswer_comparison';
+          console.log(`Model answer comparison result: ${isCorrect}`);
+        } else {
+          // Only use AI if direct comparison fails
+          gradingMethod = 'ai_no_correct_option';
+          try {
+            const studentAnswerForAI = option ? `${option.letter || ''}. ${option.text}` : selectedOption;
+            isCorrect = await checkAnswerWithAI(
+              question.text,
+              studentAnswerForAI,
+              modelAnswer || 'No model answer available',
+              'multiple-choice'
+            );
+            console.log(`AI fallback grading result: ${isCorrect}`);
+          } catch (aiError) {
+            console.error('AI fallback grading failed:', aiError);
+            isCorrect = false;
+          }
+        }
       }
     }
 
@@ -865,8 +892,8 @@ const checkAnswerWithAI = async (questionText, studentAnswer, modelAnswer, quest
     let prompt = '';
 
     if (questionType === 'multiple-choice') {
-      // Truncate long inputs to prevent timeout
-      const MAX_LENGTH = 500;
+      // Truncate long inputs to prevent timeout - reduced length for faster processing
+      const MAX_LENGTH = 200;
       const truncatedQuestion = cleanQuestionText.length > MAX_LENGTH ? cleanQuestionText.substring(0, MAX_LENGTH) + '...' : cleanQuestionText;
       const truncatedModel = cleanModelAnswer.length > MAX_LENGTH ? cleanModelAnswer.substring(0, MAX_LENGTH) + '...' : cleanModelAnswer;
       const truncatedStudent = cleanStudentAnswer.length > MAX_LENGTH ? cleanStudentAnswer.substring(0, MAX_LENGTH) + '...' : cleanStudentAnswer;

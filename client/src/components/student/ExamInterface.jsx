@@ -1026,6 +1026,19 @@ const ExamInterface = () => {
         return;
       }
 
+      // Save fill-in-blank answer before navigating
+      const currentAnswer = answers[currentQuestion._id];
+      const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
+      
+      if (currentAnswer && questionType === 'fill-in-blank' && currentAnswer.textAnswer?.trim()) {
+        try {
+          await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), 'fill-in-blank');
+          console.log(`✅ Saved fill-in-blank answer for question ${currentQuestion._id}`);
+        } catch (saveError) {
+          console.error(`❌ Failed to save fill-in-blank answer:`, saveError);
+        }
+      }
+
       const questions = getCurrentSectionQuestions();
       if (!questions || questions.length === 0) {
         console.warn('No questions available for navigation');
@@ -1289,9 +1302,8 @@ const ExamInterface = () => {
         throw new Error('Question not found');
       }
 
-      // Detect the actual question type using AI if needed
-      const detectedType = detectQuestionType(question);
-      const actualType = type || detectedType;
+      // Use the provided type directly from exam data
+      const actualType = type || question.type || 'open-ended';
 
       // Validate value based on question type
       if (!value && actualType !== 'multiple-choice' && actualType !== 'true-false') {
@@ -1774,9 +1786,9 @@ const ExamInterface = () => {
         try {
           console.log(`🚀 Submission attempt ${4 - retries} of 3...`);
 
-          // Add timeout to prevent hanging - reduced for faster submissions
+          // Add timeout to prevent hanging - increased for AI grading
           const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Submission timeout after 20 seconds')), 20000);
+            setTimeout(() => reject(new Error('Submission timeout after 3 minutes')), 180000);
           });
 
           // Determine which endpoint to use
@@ -3124,8 +3136,8 @@ const ExamInterface = () => {
                           />
                         )}
                         <Chip
-                          label={getQuestionTypeLabel(currentQuestion.type, currentQuestion.section, currentQuestion)}
-                          color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section, currentQuestion)}
+                          label={getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
+                          color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section)}
                           size="small"
                         />
                       </Box>
@@ -3180,7 +3192,7 @@ const ExamInterface = () => {
                       {/* Question metadata */}
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1 }}>
                         <Typography variant="caption" color="text.secondary">
-                          Type: {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section, currentQuestion)}
+                          Type: {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           Points: {currentQuestion.points || 1}
@@ -3211,23 +3223,48 @@ const ExamInterface = () => {
                       <Box sx={{
                         mb: 3,
                         p: 2,
-                        bgcolor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section, currentQuestion) + '.lighter',
+                        bgcolor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.lighter',
                         borderRadius: 1,
                         border: '1px solid',
-                        borderColor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section, currentQuestion) + '.main'
+                        borderColor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main'
                       }}>
-                        <Typography variant="h6" fontWeight="bold" color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section, currentQuestion) + '.main'}>
-                          {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section, currentQuestion)}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Answer this {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section, currentQuestion).toLowerCase()} carefully
+                        <Typography variant="h6" fontWeight="bold" color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main'}>
+                          {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
                         </Typography>
                       </Box>
 
                       {(() => {
-                        const detectedType = detectQuestionType(currentQuestion);
+                        // Detect question type from content if database type is missing or clearly wrong
+                        const detectQuestionTypeFromContent = (question) => {
+                          const type = question.type;
+                          const text = question.text?.toLowerCase() || '';
+                          const hasOptions = question.options && question.options.length > 0;
 
-                        if (detectedType === 'multiple-choice') {
+                          // If type is already set and valid, use it
+                          if (type && type !== 'multiple-choice') return type;
+
+                          // Check for fill-in-blank patterns
+                          if (text.includes('___') || text.includes('....') || text.includes('_____') ||
+                              text.includes('fill in') || text.includes('blank')) {
+                            return 'fill-in-blank';
+                          }
+                          // Check for true-false
+                          if (hasOptions && question.options.length === 2 &&
+                              (question.options.some(o => o.text?.toLowerCase()?.includes('true')) ||
+                               question.options.some(o => o.text?.toLowerCase()?.includes('false')))) {
+                            return 'true-false';
+                          }
+                          // Keep as multiple-choice if it has 3+ options
+                          if (hasOptions && question.options.length >= 3) {
+                            return 'multiple-choice';
+                          }
+                          // Default based on section
+                          return question.section === 'B' ? 'short-answer' : 'open-ended';
+                        };
+
+                        const questionType = detectQuestionTypeFromContent(currentQuestion);
+
+                        if (questionType === 'multiple-choice') {
                           return (
                         <FormControl component="fieldset" fullWidth>
                           <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
@@ -3303,7 +3340,7 @@ const ExamInterface = () => {
                           )}
                         </FormControl>
                           );
-                        } else if (detectedType === 'true-false') {
+                        } else if (questionType === 'true-false') {
                           return (
                         <FormControl component="fieldset" fullWidth>
                           <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
@@ -3375,7 +3412,7 @@ const ExamInterface = () => {
                           )}
                         </FormControl>
                           );
-                        } else if (detectedType === 'fill-in-blank') {
+                        } else if (questionType === 'fill-in-blank') {
                           return (
                             <FillInBlankQuestion
                               question={currentQuestion}
@@ -3384,107 +3421,7 @@ const ExamInterface = () => {
                               disabled={answers[currentQuestion._id]?.answered}
                             />
                           );
-                        } else if (detectedType === 'enhanced-fill-in-blank') {
-                          return (
-                        <Box>
-                          <TextField
-                            fullWidth
-                            placeholder="Type your answer here..."
-                            value={answers[currentQuestion._id]?.textAnswer || ''}
-                            onChange={(e) => handleAnswerChange(
-                              currentQuestion._id,
-                              e.target.value,
-                              'fill-in-blank'
-                            )}
-                            onKeyDown={(e) => {
-                              // Allow Enter to save the answer
-                              if (e.key === 'Enter' && answers[currentQuestion._id]?.hasChanges) {
-                                e.preventDefault();
-                                saveAnswerToServer(
-                                  currentQuestion._id,
-                                  answers[currentQuestion._id].textAnswer,
-                                  'fill-in-blank'
-                                );
-                              }
-                            }}
-                            disabled={answers[currentQuestion._id]?.answered}
-                            variant="outlined"
-                            autoComplete="off"
-                            spellCheck={true}
-                            autoFocus={true}
-                            sx={{
-                              mt: 2,
-                              '& .MuiOutlinedInput-root': {
-                                '& fieldset': {
-                                  borderColor: mode === 'dark'
-                                    ? alpha(theme.palette.warning.main, 0.6)
-                                    : 'warning.light',
-                                  borderWidth: '2px'
-                                },
-                                '&:hover fieldset': {
-                                  borderColor: 'warning.main',
-                                  borderWidth: '2px'
-                                },
-                                '&.Mui-focused fieldset': {
-                                  borderColor: 'warning.main',
-                                  borderWidth: '3px',
-                                  boxShadow: mode === 'dark'
-                                    ? `0 0 0 3px ${alpha(theme.palette.warning.main, 0.3)}`
-                                    : `0 0 0 3px ${alpha(theme.palette.warning.main, 0.2)}`
-                                },
-                                '& input': {
-                                  fontSize: '1.2rem',
-                                  fontWeight: 600,
-                                  textAlign: 'center',
-                                  padding: '16px',
-                                  backgroundColor: mode === 'dark'
-                                    ? alpha(theme.palette.warning.main, 0.05)
-                                    : alpha(theme.palette.warning.main, 0.02),
-                                  color: theme.palette.text.primary
-                                }
-                              },
-                            }}
-                            inputProps={{
-                              maxLength: 200, // Reasonable limit for fill-in-blank
-                              'aria-label': 'Fill in the blank answer',
-                              style: { textAlign: 'center' }
-                            }}
-                            helperText={
-                              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 1 }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  💡 Tip: Press Enter to save your answer quickly
-                                </Typography>
-                              </Box>
-                            }
-                          />
-
-                          {/* Character count for fill-in-blank */}
-                          <Box sx={{ mt: 1 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {answers[currentQuestion._id]?.textAnswer?.length || 0} / 200 characters
-                              </Typography>
-
-                              {answers[currentQuestion._id]?.textAnswer && (
-                                <Typography variant="caption" color="success.main">
-                                  ✓ Answer entered
-                                </Typography>
-                              )}
-                            </Box>
-                          </Box>
-
-                          {/* Saved indicator for fill-in-blank */}
-                          {answers[currentQuestion._id]?.savedToServer && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, color: 'success.main' }}>
-                              <Check fontSize="small" sx={{ mr: 0.5 }} />
-                              <Typography variant="caption">
-                                Answer saved
-                              </Typography>
-                            </Box>
-                          )}
-                        </Box>
-                          );
-                        } else if (detectedType === 'matching') {
+                        } else if (questionType === 'matching') {
                           return (
                         <MatchingQuestion
                           question={currentQuestion}
@@ -3493,7 +3430,7 @@ const ExamInterface = () => {
                           disabled={answers[currentQuestion._id]?.answered}
                         />
                           );
-                        } else if (detectedType === 'ordering') {
+                        } else if (questionType === 'ordering') {
                           return (
                             <OrderingQuestion
                               question={currentQuestion}
@@ -3502,7 +3439,7 @@ const ExamInterface = () => {
                               disabled={answers[currentQuestion._id]?.answered}
                             />
                           );
-                        } else if (detectedType === 'drag-drop') {
+                        } else if (questionType === 'drag-drop') {
                           return (
                             <DragDropQuestion
                               question={currentQuestion}
@@ -3511,7 +3448,7 @@ const ExamInterface = () => {
                               disabled={answers[currentQuestion._id]?.answered}
                             />
                           );
-                        } else {
+                        } else if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {
                           return (
                         <Box sx={{ mt: 2 }}>
                           <TextField
@@ -3523,7 +3460,7 @@ const ExamInterface = () => {
                             onChange={(e) => handleAnswerChange(
                               currentQuestion._id,
                               e.target.value,
-                              'open-ended'
+                              questionType
                             )}
                             disabled={answers[currentQuestion._id]?.answered}
                             variant="outlined"
@@ -4006,69 +3943,8 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
     }
   };
 
-  // Process the question text to highlight blanks
-  const processQuestionText = (text) => {
-    // Replace various blank patterns with interactive input fields
-    const blankPatterns = [
-      { pattern: /_{3,}/g, replacement: '___BLANK___' },
-      { pattern: /\.{4,}/g, replacement: '___BLANK___' },
-      { pattern: /\[.*?\]/g, replacement: '___BLANK___' },
-      { pattern: /\(.*?\)/g, replacement: '___BLANK___' }
-    ];
-
-    let processedText = text;
-    blankPatterns.forEach(({ pattern, replacement }) => {
-      processedText = processedText.replace(pattern, replacement);
-    });
-
-    return processedText;
-  };
-
-  const processedText = processQuestionText(question.text);
-  const parts = processedText.split('___BLANK___');
-
   return (
     <Box>
-      <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 3 }}>
-        Fill in the Blank
-      </Typography>
-
-      {/* Question with interactive blanks */}
-      <Box sx={{ mb: 4, p: 3, bgcolor: mode === 'dark' ? alpha(theme.palette.warning.main, 0.1) : alpha(theme.palette.warning.main, 0.05), borderRadius: 2, border: `1px solid ${alpha(theme.palette.warning.main, 0.3)}` }}>
-        <Typography variant="body1" sx={{ fontSize: '1.1rem', lineHeight: 1.8 }}>
-          {parts.map((part, index) => (
-            <React.Fragment key={index}>
-              {part}
-              {index < parts.length - 1 && (
-                <Box
-                  component="span"
-                  sx={{
-                    display: 'inline-block',
-                    px: 2,
-                    py: 0.5,
-                    mx: 1,
-                    borderBottom: '3px solid',
-                    borderColor: localAnswer ? 'success.main' : 'warning.main',
-                    backgroundColor: localAnswer ?
-                      alpha(theme.palette.success.main, 0.1) :
-                      alpha(theme.palette.warning.main, 0.1),
-                    fontWeight: 'bold',
-                    color: localAnswer ? 'success.dark' : 'warning.main',
-                    minWidth: '120px',
-                    textAlign: 'center',
-                    borderRadius: 1,
-                    transition: 'all 0.3s ease',
-                    fontSize: '1.1rem'
-                  }}
-                >
-                  {localAnswer || '[ FILL IN THE BLANK ]'}
-                </Box>
-              )}
-            </React.Fragment>
-          ))}
-        </Typography>
-      </Box>
-
       {/* Answer Input */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'warning.main' }}>
@@ -4574,175 +4450,36 @@ const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   );
 };
 
-// Enhanced AI-powered question type detection with advanced pattern recognition
-const detectQuestionType = (question) => {
-  const text = question.text?.toLowerCase() || '';
-  const originalText = question.text || '';
-  const hasOptions = question.options && question.options.length > 0;
-
-  // Check for explicit type first, but validate it
-  if (question.type && question.type !== 'open-ended') {
-    // Validate the explicit type against the content
-    if (question.type === 'multiple-choice' && (!hasOptions || question.options.length < 2)) {
-      // Override incorrect type - this is likely a fill-in-blank
-    } else {
-      return question.type;
-    }
-  }
-
-  // PRIORITY 0: Special question types based on data structure (highest priority)
-  // Check for matching question
-  if ((question.leftItems && question.leftItems.length > 0) || 
-      (question.rightItems && question.rightItems.length > 0) ||
-      (question.matchingPairs && question.matchingPairs.length > 0) ||
-      (text.includes('match') && (question.leftItems || question.rightItems))) {
-    return 'matching';
-  }
-
-  // Check for ordering question
-  if ((question.items && question.items.length > 0) ||
-      (question.itemsToOrder && question.itemsToOrder.items && question.itemsToOrder.items.length > 0) ||
-      (text.includes('order') || text.includes('sequence') || text.includes('arrange'))) {
-    return 'ordering';
-  }
-
-  // Check for drag-drop question
-  if (question.dragDropData && 
-      (question.dragDropData.dropZones || question.dragDropData.draggableItems)) {
-    return 'drag-drop';
-  }
-
-  // PRIORITY 1: Fill-in-the-blank detection (highest priority)
-  const fillInPatterns = [
-    /_{3,}/, // Multiple underscores (_____)
-    /_{2,}/, // Two or more underscores (____)
-    /\[.*?\]/, // Square brackets [answer]
-    /\(.*?\)/, // Parentheses for blanks (answer)
-    /\.\.\.\.\./i, // Dots (....)
-    /fill.*in.*blank/i,
-    /complete.*sentence/i,
-    /insert.*word/i,
-    /missing.*word/i,
-    /blank.*space/i,
-    /choose.*correct.*word/i,
-    /supply.*missing/i
-  ];
-
-  const hasFillInPattern = fillInPatterns.some(pattern => pattern.test(originalText));
-
-  // Also check for common fill-in indicators
-  const fillInIndicators = [
-    originalText.includes('___'),
-    originalText.includes('....'),
-    originalText.includes('[   ]'),
-    originalText.includes('(   )'),
-    originalText.includes('______'),
-    /\b\w+\s+_+\s+\w+/i.test(originalText), // word ___ word pattern
-    /\b_+\s+\w+/i.test(originalText), // ___ word pattern
-    /\w+\s+_+\b/i.test(originalText), // word ___ pattern
-  ];
-
-  const hasBlankIndicators = fillInIndicators.some(indicator => indicator);
-
-  // If it has fill-in patterns but also has options, it's still fill-in-blank
-  if (hasFillInPattern || hasBlankIndicators) {
-    return 'fill-in-blank';
-  }
-
-  // PRIORITY 2: True/False detection
-  if (hasOptions && question.options.length === 2) {
-    const optionTexts = question.options.map(opt => (opt.text || opt)?.toLowerCase() || '');
-    const isTrueFalse = optionTexts.some(opt =>
-      opt.includes('true') || opt.includes('false') ||
-      opt.includes('yes') || opt.includes('no') ||
-      opt.includes('correct') || opt.includes('incorrect') ||
-      opt === 't' || opt === 'f' ||
-      opt === 'true' || opt === 'false' ||
-      opt === 'yes' || opt === 'no'
-    );
-
-    // Also check question text for true/false indicators
-    const questionHasTrueFalse = /true.*false|false.*true|correct.*incorrect|yes.*no/i.test(text);
-
-    if (isTrueFalse || questionHasTrueFalse) {
-      return 'true-false';
-    }
-  }
-
-  // PRIORITY 3: Multiple choice detection (must have 3+ valid options)
-  if (hasOptions && question.options.length >= 3) {
-    // Validate that options are meaningful (not just blanks or placeholders)
-    const validOptions = question.options.filter(opt => {
-      const optText = (opt.text || opt || '').trim();
-      return optText.length > 0 &&
-             !optText.match(/^_+$/) &&
-             !optText.match(/^\.*$/) &&
-             optText !== '...' &&
-             optText !== '___';
-    });
-
-    if (validOptions.length >= 3) {
-      return 'multiple-choice';
-    }
-  }
-
-  // PRIORITY 4: Essay detection
-  const essayPatterns = [
-    /explain/i, /describe/i, /discuss/i, /analyze/i, /evaluate/i,
-    /compare/i, /contrast/i, /justify/i, /argue/i, /elaborate/i,
-    /essay/i, /paragraph/i, /detailed/i, /comprehensive/i,
-    /write.*about/i, /give.*account/i, /examine/i, /assess/i
-  ];
-
-  const isEssay = essayPatterns.some(pattern => pattern.test(text)) ||
-                 text.length > 300 ||
-                 question.section === 'C' ||
-                 originalText.length > 300;
-
-  if (isEssay) return 'essay';
-
-  // PRIORITY 5: Short answer detection
-  const shortAnswerPatterns = [
-    /what.*is/i, /who.*is/i, /when.*did/i, /where.*is/i, /how.*many/i,
-    /define/i, /identify/i, /name/i, /list/i, /state/i, /mention/i,
-    /give.*example/i, /provide.*example/i, /calculate/i, /find/i
-  ];
-
-  const isShortAnswer = shortAnswerPatterns.some(pattern => pattern.test(text)) ||
-                       (!hasOptions && text.length < 300 && text.length > 10);
-
-  if (isShortAnswer) return 'short-answer';
-
-  // FALLBACK: Section-based detection with validation
-  if (question.section === 'A') {
-    // Section A should be multiple choice, but if no valid options, treat as fill-in
-    if (hasOptions && question.options.length >= 2) {
-      return 'multiple-choice';
-    } else {
-      return 'fill-in-blank';
-    }
-  }
-
-  if (question.section === 'B') return 'short-answer';
-  if (question.section === 'C') return 'essay';
-
-  // Final fallback - analyze content one more time
-  if (!hasOptions || question.options.length === 0) {
-    if (originalText.includes('___') || originalText.includes('....')) {
-      return 'fill-in-blank';
-    }
-    return 'short-answer';
-  }
-
-  return 'multiple-choice'; // Ultimate fallback
-};
-
 // Helper functions for question types
 const getQuestionTypeLabel = (type, section, question = null) => {
-  // Use AI detection if question object is provided
-  const detectedType = question ? detectQuestionType(question) : type;
+  // Use the provided type directly from exam data
+  let questionType = type || 'open-ended';
 
-  switch (detectedType) {
+  // Fallback: if type is missing or clearly wrong, detect from question content
+  if (!type || type === 'multiple-choice') {
+    if (question) {
+      const text = question.text?.toLowerCase() || '';
+      const hasOptions = question.options && question.options.length > 0;
+
+      // Check for fill-in-blank patterns
+      if (text.includes('___') || text.includes('....') || text.includes('_____') ||
+          text.includes('fill in') || text.includes('blank')) {
+        questionType = 'fill-in-blank';
+      }
+      // Check for true-false
+      else if (hasOptions && question.options.length === 2 &&
+               (question.options.some(o => o.text?.toLowerCase()?.includes('true')) ||
+                question.options.some(o => o.text?.toLowerCase()?.includes('false')))) {
+        questionType = 'true-false';
+      }
+      // Keep as multiple-choice if it has 3+ options
+      else if (!hasOptions || question.options.length < 3) {
+        questionType = section === 'B' ? 'short-answer' : 'open-ended';
+      }
+    }
+  }
+
+  switch (questionType) {
     case 'multiple-choice':
       return 'Multiple Choice';
     case 'true-false':
@@ -4767,10 +4504,10 @@ const getQuestionTypeLabel = (type, section, question = null) => {
 };
 
 const getQuestionTypeColor = (type, section, question = null) => {
-  // Use AI detection if question object is provided
-  const detectedType = question ? detectQuestionType(question) : type;
+  // Use the provided type directly from exam data
+  const questionType = type || 'open-ended';
 
-  switch (detectedType) {
+  switch (questionType) {
     case 'multiple-choice':
       return 'primary';
     case 'true-false':

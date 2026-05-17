@@ -2120,7 +2120,16 @@ const createExam = async (req, res) => {
     // Handle manually-provided sections with inline questions (manual exam creation, no file)
     if (!examFilePath && req.body.sections && Array.isArray(req.body.sections)) {
       console.log('Handling manual exam with sections:', req.body.sections.length);
-      const TYPE_MAP = { 'fill-blank': 'fill-in-blank', 'short-answer': 'open-ended' };
+      const TYPE_MAP = {
+        'fill-blank': 'fill-in-blank',
+        'short-answer': 'short-answer',
+        'open-ended': 'open-ended',
+        'true-false': 'true-false',
+        'matching': 'matching',
+        'ordering': 'ordering',
+        'drag-drop': 'drag-drop',
+        'essay': 'essay'
+      };
       const HAS_OPTIONS = new Set(['multiple-choice', 'true-false']);
 
       // Step 1: ensure all sections exist on the exam document, then save once

@@ -52,7 +52,7 @@ const ResultSchema = new mongoose.Schema({
       type: String // AI feedback for open-ended questions
     },
     correctedAnswer: {
-      type: String // Correct answer for reference
+      type: mongoose.Schema.Types.Mixed // Correct answer for reference (can be string or object)
     },
     isSelected: {
       type: Boolean,
@@ -134,7 +134,9 @@ const ResultSchema = new mongoose.Schema({
         'exact_match',
         'error',
         // Enhanced AI grading for sections (generic, works for any section)
-        'enhanced_ai_grading_section'
+        'enhanced_ai_grading_section',
+        'letter_comparison_failed',
+        'letter_comparison'
       ],
       default: 'enhanced_grading'
     },

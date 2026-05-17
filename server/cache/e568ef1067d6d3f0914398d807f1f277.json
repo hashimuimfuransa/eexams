@@ -1,0 +1,1 @@
+{"text":"False. \n\nExplanation: An acute angle is less than 90°, but 95° is greater than 90°. Therefore, it is not an acute angle.","parsedContent":null,"usage":{"queue_time":0.019330107,"prompt_tokens":111,"prompt_time":0.007156832,"completion_tokens":36,"completion_time":0.054416882,"total_tokens":147,"total_time":0.061573714},"model":"llama-3.1-8b-instant"}

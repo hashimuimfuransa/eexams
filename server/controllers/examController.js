@@ -300,7 +300,16 @@ const createExam = async (req, res) => {
 
     // Handle manually-provided sections with inline questions (no file upload)
     if (!examFilePath && req.body.sections && Array.isArray(req.body.sections)) {
-      const TYPE_MAP = { 'fill-blank': 'fill-in-blank', 'short-answer': 'open-ended' };
+      const TYPE_MAP = {
+        'fill-blank': 'fill-in-blank',
+        'short-answer': 'short-answer',
+        'open-ended': 'open-ended',
+        'true-false': 'true-false',
+        'matching': 'matching',
+        'ordering': 'ordering',
+        'drag-drop': 'drag-drop',
+        'essay': 'essay'
+      };
 
       // Step 1: ensure all sections exist, save once so findIndex is stable
       for (const sec of req.body.sections) {
@@ -1716,7 +1725,7 @@ const completeExam = async (req, res) => {
         'fallback_keyword_matching', 'not_selected', 'fast_grading', 'fast_multiple_choice',
         'fast_ai_grading', 'fast_similarity', 'fast_keywords', 'no_selection',
         'unsupported_type', 'fallback_error', 'exact_match', 'error',
-        'enhanced_ai_grading_section'
+        'enhanced_ai_grading_section', 'letter_comparison_failed', 'letter_comparison'
       ];
 
       // Ensure all grading methods are valid

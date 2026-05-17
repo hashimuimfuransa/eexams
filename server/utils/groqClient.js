@@ -13,7 +13,8 @@ const path = require('path');
 const PQueue = require('p-queue').default || require('p-queue');
 
 // Global queue: max 30 AI requests per 60 seconds (Groq has higher limits)
-const aiQueue = new PQueue({ interval: 60000, intervalCap: 30, concurrency: 5 });
+// Increased concurrency to reduce timeout issues
+const aiQueue = new PQueue({ interval: 60000, intervalCap: 30, concurrency: 10 });
 
 // Request deduplication map to prevent duplicate in-flight requests
 const inFlightRequests = new Map();

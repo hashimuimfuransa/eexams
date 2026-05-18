@@ -995,16 +995,17 @@ const ExamInterface = () => {
     const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
     const questionSection = currentQuestion.section || 'A';
 
-    // For open-ended questions, get the current answer from ref
+    // For open-ended questions, get the current answer from ref and save directly (same as handleNextQuestion)
     if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
-      console.log(`🔍 Last question save: questionType=${questionType}, openAnswerRef.current=${!!openAnswerRef.current}`);
       if (openAnswerRef.current) {
         const currentTextAnswer = openAnswerRef.current();
-        console.log(`🔍 Last question save: ref textAnswer="${currentTextAnswer}", state textAnswer="${currentAnswer?.textAnswer}"`);
+        console.log(`🔍 Last question save: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
         if (currentTextAnswer && currentTextAnswer.trim()) {
           try {
+            // Save directly using the current answer from ref
             await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
-            // Sync to state after successful save
+            console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
+            // Sync to state after successful save with answered=true and savedToServer=true
             setAnswers(prev => ({
               ...prev,
               [currentQuestion._id]: {
@@ -1022,8 +1023,8 @@ const ExamInterface = () => {
               message: 'Question saved. Click Submit to finish.',
               severity: 'success'
             });
-          } catch (error) {
-            console.error('Save last question error:', error);
+          } catch (saveError) {
+            console.error(`❌ Failed to save ${questionType} answer:`, saveError);
             setSnackbar({
               open: true,
               message: 'Failed to save question. Please try again.',
@@ -3648,11 +3649,11 @@ const ExamInterface = () => {
                         ) : (
                           <Button
                             variant="contained"
-                            onClick={handleNextQuestion}
-                            endIcon={<NavigateNext />}
+                            onClick={handleSaveLastQuestion}
+                            endIcon={<Save />}
                             sx={{ borderRadius: 0 }} // Remove rounded corners
                           >
-                            Next Question
+                            Save Question
                           </Button>
                         )
                       ) : (

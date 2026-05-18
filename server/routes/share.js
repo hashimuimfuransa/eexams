@@ -22,28 +22,6 @@ const {
 // Get all shared exams for teacher (including orphaned ones) - must be before /:shareToken routes
 router.get('/all', auth, isAdminOrTeacher, getAllSharedExams);
 
-// DEBUG: List all shared exams in database (remove after debugging)
-router.get('/debug/list-all', async (req, res) => {
-  try {
-    const SharedExam = require('../models/SharedExam');
-    const allShares = await SharedExam.find({}).select('shareToken exam sharedBy isActive createdAt').sort({ createdAt: -1 }).limit(20);
-    res.json({
-      success: true,
-      count: allShares.length,
-      shares: allShares.map(s => ({
-        shareToken: s.shareToken,
-        exam: s.exam,
-        sharedBy: s.sharedBy,
-        isActive: s.isActive,
-        createdAt: s.createdAt
-      }))
-    });
-  } catch (error) {
-    console.error('Debug list error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
 // Public routes (for students accessing shared exams)
 router.get('/:shareToken', getSharedExam);
 router.post('/:shareToken/verify-password', verifySharePassword);

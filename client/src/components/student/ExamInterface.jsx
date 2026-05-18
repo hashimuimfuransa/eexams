@@ -1791,10 +1791,14 @@ const ExamInterface = () => {
       console.log(`🔍 Is shared exam: ${isSharedExam}, shareToken: ${shareToken}`);
       console.log(`🔍 User email: ${user?.email}`);
       console.log(`🔍 Is guest user: ${user?.email?.includes('@exam.local')}`);
+      console.log(`🔍 Is authenticated: ${!!user}`);
 
       // Also check if user is a guest based on email
       const isGuestUser = user?.email?.includes('@exam.local');
-      const shouldUseShareEndpoint = isSharedExam || isGuestUser;
+      // Marketplace-approved students are authenticated users with real emails
+      // They should use the regular exam endpoint, not the share endpoint
+      // Only use share endpoint for actual guest users
+      const shouldUseShareEndpoint = isGuestUser;
 
       console.log(`🔍 Should use share endpoint: ${shouldUseShareEndpoint}`);
 
@@ -1815,19 +1819,19 @@ const ExamInterface = () => {
 
           // Determine which endpoint to use
           let submitEndpoint, submitPayload;
-          if (isSharedExam) {
-            // Use share submission endpoint for guest users
+          if (shouldUseShareEndpoint) {
+            // Use share submission endpoint for guest users only
             submitEndpoint = `/share/${shareToken}/submit`;
             submitPayload = {
               answers: answers,
               studentId: user?._id
             };
-            console.log(`📤 Submitting to: ${submitEndpoint} (shared exam)`);
+            console.log(`📤 Submitting to: ${submitEndpoint} (shared exam - guest user)`);
           } else {
-            // Use regular exam completion endpoint
+            // Use regular exam completion endpoint for authenticated users (including marketplace-approved)
             submitEndpoint = `/exam/${id}/complete`;
             submitPayload = {};
-            console.log(`📤 Submitting to: ${submitEndpoint} (regular exam)`);
+            console.log(`📤 Submitting to: ${submitEndpoint} (regular exam - authenticated user)`);
           }
           console.log(`📊 Submission data: ${answeredQuestions}/${totalAnswers} questions answered`);
 

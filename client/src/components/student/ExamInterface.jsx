@@ -38,6 +38,7 @@ import {
   ListItemText,
   useTheme
 } from '@mui/material';
+import EnhancedOpenAnswer from './EnhancedOpenAnswer';
 import {
   ArrowBack,
   ArrowForward,
@@ -3450,67 +3451,12 @@ const ExamInterface = () => {
                           );
                         } else if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {
                           return (
-                        <Box sx={{ mt: 2 }}>
-                          <TextField
-                            fullWidth
-                            multiline
-                            rows={currentQuestion.section === 'C' ? 12 : 6}
-                            placeholder="Type your answer here..."
-                            value={answers[currentQuestion._id]?.textAnswer || ''}
-                            onChange={(e) => handleAnswerChange(
-                              currentQuestion._id,
-                              e.target.value,
-                              questionType
-                            )}
-                            disabled={answers[currentQuestion._id]?.answered}
-                            variant="outlined"
-                            sx={{
-                              mt: 2,
-                              '& .MuiOutlinedInput-root': {
-                                '& fieldset': {
-                                  borderColor: currentQuestion.section === 'B' ? 'info.light' : 'secondary.light',
-                                },
-                                '&:hover fieldset': {
-                                  borderColor: currentQuestion.section === 'B' ? 'info.main' : 'secondary.main',
-                                },
-                                '&.Mui-focused fieldset': {
-                                  borderColor: currentQuestion.section === 'B' ? 'info.main' : 'secondary.main',
-                                },
-                              },
-                            }}
-                          />
-
-                          <Box sx={{ mt: 1 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Box sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                color: currentQuestion.section === 'C' &&
-                                  (answers[currentQuestion._id]?.textAnswer?.length || 0) < 300 ?
-                                  'warning.main' : 'text.secondary'
-                              }}>
-                                <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center' }}>
-                                  {currentQuestion.section === 'C' &&
-                                    (answers[currentQuestion._id]?.textAnswer?.length || 0) < 300 &&
-                                    <InfoOutlined fontSize="small" sx={{ mr: 0.5 }} />
-                                  }
-                                  {answers[currentQuestion._id]?.textAnswer?.length || 0} characters
-                                  {currentQuestion.section === 'C' && ' (recommended: 300+ characters)'}
-                                </Typography>
-                              </Box>
-
-                              {/* Saved indicator */}
-                              {answers[currentQuestion._id]?.savedToServer && (
-                                <Box sx={{ display: 'flex', alignItems: 'center', color: 'success.main' }}>
-                                  <Check fontSize="small" sx={{ mr: 0.5 }} />
-                                  <Typography variant="caption">
-                                    Answer saved
-                                  </Typography>
-                                </Box>
-                              )}
-                            </Box>
-                          </Box>
-                        </Box>
+                            <EnhancedOpenAnswer
+                              question={currentQuestion}
+                              answer={answers[currentQuestion._id]}
+                              onAnswerChange={handleAnswerChange}
+                              disabled={answers[currentQuestion._id]?.answered}
+                            />
                           );
                         }
                       })()}

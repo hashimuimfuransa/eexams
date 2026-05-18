@@ -114,6 +114,15 @@ const Dashboard = memo(() => {
     fetchData();
   }, [user]);
 
+  // Auto-refresh data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData(true);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [user]);
+
   const handleRefresh = () => {
     fetchData(true);
   };

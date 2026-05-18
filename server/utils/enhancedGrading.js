@@ -3,6 +3,80 @@ const { gradeOpenEndedAnswer } = require('./aiGrading');
 const groqClient = require('./groqClient');
 
 /**
+ * Parse answer to extract actual content from special formats
+ * Handles [MATH: ...], [DRAWING: ...], and other formats
+ * @param {string} answer - The raw answer string
+ * @returns {string} - The cleaned answer content
+ */
+const parseAnswerContent = (answer) => {
+  if (!answer || typeof answer !== 'string') return '';
+  
+  let content = answer;
+  
+  // Extract content from [MATH: ...] format
+  const mathMatch = answer.match(/\[MATH:\s*(.*?)\]/);
+  if (mathMatch) {
+    content = mathMatch[1].trim();
+  }
+  
+  // Extract content from [DRAWING: ...] format (base64 data, ignore for grading)
+  const drawingMatch = answer.match(/\[DRAWING:\s*([^\]]*)\]/);
+  if (drawingMatch) {
+    // Remove drawing data from content for text grading
+    content = content.replace(/\[DRAWING:\s*[^\]]*\]/, '').trim();
+  }
+  
+  // If answer still has brackets, try to extract content between them
+  if (content.includes('[') && content.includes(']')) {
+    content = content.replace(/\[.*?\]/g, '').trim();
+  }
+  
+  return content;
+};
+
+/**
+ * Validate that answer is relevant to the question
+ * Checks for obviously irrelevant or placeholder answers
+ * @param {string} answer - The student's answer
+ * @param {string} questionText - The question text
+ * @returns {Object} - Validation result with isValid and reason
+ */
+const validateAnswerRelevance = (answer, questionText) => {
+  if (!answer || answer.trim().length < 10) {
+    return { isValid: false, reason: 'Answer too short. Open-ended questions require detailed explanations showing your work and reasoning.' };
+  }
+
+  const cleanAnswer = answer.trim().toLowerCase();
+
+  // Check for answers that are just mathematical expressions without explanation
+  const isJustMathExpression = /^[\d\+\-\*\/\=\(\)\s\\a-zA-Z]+$/.test(cleanAnswer) && cleanAnswer.length < 20;
+  if (isJustMathExpression) {
+    return { isValid: false, reason: 'Your answer appears to be just a mathematical expression without explanation. Please show your working and explain your reasoning.' };
+  }
+
+  // Check for obvious placeholder answers
+  const placeholderPatterns = [
+    /^[a-j],?\s*$/,  // Single letter like "a," or "a"
+    /^[a-j],?\s*[x+=\d]*$/,  // Like "a,x+2=8" or similar
+    /^question\s*\d*$/i,  // "question 1" etc
+    /^[.\s]+$/,  // Just dots or spaces
+  ];
+
+  for (const pattern of placeholderPatterns) {
+    if (pattern.test(cleanAnswer)) {
+      return { isValid: false, reason: 'Answer appears to be a placeholder or label' };
+    }
+  }
+
+  // Check if answer is just repeating the question label (a, b, c, etc)
+  if (/^[a-j][,\s]*$/.test(cleanAnswer) && cleanAnswer.length <= 3) {
+    return { isValid: false, reason: 'Answer appears to be just a question label' };
+  }
+
+  return { isValid: true };
+};
+
+/**
  * Enhanced semantic equivalence mappings for technical terms
  */
 const SEMANTIC_MAPPINGS = {
@@ -158,12 +232,32 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
       case 'short-answer':
         console.log(`🤖 AI grading open-ended question ${question._id} in section ${question.section}`);
 
+        // Parse answer content to extract actual text from [MATH: ...] and [DRAWING: ...] formats
+        const parsedAnswer = parseAnswerContent(answer.textAnswer || '');
+        
+        // Validate answer relevance before grading
+        const relevanceCheck = validateAnswerRelevance(parsedAnswer, question.text);
+        if (!relevanceCheck.isValid) {
+          console.log(`❌ Answer validation failed: ${relevanceCheck.reason}`);
+          return {
+            score: 0,
+            feedback: `Your answer appears to be invalid: ${relevanceCheck.reason}. Please provide a proper answer to the question.`,
+            correctedAnswer: modelAnswer || question.correctAnswer || 'Model answer not available',
+            details: {
+              section: question.section,
+              questionType: 'open-ended',
+              gradingMethod: 'answer_validation_failed',
+              validationReason: relevanceCheck.reason
+            }
+          };
+        }
+
         // Enhanced AI grading for sections B and C with optimized processing
         const sectionType = question.section === 'C' ? 'essay/long-answer' : 'short-answer';
         console.log(`📝 Processing ${sectionType} question in section ${question.section}`);
 
         const openEndedResult = await gradeOpenEndedAnswer(
-          answer.textAnswer || '',
+          parsedAnswer,
           modelAnswer || question.correctAnswer,
           question.points,
           question.text,
@@ -960,5 +1054,7 @@ module.exports = {
   gradeDragDrop,
   checkAnswerWithAI,
   areSemanticallySimilar,
-  SEMANTIC_MAPPINGS
+  SEMANTIC_MAPPINGS,
+  parseAnswerContent,
+  validateAnswerRelevance
 };

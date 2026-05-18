@@ -239,17 +239,71 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
 /**
  * Fast keyword-based grading fallback with enhanced feedback
  */
-function gradeWithKeywordsFast(studentAnswer, modelAnswer, maxPoints) {
+async function gradeWithKeywordsFast(studentAnswer, modelAnswer, maxPoints) {
   const student = studentAnswer.toLowerCase();
   const model = (modelAnswer || '').toLowerCase();
 
   if (!model) {
-    return {
-      score: Math.round(maxPoints * 0.7), // Default 70%
-      feedback: 'Answer recorded. Your response shows understanding. Manual review may provide additional feedback.',
-      correctedAnswer: 'Model answer not available',
-      gradingMethod: 'default_fallback'
-    };
+    // When no model answer is available, use AI to grade based on its own assessment
+    try {
+      const prompt = `You are an expert exam grader. Grade the following student answer to a question.
+
+Question: [Question text not available in fast grading context]
+Student Answer: ${studentAnswer}
+
+Please grade this answer on a scale of 0 to ${maxPoints} points.
+
+STRICT GRADING GUIDELINES (No Model Answer Available):
+1. Evaluate the answer based on completeness, relevance, and demonstration of understanding
+2. Award full points only if the answer is comprehensive and well-explained
+3. Award partial credit (30-70%) only if the answer shows partial understanding
+4. Award 0 points for answers that are incorrect, irrelevant, too brief, or show no understanding
+5. Very short answers (under 10 characters) or irrelevant answers should receive 0 points
+6. Mathematical expressions without explanation should receive 0 points
+7. NO MINIMUM CREDIT - do not give automatic points for effort alone
+
+Return JSON: {score,feedback,correctedAnswer}`;
+
+      const response = await groqClient.generateContent(prompt, {
+        model: 'fast',
+        jsonMode: true,
+        temperature: 0.2,
+        maxTokens: 1024
+      });
+
+      const result = response.parsedContent || JSON.parse(response.text.replace(/```json\n?|\n?```/g, '').trim());
+      const finalScore = Math.min(Math.max(0, result.score || 0), maxPoints);
+
+      return {
+        score: finalScore,
+        feedback: result.feedback || 'AI graded answer without model answer',
+        correctedAnswer: result.correctedAnswer || 'Model answer not available',
+        gradingMethod: 'ai_no_model_answer'
+      };
+    } catch (error) {
+      console.error('AI grading without model answer failed, using fallback:', error.message);
+      // Fallback to conservative scoring
+      const answerLength = studentAnswer.length;
+      const hasExplanatoryText = /[a-zA-Z]{3,}/.test(studentAnswer) &&
+                                 (studentAnswer.includes(' ') || studentAnswer.includes(','));
+      const isJustMathOrNumbers = /^[\d\+\-\*\/\=\(\)\s\[\]MATH:]+$/.test(studentAnswer);
+
+      if (answerLength < 10 || !hasExplanatoryText || isJustMathOrNumbers) {
+        return {
+          score: 0,
+          feedback: 'Your answer is too brief or incomplete. Please provide a complete answer with proper explanation.',
+          correctedAnswer: 'Model answer not available',
+          gradingMethod: 'default_fallback_insufficient'
+        };
+      }
+
+      return {
+        score: Math.round(maxPoints * 0.3),
+        feedback: 'Answer provided but cannot be fully evaluated due to missing model answer. Partial credit given for effort.',
+        correctedAnswer: 'Model answer not available',
+        gradingMethod: 'default_fallback'
+      };
+    }
   }
 
   // Extract keywords (3+ characters)
@@ -257,6 +311,17 @@ function gradeWithKeywordsFast(studentAnswer, modelAnswer, maxPoints) {
   const matches = keywords.filter(keyword => student.includes(keyword)).length;
 
   const matchRatio = keywords.length > 0 ? matches / keywords.length : 0;
+
+  // Give 0 marks for very poor matches (less than 30%)
+  if (matchRatio < 0.3) {
+    return {
+      score: 0,
+      feedback: `Your answer includes only ${matches}/${keywords.length} key concepts. Please review the question and provide a more complete answer.`,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'keyword_matching_poor'
+    };
+  }
+
   const score = Math.round(matchRatio * maxPoints);
 
   // Enhanced feedback based on score

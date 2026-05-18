@@ -323,32 +323,31 @@ Student Answer: ${answer}
 
 Please grade this answer on a scale of 0 to ${maxPoints} points.
 
-FAIR AND GENEROUS GRADING GUIDELINES:
-1. ALWAYS GIVE BENEFIT OF THE DOUBT: If the student's answer shows understanding, award credit
-2. RECOGNIZE EQUIVALENT MEANINGS: If the student answer means the same as the model answer, award full points
+STRICT GRADING GUIDELINES:
+1. EXACT MATCH: If the student answer exactly matches the model answer (ignoring case/spacing), award full points
+2. EQUIVALENT MEANINGS: If the student answer means the same as the model answer, award full points
 3. HANDLE ABBREVIATIONS: "WAN" = "WAN (Wide Area Network)" = "Wide Area Network" (all should get full points)
 4. ACCEPT SYNONYMS: "CPU" = "Central Processing Unit" = "Processor" = "Central Processor"
 5. TECHNICAL TERMS: "RAM" = "Random Access Memory" = "Memory" (in appropriate context)
 6. CASE INSENSITIVE: "cpu" = "CPU" = "Cpu" (all equivalent)
 7. PARTIAL EXPANSIONS: "Hard disk" = "Hard disk drive" = "HDD" (all correct)
-8. PARTIAL CREDIT: If the student includes some correct concepts from the model answer, award partial points (at least 50% if they demonstrate understanding)
-9. MINIMUM CREDIT: If the student provides a reasonable attempt that shows some understanding, award at least 30-40% of points
-10. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
-11. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
+8. NO MINIMUM CREDIT: Do NOT give automatic partial credit. Answers must demonstrate actual understanding.
+9. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
+10. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
 
 SPECIAL GUIDELINES FOR OPEN-ENDED/EXPLANATION QUESTIONS:
 - For questions asking to "describe" or "explain": Look for key concepts and understanding, not exact wording
-- Example: "Describe the water cycle" - Student mentioning evaporation, condensation, precipitation should get 70-80% even if incomplete
-- Example: "Explain adaptation" - Student mentioning survival, environment, traits should get 70-80% even if missing examples
+- Award 0 points for answers that are too short, irrelevant, or show no understanding
+- Award 30-40% only if the student has the right general idea but missing most details
 - Award 60-70% if the student has the right general idea but missing some details
 - Award 80-90% if the student understands the concept well but uses different words
 - Award full points if the student demonstrates complete understanding, even if phrasing differs from model answer
 
-PARTIAL CREDIT EXAMPLES:
+STRICT PARTIAL CREDIT EXAMPLES:
 - Model: "Plants need water, sunlight, and soil to survive"
-- Student: "plants need water and sun" → Award 70-80% (missing soil but shows good understanding)
+- Student: "plants need water and sun" → Award 60-70% (missing soil but shows some understanding)
 - Model: "Photosynthesis converts light energy to chemical energy"
-- Student: "photosynthesis makes energy from sun" → Award 80-90% (correct concept, simplified explanation)
+- Student: "photosynthesis makes energy from sun" → Award 70-80% (correct concept, simplified explanation)
 - Model: "RAM is volatile memory used for temporary storage"
 - Student: "RAM stores data temporarily" → Award 70-80% (correct concept, less detail)
 - Model: "Describe the water cycle: evaporation, condensation, precipitation"
@@ -358,9 +357,10 @@ PARTIAL CREDIT EXAMPLES:
 
 IMPORTANT FOR SECTIONS B & C:
 - These sections often have open-ended questions requiring explanations
-- Be especially generous with partial credit - minimum 40% for any reasonable attempt
-- Focus on understanding of concepts rather than exact terminology
-- If the student's answer is relevant and shows effort, award at least 50-60%
+- Be STRICT with grading - NO automatic minimum credit
+- Answers must demonstrate actual understanding of the question
+- Very short answers (under 10 characters) or irrelevant answers should receive 0 points
+- Mathematical expressions without explanation for non-math questions should receive 0 points
 
 Format your response as valid JSON with this exact structure:
 {

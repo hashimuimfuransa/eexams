@@ -1,5 +1,6 @@
 // Import the centralized Groq client
 const groqClient = require('./groqClient');
+const { parseAnswerContent, validateAnswerRelevance } = require('./enhancedGrading');
 
 /**
  * Enhanced AI grading system with improved accuracy and reliability
@@ -14,8 +15,27 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
   try {
     console.log(`Starting enhanced AI grading for ${questionType} question in section ${section}...`);
 
+    // Parse answer content to extract actual text from [MATH: ...] and [DRAWING: ...] formats
+    const parsedAnswer = parseAnswerContent(studentAnswer || '');
+    
+    // Validate answer relevance before grading
+    const relevanceCheck = validateAnswerRelevance(parsedAnswer, questionText);
+    if (!relevanceCheck.isValid) {
+      console.log(`❌ Answer validation failed: ${relevanceCheck.reason}`);
+      return {
+        score: 0,
+        feedback: `Your answer appears to be invalid: ${relevanceCheck.reason}. Please provide a proper answer to the question.`,
+        correctedAnswer: modelAnswer || 'No model answer available',
+        details: {
+          questionType: questionType,
+          gradingMethod: 'answer_validation_failed',
+          validationReason: relevanceCheck.reason
+        }
+      };
+    }
+
     // Enhanced input validation
-    if (!studentAnswer || typeof studentAnswer !== 'string' || studentAnswer.trim().length === 0) {
+    if (!parsedAnswer || typeof parsedAnswer !== 'string' || parsedAnswer.trim().length === 0) {
       return {
         score: 0,
         feedback: 'No answer provided',
@@ -35,7 +55,7 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
     }
 
     // Clean and prepare inputs with better sanitization
-    const cleanStudentAnswer = String(studentAnswer).trim().replace(/\s+/g, ' ');
+    const cleanStudentAnswer = String(parsedAnswer).trim().replace(/\s+/g, ' ');
     const cleanModelAnswer = String(modelAnswer || '').trim().replace(/\s+/g, ' ');
     const cleanQuestionText = String(questionText || '').trim().replace(/\s+/g, ' ');
 
@@ -66,11 +86,11 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
         };
       }
     } else {
-      // For other question types, check for minimum answer length
-      if (cleanStudentAnswer.length < 5) {
+      // For other question types (open-ended, etc.), reject very short answers with 0 points
+      if (cleanStudentAnswer.length < 10) {
         return {
-          score: Math.round(maxPoints * 0.1), // Give minimal credit for very short answers
-          feedback: 'Your answer is too brief. Please provide more detailed explanation.',
+          score: 0,
+          feedback: 'Your answer is too brief. Open-ended questions require detailed explanations showing your work and reasoning. Please provide a complete answer.',
           correctedAnswer: cleanModelAnswer,
           details: {
             questionType: questionType,
@@ -129,8 +149,27 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
 const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReason) => {
   console.log('Generating enhanced fallback score...');
 
+  // Parse answer content to extract actual text from special formats
+  const parsedAnswer = parseAnswerContent(studentAnswer || '');
+  
+  // Validate answer relevance before fallback grading
+  const relevanceCheck = validateAnswerRelevance(parsedAnswer, '');
+  if (!relevanceCheck.isValid) {
+    console.log(`❌ Fallback grading validation failed: ${relevanceCheck.reason}`);
+    return {
+      score: 0,
+      feedback: `Your answer appears to be invalid: ${relevanceCheck.reason}. Please provide a proper answer to the question.`,
+      correctedAnswer: modelAnswer || '',
+      details: {
+        gradingMethod: 'fallback_validation_failed',
+        validationReason: relevanceCheck.reason,
+        errorReason: errorReason
+      }
+    };
+  }
+
   // Enhanced fallback grading mechanism
-  const studentAns = String(studentAnswer || '').toLowerCase().trim();
+  const studentAns = String(parsedAnswer || '').toLowerCase().trim();
   const modelAns = String(modelAnswer || '').toLowerCase().trim();
 
   // Handle empty student answer
@@ -146,13 +185,48 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
     };
   }
 
-  // Handle empty model answer
+  // Handle empty model answer - be much stricter
   if (!modelAns) {
-    // Give partial credit for any answer when no model answer is available
-    const score = Math.round(maxPoints * 0.5);
+    // When no model answer is available, only give credit if the answer shows substantial effort
+    // Check if the answer is too short or appears to be just random numbers
+    const answerLength = cleanStudentAns.length;
+    
+    // For very short answers (less than 10 chars), give 0 marks
+    if (answerLength < 10) {
+      return {
+        score: 0,
+        feedback: 'Your answer is too brief. Please provide a complete answer with working shown.',
+        correctedAnswer: '',
+        details: {
+          gradingMethod: 'fallback_no_model_too_short',
+          errorReason: 'No model answer provided and answer too brief'
+        }
+      };
+    }
+    
+    // For answers that appear to be just numbers without context (like the example "a, 45327 38946")
+    // Check if the answer is mostly just numbers and letters without explanatory text
+    const hasExplanatoryText = /[a-zA-Z]{3,}/.test(cleanStudentAns) && 
+                               (cleanStudentAns.includes(' ') || cleanStudentAns.includes(','));
+    const isJustNumbers = /^\d+[\s,]*\d*[\s,]*\d*$/.test(cleanStudentAns.replace(/[a-j]\s*/g, ''));
+    
+    if (isJustNumbers || !hasExplanatoryText) {
+      return {
+        score: 0,
+        feedback: 'Your answer appears to be incomplete. Please show your working and provide explanations for each part of the question.',
+        correctedAnswer: '',
+        details: {
+          gradingMethod: 'fallback_no_model_no_working',
+          errorReason: 'No model answer provided and no working shown'
+        }
+      };
+    }
+    
+    // For substantial answers without model answer, give minimal credit (20% instead of 50%)
+    const score = Math.round(maxPoints * 0.2);
     return {
       score: score,
-      feedback: 'Answer provided but cannot be fully evaluated due to missing model answer',
+      feedback: 'Answer provided but cannot be fully evaluated due to missing model answer. Partial credit given for effort.',
       correctedAnswer: '',
       details: {
         gradingMethod: 'fallback_no_model',
@@ -302,11 +376,27 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
     }
   }
 
-  // Calculate match percentage with a minimum score to avoid zero scores
-  // Increased minimum to 40% for fairer grading
+  // Calculate match percentage with stricter scoring
+  // Removed the minimum 40% floor - now allow 0% for clearly incorrect answers
   const matchPercentage = modelKeywords.length > 0
-    ? Math.max(0.4, matchCount / modelKeywords.length) // Minimum 40% score
-    : 0.4;
+    ? matchCount / modelKeywords.length
+    : 0;
+
+  // For very poor matches (less than 30%), give 0 marks - increased threshold for stricter grading
+  if (matchPercentage < 0.3) {
+    return {
+      score: 0,
+      feedback: 'Your answer does not contain the key concepts expected for this question. Please review the question and provide a more complete answer.',
+      correctedAnswer: modelAnswer,
+      details: {
+        matchPercentage: matchPercentage,
+        keywordsFound: matchCount,
+        totalKeywords: modelKeywords.length,
+        gradingMethod: 'fallback_keyword_matching_poor',
+        errorReason: errorReason
+      }
+    };
+  }
 
   // Assign score based on keyword match percentage
   const score = Math.round(matchPercentage * maxPoints);
@@ -320,7 +410,7 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
   } else if (score >= maxPoints * 0.3) {
     feedback = 'Your answer touches on a few key points, but needs more development.';
   } else {
-    feedback = 'Your answer is missing most of the key concepts expected in the model answer.';
+    feedback = 'Your answer is missing most of the key concepts expected in the model answer. Please provide a more complete answer with working shown.';
   }
 
   console.log(`Applied fallback grading with score: ${score}/${maxPoints} (${Math.round(matchPercentage * 100)}% match)`);
@@ -368,14 +458,74 @@ const gradeWithoutModelAnswer = async (studentAnswer, questionText, maxPoints, q
   try {
     console.log('🤖 Grading without model answer using AI analysis');
 
+    // Pre-check: Reject very short answers before sending to AI
+    if (studentAnswer.length < 10) {
+      console.log(`Answer too short (${studentAnswer.length} chars), rejecting without AI grading`);
+      return {
+        score: 0,
+        feedback: 'Your answer is too brief. Open-ended questions require detailed explanations showing your work and reasoning. Please provide a complete answer.',
+        correctedAnswer: 'Model answer not available',
+        details: {
+          questionType: questionType,
+          gradingMethod: 'too_brief_no_ai',
+          answerLength: studentAnswer.length
+        }
+      };
+    }
+
+    // Pre-check: Reject answers that are just mathematical expressions without explanation
+    const isJustMathExpression = /^[\d\+\-\*\/\=\(\)\s\\a-zA-Z]+$/.test(studentAnswer) && studentAnswer.length < 20;
+    if (isJustMathExpression) {
+      console.log(`Answer appears to be just a math expression without explanation, rejecting`);
+      return {
+        score: 0,
+        feedback: 'Your answer appears to be just a mathematical expression without explanation. Open-ended questions require you to show your working and explain your reasoning. Please provide a complete answer with explanation.',
+        correctedAnswer: 'Model answer not available',
+        details: {
+          questionType: questionType,
+          gradingMethod: 'math_only_no_ai',
+          answerLength: studentAnswer.length
+        }
+      };
+    }
+
     // Truncate long inputs to prevent timeout
     const MAX_LENGTH = 1500;
     const truncatedQuestion = questionText.length > MAX_LENGTH ? questionText.substring(0, MAX_LENGTH) + '...' : questionText;
     const truncatedAnswer = studentAnswer.length > MAX_LENGTH ? studentAnswer.substring(0, MAX_LENGTH) + '...' : studentAnswer;
 
-    // Create a focused, fast AI prompt for grading without model answer
-    const prompt = `Grade answer (0-${maxPoints}). Q: ${truncatedQuestion}. A: ${truncatedAnswer}.
-Return JSON: {score,feedback,correctedAnswer,keyConceptsPresent[],keyConceptsMissing[],confidenceLevel,technicalAccuracy,improvementSuggestions[]}`;
+    // Create a focused, fast AI prompt for grading without model answer with proper guidelines
+    const prompt = `You are an expert exam grader. Grade the following student answer to a question.
+
+Question: ${truncatedQuestion}
+Question Type: ${questionType}
+
+Student Answer: ${truncatedAnswer}
+
+Please grade this answer on a scale of 0 to ${maxPoints} points.
+
+STRICT GRADING GUIDELINES (No Model Answer Available):
+1. Evaluate the answer based on correctness, completeness, and understanding of the question
+2. Award full points only if the answer is completely correct and well-explained
+3. Award partial credit (30-70%) only if the answer shows partial understanding or is mostly correct but missing details
+4. Award 0 points for answers that are incorrect, irrelevant, too brief, or show no understanding
+5. Very short answers (under 10 characters) or irrelevant answers should receive 0 points
+6. Mathematical expressions without explanation for non-math questions should receive 0 points
+7. For explanation questions: Look for key concepts, logical reasoning, and completeness
+8. NO MINIMUM CREDIT - do not give automatic points for effort alone
+
+Return JSON with this exact structure:
+{
+  "score": [number between 0 and ${maxPoints}],
+  "feedback": "[detailed feedback explaining the score, what was good and what could be improved]",
+  "correctedAnswer": "[provide the correct answer based on your knowledge]",
+  "keyConceptsPresent": ["concept1", "concept2"],
+  "keyConceptsMissing": ["concept3", "concept4"],
+  "confidenceLevel": "[high|medium|low]",
+  "technicalAccuracy": "[assessment of technical correctness]"
+}
+
+IMPORTANT: Only return valid JSON, no additional text outside the JSON.`;
 
     // Use Groq client for grading without model answer
     const response = await groqClient.generateContent(prompt, {

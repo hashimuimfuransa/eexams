@@ -597,14 +597,14 @@ Only respond with the letter of the correct option (A, B, C, or D).
           // Use the model answer from the question
           let modelAnswer = question.correctAnswer;
 
-          // If the model answer is missing or just says "Not provided" or "Sample answer"
+          // If the model answer is missing or just says "Not provided" or "Sample answer", pass null to let AI grade based on its own logic
           if (!modelAnswer ||
               modelAnswer === "Not provided" ||
               modelAnswer === "Sample answer" ||
               modelAnswer.trim() === "") {
-            // Log that we're using a default model answer
-            console.log(`Warning: No model answer found for question ${question._id}. Using default.`);
-            modelAnswer = "The answer should demonstrate understanding of the core concepts, provide relevant examples, and explain the relationships between key components.";
+            // Log that we're letting AI grade without model answer
+            console.log(`No model answer found for question ${question._id}. Using AI grading without model answer.`);
+            modelAnswer = null; // Pass null to trigger AI grading without model answer
           }
 
           // Use enhanced grading system for all question types
@@ -1345,14 +1345,14 @@ Only respond with the letter of the correct option (A, B, C, or D).
           // Use the model answer from the question
           let modelAnswer = question.correctAnswer;
 
-          // If the model answer is missing or just says "Not provided" or "Sample answer"
+          // If the model answer is missing or just says "Not provided" or "Sample answer", pass null to let AI grade based on its own logic
           if (!modelAnswer ||
               modelAnswer === "Not provided" ||
               modelAnswer === "Sample answer" ||
               modelAnswer.trim() === "") {
-            // Log that we're using a default model answer
-            console.log(`Warning: No model answer found for question ${question._id}. Using default.`);
-            modelAnswer = "The answer should demonstrate understanding of the core concepts, provide relevant examples, and explain the relationships between key components.";
+            // Log that we're letting AI grade without model answer
+            console.log(`No model answer found for question ${question._id}. Using AI grading without model answer.`);
+            modelAnswer = null; // Pass null to trigger AI grading without model answer
           }
 
           // Use enhanced grading system for all question types

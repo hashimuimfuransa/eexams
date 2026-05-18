@@ -747,6 +747,7 @@ export default function TeacherDashboard() {
   const [exams, setExams] = useState([]);
   const [results, setResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingApprovals, setPendingApprovals] = useState(0);
 
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -779,6 +780,26 @@ export default function TeacherDashboard() {
       });
   }, [user]);
 
+  // Auto-refresh pending approvals every 30 seconds
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchPendingApprovals = async () => {
+      try {
+        const response = await api.get('/marketplace/exam-requests');
+        const pendingCount = response.data.filter(r => r.status === 'pending').length;
+        setPendingApprovals(pendingCount);
+      } catch (err) {
+        console.error('Error fetching pending approvals:', err);
+      }
+    };
+
+    fetchPendingApprovals(); // Initial fetch
+    const interval = setInterval(fetchPendingApprovals, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval); // Cleanup on unmount
+  }, [user]);
+
   const filteredExams = exams.filter(exam =>
     !searchQuery || 
     exam.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -790,7 +811,7 @@ export default function TeacherDashboard() {
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Teacher Portal" />}
       topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Teacher')} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
-      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} />}
+      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} />}
       {activeSection === 'students'  && <StudentManagement />}
       {activeSection === 'questions' && <QuestionsSection />}
@@ -822,7 +843,7 @@ const QUESTION_TYPES_META = [
 ];
 
 /* ── HOME ── */
-function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams }) {
+function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals }) {
   const isXs = useMediaQuery('(max-width:600px)');
   const { user } = useAuth();
   const [aiMode, setAiMode] = useState('describe');
@@ -1280,6 +1301,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     { label: 'Total Students', value: stats?.totalStudents ?? 0,    sub: '+18 this week', subColor: '#6366F1',       iconBg: 'rgba(99,102,241,0.1)',  icon: <People sx={{ color: '#6366F1', fontSize: { xs: 20, sm: 24 } }} />,           spark: [200,220,230,240,244,246,248] },
     { label: 'Average Score',  value: `${Math.round(stats?.averageScore ?? 0)}%`, sub: '+6% this week', subColor: tokens.warning, iconBg: 'rgba(245,158,11,0.1)', icon: <BarChart sx={{ color: tokens.warning, fontSize: { xs: 20, sm: 24 } }} />, spark: [65,70,68,75,72,78,75] },
     { label: 'Pass Rate',      value: `${stats?.passRate ?? 0}%`,     sub: '+4% this week', subColor: '#EC4899',       iconBg: 'rgba(236,72,153,0.1)',  icon: <CheckCircle sx={{ color: '#EC4899', fontSize: { xs: 20, sm: 24 } }} />,        spark: [70,72,74,76,75,78,77] },
+    { label: 'Pending Approvals', value: pendingApprovals ?? 0, sub: 'Auto-refreshing', subColor: '#F59E0B', iconBg: 'rgba(245,158,11,0.1)', icon: <HourglassEmpty sx={{ color: '#F59E0B', fontSize: { xs: 20, sm: 24 } }} />, spark: [2,3,1,4,2,5,3] },
   ];
 
   return (
@@ -1287,7 +1309,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       {/* Stat cards with sparkline */}
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
         {statCards.map((s, i) => (
-          <Grid item xs={6} md={3} key={i}>
+          <Grid item xs={6} md={2.4} key={i}>
             <Paper elevation={0} sx={{ p: { xs: 1.5, sm: 2.5 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, transition: 'box-shadow 0.2s,transform 0.15s', '&:hover': { boxShadow: '0 6px 24px rgba(13,64,108,0.09)', transform: 'translateY(-1px)' } }}>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
                 <Box sx={{ width: { xs: 38, sm: 48 }, height: { xs: 38, sm: 48 }, borderRadius: 2.5, bgcolor: s.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.icon}</Box>
@@ -3661,6 +3683,33 @@ function ExamsSection({ exams, setExams }) {
   const [editExam, setEditExam] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState({});
+
+  // Fetch pending approvals for each exam with auto-refresh
+  useEffect(() => {
+    const fetchPendingApprovals = async () => {
+      const approvals = {};
+      await Promise.all(
+        exams.map(async (exam) => {
+          try {
+            const response = await api.get(`/marketplace/exams/${exam._id}/requests`);
+            const pendingCount = response.data.filter(r => r.status === 'pending').length;
+            if (pendingCount > 0) {
+              approvals[exam._id] = pendingCount;
+            }
+          } catch (err) {
+            console.error(`Error fetching approvals for exam ${exam._id}:`, err);
+          }
+        })
+      );
+      setPendingApprovals(approvals);
+    };
+
+    fetchPendingApprovals();
+    const interval = setInterval(fetchPendingApprovals, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [exams]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -3710,15 +3759,16 @@ function ExamsSection({ exams, setExams }) {
       <SectionTitle>My Exams</SectionTitle>
       <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden', overflowX: 'auto' }}>
           <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 650 }}>
-            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>{['Title', 'Status', 'Questions', 'Time', 'Created', 'Actions'].map(h => <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 1.5, py: 1 }}>{h}</TableCell>)}</TableRow></TableHead>
+            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>{['Title', 'Status', 'Questions', 'Time', 'Created', 'Pending Approvals', 'Actions'].map(h => <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 1.5, py: 1 }}>{h}</TableCell>)}</TableRow></TableHead>
             <TableBody>
-              {exams.length === 0 ? <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: tokens.textMuted }}>No exams yet.</TableCell></TableRow> :
+              {exams.length === 0 ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>No exams yet.</TableCell></TableRow> :
                 exams.map(e => {
                   const sc = e.status === 'active' ? tokens.accent : e.status === 'draft' ? tokens.warning : '#6366F1';
                   // Calculate total questions from all sections
                   const totalQuestions = e.sections?.reduce((total, section) =>
                     total + (section.questions?.length || 0), 0
                   ) || e.questions?.length || 0;
+                  const pendingCount = pendingApprovals[e._id] || 0;
                   return (
                   <TableRow key={e._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
                     <TableCell><Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{e.title}</Typography></TableCell>
@@ -3726,6 +3776,13 @@ function ExamsSection({ exams, setExams }) {
                     <TableCell><Chip label={totalQuestions} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} /></TableCell>
                     <TableCell><Typography variant="body2" sx={{ color: tokens.textMuted }}>{e.timeLimit} min</Typography></TableCell>
                     <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted }}>{new Date(e.createdAt).toLocaleDateString()}</Typography></TableCell>
+                    <TableCell>
+                      {pendingCount > 0 ? (
+                        <Chip label={pendingCount} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: '#F59E0B', fontWeight: 700 }} />
+                      ) : (
+                        <Typography variant="body2" sx={{ color: tokens.textMuted }}>-</Typography>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
                         {e.status === 'draft' && (

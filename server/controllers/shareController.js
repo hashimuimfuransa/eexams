@@ -1128,15 +1128,45 @@ const submitSharedExam = async (req, res) => {
       console.log(`  Student ${idx}: student=${s.student?._id}, studentId=${s.studentId}, email=${s.email}`);
     });
 
-    const studentData = sharedExam.students.find(s => {
+    let studentData = sharedExam.students.find(s => {
       // Check both s.student._id (for populated references) and s.studentId (for direct references)
       if (s.student && s.student._id && s.student._id.toString() === studentId) return true;
       if (s.studentId && s.studentId.toString() === studentId) return true;
       return false;
     });
-    
+
     console.log('Found student data:', studentData ? 'Yes' : 'No');
-    
+
+    // If student not found but shared exam has students, try to fix missing studentId fields
+    if (!studentData && sharedExam.students.length > 0) {
+      console.log('Student not found, attempting to fix missing studentId fields...');
+      let fixed = false;
+      for (const s of sharedExam.students) {
+        if (s.student && !s.studentId) {
+          s.studentId = s.student;
+          if (!s.isActiveSession) s.isActiveSession = false;
+          if (!s.lastActivity) s.lastActivity = null;
+          fixed = true;
+          console.log(`Fixed student entry for email: ${s.email}`);
+        }
+      }
+      if (fixed) {
+        await sharedExam.save();
+        console.log('Saved fixed student entries');
+
+        // Try finding the student again after fixing
+        studentData = sharedExam.students.find(s => {
+          if (s.student && s.student._id && s.student._id.toString() === studentId) return true;
+          if (s.studentId && s.studentId.toString() === studentId) return true;
+          return false;
+        });
+
+        if (studentData) {
+          console.log('Found student after fixing fields');
+        }
+      }
+    }
+
     if (!studentData) {
       return res.status(403).json({ message: 'Student not found in this exam' });
     }

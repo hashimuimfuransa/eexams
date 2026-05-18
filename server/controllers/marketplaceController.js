@@ -374,9 +374,12 @@ const approveExamRequest = async (req, res) => {
     // Add the student to the shared exam
     sharedExam.students.push({
       student: studentUser._id,
+      studentId: studentUser._id,
       email: studentUser.email,
       name: studentUser.firstName + ' ' + studentUser.lastName,
       accessMethod: 'link',
+      isActiveSession: false,
+      lastActivity: null,
       firstAccessedAt: new Date()
     });
 

@@ -1590,6 +1590,28 @@ const submitAnswer = async (req, res) => {
           success: false
         });
       }
+    } else if (actualQuestionType === 'image-based') {
+      // For image-based questions
+      try {
+        const answerText = cleanTextAnswer || cleanSelectedOption || '';
+
+        console.log(`Processing ${actualQuestionType} answer for question ${sanitizedData.questionId}:`);
+        console.log(`- Answer length: ${answerText.length} characters`);
+
+        // Store the answer (validation already done)
+        result.answers[answerIndex].textAnswer = answerText;
+
+        // Provide immediate feedback to the student
+        result.answers[answerIndex].feedback = 'Your answer has been saved. It will be graded when you complete the exam.';
+
+        console.log(`Stored ${actualQuestionType} answer for question ${sanitizedData.questionId}`);
+      } catch (error) {
+        console.error(`Error storing ${actualQuestionType} answer:`, error);
+        return res.status(500).json({
+          message: 'Error saving your answer. Please try again.',
+          success: false
+        });
+      }
     } else {
       // For other question types (essays, short answers, etc.)
       try {

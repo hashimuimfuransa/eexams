@@ -48,6 +48,7 @@ const CreateExam = () => {
   // File state
   const [examFile, setExamFile] = useState(null);
   const [answerFile, setAnswerFile] = useState(null);
+  const [questionImages, setQuestionImages] = useState([]);
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -63,7 +64,8 @@ const CreateExam = () => {
     description: '',
     timeLimit: '',
     examFile: '',
-    answerFile: ''
+    answerFile: '',
+    questionImages: ''
   });
 
   // Handle form input changes
@@ -98,6 +100,12 @@ const CreateExam = () => {
         setErrors({
           ...errors,
           answerFile: ''
+        });
+      } else if (name === 'questionImages') {
+        setQuestionImages(Array.from(files));
+        setErrors({
+          ...errors,
+          questionImages: ''
         });
       }
     }
@@ -171,7 +179,7 @@ const CreateExam = () => {
 
     try {
       // Call API to create exam
-      const result = await createExam(examData, examFile, answerFile);
+      const result = await createExam(examData, examFile, answerFile, questionImages);
 
       console.log('Exam created successfully:', result);
 
@@ -429,6 +437,80 @@ const CreateExam = () => {
                 </Box>
                 {errors.answerFile && (
                   <FormHelperText error>{errors.answerFile}</FormHelperText>
+                )}
+              </FormControl>
+            </Grid>
+
+            {/* Question Images Upload */}
+            <Grid item xs={12}>
+              <FormControl fullWidth error={!!errors.questionImages}>
+                <InputLabel htmlFor="question-images" shrink>
+                  Question Images (for image-based questions) - Optional
+                </InputLabel>
+                <Box
+                  sx={{
+                    border: `1px solid ${errors.questionImages ? theme.palette.error.main : alpha(theme.palette.divider, 0.5)}`,
+                    borderRadius: 2,
+                    p: 2,
+                    mt: 2,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: '120px',
+                    backgroundColor: alpha(theme.palette.background.default, 0.5),
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                      borderColor: theme.palette.primary.main
+                    }
+                  }}
+                  component="label"
+                  htmlFor="question-images"
+                >
+                  <input
+                    id="question-images"
+                    name="questionImages"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileChange}
+                    style={{ display: 'none' }}
+                  />
+                  <UploadIcon
+                    sx={{
+                      fontSize: 40,
+                      color: questionImages.length > 0 ? theme.palette.success.main : alpha(theme.palette.text.primary, 0.5),
+                      mb: 1
+                    }}
+                  />
+                  <Typography variant="body1" align="center" gutterBottom>
+                    {questionImages.length > 0 
+                      ? `${questionImages.length} image(s) selected` 
+                      : 'Click to upload question images'}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" align="center">
+                    JPEG, PNG, GIF, WebP (max 10 images, 10MB each)
+                  </Typography>
+                </Box>
+                {errors.questionImages && (
+                  <FormHelperText error>{errors.questionImages}</FormHelperText>
+                )}
+                {questionImages.length > 0 && (
+                  <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {questionImages.map((file, index) => (
+                      <Chip
+                        key={index}
+                        label={file.name}
+                        size="small"
+                        onDelete={() => {
+                          const newImages = questionImages.filter((_, i) => i !== index);
+                          setQuestionImages(newImages);
+                        }}
+                      />
+                    ))}
+                  </Box>
                 )}
               </FormControl>
             </Grid>

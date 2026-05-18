@@ -39,6 +39,7 @@ import {
   useTheme
 } from '@mui/material';
 import EnhancedOpenAnswer from './EnhancedOpenAnswer';
+import ImageAnswer from './ImageAnswer';
 import {
   ArrowBack,
   ArrowForward,
@@ -1044,7 +1045,7 @@ const ExamInterface = () => {
       
       // Save open-ended/essay/short-answer answers for sections B and C
       if (currentAnswer && (questionSection === 'B' || questionSection === 'C')) {
-        if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {
+        if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
           if (currentAnswer.textAnswer?.trim()) {
             try {
               await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), questionType);
@@ -1414,6 +1415,7 @@ const ExamInterface = () => {
             case 'open-ended':
             case 'essay':
             case 'short-answer':
+            case 'image-based':
             default:
               payload.textAnswer = cleanValue;
               break;
@@ -3256,9 +3258,15 @@ const ExamInterface = () => {
                           const type = question.type;
                           const text = question.text?.toLowerCase() || '';
                           const hasOptions = question.options && question.options.length > 0;
+                          const hasImage = question.imageUrl || question.image;
 
                           // If type is already set and valid, use it
                           if (type && type !== 'multiple-choice') return type;
+
+                          // Check for image-based questions
+                          if (hasImage) {
+                            return 'image-based';
+                          }
 
                           // Check for fill-in-blank patterns
                           if (text.includes('___') || text.includes('....') || text.includes('_____') ||
@@ -3459,6 +3467,15 @@ const ExamInterface = () => {
                         } else if (questionType === 'drag-drop') {
                           return (
                             <DragDropQuestion
+                              question={currentQuestion}
+                              answer={answers[currentQuestion._id]}
+                              onAnswerChange={handleAnswerChange}
+                              disabled={answers[currentQuestion._id]?.answered}
+                            />
+                          );
+                        } else if (questionType === 'image-based') {
+                          return (
+                            <ImageAnswer
                               question={currentQuestion}
                               answer={answers[currentQuestion._id]}
                               onAnswerChange={handleAnswerChange}

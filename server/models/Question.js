@@ -7,8 +7,12 @@ const QuestionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'matching', 'ordering', 'drag-drop'],
+    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'matching', 'ordering', 'drag-drop', 'image-based'],
     required: true
+  },
+  imageUrl: {
+    type: String,
+    default: ''
   },
   options: [{
     text: {

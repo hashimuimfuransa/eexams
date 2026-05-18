@@ -5,9 +5,10 @@ import api from './api';
  * @param {Object} examData - Basic exam data (title, description, timeLimit)
  * @param {File} examFile - The exam file
  * @param {File} answerFile - The answer file
+ * @param {Array} questionImages - Array of question image files
  * @returns {Promise} - Promise with the created exam data
  */
-export const createExam = async (examData, examFile, answerFile) => {
+export const createExam = async (examData, examFile, answerFile, questionImages = []) => {
   try {
     // Validate required fields
     if (!examData.title || !examData.description || !examData.timeLimit) {
@@ -33,6 +34,13 @@ export const createExam = async (examData, examFile, answerFile) => {
       formData.append('answerFile', answerFile);
     }
 
+    // Add question images
+    if (questionImages && questionImages.length > 0) {
+      questionImages.forEach((image, index) => {
+        formData.append('questionImages', image);
+      });
+    }
+
     console.log('Sending exam data:', {
       title: examData.title,
       description: examData.description,
@@ -40,7 +48,9 @@ export const createExam = async (examData, examFile, answerFile) => {
       passingScore: examData.passingScore,
       isLocked: examData.isLocked,
       hasExamFile: !!examFile,
-      hasAnswerFile: !!answerFile
+      hasAnswerFile: !!answerFile,
+      hasQuestionImages: questionImages.length > 0,
+      questionImageCount: questionImages.length
     });
 
     // Make API request with FormData

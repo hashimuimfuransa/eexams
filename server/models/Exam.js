@@ -30,6 +30,12 @@ const ExamSchema = new mongoose.Schema({
     type: String, // path to the answer file
     default: null
   },
+  questionImages: [{
+    originalName: String,
+    filename: String,
+    path: String,
+    url: String
+  }],
   scheduledFor: {
     type: Date,
     default: null

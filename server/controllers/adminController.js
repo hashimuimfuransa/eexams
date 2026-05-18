@@ -1723,6 +1723,7 @@ const createExam = async (req, res) => {
     // Initialize file variables
     let examFilePath = null;
     let answerFilePath = null;
+    let questionImageUrls = [];
 
     // Check if files are uploaded
     if (req.files) {
@@ -1736,6 +1737,16 @@ const createExam = async (req, res) => {
         const answerFile = req.files.answerFile[0];
         answerFilePath = answerFile.path;
         console.log('Answer file uploaded:', answerFilePath);
+      }
+
+      if (req.files.questionImages) {
+        questionImageUrls = req.files.questionImages.map(file => ({
+          originalName: file.originalname,
+          filename: file.filename,
+          path: file.path,
+          url: `/uploads/${file.filename}`
+        }));
+        console.log('Question images uploaded:', questionImageUrls.length);
       }
     }
 
@@ -1773,6 +1784,8 @@ const createExam = async (req, res) => {
       passingScore: Number(passingScore) || 70,
       originalFile: examFilePath ? 'Yes' : 'No',
       answerFile: answerFilePath ? 'Yes' : 'No',
+      questionImages: questionImageUrls.length > 0 ? 'Yes' : 'No',
+      questionImageCount: questionImageUrls.length,
       isLocked: isLockedBool,
       sectionsCount: sectionsArray.length,
       questionsCount: questions?.length || 0
@@ -1787,6 +1800,7 @@ const createExam = async (req, res) => {
       passingScore: Number(passingScore) || 70,
       originalFile: examFilePath,
       answerFile: answerFilePath,
+      questionImages: questionImageUrls,
       isLocked: isLockedBool,
       createdBy: createdById,
       status: 'draft',
@@ -1961,7 +1975,7 @@ const createExam = async (req, res) => {
                   let questionType = questionData.type || 'multiple-choice';
 
                   // Ensure type is valid - support all question types
-                  const validTypes = ['multiple-choice', 'true-false', 'fill-in-blank', 'open-ended', 'short-answer', 'matching', 'ordering'];
+                  const validTypes = ['multiple-choice', 'true-false', 'fill-in-blank', 'open-ended', 'short-answer', 'matching', 'ordering', 'image-based'];
                   if (!validTypes.includes(questionType)) {
                     console.warn(`Invalid question type: ${questionType}, defaulting to multiple-choice`);
                     questionType = 'multiple-choice';

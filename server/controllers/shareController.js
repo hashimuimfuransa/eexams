@@ -1119,12 +1119,14 @@ const submitSharedExam = async (req, res) => {
     // Find the student in the shared exam
     console.log('Students in shared exam:', sharedExam.students.length);
     sharedExam.students.forEach((s, idx) => {
-      console.log(`  Student ${idx}: student=${s.student?._id}, email=${s.email}`);
+      console.log(`  Student ${idx}: student=${s.student?._id}, studentId=${s.studentId}, email=${s.email}`);
     });
 
     const studentData = sharedExam.students.find(s => {
-      if (!s.student) return false;
-      return s.student._id.toString() === studentId;
+      // Check both s.student._id (for populated references) and s.studentId (for direct references)
+      if (s.student && s.student._id && s.student._id.toString() === studentId) return true;
+      if (s.studentId && s.studentId.toString() === studentId) return true;
+      return false;
     });
     
     console.log('Found student data:', studentData ? 'Yes' : 'No');

@@ -32,7 +32,8 @@ const MarketplaceManager = ({ exam }) => {
   const [settings, setSettings] = useState({
     isPubliclyListed: exam?.isPubliclyListed || false,
     publicPrice: exam?.publicPrice || 0,
-    publicDescription: exam?.publicDescription || ''
+    publicDescription: exam?.publicDescription || '',
+    targetAudience: exam?.targetAudience || ''
   });
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);

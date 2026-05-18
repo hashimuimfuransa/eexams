@@ -4770,7 +4770,7 @@ function TemplatesSection({ exams, setExams }) {
   const [snack, setSnack] = useState('');
   const [tab, setTab] = useState('templates'); // 'templates' or 'question-bank'
   const [searchTerm, setSearchTerm] = useState('');
-  const [levelFilter, setLevelFilter] = useState('all');
+  const [audienceFilter, setAudienceFilter] = useState('all');
   const [previewDialog, setPreviewDialog] = useState(false);
   const [previewExam, setPreviewExam] = useState(null);
   const isXs = useMediaQuery('(max-width:600px)');
@@ -4791,7 +4791,10 @@ function TemplatesSection({ exams, setExams }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadQuestionBank(); }, [loadQuestionBank]);
 
-  // Filter question bank based on search and level
+  // Get unique target audiences from question bank
+  const uniqueAudiences = [...new Set(questionBank.map(exam => exam.targetAudience).filter(Boolean))];
+
+  // Filter question bank based on search and audience
   useEffect(() => {
     let filtered = questionBank;
 
@@ -4805,16 +4808,15 @@ function TemplatesSection({ exams, setExams }) {
       );
     }
 
-    // Filter by level (targetAudience can act as level)
-    if (levelFilter !== 'all') {
+    // Filter by audience
+    if (audienceFilter !== 'all') {
       filtered = filtered.filter(exam =>
-        exam.targetAudience?.toLowerCase() === levelFilter.toLowerCase() ||
-        exam.publicDescription?.toLowerCase().includes(levelFilter.toLowerCase())
+        exam.targetAudience === audienceFilter
       );
     }
 
     setFilteredQuestionBank(filtered);
-  }, [searchTerm, levelFilter, questionBank]);
+  }, [searchTerm, audienceFilter, questionBank]);
 
   const handleSaveAsTemplate = async () => {
     if (!selectedExamId) return;
@@ -5024,15 +5026,15 @@ function TemplatesSection({ exams, setExams }) {
             <FormControl size="small" sx={{ minWidth: 150 }}>
               <InputLabel>Level</InputLabel>
               <Select
-                value={levelFilter}
+                value={audienceFilter}
                 label="Level"
-                onChange={(e) => setLevelFilter(e.target.value)}
+                onChange={(e) => setAudienceFilter(e.target.value)}
                 sx={{ borderRadius: 2 }}
               >
                 <MenuItem value="all">All Levels</MenuItem>
-                <MenuItem value="beginner">Beginner</MenuItem>
-                <MenuItem value="intermediate">Intermediate</MenuItem>
-                <MenuItem value="advanced">Advanced</MenuItem>
+                {uniqueAudiences.map(audience => (
+                  <MenuItem key={audience} value={audience}>{audience}</MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Paper>
@@ -5045,10 +5047,10 @@ function TemplatesSection({ exams, setExams }) {
                 <Quiz sx={{ fontSize: 32, color: tokens.primary }} />
               </Box>
               <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary }}>
-                {searchTerm || levelFilter !== 'all' ? 'No matching exams found' : 'No exams in question bank'}
+                {searchTerm || audienceFilter !== 'all' ? 'No matching exams found' : 'No exams in question bank'}
               </Typography>
               <Typography sx={{ color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mb: 2.5, mt: 0.5 }}>
-                {searchTerm || levelFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'There are no publicly available exams to reuse at the moment.'}
+                {searchTerm || audienceFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'There are no publicly available exams to reuse at the moment.'}
               </Typography>
             </Paper>
           ) : (

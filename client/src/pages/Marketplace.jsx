@@ -211,11 +211,11 @@ const Marketplace = () => {
               {/* Target Audience Filter */}
               <Grid item xs={6} sm={3} lg={3.5}>
                 <FormControl fullWidth size="small">
-                  <InputLabel sx={{ fontSize: 13 }}>Audience</InputLabel>
+                  <InputLabel sx={{ fontSize: 13 }}>Level</InputLabel>
                   <Select
                     value={targetAudienceFilter}
                     onChange={(e) => setTargetAudienceFilter(e.target.value)}
-                    label="Audience"
+                    label="Level"
                     sx={{ borderRadius: 1.5, fontSize: 14 }}
                   >
                     <MenuItem value="all">All</MenuItem>

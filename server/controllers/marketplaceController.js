@@ -463,7 +463,7 @@ const rejectExamRequest = async (req, res) => {
 // @access  Private (Teacher)
 const updateMarketplaceExamSettings = async (req, res) => {
   try {
-    const { isPubliclyListed, publicPrice, publicDescription } = req.body;
+    const { isPubliclyListed, publicPrice, publicDescription, targetAudience } = req.body;
 
     // First, check if the exam exists
     const exam = await Exam.findById(req.params.id);
@@ -490,6 +490,9 @@ const updateMarketplaceExamSettings = async (req, res) => {
     }
     if (publicDescription !== undefined) {
       exam.publicDescription = publicDescription;
+    }
+    if (targetAudience !== undefined) {
+      exam.targetAudience = targetAudience;
     }
 
     await exam.save();

@@ -237,7 +237,12 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
     const onInput = (e) => {
       const val = e.target.value ?? '';
       setMathValue(val);
-      updateCombined(val, textValue);
+      // Don't call updateCombined on every keystroke to prevent typing interruption
+    };
+
+    const onBlur = () => {
+      // Save answer when user leaves the math field
+      updateCombined(mathValue, textValue);
     };
 
     // Allow Enter to insert a new line (\\) in the math field so students
@@ -250,23 +255,30 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
         mf.executeCommand(['insert', '\\\\ ']);
         const val = mf.value ?? '';
         setMathValue(val);
-        updateCombined(val, textValue);
+        // Don't call updateCombined on every keystroke to prevent typing interruption
       }
     };
 
     mf.addEventListener('input', onInput);
+    mf.addEventListener('blur', onBlur);
     mf.addEventListener('keydown', onKeyDown);
     setMathReady(true);
 
     return () => {
       mf.removeEventListener('input', onInput);
+      mf.removeEventListener('blur', onBlur);
       mf.removeEventListener('keydown', onKeyDown);
     };
   }, [activeTab, textValue, updateCombined]); // re-bind when switching to math tab
 
+  // Only update combined answer when component unmounts or when explicitly needed
+  // This prevents typing interruption from frequent state updates
   useEffect(() => {
-    updateCombined(mathValue, textValue);
-  }, [mathValue, textValue]);
+    return () => {
+      // Save on unmount
+      updateCombined(mathValue, textValue);
+    };
+  }, [mathValue, textValue, updateCombined]);
 
   /* Insert a LaTeX snippet at the math-field cursor */
   const insertSymbol = (latex) => {
@@ -276,13 +288,18 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
     mf.executeCommand(['insert', latex]);
     const val = mf.value ?? '';
     setMathValue(val);
-    updateCombined(val, textValue);
+    // Don't call updateCombined on symbol insert to prevent interruption
   };
 
   const handleTextChange = (e) => {
     const val = e.target.value;
     setTextValue(val);
-    updateCombined(mathValue, val);
+    // Don't call updateCombined on every keystroke to prevent typing interruption
+  };
+
+  const handleTextBlur = () => {
+    // Save answer when user leaves the text field
+    updateCombined(mathValue, textValue);
   };
 
   const isSection = question?.section;
@@ -355,6 +372,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
                 placeholder="Write your answer here. Show all working clearly and logically."
                 value={textValue}
                 onChange={handleTextChange}
+                onBlur={handleTextBlur}
                 disabled={disabled}
                 variant="outlined"
                 inputProps={{

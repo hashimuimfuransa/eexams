@@ -20,7 +20,16 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Chip,
+  Checkbox
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -28,7 +37,13 @@ import {
   Delete as DeleteIcon,
   Close as CloseIcon,
   Upload as UploadIcon,
-  Description as DescriptionIcon
+  Description as DescriptionIcon,
+  Add as AddIcon,
+  ExpandMore as ExpandMoreIcon,
+  RadioButtonChecked,
+  CheckBox,
+  ShortText,
+  FormatListNumbered
 } from '@mui/icons-material';
 import { getExamById, updateExam } from '../../../services/examService';
 
@@ -74,6 +89,37 @@ const EditExam = () => {
     timeLimit: ''
   });
 
+  // Sections and Questions state
+  const [sections, setSections] = useState([
+    { id: 'A', name: 'A', description: 'Section A - All questions required', questions: [] },
+    { id: 'B', name: 'B', description: 'Section B - Selective answering', questions: [] },
+    { id: 'C', name: 'C', description: 'Section C - Selective answering', questions: [] }
+  ]);
+
+  // Question types configuration
+  const questionTypes = [
+    { type: 'multiple-choice', label: 'Multiple Choice', icon: <RadioButtonChecked sx={{ fontSize: 14 }} />, color: '#3B82F6' },
+    { type: 'true-false', label: 'True / False', icon: <CheckBox sx={{ fontSize: 14 }} />, color: '#8B5CF6' },
+    { type: 'fill-blank', label: 'Fill in the Blank', icon: <ShortText sx={{ fontSize: 14 }} />, color: '#F59E0B' },
+    { type: 'open-ended', label: 'Open Ended', icon: <FormatListNumbered sx={{ fontSize: 14 }} />, color: '#EC4899' }
+  ];
+
+  // Add question dialog state
+  const [addQuestionDialogOpen, setAddQuestionDialogOpen] = useState(false);
+  const [selectedSection, setSelectedSection] = useState(null);
+  const [newQuestion, setNewQuestion] = useState({
+    text: '',
+    type: 'multiple-choice',
+    points: 2,
+    options: [
+      { text: '', isCorrect: false, letter: 'A' },
+      { text: '', isCorrect: false, letter: 'B' },
+      { text: '', isCorrect: false, letter: 'C' },
+      { text: '', isCorrect: false, letter: 'D' }
+    ],
+    correctAnswer: ''
+  });
+
   // Fetch exam data
   useEffect(() => {
     const fetchExamData = async () => {
@@ -96,6 +142,11 @@ const EditExam = () => {
 
         setCurrentExamFile(data.originalFile);
         setCurrentAnswerFile(data.answerFile);
+
+        // Load existing sections and questions
+        if (data.sections && data.sections.length > 0) {
+          setSections(data.sections);
+        }
       } catch (err) {
         console.error('Error fetching exam:', err);
         setError(`Failed to load exam data: ${err.message || 'Unknown error'}`);
@@ -207,6 +258,7 @@ const EditExam = () => {
       formData.append('allowSelectiveAnswering', examData.allowSelectiveAnswering);
       formData.append('sectionBRequiredQuestions', examData.sectionBRequiredQuestions);
       formData.append('sectionCRequiredQuestions', examData.sectionCRequiredQuestions);
+      formData.append('sections', JSON.stringify(sections));
 
       // Add files if selected
       if (examFile) {
@@ -263,6 +315,173 @@ const EditExam = () => {
       message: 'Delete functionality will be implemented soon',
       severity: 'info'
     });
+  };
+
+  // Open add question dialog
+  const handleOpenAddQuestion = (sectionId) => {
+    setSelectedSection(sectionId);
+    setNewQuestion({
+      text: '',
+      type: 'multiple-choice',
+      points: 2,
+      options: [
+        { text: '', isCorrect: false, letter: 'A' },
+        { text: '', isCorrect: false, letter: 'B' },
+        { text: '', isCorrect: false, letter: 'C' },
+        { text: '', isCorrect: false, letter: 'D' }
+      ],
+      correctAnswer: ''
+    });
+    setAddQuestionDialogOpen(true);
+  };
+
+  // Close add question dialog
+  const handleCloseAddQuestion = () => {
+    setAddQuestionDialogOpen(false);
+    setSelectedSection(null);
+  };
+
+  // Handle question type change
+  const handleQuestionTypeChange = (type) => {
+    if (type === 'true-false') {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [
+          { text: 'True', isCorrect: false, letter: 'A' },
+          { text: 'False', isCorrect: false, letter: 'B' }
+        ],
+        correctAnswer: ''
+      });
+    } else if (type === 'multiple-choice') {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [
+          { text: '', isCorrect: false, letter: 'A' },
+          { text: '', isCorrect: false, letter: 'B' },
+          { text: '', isCorrect: false, letter: 'C' },
+          { text: '', isCorrect: false, letter: 'D' }
+        ],
+        correctAnswer: ''
+      });
+    } else {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [],
+        correctAnswer: ''
+      });
+    }
+  };
+
+  // Handle option change
+  const handleOptionChange = (index, value) => {
+    const updatedOptions = [...newQuestion.options];
+    updatedOptions[index] = { ...updatedOptions[index], text: value };
+    setNewQuestion({ ...newQuestion, options: updatedOptions });
+  };
+
+  // Handle correct answer selection
+  const handleCorrectAnswerChange = (index) => {
+    const updatedOptions = newQuestion.options.map((opt, i) => ({
+      ...opt,
+      isCorrect: i === index
+    }));
+    setNewQuestion({ ...newQuestion, options: updatedOptions });
+  };
+
+  // Add new option
+  const handleAddOption = () => {
+    const nextLetter = String.fromCharCode(65 + newQuestion.options.length);
+    setNewQuestion({
+      ...newQuestion,
+      options: [...newQuestion.options, { text: '', isCorrect: false, letter: nextLetter }]
+    });
+  };
+
+  // Remove option
+  const handleRemoveOption = (index) => {
+    const updatedOptions = newQuestion.options.filter((_, i) => i !== index);
+    // Reassign letters
+    const reassignedOptions = updatedOptions.map((opt, i) => ({
+      ...opt,
+      letter: String.fromCharCode(65 + i)
+    }));
+    setNewQuestion({ ...newQuestion, options: reassignedOptions });
+  };
+
+  // Add question to section
+  const handleAddQuestion = () => {
+    if (!newQuestion.text.trim()) {
+      setSnackbar({
+        open: true,
+        message: 'Question text is required',
+        severity: 'error'
+      });
+      return;
+    }
+
+    // For multiple-choice and true-false, ensure a correct answer is selected
+    if (newQuestion.type === 'multiple-choice' || newQuestion.type === 'true-false') {
+      const hasCorrectAnswer = newQuestion.options.some(opt => opt.isCorrect);
+      if (!hasCorrectAnswer) {
+        setSnackbar({
+          open: true,
+          message: 'Please select the correct answer',
+          severity: 'error'
+        });
+        return;
+      }
+    }
+
+    const questionToAdd = {
+      ...newQuestion,
+      id: Date.now().toString(),
+      section: selectedSection
+    };
+
+    setSections(prevSections =>
+      prevSections.map(section =>
+        section.id === selectedSection
+          ? { ...section, questions: [...section.questions, questionToAdd] }
+          : section
+      )
+    );
+
+    setAddQuestionDialogOpen(false);
+    setSnackbar({
+      open: true,
+      message: 'Question added successfully',
+      severity: 'success'
+    });
+  };
+
+  // Delete question
+  const handleDeleteQuestion = (sectionId, questionId) => {
+    setSections(prevSections =>
+      prevSections.map(section =>
+        section.id === sectionId
+          ? { ...section, questions: section.questions.filter(q => q.id !== questionId) }
+          : section
+      )
+    );
+  };
+
+  // Update question
+  const handleUpdateQuestion = (sectionId, questionId, updatedQuestion) => {
+    setSections(prevSections =>
+      prevSections.map(section =>
+        section.id === sectionId
+          ? {
+              ...section,
+              questions: section.questions.map(q =>
+                q.id === questionId ? { ...q, ...updatedQuestion } : q
+              )
+            }
+          : section
+      )
+    );
   };
 
   if (loading) {
@@ -659,6 +878,315 @@ const EditExam = () => {
           </Grid>
         </Box>
       </Paper>
+
+      {/* Questions and Sections Management */}
+      <Paper
+        elevation={0}
+        sx={{
+          borderRadius: 3,
+          border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+          overflow: 'hidden',
+          mb: 3
+        }}
+      >
+        <Box sx={{ p: 3 }}>
+          <Typography variant="h6" fontWeight="bold" gutterBottom>
+            Questions by Section
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Add and manage questions for each section. Different question types can be added to different sections.
+          </Typography>
+
+          {sections.map((section, sectionIndex) => (
+            <Accordion
+              key={section.id}
+              defaultExpanded={sectionIndex === 0}
+              sx={{
+                mb: 2,
+                borderRadius: 2,
+                '&:before': { display: 'none' },
+                boxShadow: `0 1px 3px ${alpha(theme.palette.divider, 0.1)}`
+              }}
+            >
+              <AccordionSummary
+                expandIcon={<ExpandMoreIcon />}
+                sx={{
+                  backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.primary.main, 0.1)
+                  }
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', mr: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="subtitle1" fontWeight="bold" sx={{ mr: 2 }}>
+                      Section {section.name}
+                    </Typography>
+                    <Chip
+                      label={`${section.questions?.length || 0} questions`}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
+                  </Box>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenAddQuestion(section.id);
+                    }}
+                    sx={{ borderRadius: 2 }}
+                  >
+                    Add Question
+                  </Button>
+                </Box>
+              </AccordionSummary>
+              <AccordionDetails sx={{ pt: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {section.description}
+                </Typography>
+
+                {section.questions && section.questions.length > 0 ? (
+                  <Box>
+                    {section.questions.map((question, qIndex) => (
+                      <Paper
+                        key={question.id || qIndex}
+                        elevation={0}
+                        sx={{
+                          p: 2,
+                          mb: 2,
+                          borderRadius: 2,
+                          border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
+                          backgroundColor: alpha(theme.palette.background.default, 0.5)
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                          <Box sx={{ flex: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <Chip
+                                label={questionTypes.find(qt => qt.type === question.type)?.label || question.type}
+                                size="small"
+                                sx={{
+                                  mr: 1,
+                                  backgroundColor: questionTypes.find(qt => qt.type === question.type)?.color || '#757575',
+                                  color: 'white'
+                                }}
+                              />
+                              <Chip
+                                label={`${question.points || 2} pts`}
+                                size="small"
+                                variant="outlined"
+                              />
+                            </Box>
+                            <Typography variant="body1" fontWeight="medium">
+                              {qIndex + 1}. {question.text}
+                            </Typography>
+                          </Box>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteQuestion(section.id, question.id)}
+                            color="error"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+
+                        {/* Display options for multiple-choice and true-false */}
+                        {(question.type === 'multiple-choice' || question.type === 'true-false') && question.options && (
+                          <Box sx={{ ml: 2, mt: 1 }}>
+                            {question.options.map((option, optIndex) => (
+                              <Box
+                                key={optIndex}
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  py: 0.5,
+                                  color: option.isCorrect ? 'success.main' : 'text.secondary'
+                                }}
+                              >
+                                {option.isCorrect && <CheckBox sx={{ fontSize: 16, mr: 1 }} />}
+                                {!option.isCorrect && <RadioButtonChecked sx={{ fontSize: 16, mr: 1 }} />}
+                                <Typography variant="body2">
+                                  {option.letter}. {option.text}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        )}
+
+                        {/* Display correct answer for other types */}
+                        {question.type !== 'multiple-choice' && question.type !== 'true-false' && question.correctAnswer && (
+                          <Box sx={{ ml: 2, mt: 1 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Answer:</strong> {question.correctAnswer}
+                            </Typography>
+                          </Box>
+                        )}
+                      </Paper>
+                    ))}
+                  </Box>
+                ) : (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    No questions in this section yet. Click "Add Question" to add questions.
+                  </Alert>
+                )}
+              </AccordionDetails>
+            </Accordion>
+          ))}
+        </Box>
+      </Paper>
+
+      {/* Add Question Dialog */}
+      <Dialog
+        open={addQuestionDialogOpen}
+        onClose={handleCloseAddQuestion}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 3 }
+        }}
+      >
+        <DialogTitle>
+          <Typography variant="h6" fontWeight="bold">
+            Add Question to Section {selectedSection}
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Grid container spacing={2}>
+            {/* Question Type */}
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Question Type</InputLabel>
+                <Select
+                  value={newQuestion.type}
+                  label="Question Type"
+                  onChange={(e) => handleQuestionTypeChange(e.target.value)}
+                >
+                  {questionTypes.map(qt => (
+                    <MenuItem key={qt.type} value={qt.type}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ mr: 1, color: qt.color }}>{qt.icon}</Box>
+                        {qt.label}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Question Text */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Question Text"
+                multiline
+                rows={3}
+                value={newQuestion.text}
+                onChange={(e) => setNewQuestion({ ...newQuestion, text: e.target.value })}
+                required
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+
+            {/* Points */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Points"
+                type="number"
+                value={newQuestion.points}
+                onChange={(e) => setNewQuestion({ ...newQuestion, points: parseInt(e.target.value) || 0 })}
+                InputProps={{ inputProps: { min: 1 } }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+
+            {/* Options for multiple-choice and true-false */}
+            {(newQuestion.type === 'multiple-choice' || newQuestion.type === 'true-false') && (
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Answer Options (select the correct one)
+                </Typography>
+                {newQuestion.options.map((option, index) => (
+                  <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={option.isCorrect}
+                          onChange={() => handleCorrectAnswerChange(index)}
+                          color="success"
+                        />
+                      }
+                      label=""
+                    />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={option.text}
+                      onChange={(e) => handleOptionChange(index, e.target.value)}
+                      placeholder={`Option ${option.letter}`}
+                      sx={{ mr: 1, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                    {newQuestion.type === 'multiple-choice' && newQuestion.options.length > 2 && (
+                      <IconButton
+                        size="small"
+                        onClick={() => handleRemoveOption(index)}
+                        color="error"
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+                {newQuestion.type === 'multiple-choice' && newQuestion.options.length < 6 && (
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={handleAddOption}
+                    sx={{ mt: 1 }}
+                  >
+                    Add Option
+                  </Button>
+                )}
+              </Grid>
+            )}
+
+            {/* Correct answer for fill-blank and open-ended */}
+            {(newQuestion.type === 'fill-blank' || newQuestion.type === 'open-ended') && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Correct Answer / Model Answer"
+                  multiline
+                  rows={3}
+                  value={newQuestion.correctAnswer}
+                  onChange={(e) => setNewQuestion({ ...newQuestion, correctAnswer: e.target.value })}
+                  helperText="Provide the correct answer or a model answer for open-ended questions"
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={handleCloseAddQuestion}
+            variant="outlined"
+            sx={{ borderRadius: 2 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleAddQuestion}
+            variant="contained"
+            sx={{ borderRadius: 2 }}
+          >
+            Add Question
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Confirm Delete Dialog */}
       <Dialog

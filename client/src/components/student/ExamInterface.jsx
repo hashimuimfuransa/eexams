@@ -1316,9 +1316,12 @@ const ExamInterface = () => {
         // For text-based questions, just update local state without saving to server
         newAnswer.textAnswer = value;
         // Keep the answered flag if it was already saved, otherwise set to false
-        newAnswer.answered = answers[questionId]?.savedToServer ? true : false;
+        const wasSaved = answers[questionId]?.savedToServer;
+        newAnswer.answered = wasSaved ? true : false;
         newAnswer.savedToServer = false;
         newAnswer.hasChanges = true;
+
+        console.log(`📝 Open-ended answer change for ${questionId}: wasSaved=${wasSaved}, keeping answered=${newAnswer.answered}`);
 
         setAnswers(prev => ({
           ...prev,
@@ -1486,16 +1489,21 @@ const ExamInterface = () => {
       }
 
       // Update local state to mark as saved to server
-      setAnswers(prev => ({
-        ...prev,
-        [questionId]: {
-          ...prev[questionId],
-          answered: true,
-          savedToServer: true,
-          hasChanges: false,
-          lastSaved: new Date().toISOString()
-        }
-      }));
+      setAnswers(prev => {
+        console.log(`🔄 Before state update for ${questionId}:`, prev[questionId]);
+        const updated = {
+          ...prev,
+          [questionId]: {
+            ...prev[questionId],
+            answered: true,
+            savedToServer: true,
+            hasChanges: false,
+            lastSaved: new Date().toISOString()
+          }
+        };
+        console.log(`🔄 After state update for ${questionId}:`, updated[questionId]);
+        return updated;
+      });
 
     } catch (err) {
       console.error('Error saving answer:', err);

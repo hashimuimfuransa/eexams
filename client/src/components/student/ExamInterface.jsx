@@ -1191,11 +1191,8 @@ const ExamInterface = () => {
             });
           }
         } else {
-          setSnackbar({
-            open: true,
-            message: 'You have reached the last question',
-            severity: 'info'
-          });
+          // Show submit dialog when reaching the last question
+          setConfirmSubmit(true);
         }
       }
     } catch (error) {

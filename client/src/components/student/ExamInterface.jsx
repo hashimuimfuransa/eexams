@@ -983,40 +983,53 @@ const ExamInterface = () => {
   // Handle saving the last question
   const handleSaveLastQuestion = async () => {
     const currentQuestion = getCurrentQuestion();
-    if (currentQuestion) {
-      const answer = answers[currentQuestion._id];
-      // Check if there's actual content (text, image upload, or other answer types)
-      const hasContent = answer && (
-        answer.selectedOption ||
-        (answer.textAnswer && answer.textAnswer.trim().length > 0) ||
-        (answer.matchingAnswers && Object.keys(answer.matchingAnswers).length > 0) ||
-        (answer.orderingAnswer && answer.orderingAnswer.length > 0) ||
-        (answer.dragDropAnswer && Object.keys(answer.dragDropAnswer).length > 0)
-      );
+    if (!currentQuestion) return;
 
-      if (hasContent) {
-        try {
-          await saveAnswerToServer(currentQuestion._id, answer.selectedOption || answer.textAnswer || answer.matchingAnswers || answer.orderingAnswer || answer.dragDropAnswer, currentQuestion.type);
-          setLastQuestionSaved(true);
-          setSnackbar({
-            open: true,
-            message: 'Question saved. Click Submit to finish.',
-            severity: 'success'
-          });
-        } catch (error) {
-          setSnackbar({
-            open: true,
-            message: 'Failed to save question. Please try again.',
-            severity: 'error'
-          });
-        }
-      } else {
+    const currentAnswer = answers[currentQuestion._id];
+    const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
+    const questionSection = currentQuestion.section || 'A';
+
+    // Save using the same logic as handleNextQuestion
+    if (currentAnswer && currentAnswer.textAnswer?.trim()) {
+      try {
+        await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), questionType);
+        setLastQuestionSaved(true);
         setSnackbar({
           open: true,
-          message: 'Please answer the question before saving.',
-          severity: 'warning'
+          message: 'Question saved. Click Submit to finish.',
+          severity: 'success'
+        });
+      } catch (error) {
+        console.error('Save last question error:', error);
+        setSnackbar({
+          open: true,
+          message: 'Failed to save question. Please try again.',
+          severity: 'error'
         });
       }
+    } else if (currentAnswer && currentAnswer.selectedOption) {
+      try {
+        await saveAnswerToServer(currentQuestion._id, currentAnswer.selectedOption, questionType);
+        setLastQuestionSaved(true);
+        setSnackbar({
+          open: true,
+          message: 'Question saved. Click Submit to finish.',
+          severity: 'success'
+        });
+      } catch (error) {
+        console.error('Save last question error:', error);
+        setSnackbar({
+          open: true,
+          message: 'Failed to save question. Please try again.',
+          severity: 'error'
+        });
+      }
+    } else {
+      setSnackbar({
+        open: true,
+        message: 'Please answer the question before saving.',
+        severity: 'warning'
+      });
     }
   };
 

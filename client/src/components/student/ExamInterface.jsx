@@ -1027,16 +1027,32 @@ const ExamInterface = () => {
         return;
       }
 
-      // Save fill-in-blank answer before navigating
+      // Save answer before navigating (for sections B and C open-ended questions)
       const currentAnswer = answers[currentQuestion._id];
       const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
+      const questionSection = currentQuestion.section || 'A';
       
+      // Save fill-in-blank answers
       if (currentAnswer && questionType === 'fill-in-blank' && currentAnswer.textAnswer?.trim()) {
         try {
           await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), 'fill-in-blank');
           console.log(`✅ Saved fill-in-blank answer for question ${currentQuestion._id}`);
         } catch (saveError) {
           console.error(`❌ Failed to save fill-in-blank answer:`, saveError);
+        }
+      }
+      
+      // Save open-ended/essay/short-answer answers for sections B and C
+      if (currentAnswer && (questionSection === 'B' || questionSection === 'C')) {
+        if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {
+          if (currentAnswer.textAnswer?.trim()) {
+            try {
+              await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), questionType);
+              console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
+            } catch (saveError) {
+              console.error(`❌ Failed to save ${questionType} answer:`, saveError);
+            }
+          }
         }
       }
 

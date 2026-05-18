@@ -1013,12 +1013,24 @@ function Footer({ mode }) {
   const border = 'rgba(255,255,255,0.08)';
   const muted = 'rgba(255,255,255,0.45)';
   const secondary = 'rgba(255,255,255,0.7)';
+  const [email, setEmail] = React.useState('');
+  const [subscribed, setSubscribed] = React.useState(false);
+
+  const handleSubscribe = (e) => {
+    e.preventDefault();
+    if (email) {
+      // In a real implementation, this would send the email to a backend API
+      console.log('Subscribing email:', email);
+      setSubscribed(true);
+      setEmail('');
+      setTimeout(() => setSubscribed(false), 3000);
+    }
+  };
 
   const cols = [
-    { title: 'Product', links: ['Features', 'How it works', 'Pricing', 'Security', 'API'] },
-    { title: 'Company', links: ['About', 'Blog', 'Careers', 'Partners', 'Contact'] },
-    { title: 'Resources', links: ['Documentation', 'Guides', 'Webinars', 'Support', 'Status'] },
-    { title: 'Legal', links: ['Privacy', 'Terms', 'Cookies', 'Accessibility'] },
+    { title: 'Platform', links: [{ label: 'Home', to: '/' }, { label: 'Marketplace', to: '/marketplace' }] },
+    { title: 'Account', links: [{ label: 'Login', to: '/login' }, { label: 'Register', to: '/register' }, { label: 'Student Register', to: '/student-register' }] },
+    { title: 'Legal', links: [{ label: 'Privacy Policy', to: '/privacy' }, { label: 'Terms of Service', to: '/terms' }] },
   ];
 
   return (
@@ -1028,19 +1040,36 @@ function Footer({ mode }) {
           {/* Brand */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
-              <img src="/logo.png" alt="eexams" style={{ width: 70, height: 70, borderRadius: 12, objectFit: 'cover', backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent', padding: isDark ? '4px' : '0', boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.1)' }} />
+              <img src="/logo.png" alt="eexams" style={{ width: 70, height: 70, borderRadius: 12, objectFit: 'cover', backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.9)', padding: '4px', boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.15)' }} />
             </div>
             <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: secondary, lineHeight: 1.7, maxWidth: 280, marginBottom: 28 }}>
               Modern online exam platform for Rwanda's schools and universities. AI-powered grading, real-time analytics.
             </p>
             <div style={{ padding: '16px 20px', borderRadius: 14, border: `1px solid ${border}`, background: 'rgba(255,255,255,0.04)' }}>
               <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: muted, marginBottom: 10 }}>Stay in the loop</p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input placeholder="your@email.com" style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: `1px solid ${border}`, background: 'rgba(255,255,255,0.05)', color: 'white', fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: 'none' }} />
-                <button style={{ padding: '10px 14px', borderRadius: 10, background: '#0CBD73', border: 'none', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <form onSubmit={handleSubscribe} style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: `1px solid ${border}`, background: 'rgba(255,255,255,0.05)', color: 'white', fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: 'none' }}
+                />
+                <button
+                  type="submit"
+                  style={{ padding: '10px 14px', borderRadius: 10, background: '#0CBD73', border: 'none', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', transition: 'background 0.2s' }}
+                  onMouseEnter={(e) => e.target.style.background = '#0A9E5C'}
+                  onMouseLeave={(e) => e.target.style.background = '#0CBD73'}
+                >
+                  {subscribed ? '✓' : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
                 </button>
-              </div>
+              </form>
+              {subscribed && (
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, color: '#0CBD73', marginTop: 8 }}>
+                  Thanks for subscribing!
+                </p>
+              )}
             </div>
           </div>
 
@@ -1050,19 +1079,22 @@ function Footer({ mode }) {
               <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.9)', marginBottom: 20, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{col.title}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {col.links.map((l, j) => (
-                  <a key={j} href="#" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: muted, textDecoration: 'none', transition: 'color 0.2s' }}
+                  <RouterLink key={j} to={l.to} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: muted, textDecoration: 'none', transition: 'color 0.2s' }}
                     onMouseEnter={e => e.target.style.color = 'white'}
                     onMouseLeave={e => e.target.style.color = muted}
-                  >{l}</a>
+                  >{l.label}</RouterLink>
                 ))}
               </div>
             </div>
           ))}
         </div>
 
-        <div style={{ borderTop: `1px solid ${border}`, paddingTop: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ borderTop: `1px solid ${border}`, paddingTop: 32, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
           <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: muted }}>
             © {new Date().getFullYear()} eexams. All rights reserved.
+          </span>
+          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: secondary, fontWeight: 600 }}>
+            Provided by Excellence Coaching Hub
           </span>
           <div style={{ display: 'flex', gap: 6 }}>
             {['🇷🇼 Made in Rwanda', 'Privacy', 'Terms'].map((t, i) => (

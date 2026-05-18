@@ -45,17 +45,29 @@ const AuthFooter = () => {
             alignItems: 'center',
           }}
         >
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            align="center"
-            sx={{
-              fontWeight: 500,
-              opacity: mode === 'dark' ? 0.8 : 0.7,
-            }}
-          >
-            © {new Date().getFullYear()} eexams. All rights reserved.
-          </Typography>
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{
+                fontWeight: 500,
+                opacity: mode === 'dark' ? 0.8 : 0.7,
+              }}
+            >
+              © {new Date().getFullYear()} eexams. All rights reserved.
+            </Typography>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{
+                fontWeight: 500,
+                opacity: mode === 'dark' ? 0.8 : 0.7,
+                mt: 0.5,
+              }}
+            >
+              Provided by Excellence Coaching Hub
+            </Typography>
+          </Box>
 
           <Box sx={{ display: 'flex', gap: 1, mt: { xs: 2, sm: 0 } }}>
             {[
@@ -102,10 +114,10 @@ const AuthFooter = () => {
           }}
         >
           {[
-            { label: 'Privacy Policy', to: '#' },
-            { label: 'Terms of Service', to: '#' },
-            { label: 'Contact Us', to: '#' },
-            { label: 'Help Center', to: '#' }
+            { label: 'Home', to: '/' },
+            { label: 'Marketplace', to: '/marketplace' },
+            { label: 'Privacy', to: '/privacy' },
+            { label: 'Terms', to: '/terms' }
           ].map((link, index) => (
             <Link
               key={index}

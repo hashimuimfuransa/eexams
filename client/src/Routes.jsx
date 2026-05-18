@@ -16,6 +16,8 @@ import PendingApproval from './pages/PendingApproval';
 import CompleteRegistration from './pages/CompleteRegistration';
 import Marketplace from './pages/Marketplace';
 import ExamRequest from './pages/ExamRequest';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 import { useAuth } from './context/AuthContext';
 
 // Check if user registration is complete (has a subscription plan)
@@ -79,6 +81,8 @@ const AppRoutes = () => {
       <Route path="/public-exams" element={<PublicExamList />} />
       <Route path="/marketplace" element={<Marketplace />} />
       <Route path="/marketplace/exams/:examId/request" element={<ExamRequest />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
 
       {/* Post-registration routes - accessible to authenticated users */}
       <Route path="/pending-approval" element={<ProtectedRoute allowIncomplete={true}><PendingApproval /></ProtectedRoute>} />

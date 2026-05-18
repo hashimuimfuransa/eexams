@@ -990,8 +990,49 @@ const ExamInterface = () => {
     const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
     const questionSection = currentQuestion.section || 'A';
 
-    // Save using the same logic as handleNextQuestion
-    if (currentAnswer && currentAnswer.textAnswer?.trim()) {
+    // For open-ended questions, get the current answer from ref
+    if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
+      if (openAnswerRef.current) {
+        const currentTextAnswer = openAnswerRef.current();
+        console.log(`🔍 Last question save: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
+        if (currentTextAnswer && currentTextAnswer.trim()) {
+          try {
+            await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
+            // Sync to state after successful save
+            setAnswers(prev => ({
+              ...prev,
+              [currentQuestion._id]: {
+                ...prev[currentQuestion._id],
+                textAnswer: currentTextAnswer,
+                answered: true,
+                savedToServer: true,
+                hasChanges: false,
+                lastSaved: new Date().toISOString()
+              }
+            }));
+            setLastQuestionSaved(true);
+            setSnackbar({
+              open: true,
+              message: 'Question saved. Click Submit to finish.',
+              severity: 'success'
+            });
+          } catch (error) {
+            console.error('Save last question error:', error);
+            setSnackbar({
+              open: true,
+              message: 'Failed to save question. Please try again.',
+              severity: 'error'
+            });
+          }
+        } else {
+          setSnackbar({
+            open: true,
+            message: 'Please answer the question before saving.',
+            severity: 'warning'
+          });
+        }
+      }
+    } else if (currentAnswer && currentAnswer.textAnswer?.trim()) {
       try {
         await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), questionType);
         setLastQuestionSaved(true);

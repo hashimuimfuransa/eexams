@@ -3852,9 +3852,25 @@ const addToQuestionBank = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    // Check if user has premium plan
-    const userPlan = req.user.subscriptionPlan?.toLowerCase() || 'free';
-    if (userPlan !== 'premium' && userPlan !== 'enterprise') {
+    // Check if user has premium plan - teachers inherit from their parent admin
+    let userPlan = req.user.subscriptionPlan?.toLowerCase() || 'free';
+    
+    // If user is a teacher with a parent admin, use the parent admin's subscription plan
+    if (req.user.role === 'teacher' && req.user.parentAdmin) {
+      const User = require('../models/User');
+      const admin = await User.findById(req.user.parentAdmin).select('subscriptionPlan');
+      if (admin) {
+        userPlan = admin.subscriptionPlan?.toLowerCase() || 'free';
+      }
+    }
+    
+    console.log('Server - User plan:', userPlan); // Debug log
+    console.log('Server - User subscriptionPlan:', req.user.subscriptionPlan); // Debug log
+    console.log('Server - User role:', req.user.role); // Debug log
+    console.log('Server - User parentAdmin:', req.user.parentAdmin); // Debug log
+    
+    // More flexible check for premium/enterprise plans
+    if (!userPlan.includes('premium') && !userPlan.includes('enterprise')) {
       return res.status(403).json({ message: 'Adding exams to the question bank requires a Premium plan or higher' });
     }
 
@@ -3885,13 +3901,16 @@ const reuseQuestionBankExam = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found in question bank' });
     }
 
-    // Create a deep copy of the exam
+    // Create a deep copy of the exam with empty sections initially
     const newExam = new Exam({
       title: sourceExam.title + ' (Copy)',
       description: sourceExam.description,
       timeLimit: sourceExam.timeLimit,
       passingScore: sourceExam.passingScore,
-      sections: sourceExam.sections,
+      sections: sourceExam.sections.map(section => ({
+        ...section.toObject ? section.toObject() : section,
+        questions: [] // Will be populated with new question IDs
+      })),
       totalPoints: sourceExam.totalPoints,
       allowSelectiveAnswering: sourceExam.allowSelectiveAnswering,
       sectionBRequiredQuestions: sourceExam.sectionBRequiredQuestions,
@@ -3904,11 +3923,14 @@ const reuseQuestionBankExam = async (req, res) => {
 
     await newExam.save();
 
-    // Create copies of all questions
+    // Create copies of all questions and map them to sections
     const questionMap = new Map();
-    for (const section of sourceExam.sections) {
-      for (const questionId of section.questions) {
-        const originalQuestion = await Question.findById(questionId);
+    for (let i = 0; i < sourceExam.sections.length; i++) {
+      const sourceSection = sourceExam.sections[i];
+      const newQuestionIds = [];
+
+      for (const question of sourceSection.questions) {
+        const originalQuestion = await Question.findById(question._id || question);
         if (originalQuestion) {
           const newQuestion = new Question({
             text: originalQuestion.text,
@@ -3923,15 +3945,12 @@ const reuseQuestionBankExam = async (req, res) => {
             itemsToOrder: originalQuestion.itemsToOrder,
           });
           await newQuestion.save();
-          questionMap.set(questionId.toString(), newQuestion._id);
+          questionMap.set((question._id || question).toString(), newQuestion._id);
+          newQuestionIds.push(newQuestion._id);
         }
       }
-    }
 
-    // Update exam sections with new question IDs
-    for (let i = 0; i < newExam.sections.length; i++) {
-      const section = newExam.sections[i];
-      const newQuestionIds = section.questions.map(qId => questionMap.get(qId.toString())).filter(id => id);
+      // Update the corresponding section in the new exam
       newExam.sections[i].questions = newQuestionIds;
     }
 

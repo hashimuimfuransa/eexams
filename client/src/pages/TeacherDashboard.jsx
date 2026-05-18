@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Chip, Button, Paper, Grid, TextField,
   CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -2181,6 +2182,27 @@ function PublishDialog({ examId, onClose }) {
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [editingSectionIndex, setEditingSectionIndex] = useState(null);
   const [editingQuestionIndex, setEditingQuestionIndex] = useState(null);
+  
+  // Add question state
+  const [addQuestionDialogOpen, setAddQuestionDialogOpen] = useState(false);
+  const [addingSectionIndex, setAddingSectionIndex] = useState(null);
+  const [newQuestion, setNewQuestion] = useState({
+    text: '',
+    type: 'multiple-choice',
+    points: 2,
+    options: [
+      { text: '', isCorrect: false, letter: 'A' },
+      { text: '', isCorrect: false, letter: 'B' },
+      { text: '', isCorrect: false, letter: 'C' },
+      { text: '', isCorrect: false, letter: 'D' }
+    ],
+    correctAnswer: '',
+    matchingPairs: { leftColumn: ['', ''], rightColumn: ['', ''] },
+    itemsToOrder: { items: ['', '', ''] },
+    image: null,
+    imageUrl: ''
+  });
+  
   const [studentSelectionMode, setStudentSelectionMode] = useState('manual'); // 'manual' or 'select'
   const [existingStudents, setExistingStudents] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
@@ -2309,7 +2331,11 @@ function PublishDialog({ examId, onClose }) {
 
   const handleAddToQuestionBank = async () => {
     const userPlan = user?.subscriptionPlan?.toLowerCase() || 'free';
-    if (userPlan !== 'premium' && userPlan !== 'enterprise') {
+    console.log('User plan:', userPlan); // Debug log
+    console.log('User subscriptionPlan:', user?.subscriptionPlan); // Debug log
+    
+    // More flexible check for premium/enterprise plans
+    if (!userPlan.includes('premium') && !userPlan.includes('enterprise')) {
       setSnack('Adding exams to the question bank requires a Premium plan or higher');
       return;
     }
@@ -2394,6 +2420,206 @@ function PublishDialog({ examId, onClose }) {
       setSnack('Question updated successfully');
     } catch (err) {
       setSnack(err.response?.data?.message || 'Failed to update question');
+    }
+  };
+
+  // Open add question dialog
+  const handleOpenAddQuestion = (sectionIndex) => {
+    setAddingSectionIndex(sectionIndex);
+    setNewQuestion({
+      text: '',
+      type: 'multiple-choice',
+      points: 2,
+      options: [
+        { text: '', isCorrect: false, letter: 'A' },
+        { text: '', isCorrect: false, letter: 'B' },
+        { text: '', isCorrect: false, letter: 'C' },
+        { text: '', isCorrect: false, letter: 'D' }
+      ],
+      correctAnswer: '',
+      matchingPairs: { leftColumn: ['', ''], rightColumn: ['', ''] },
+      itemsToOrder: { items: ['', '', ''] },
+      image: null,
+      imageUrl: ''
+    });
+    setAddQuestionDialogOpen(true);
+  };
+
+  // Close add question dialog
+  const handleCloseAddQuestion = () => {
+    setAddQuestionDialogOpen(false);
+    setAddingSectionIndex(null);
+  };
+
+  // Handle image upload
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewQuestion({
+          ...newQuestion,
+          image: file,
+          imageUrl: reader.result
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Handle image removal
+  const handleRemoveImage = () => {
+    setNewQuestion({
+      ...newQuestion,
+      image: null,
+      imageUrl: ''
+    });
+  };
+
+  // Handle question type change for new question
+  const handleNewQuestionTypeChange = (type) => {
+    if (type === 'true-false') {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [
+          { text: 'True', isCorrect: false, letter: 'A' },
+          { text: 'False', isCorrect: false, letter: 'B' }
+        ],
+        correctAnswer: ''
+      });
+    } else if (type === 'multiple-choice') {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [
+          { text: '', isCorrect: false, letter: 'A' },
+          { text: '', isCorrect: false, letter: 'B' },
+          { text: '', isCorrect: false, letter: 'C' },
+          { text: '', isCorrect: false, letter: 'D' }
+        ],
+        correctAnswer: ''
+      });
+    } else if (type === 'matching') {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [],
+        correctAnswer: '',
+        matchingPairs: { leftColumn: ['', ''], rightColumn: ['', ''] }
+      });
+    } else if (type === 'ordering') {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [],
+        correctAnswer: '',
+        itemsToOrder: { items: ['', '', ''] }
+      });
+    } else if (type === 'image') {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [],
+        correctAnswer: ''
+      });
+    } else {
+      setNewQuestion({
+        ...newQuestion,
+        type,
+        options: [],
+        correctAnswer: ''
+      });
+    }
+  };
+
+  // Handle option change for new question
+  const handleNewOptionChange = (index, value) => {
+    const updatedOptions = [...newQuestion.options];
+    updatedOptions[index] = { ...updatedOptions[index], text: value };
+    setNewQuestion({ ...newQuestion, options: updatedOptions });
+  };
+
+  // Handle correct answer selection for new question
+  const handleNewCorrectAnswerChange = (index) => {
+    const updatedOptions = newQuestion.options.map((opt, i) => ({
+      ...opt,
+      isCorrect: i === index
+    }));
+    setNewQuestion({ ...newQuestion, options: updatedOptions });
+  };
+
+  // Add new option for new question
+  const handleAddNewOption = () => {
+    const nextLetter = String.fromCharCode(65 + newQuestion.options.length);
+    setNewQuestion({
+      ...newQuestion,
+      options: [...newQuestion.options, { text: '', isCorrect: false, letter: nextLetter }]
+    });
+  };
+
+  // Remove option for new question
+  const handleRemoveNewOption = (index) => {
+    const updatedOptions = newQuestion.options.filter((_, i) => i !== index);
+    const reassignedOptions = updatedOptions.map((opt, i) => ({
+      ...opt,
+      letter: String.fromCharCode(65 + i)
+    }));
+    setNewQuestion({ ...newQuestion, options: reassignedOptions });
+  };
+
+  // Add question to section
+  const handleAddQuestion = async () => {
+    if (!newQuestion.text.trim() && !newQuestion.image) {
+      setSnack('Question text or image is required');
+      return;
+    }
+
+    // For multiple-choice and true-false, ensure a correct answer is selected
+    if (newQuestion.type === 'multiple-choice' || newQuestion.type === 'true-false') {
+      const hasCorrectAnswer = newQuestion.options.some(opt => opt.isCorrect);
+      if (!hasCorrectAnswer) {
+        setSnack('Please select the correct answer');
+        return;
+      }
+    }
+
+    try {
+      const updatedSections = [...exam.sections];
+      
+      // Prepare question data - don't send empty options for non-option-based question types
+      const questionToAdd = {
+        ...newQuestion,
+        id: Date.now().toString(),
+        section: exam.sections[addingSectionIndex].name
+      };
+      
+      // Remove options array for question types that don't use it
+      if (newQuestion.type === 'image' || newQuestion.type === 'open-ended' || 
+          newQuestion.type === 'short-answer' || newQuestion.type === 'fill-blank') {
+        delete questionToAdd.options;
+      }
+      
+      updatedSections[addingSectionIndex].questions = [
+        ...(updatedSections[addingSectionIndex].questions || []),
+        questionToAdd
+      ];
+
+      await api.put(`/admin/exams/${exam._id}`, {
+        title: exam.title,
+        description: exam.description,
+        timeLimit: exam.timeLimit,
+        passingScore: exam.passingScore,
+        sections: updatedSections
+      });
+
+      // Refresh the preview
+      const r = await api.get(`/admin/exams/${examId}/preview`);
+      setPreview(r.data);
+      setAddQuestionDialogOpen(false);
+      setSnack('Question added successfully');
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to add question');
     }
   };
 
@@ -2485,6 +2711,14 @@ function PublishDialog({ examId, onClose }) {
                                 <Chip label={`${q.points}pt`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning, fontWeight: 700, fontSize: 11 }} />
                               </Box>
                               <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.5 }}>{q.text}</Typography>
+                              {q.imageUrl && (
+                                <Box
+                                  component="img"
+                                  src={q.imageUrl}
+                                  alt="Question image"
+                                  sx={{ maxWidth: 200, maxHeight: 150, borderRadius: 1, mt: 1, objectFit: 'contain' }}
+                                />
+                              )}
                               {q.type === 'multiple-choice' && q.options && q.options.length > 0 && (
                                 <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                                   {q.options.map((opt, oi) => (
@@ -2496,7 +2730,7 @@ function PublishDialog({ examId, onClose }) {
                             <Tooltip title="Edit question"><IconButton size="small" sx={{ color: tokens.primary, flexShrink: 0 }} onClick={() => handleEditQuestion(q, si, qi)}><Edit sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                           </Paper>
                         ))}
-                        <Button fullWidth size="small" startIcon={<Add />} onClick={() => {}}
+                        <Button fullWidth size="small" startIcon={<Add />} onClick={() => handleOpenAddQuestion(si)}
                           sx={{ mt: 1, borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', border: `1px dashed ${tokens.accent}`, py: 1 }}>
                           Add Question to Section {sec.name}
                         </Button>
@@ -2504,7 +2738,7 @@ function PublishDialog({ examId, onClose }) {
                     ) : (
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 2 }}>
                         <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontStyle: 'italic' }}>No questions in this section.</Typography>
-                        <Button fullWidth size="small" startIcon={<Add />} onClick={() => {}}
+                        <Button fullWidth size="small" startIcon={<Add />} onClick={() => handleOpenAddQuestion(si)}
                           sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', border: `1px dashed ${tokens.accent}`, py: 1 }}>
                           Add First Question
                         </Button>
@@ -3009,6 +3243,80 @@ function PublishDialog({ examId, onClose }) {
             onChange={(e) => setEditingQuestion({ ...editingQuestion, text: e.target.value })}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
+          
+          {/* Image Upload for Edit Question */}
+          <Box>
+            <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Question Image (Optional)</Typography>
+            {editingQuestion?.imageUrl || editingQuestion?.image ? (
+              <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
+                <Box
+                  component="img"
+                  src={editingQuestion?.imageUrl || editingQuestion?.image}
+                  alt="Question image"
+                  sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
+                />
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="error"
+                  onClick={() => setEditingQuestion({ ...editingQuestion, image: null, imageUrl: '' })}
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    borderRadius: 2,
+                    minWidth: 'auto',
+                    px: 1
+                  }}
+                >
+                  <Delete fontSize="small" />
+                </Button>
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  border: `1px dashed ${tokens.surfaceBorder}`,
+                  borderRadius: 2,
+                  p: 3,
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  '&:hover': {
+                    borderColor: tokens.primary,
+                    backgroundColor: 'rgba(12,189,115,0.02)'
+                  }
+                }}
+                component="label"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          image: file,
+                          imageUrl: reader.result
+                        });
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  style={{ display: 'none' }}
+                />
+                <Add sx={{ fontSize: 32, color: tokens.textMuted, mb: 1 }} />
+                <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>
+                  Click to upload image
+                </Typography>
+                <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
+                  PNG, JPG, GIF up to 10MB
+                </Typography>
+              </Box>
+            )}
+          </Box>
+
           <Box sx={{ display: 'flex', gap: 2 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Question Type</InputLabel>
@@ -3018,7 +3326,7 @@ function PublishDialog({ examId, onClose }) {
                 onChange={(e) => setEditingQuestion({ ...editingQuestion, type: e.target.value })}
                 sx={{ borderRadius: 2 }}
               >
-                {['multiple-choice', 'true-false', 'short-answer', 'matching', 'ordering', 'fill-blank', 'open-ended'].map(type => (
+                {['multiple-choice', 'true-false', 'short-answer', 'matching', 'ordering', 'fill-blank', 'open-ended', 'image'].map(type => (
                   <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type.replace('-', ' ')}</MenuItem>
                 ))}
               </Select>
@@ -3228,6 +3536,246 @@ function PublishDialog({ examId, onClose }) {
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
         <Button onClick={() => setEditingQuestion(null)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
         <Button variant="contained" onClick={handleSaveQuestionEdit} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Save Changes</Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* Add Question Dialog */}
+    <Dialog open={addQuestionDialogOpen} onClose={handleCloseAddQuestion} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
+        Add Question to Section {exam?.sections?.[addingSectionIndex]?.name || ''}
+      </DialogTitle>
+      <DialogContent sx={{ pt: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <TextField
+            fullWidth
+            label="Question Text"
+            multiline
+            rows={3}
+            value={newQuestion.text}
+            onChange={(e) => setNewQuestion({ ...newQuestion, text: e.target.value })}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+          
+          {/* Image Upload */}
+          <Box>
+            <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Question Image (Optional)</Typography>
+            {newQuestion.imageUrl ? (
+              <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
+                <Box
+                  component="img"
+                  src={newQuestion.imageUrl}
+                  alt="Question image"
+                  sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
+                />
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="error"
+                  onClick={handleRemoveImage}
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    borderRadius: 2,
+                    minWidth: 'auto',
+                    px: 1
+                  }}
+                >
+                  <Delete fontSize="small" />
+                </Button>
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  border: `1px dashed ${tokens.surfaceBorder}`,
+                  borderRadius: 2,
+                  p: 3,
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  '&:hover': {
+                    borderColor: tokens.primary,
+                    backgroundColor: 'rgba(12,189,115,0.02)'
+                  }
+                }}
+                component="label"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  style={{ display: 'none' }}
+                />
+                <Add sx={{ fontSize: 32, color: tokens.textMuted, mb: 1 }} />
+                <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>
+                  Click to upload image
+                </Typography>
+                <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
+                  PNG, JPG, GIF up to 10MB
+                </Typography>
+              </Box>
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Question Type</InputLabel>
+              <Select
+                value={newQuestion.type}
+                label="Question Type"
+                onChange={(e) => handleNewQuestionTypeChange(e.target.value)}
+                sx={{ borderRadius: 2 }}
+              >
+                {['multiple-choice', 'true-false', 'short-answer', 'matching', 'ordering', 'fill-blank', 'open-ended', 'image'].map(type => (
+                  <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type.replace('-', ' ')}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="Points"
+              type="number"
+              value={newQuestion.points}
+              onChange={(e) => setNewQuestion({ ...newQuestion, points: +e.target.value })}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          </Box>
+
+          {newQuestion.type === 'multiple-choice' && (
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Options (click checkbox to select correct answer)</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {newQuestion.options.map((opt, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Typography sx={{ minWidth: 30, fontWeight: 700, color: tokens.primary }}>{String.fromCharCode(65 + idx)}.</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={opt.text || ''}
+                      onChange={(e) => handleNewOptionChange(idx, e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                    <Checkbox
+                      checked={opt.isCorrect || false}
+                      onChange={() => handleNewCorrectAnswerChange(idx)}
+                    />
+                    {newQuestion.options.length > 2 && (
+                      <IconButton size="small" onClick={() => handleRemoveNewOption(idx)} sx={{ color: tokens.error }}>
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+                {newQuestion.options.length < 6 && (
+                  <Button size="small" onClick={handleAddNewOption} startIcon={<Add />} sx={{ borderRadius: 2 }}>
+                    Add Option
+                  </Button>
+                )}
+              </Box>
+            </Box>
+          )}
+
+          {newQuestion.type === 'true-false' && (
+            <FormControl fullWidth size="small">
+              <InputLabel>Correct Answer</InputLabel>
+              <Select
+                value={newQuestion.correctAnswer}
+                label="Correct Answer"
+                onChange={(e) => setNewQuestion({ ...newQuestion, correctAnswer: e.target.value })}
+                sx={{ borderRadius: 2 }}
+              >
+                <MenuItem value="True">True</MenuItem>
+                <MenuItem value="False">False</MenuItem>
+              </Select>
+            </FormControl>
+          )}
+
+          {newQuestion.type === 'matching' && (
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Matching Pairs</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {newQuestion.matchingPairs.leftColumn.map((item, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={`Left ${idx + 1}`}
+                      value={item || ''}
+                      onChange={(e) => {
+                        const newLeft = [...newQuestion.matchingPairs.leftColumn];
+                        newLeft[idx] = e.target.value;
+                        setNewQuestion({
+                          ...newQuestion,
+                          matchingPairs: { ...newQuestion.matchingPairs, leftColumn: newLeft }
+                        });
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                    <Typography sx={{ color: tokens.textSecondary }}>↔</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={`Right ${idx + 1}`}
+                      value={newQuestion.matchingPairs.rightColumn?.[idx] || ''}
+                      onChange={(e) => {
+                        const newRight = [...(newQuestion.matchingPairs.rightColumn || [])];
+                        newRight[idx] = e.target.value;
+                        setNewQuestion({
+                          ...newQuestion,
+                          matchingPairs: { ...newQuestion.matchingPairs, rightColumn: newRight }
+                        });
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {newQuestion.type === 'ordering' && (
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Items to Order (in correct order)</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {newQuestion.itemsToOrder.items.map((item, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Typography sx={{ minWidth: 30, fontWeight: 700, color: tokens.primary }}>{idx + 1}.</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={item || ''}
+                      onChange={(e) => {
+                        const newItems = [...newQuestion.itemsToOrder.items];
+                        newItems[idx] = e.target.value;
+                        setNewQuestion({
+                          ...newQuestion,
+                          itemsToOrder: { ...newQuestion.itemsToOrder, items: newItems }
+                        });
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {newQuestion.type !== 'multiple-choice' && newQuestion.type !== 'true-false' && newQuestion.type !== 'matching' && newQuestion.type !== 'ordering' && (
+            <TextField
+              fullWidth
+              label="Correct Answer"
+              multiline
+              rows={2}
+              value={newQuestion.correctAnswer}
+              onChange={(e) => setNewQuestion({ ...newQuestion, correctAnswer: e.target.value })}
+              helperText={newQuestion.type === 'fill-blank' ? 'Enter the word or phrase that fills the blank' : ''}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+        <Button onClick={handleCloseAddQuestion} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
+        <Button variant="contained" onClick={handleAddQuestion} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Add Question</Button>
       </DialogActions>
     </Dialog>
     </>
@@ -4759,6 +5307,7 @@ function ReportsSection() {
 
 /* ── TEMPLATES ── */
 function TemplatesSection({ exams, setExams }) {
+  const navigate = useNavigate();
   const [templates, setTemplates] = useState([]);
   const [questionBank, setQuestionBank] = useState([]);
   const [filteredQuestionBank, setFilteredQuestionBank] = useState([]);
@@ -4773,6 +5322,7 @@ function TemplatesSection({ exams, setExams }) {
   const [audienceFilter, setAudienceFilter] = useState('all');
   const [previewDialog, setPreviewDialog] = useState(false);
   const [previewExam, setPreviewExam] = useState(null);
+  const [reusingExamId, setReusingExamId] = useState(null);
   const isXs = useMediaQuery('(max-width:600px)');
 
   const load = useCallback(() => {
@@ -4846,9 +5396,10 @@ function TemplatesSection({ exams, setExams }) {
   };
 
   const handleReuseQuestionBank = async (examId) => {
+    setReusingExamId(examId);
     try {
       console.log('Reusing exam from question bank:', examId);
-      const r = await api.post(`/question-bank/${examId}/reuse`);
+      const r = await api.post(`/question-bank/${examId}/reuse`, {}, { timeout: 30000 });
       console.log('Reuse response:', r.data);
       setExams(p => [r.data, ...p]);
       setSnack('✓ Exam copied from question bank successfully! Opening editor...');
@@ -4856,6 +5407,8 @@ function TemplatesSection({ exams, setExams }) {
     } catch (error) {
       console.error('Error reusing exam:', error);
       setSnack('✗ Error copying exam from question bank.');
+    } finally {
+      setReusingExamId(null);
     }
   };
 
@@ -5063,7 +5616,9 @@ function TemplatesSection({ exams, setExams }) {
                           <IconButton size="small" onClick={() => handlePreview(exam)} sx={{ color: tokens.primary, '&:hover': { bgcolor: 'rgba(13,64,108,0.1)' } }}><Visibility fontSize="small" /></IconButton>
                         </Tooltip>
                         <Tooltip title="Reuse exam (creates copy for you)">
-                          <IconButton size="small" onClick={() => handleReuseQuestionBank(exam._id)} sx={{ color: tokens.accent, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}><ContentCopy fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => handleReuseQuestionBank(exam._id)} disabled={reusingExamId === exam._id} sx={{ color: tokens.accent, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
+                            {reusingExamId === exam._id ? <CircularProgress size={16} sx={{ color: tokens.accent }} /> : <ContentCopy fontSize="small" />}
+                          </IconButton>
                         </Tooltip>
                       </Box>
                     </Box>
@@ -5096,9 +5651,9 @@ function TemplatesSection({ exams, setExams }) {
                       </Box>
                     ))}
 
-                    <Button fullWidth size="small" startIcon={<PlayArrow fontSize="small" />} onClick={() => handleReuseQuestionBank(exam._id)}
+                    <Button fullWidth size="small" startIcon={reusingExamId === exam._id ? <CircularProgress size={14} sx={{ color: tokens.accent }} /> : <PlayArrow fontSize="small" />} onClick={() => handleReuseQuestionBank(exam._id)} disabled={reusingExamId === exam._id}
                       sx={{ mt: 1.5, color: tokens.accent, fontWeight: 700, fontSize: 12.5, textTransform: 'none', bgcolor: 'rgba(12,189,115,0.06)', borderRadius: 2, py: 0.75, '&:hover': { bgcolor: 'rgba(12,189,115,0.12)' } }}>
-                      Reuse This Exam
+                      {reusingExamId === exam._id ? 'Copying...' : 'Reuse This Exam'}
                     </Button>
 
                     <Typography variant="caption" sx={{ color: tokens.textMuted, mt: 1, textAlign: 'center', display: 'block', fontSize: 11 }}>
@@ -5213,9 +5768,11 @@ function TemplatesSection({ exams, setExams }) {
                 handleClosePreview();
                 handleReuseQuestionBank(previewExam._id);
               }}
+              disabled={reusingExamId === previewExam._id}
+              startIcon={reusingExamId === previewExam._id ? <CircularProgress size={16} sx={{ color: 'white' }} /> : null}
               sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand }}
             >
-              Reuse This Exam
+              {reusingExamId === previewExam._id ? 'Copying...' : 'Reuse This Exam'}
             </Button>
           )}
         </DialogActions>

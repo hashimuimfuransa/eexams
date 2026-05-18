@@ -3,11 +3,14 @@ const mongoose = require('mongoose');
 const QuestionSchema = new mongoose.Schema({
   text: {
     type: String,
-    required: true
+    required: function() {
+      // Text is required unless the question has an imageUrl (for image-based questions)
+      return !this.imageUrl;
+    }
   },
   type: {
     type: String,
-    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'matching', 'ordering', 'drag-drop', 'image-based'],
+    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'matching', 'ordering', 'drag-drop', 'image-based', 'image'],
     required: true
   },
   imageUrl: {
@@ -17,7 +20,10 @@ const QuestionSchema = new mongoose.Schema({
   options: [{
     text: {
       type: String,
-      required: true
+      required: function() {
+        // Only require text if the question type needs options
+        return ['multiple-choice', 'true-false'].includes(this.type);
+      }
     },
     isCorrect: {
       type: Boolean,

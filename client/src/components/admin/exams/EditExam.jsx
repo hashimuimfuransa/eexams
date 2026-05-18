@@ -45,7 +45,8 @@ import {
   ShortText,
   FormatListNumbered
 } from '@mui/icons-material';
-import { getExamById, updateExam } from '../../../services/examService';
+import { getExamById as getExamByIdService, updateExam } from '../../../services/examService';
+import { getExamById as getAdminExamById } from '../../../services/adminService';
 
 const EditExam = () => {
   const theme = useTheme();
@@ -126,8 +127,16 @@ const EditExam = () => {
       try {
         setLoading(true);
         console.log('Fetching exam with ID for editing:', id);
-        const data = await getExamById(id);
-        console.log('Exam data received for editing:', data);
+        // Try admin endpoint first (for teachers/admins), fall back to exam endpoint
+        let data;
+        try {
+          data = await getAdminExamById(id);
+          console.log('Exam data received from admin endpoint for editing:', data);
+        } catch (adminError) {
+          console.log('Admin endpoint failed, trying exam endpoint:', adminError);
+          data = await getExamByIdService(id);
+          console.log('Exam data received from exam endpoint for editing:', data);
+        }
 
         setExamData({
           title: data.title || '',

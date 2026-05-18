@@ -997,9 +997,11 @@ const ExamInterface = () => {
 
     console.log(`🔍 handleSaveLastQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}`);
     console.log(`🔍 handleSaveLastQuestion: openAnswerRef.current=${!!openAnswerRef.current}`);
+    console.log(`🔍 handleSaveLastQuestion: currentAnswer=${!!currentAnswer}, currentAnswer.textAnswer="${currentAnswer?.textAnswer}"`);
 
     // For open-ended questions, get the current answer from ref and save directly (same as handleNextQuestion)
     if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image') {
+      console.log(`🔍 Entering open-ended/image save block`);
       let currentTextAnswer = '';
       if (openAnswerRef.current) {
         currentTextAnswer = openAnswerRef.current();

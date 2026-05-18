@@ -499,7 +499,7 @@ const googleAuth = async (req, res) => {
       email,
       googleId,
       firstName: firstName || email.split('@')[0],
-      lastName: lastName || '',
+      lastName: lastName || (email ? email.split('@')[0] : 'User'),
       phone: phone || '',
       googleProfilePicture: picture || null,
       isGoogleUser: true,

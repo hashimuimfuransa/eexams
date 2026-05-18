@@ -1288,6 +1288,8 @@ const ExamInterface = () => {
 
       case 'fill-in-blank':
       case 'open-ended':
+      case 'image':
+      case 'image-based':
       default:
         // For text-based questions, just update local state without saving to server
         newAnswer.textAnswer = value;
@@ -1415,6 +1417,7 @@ const ExamInterface = () => {
             case 'open-ended':
             case 'essay':
             case 'short-answer':
+            case 'image':
             case 'image-based':
             default:
               payload.textAnswer = cleanValue;
@@ -3208,6 +3211,25 @@ const ExamInterface = () => {
                         {currentQuestion.text}
                       </Typography>
 
+                      {/* Question image display */}
+                      {(currentQuestion.imageUrl || currentQuestion.image) && (
+                        <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                          <Box
+                            component="img"
+                            src={currentQuestion.imageUrl || currentQuestion.image}
+                            alt="Question image"
+                            sx={{
+                              maxWidth: '100%',
+                              maxHeight: '400px',
+                              objectFit: 'contain',
+                              borderRadius: 1,
+                              display: 'block',
+                              margin: '0 auto'
+                            }}
+                          />
+                        </Box>
+                      )}
+
                       {/* Question metadata */}
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1 }}>
                         <Typography variant="caption" color="text.secondary">
@@ -3473,16 +3495,7 @@ const ExamInterface = () => {
                               disabled={answers[currentQuestion._id]?.answered}
                             />
                           );
-                        } else if (questionType === 'image-based') {
-                          return (
-                            <ImageAnswer
-                              question={currentQuestion}
-                              answer={answers[currentQuestion._id]}
-                              onAnswerChange={handleAnswerChange}
-                              disabled={answers[currentQuestion._id]?.answered}
-                            />
-                          );
-                        } else if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {
+                        } else if (questionType === 'image-based' || questionType === 'image' || questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {
                           return (
                             <EnhancedOpenAnswer
                               question={currentQuestion}
@@ -4477,6 +4490,9 @@ const getQuestionTypeLabel = (type, section, question = null) => {
       return 'Short Answer';
     case 'open-ended':
       return section === 'B' ? 'Short Answer' : 'Essay Question';
+    case 'image':
+    case 'image-based':
+      return 'Image Based';
     default:
       return section === 'B' ? 'Short Answer' : 'Essay Question';
   }
@@ -4505,6 +4521,9 @@ const getQuestionTypeColor = (type, section, question = null) => {
       return 'info';
     case 'open-ended':
       return section === 'B' ? 'info' : 'secondary';
+    case 'image':
+    case 'image-based':
+      return 'success';
     default:
       return section === 'B' ? 'info' : 'secondary';
   }

@@ -171,7 +171,7 @@ const gradeExamWithAI = async (resultId) => {
         trueFalseAnswers.push(answerWithIndex);
       } else if (question.type === 'fill-in-blank') {
         fillInBlankAnswers.push(answerWithIndex);
-      } else if (question.type === 'open-ended') {
+      } else if (question.type === 'open-ended' || question.type === 'image' || question.type === 'image-based') {
         openEndedAnswers.push(answerWithIndex);
       }
     }
@@ -960,9 +960,9 @@ const findAndGradeUngradedResults = async () => {
       try {
         processed++;
 
-        // Check if this result has any ungraded open-ended answers
+        // Check if this result has any ungraded open-ended or image-based answers
         const hasUngradedAnswers = result.answers.some(answer =>
-          answer.question.type === 'open-ended' &&
+          (answer.question.type === 'open-ended' || answer.question.type === 'image' || answer.question.type === 'image-based') &&
           answer.textAnswer &&
           answer.textAnswer.trim() !== '' &&
           (answer.score === 0 || !answer.feedback || !answer.correctedAnswer)

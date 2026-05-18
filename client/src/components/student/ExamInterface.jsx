@@ -995,49 +995,58 @@ const ExamInterface = () => {
     const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
     const questionSection = currentQuestion.section || 'A';
 
+    console.log(`🔍 handleSaveLastQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}`);
+    console.log(`🔍 handleSaveLastQuestion: openAnswerRef.current=${!!openAnswerRef.current}`);
+
     // For open-ended questions, get the current answer from ref and save directly (same as handleNextQuestion)
     if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
+      let currentTextAnswer = '';
       if (openAnswerRef.current) {
-        const currentTextAnswer = openAnswerRef.current();
-        console.log(`🔍 Last question save: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
-        if (currentTextAnswer && currentTextAnswer.trim()) {
-          try {
-            // Save directly using the current answer from ref
-            await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
-            console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
-            // Sync to state after successful save with answered=true and savedToServer=true
-            setAnswers(prev => ({
-              ...prev,
-              [currentQuestion._id]: {
-                ...prev[currentQuestion._id],
-                textAnswer: currentTextAnswer,
-                answered: true,
-                savedToServer: true,
-                hasChanges: false,
-                lastSaved: new Date().toISOString()
-              }
-            }));
-            setLastQuestionSaved(true);
-            setSnackbar({
-              open: true,
-              message: 'Question saved. Click Submit to finish.',
-              severity: 'success'
-            });
-          } catch (saveError) {
-            console.error(`❌ Failed to save ${questionType} answer:`, saveError);
-            setSnackbar({
-              open: true,
-              message: 'Failed to save question. Please try again.',
-              severity: 'error'
-            });
-          }
-        } else {
+        currentTextAnswer = openAnswerRef.current();
+        console.log(`🔍 Last question save: ref textAnswer="${currentTextAnswer}", state textAnswer="${currentAnswer?.textAnswer}"`);
+      }
+      // Fallback to state answer if ref returns empty
+      if (!currentTextAnswer && currentAnswer?.textAnswer) {
+        currentTextAnswer = currentAnswer.textAnswer;
+        console.log(`🔍 Using state textAnswer as fallback: "${currentTextAnswer}"`);
+      }
+      if (currentTextAnswer && currentTextAnswer.trim()) {
+        try {
+          // Save directly using the current answer from ref
+          await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
+          console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
+          // Sync to state after successful save with answered=true and savedToServer=true
+          setAnswers(prev => ({
+            ...prev,
+            [currentQuestion._id]: {
+              ...prev[currentQuestion._id],
+              textAnswer: currentTextAnswer,
+              answered: true,
+              savedToServer: true,
+              hasChanges: false,
+              lastSaved: new Date().toISOString()
+            }
+          }));
+          setLastQuestionSaved(true);
           setSnackbar({
             open: true,
-            message: 'Please answer the question before saving.',
-            severity: 'warning'
+            message: 'Question saved. Click Submit to finish.',
+            severity: 'success'
+          });
+        } catch (saveError) {
+          console.error(`❌ Failed to save ${questionType} answer:`, saveError);
+          setSnackbar({
+            open: true,
+            message: 'Failed to save question. Please try again.',
+            severity: 'error'
           });
         }
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'Please answer the question before saving.',
+          severity: 'warning'
+        });
       }
     } else if (currentAnswer && currentAnswer.textAnswer?.trim()) {
       try {

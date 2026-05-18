@@ -870,7 +870,7 @@ const Register = () => {
                   alignItems: 'center',
                   gap: 14,
                   transition: 'all 0.2s ease',
-                  fontFamily: "'DM Sans', sans-serif',
+                  fontFamily: '"DM Sans", sans-serif',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = tokens.accent;

@@ -2439,11 +2439,20 @@ function PublishDialog({ examId, onClose }) {
         sections: updatedSections
       });
 
-      // Refresh the preview
-      const r = await api.get(`/admin/exams/${examId}/preview`);
-      setPreview(r.data);
+      // Update local exam state
+      setExam(prev => ({ ...prev, sections: updatedSections }));
+
+      // Refresh the preview (optional - don't fail if this errors)
+      try {
+        const r = await api.get(`/admin/exams/${examId}/preview`);
+        setPreview(r.data);
+      } catch (previewErr) {
+        console.error('Preview refresh failed:', previewErr);
+      }
+
       setSnack('Question deleted successfully');
     } catch (err) {
+      console.error('Delete question error:', err);
       setSnack(err.response?.data?.message || 'Failed to delete question');
     }
   };

@@ -1151,13 +1151,58 @@ const getDashboardStats = async (req, res) => {
       studentQuery = { role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
     }
 
-    const examQuery = superAdmin || !req.orgAdminId ? {} : { createdBy: req.orgAdminId };
-    const upcomingExamQuery = superAdmin || !req.orgAdminId
-      ? { scheduledFor: { $gt: new Date() }, status: 'scheduled' }
-      : { scheduledFor: { $gt: new Date() }, status: 'scheduled', createdBy: req.orgAdminId };
-    const activeExamQuery = superAdmin || !req.orgAdminId
-      ? { isLocked: false }
-      : { isLocked: false, createdBy: req.orgAdminId };
+    // For teachers: include exams created by themselves or by their admin
+    // For admins: include exams created by themselves or by teachers under them
+    let examQuery;
+    let upcomingExamQuery;
+    let activeExamQuery;
+
+    if (superAdmin || !req.orgAdminId) {
+      examQuery = {};
+      upcomingExamQuery = { scheduledFor: { $gt: new Date() }, status: 'scheduled' };
+      activeExamQuery = { isLocked: false };
+    } else if (req.user.role === 'admin') {
+      // For admins: include exams created by teachers under this admin
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
+
+      const teacherIds = teachers.map(t => t._id);
+      examQuery = {
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      };
+      upcomingExamQuery = {
+        scheduledFor: { $gt: new Date() },
+        status: 'scheduled',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      };
+      activeExamQuery = {
+        isLocked: false,
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      };
+    } else {
+      // For teachers: include exams created by themselves or by their admin
+      examQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+      upcomingExamQuery = {
+        scheduledFor: { $gt: new Date() },
+        status: 'scheduled',
+        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+      };
+      activeExamQuery = {
+        isLocked: false,
+        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+      };
+    }
 
     // Get count of students
     const studentCount = await User.countDocuments(studentQuery);

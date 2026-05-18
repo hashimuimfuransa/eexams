@@ -41,7 +41,18 @@ const Marketplace = () => {
     }
   };
 
-  const handleRequestAccess = async (examId) => {
+  const handleRequestAccess = (examId) => {
+    // Check if user is authenticated as a student
+    const isStudent = isAuthenticated && user?.role === 'student';
+    
+    if (!isStudent) {
+      // Redirect to student registration with the exam as redirect target
+      const redirectUrl = `/marketplace/exams/${examId}/request`;
+      navigate(`/student-register?redirect=${encodeURIComponent(redirectUrl)}`);
+      return;
+    }
+
+    // If authenticated as student, redirect to exam request page
     navigate(`/marketplace/exams/${examId}/request`);
   };
 

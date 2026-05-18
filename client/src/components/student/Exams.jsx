@@ -209,7 +209,7 @@ const Exams = () => {
 
     switch (status) {
       case 'completed':
-        return <CheckCircle />;
+        return <Refresh />;
       case 'in-progress':
         return <AccessTime />;
       case 'not-started':
@@ -420,7 +420,7 @@ const Exams = () => {
                       {/* Enhanced Status Chip */}
                       <Chip
                         icon={getStatusIcon(exam.status, exam.isLocked)}
-                        label={exam.isLocked ? 'Locked' : exam.status.replace('-', ' ')}
+                        label={exam.isLocked ? 'Locked' : exam.status === 'completed' ? 'Retake Available' : exam.status.replace('-', ' ')}
                         size="small"
                         sx={{
                           position: 'absolute',
@@ -755,7 +755,7 @@ const Exams = () => {
                         component={exam.isLocked ? undefined : RouterLink}
                         to={!exam.isLocked ? (
                           exam.status === 'completed'
-                            ? `/student/results/${exam._id}`
+                            ? `/student/exam/${exam._id}`
                             : exam.status === 'in-progress'
                               ? `/student/exam/${exam._id}`
                               : `/student/exam/start/${exam._id}`
@@ -772,7 +772,7 @@ const Exams = () => {
                           background: exam.isLocked
                             ? `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.8)}, ${alpha(theme.palette.error.dark, 0.9)})`
                             : exam.status === 'completed'
-                              ? `linear-gradient(135deg, ${theme.palette.success.main}, ${theme.palette.success.dark})`
+                              ? `linear-gradient(135deg, ${theme.palette.info.main}, ${theme.palette.info.dark})`
                               : exam.status === 'in-progress'
                                 ? `linear-gradient(135deg, ${theme.palette.warning.main}, ${theme.palette.warning.dark})`
                                 : `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
@@ -780,7 +780,7 @@ const Exams = () => {
                             ? exam.isLocked
                               ? '0 6px 20px rgba(244, 67, 54, 0.3)'
                               : exam.status === 'completed'
-                                ? '0 6px 20px rgba(76, 175, 80, 0.3)'
+                                ? '0 6px 20px rgba(25, 118, 210, 0.3)'
                                 : exam.status === 'in-progress'
                                   ? '0 6px 20px rgba(255, 152, 0, 0.3)'
                                   : '0 6px 20px rgba(25, 118, 210, 0.3)'
@@ -811,7 +811,7 @@ const Exams = () => {
                           : exam.status === 'in-progress'
                             ? 'Continue Exam'
                             : exam.status === 'completed'
-                              ? 'View Results'
+                              ? 'Retake Exam'
                               : 'Start Exam'}
                       </Button>
 

@@ -653,7 +653,8 @@ const updateExam = async (req, res) => {
       isLocked,
       allowSelectiveAnswering,
       sectionBRequiredQuestions,
-      sectionCRequiredQuestions
+      sectionCRequiredQuestions,
+      status
     } = req.body;
 
     const exam = await Exam.findById(req.params.id);
@@ -670,6 +671,7 @@ const updateExam = async (req, res) => {
     if (isLocked !== undefined) {
       exam.isLocked = isLocked === 'true' || isLocked === true;
     }
+    if (status) exam.status = status;
 
     // Handle file uploads
     if (req.files) {
@@ -848,31 +850,23 @@ const startExam = async (req, res) => {
 
     // If there's an existing result and it's completed
     if (existingResult && existingResult.isCompleted) {
-      // Check if the exam allows retakes
-      if (exam.allowRetake) {
-        console.log(`Student ${req.user._id} is retaking exam ${exam._id} that was previously completed`);
+      // Allow retake if student is reassigned (in assignedTo array)
+      console.log(`Student ${req.user._id} is retaking exam ${exam._id} that was previously completed`);
 
-        // Ensure the exam has questions before allowing retake
-        if (!hasExtractedContent(exam)) {
-          console.error(`Exam ${exam._id} has no questions for retake. This should not happen.`);
-          return res.status(400).json({
-            message: 'This exam has no questions. Please contact your administrator.',
-            error: 'No questions found for retake'
-          });
-        }
-
-        console.log(`Exam ${exam._id} has ${exam.sections.reduce((total, section) =>
-          total + (section.questions?.length || 0), 0)} questions for retake`);
-
-        // Allow retake by creating a new attempt with the same questions
-        // Continue to the code below that creates a new result
-      } else {
-        return res.status(403).json({
-          message: 'You have already completed this exam. Retakes are not allowed unless enabled by your teacher.',
-          isCompleted: true,
-          allowRetake: false
+      // Ensure the exam has questions before allowing retake
+      if (!hasExtractedContent(exam)) {
+        console.error(`Exam ${exam._id} has no questions for retake. This should not happen.`);
+        return res.status(400).json({
+          message: 'This exam has no questions. Please contact your administrator.',
+          error: 'No questions found for retake'
         });
       }
+
+      console.log(`Exam ${exam._id} has ${exam.sections.reduce((total, section) =>
+        total + (section.questions?.length || 0), 0)} questions for retake`);
+
+      // Allow retake by creating a new attempt with the same questions
+      // Continue to the code below that creates a new result
     } else if (existingResult && !existingResult.isCompleted) {
       // Return the existing result if exam was started but not completed
       console.log(`Student ${req.user._id} is continuing exam ${exam._id} that was previously started`);
@@ -1739,6 +1733,32 @@ const completeExam = async (req, res) => {
       // Save the result
       await result.save();
       console.log(`✅ Successfully saved exam result ${result._id}`);
+
+      // Remove user from exam's assignedTo array after completion
+      try {
+        const examUpdate = await Exam.findByIdAndUpdate(
+          result.exam,
+          { $pull: { assignedTo: req.user._id } },
+          { new: true }
+        );
+        console.log(`✅ Removed student ${req.user._id} from exam ${result.exam} assignedTo array`);
+      } catch (assignmentError) {
+        console.error('⚠️ Error removing student from assignedTo:', assignmentError);
+        // Continue anyway since the result is already saved
+      }
+
+      // Delete the marketplace request if it exists (to clean up after completion)
+      try {
+        const ExamRequest = require('../models/ExamRequest');
+        await ExamRequest.deleteMany({
+          exam: result.exam,
+          student: req.user._id
+        });
+        console.log(`✅ Deleted marketplace requests for student ${req.user._id}, exam ${result.exam}`);
+      } catch (requestDeleteError) {
+        console.error('⚠️ Error deleting marketplace requests:', requestDeleteError);
+        // Continue anyway since the result is already saved
+      }
 
       // Release the lock
       submissionLocks.delete(lockKey);

@@ -31,6 +31,7 @@ const validateRegister = [
     .normalizeEmail()
     .withMessage('Please provide a valid email address'),
   body('password')
+    .if((value, { req }) => !req.body.googleId && !req.body.googleCredential)
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long'),
   body('firstName')

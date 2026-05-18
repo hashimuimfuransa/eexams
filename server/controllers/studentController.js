@@ -9,8 +9,10 @@ const SharedExam = require('../models/SharedExam');
 const getAvailableExams = async (req, res) => {
   try {
     // Get all exams assigned to this student with populated sections and questions
+    // Only show active exams, not draft exams
     const exams = await Exam.find({
-      assignedTo: req.user._id
+      assignedTo: req.user._id,
+      status: 'active'
     })
       .populate('createdBy', 'firstName lastName')
       .populate('sections.questions')

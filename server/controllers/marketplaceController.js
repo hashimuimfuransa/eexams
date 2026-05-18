@@ -2,6 +2,7 @@ const Exam = require('../models/Exam');
 const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
 const User = require('../models/User');
+const Result = require('../models/Result');
 
 // @desc    Get all marketplace exams
 // @route   GET /api/marketplace/exams
@@ -55,14 +56,30 @@ const getMarketplaceExamById = async (req, res) => {
 
 // @desc    Submit a request to take a marketplace exam
 // @route   POST /api/marketplace/exams/:id/request
-// @access  Public
+// @access  Public (for guest) or Private (for authenticated students)
 const requestMarketplaceExam = async (req, res) => {
   try {
-    const { name, phone, email } = req.body;
+    // Check if user is authenticated
+    const isAuthenticated = req.user && req.user._id;
+    
+    let name, phone, email;
 
-    // Validate required fields
-    if (!name || !phone) {
-      return res.status(400).json({ message: 'Name and phone number are required' });
+    if (isAuthenticated) {
+      // Use authenticated user info
+      name = req.user.fullName || `${req.user.firstName} ${req.user.lastName}`;
+      phone = req.user.phone || '';
+      email = req.user.email;
+    } else {
+      // Use provided info for guest users (deprecated)
+      const { name: providedName, phone: providedPhone, email: providedEmail } = req.body;
+      name = providedName;
+      phone = providedPhone;
+      email = providedEmail;
+
+      // Validate required fields for guest users
+      if (!name || !phone) {
+        return res.status(400).json({ message: 'Name and phone number are required' });
+      }
     }
 
     // Check if exam exists and is publicly listed
@@ -77,25 +94,114 @@ const requestMarketplaceExam = async (req, res) => {
     }
 
     // Check if user already has a pending or approved request for this exam
-    const existingRequest = await ExamRequest.findOne({
-      exam: exam._id,
-      'userInfo.email': email,
-      status: { $in: ['pending', 'approved'] }
-    });
+    const query = { exam: exam._id, status: { $in: ['pending', 'approved'] } };
+
+    if (isAuthenticated) {
+      query.student = req.user._id;
+    } else {
+      query['userInfo.email'] = email;
+    }
+
+    const existingRequest = await ExamRequest.findOne(query);
 
     if (existingRequest) {
       if (existingRequest.status === 'pending') {
         return res.status(400).json({ message: 'You already have a pending request for this exam' });
       } else if (existingRequest.status === 'approved') {
-        return res.status(400).json({ 
-          message: 'You have already been approved for this exam',
-          shareToken: existingRequest.shareToken
+        // Check if the user has completed the exam - if so, allow re-request
+        const completedResult = await Result.findOne({
+          student: isAuthenticated ? req.user._id : null,
+          exam: exam._id,
+          isCompleted: true
+        });
+
+        if (completedResult) {
+          // User has completed the exam, allow re-request by updating the existing request
+          existingRequest.status = 'pending';
+          existingRequest.processedAt = null;
+          existingRequest.shareToken = null;
+          existingRequest.sharedExam = null;
+          existingRequest.paymentStatus = 'pending';
+          await existingRequest.save();
+
+          console.log(`Re-request allowed for completed exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
+        } else {
+          // User is approved but hasn't completed - check if exam is assigned
+          const isAssigned = await Exam.findOne({
+            _id: exam._id,
+            assignedTo: isAuthenticated ? req.user._id : null
+          });
+
+          if (!isAssigned && isAuthenticated) {
+            // Exam is approved but not assigned - assign it now
+            console.log(`Re-assigning approved exam to student: ${exam._id}, student: ${req.user._id}`);
+            await Exam.findByIdAndUpdate(exam._id, { $push: { assignedTo: req.user._id } });
+          }
+
+          return res.status(400).json({
+            message: 'You have already been approved for this exam',
+            shareToken: existingRequest.shareToken
+          });
+        }
+      }
+    }
+
+    // Check if user has a rejected request - allow re-request
+    const rejectedQuery = { exam: exam._id, status: 'rejected' };
+
+    if (isAuthenticated) {
+      rejectedQuery.student = req.user._id;
+    } else {
+      rejectedQuery['userInfo.email'] = email;
+    }
+
+    const rejectedRequest = await ExamRequest.findOne(rejectedQuery);
+
+    if (rejectedRequest) {
+      // Update the rejected request to pending
+      rejectedRequest.status = 'pending';
+      rejectedRequest.processedAt = null;
+      rejectedRequest.shareToken = null;
+      rejectedRequest.sharedExam = null;
+      rejectedRequest.paymentStatus = 'pending';
+      await rejectedRequest.save();
+
+      console.log(`Re-request allowed for rejected exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
+      return res.status(201).json({
+        message: 'Request submitted successfully. The teacher will review your request.',
+        requestId: rejectedRequest._id
+      });
+    }
+
+    // Clean up duplicate pending requests for the same exam from the same student
+    if (isAuthenticated) {
+      const duplicateRequests = await ExamRequest.find({
+        exam: exam._id,
+        student: req.user._id,
+        status: 'pending'
+      });
+
+      if (duplicateRequests.length > 0) {
+        // Keep the most recent request, delete others
+        const requestsToDelete = duplicateRequests
+          .sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt))
+          .slice(1);
+
+        if (requestsToDelete.length > 0) {
+          await ExamRequest.deleteMany({ _id: { $in: requestsToDelete.map(r => r._id) } });
+          console.log(`Removed ${requestsToDelete.length} duplicate pending requests for exam ${exam._id}, student ${req.user._id}`);
+        }
+
+        // Return the existing pending request instead of creating a new one
+        return res.status(400).json({
+          message: 'You already have a pending request for this exam',
+          requestId: duplicateRequests[0]._id
         });
       }
     }
 
     // Create the request
-    const examRequest = await ExamRequest.create({
+    const requestData = {
       exam: exam._id,
       teacher: exam.createdBy,
       userInfo: {
@@ -104,7 +210,14 @@ const requestMarketplaceExam = async (req, res) => {
         phone: phone?.trim() || null
       },
       amount: exam.publicPrice || 0
-    });
+    };
+
+    // Add student reference if authenticated
+    if (isAuthenticated) {
+      requestData.student = req.user._id;
+    }
+
+    const examRequest = await ExamRequest.create(requestData);
 
     res.status(201).json({
       message: 'Request submitted successfully. The teacher will review your request.',
@@ -224,9 +337,18 @@ const approveExamRequest = async (req, res) => {
 
     // Assign the exam to the user
     const exam = await Exam.findById(request.exam);
+    console.log(`Marketplace approval - Exam found: ${!!exam}, Exam locked: ${exam?.isLocked}, Current assignedTo: ${exam?.assignedTo?.length || 0}`);
+    console.log(`Marketplace approval - Student user ID: ${studentUser._id}, Already assigned: ${exam?.assignedTo?.includes(studentUser._id)}`);
+
     if (exam && !exam.assignedTo.includes(studentUser._id)) {
       exam.assignedTo.push(studentUser._id);
       await exam.save();
+      console.log(`Marketplace approval - Successfully assigned student ${studentUser._id} to exam ${exam._id}`);
+      console.log(`Marketplace approval - New assignedTo count: ${exam.assignedTo.length}`);
+    } else if (exam) {
+      console.log(`Marketplace approval - Student already assigned to exam`);
+    } else {
+      console.log(`Marketplace approval - Exam not found: ${request.exam}`);
     }
 
     // Create a SharedExam for the approved user
@@ -546,6 +668,23 @@ const getExamByAccessCode = async (req, res) => {
   }
 };
 
+// @desc    Get student's exam requests
+// @route   GET /api/marketplace/student/requests
+// @access  Private (Student)
+const getStudentExamRequests = async (req, res) => {
+  try {
+    const requests = await ExamRequest.find({ student: req.user._id })
+      .populate('exam', 'title description timeLimit publicPrice')
+      .populate('teacher', 'fullName email')
+      .sort({ requestedAt: -1 });
+
+    res.json(requests);
+  } catch (error) {
+    console.error('Get student exam requests error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getMarketplaceExams,
   getMarketplaceExamById,
@@ -558,5 +697,6 @@ module.exports = {
   markPaymentReceived,
   resetAccessLink,
   deleteExamRequest,
-  getExamByAccessCode
+  getExamByAccessCode,
+  getStudentExamRequests
 };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import {
   Box,
   Container,
@@ -20,15 +21,11 @@ import axios from 'axios';
 
 const PublicExamList = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedExam, setSelectedExam] = useState(null);
-  const [requestDialog, setRequestDialog] = useState({ open: false, exam: null });
-  const [requestForm, setRequestForm] = useState({ name: '', phone: '', email: '' });
-  const [submitting, setSubmitting] = useState(false);
-  const [submitMessage, setSubmitMessage] = useState(null);
 
   useEffect(() => {
     fetchPublicExams();
@@ -49,44 +46,18 @@ const PublicExamList = () => {
   };
 
   const handleExamClick = (exam) => {
-    setSelectedExam(exam);
-    setRequestDialog({ open: true, exam });
-    setRequestForm({ name: '', phone: '', email: '' });
-    setSubmitMessage(null);
-  };
-
-  const handleRequestSubmit = async (e) => {
-    e.preventDefault();
+    // Check if user is authenticated as a student
+    const isStudent = isAuthenticated && user?.role === 'student';
     
-    if (!requestForm.name.trim() || !requestForm.email.trim()) {
-      setSubmitMessage({ type: 'error', text: 'Name and email are required' });
+    if (!isStudent) {
+      // Redirect to student registration with the exam as redirect target
+      const redirectUrl = `/marketplace/exams/${exam._id}/request`;
+      navigate(`/student-register?redirect=${encodeURIComponent(redirectUrl)}`);
       return;
     }
 
-    setSubmitting(true);
-    try {
-      const response = await axios.post(`/public/exams/${requestDialog.exam._id}/request`, {
-        name: requestForm.name,
-        phone: requestForm.phone,
-        email: requestForm.email
-      });
-
-      setSubmitMessage({ type: 'success', text: response.data.message });
-      setRequestForm({ name: '', phone: '', email: '' });
-      
-      setTimeout(() => {
-        setRequestDialog({ open: false, exam: null });
-        setSubmitMessage(null);
-      }, 3000);
-    } catch (err) {
-      console.error('Error submitting request:', err);
-      setSubmitMessage({ 
-        type: 'error', 
-        text: err.response?.data?.message || 'Failed to submit request. Please try again.' 
-      });
-    } finally {
-      setSubmitting(false);
-    }
+    // If authenticated as student, redirect to exam request page
+    navigate(`/marketplace/exams/${exam._id}/request`);
   };
 
   const filteredExams = exams.filter(exam =>
@@ -233,115 +204,6 @@ const PublicExamList = () => {
           </Grid>
         )}
       </Container>
-
-      {/* Request Dialog */}
-      {requestDialog.open && (
-        <Box sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          bgcolor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 9999
-        }}>
-          <Box sx={{
-            bgcolor: 'white',
-            borderRadius: 3,
-            maxWidth: 500,
-            width: '90%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            p: 4
-          }}>
-            <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
-              Request Exam Access
-            </Typography>
-            
-            <Box sx={{ bgcolor: '#F8FAFC', p: 2, borderRadius: 2, mb: 3 }}>
-              <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>
-                {requestDialog.exam?.title}
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#64748b' }}>
-                {requestDialog.exam?.publicDescription || requestDialog.exam?.description}
-              </Typography>
-              {requestDialog.exam?.publicPrice > 0 && (
-                <Typography variant="h6" fontWeight={700} sx={{ color: '#B45309', mt: 2 }}>
-                  Price: RWF {requestDialog.exam.publicPrice}
-                </Typography>
-              )}
-            </Box>
-
-            {submitMessage && (
-              <Alert severity={submitMessage.type} sx={{ mb: 3 }}>
-                {submitMessage.text}
-              </Alert>
-            )}
-
-            <form onSubmit={handleRequestSubmit}>
-              <TextField
-                fullWidth
-                label="Full Name *"
-                value={requestForm.name}
-                onChange={(e) => setRequestForm({ ...requestForm, name: e.target.value })}
-                required
-                sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
-              
-              <TextField
-                fullWidth
-                label="Email Address *"
-                type="email"
-                value={requestForm.email}
-                onChange={(e) => setRequestForm({ ...requestForm, email: e.target.value })}
-                required
-                sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
-              
-              <TextField
-                fullWidth
-                label="Phone Number (optional)"
-                value={requestForm.phone}
-                onChange={(e) => setRequestForm({ ...requestForm, phone: e.target.value })}
-                sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
-
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button
-                  type="button"
-                  variant="outlined"
-                  onClick={() => setRequestDialog({ open: false, exam: null })}
-                  disabled={submitting}
-                  sx={{ 
-                    flex: 1, 
-                    borderRadius: 2, 
-                    textTransform: 'none', 
-                    fontWeight: 600 
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={submitting}
-                  sx={{ 
-                    flex: 1, 
-                    borderRadius: 2, 
-                    textTransform: 'none', 
-                    fontWeight: 700 
-                  }}
-                >
-                  {submitting ? 'Submitting...' : 'Submit Request'}
-                </Button>
-              </Box>
-            </form>
-          </Box>
-        </Box>
-      )}
     </Box>
   );
 };

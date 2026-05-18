@@ -14,17 +14,21 @@ const {
   markPaymentReceived,
   resetAccessLink,
   deleteExamRequest,
-  getExamByAccessCode
+  getExamByAccessCode,
+  getStudentExamRequests
 } = require('../controllers/marketplaceController');
 
 // Public routes (no authentication required)
 router.get('/exams', getMarketplaceExams);
 router.get('/exams/:id', getMarketplaceExamById);
-router.post('/exams/:id/request', requestMarketplaceExam);
+router.post('/exams/:id/request', auth.optionalAuth, requestMarketplaceExam);
 router.get('/access/:accessCode', getExamByAccessCode);
 
 // Protected routes (require authentication)
 router.use(auth);
+
+// Student routes for viewing their exam requests
+router.get('/student/requests', getStudentExamRequests);
 
 // Teacher routes for managing exam requests
 router.get('/exam-requests', isAdminOrTeacher, getTeacherExamRequests);

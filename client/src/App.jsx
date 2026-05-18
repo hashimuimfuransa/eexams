@@ -407,6 +407,8 @@ function MarketplaceShowcase({ mode }) {
   
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchMarketplaceExams();
@@ -422,6 +424,21 @@ function MarketplaceShowcase({ mode }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleExamClick = (examId) => {
+    // Check if user is authenticated as a student
+    const isStudent = isAuthenticated && user?.role === 'student';
+    
+    if (!isStudent) {
+      // Redirect to student registration with the exam as redirect target
+      const redirectUrl = `/marketplace/exams/${examId}/request`;
+      navigate(`/student-register?redirect=${encodeURIComponent(redirectUrl)}`);
+      return;
+    }
+
+    // If authenticated as student, redirect to exam request page
+    navigate(`/marketplace/exams/${examId}/request`);
   };
 
   const calculateTotalQuestions = (sections) => {
@@ -463,7 +480,7 @@ function MarketplaceShowcase({ mode }) {
                 transition: 'transform 0.3s ease, box-shadow 0.3s ease',
                 cursor: 'pointer',
               }}
-                onClick={() => window.location.href = `/marketplace/exams/${exam._id}/request`}
+                onClick={() => handleExamClick(exam._id)}
                 onMouseEnter={e => {
                   e.currentTarget.style.transform = 'translateY(-6px)';
                   e.currentTarget.style.boxShadow = isDark ? '0 24px 48px rgba(0,0,0,0.4)' : '0 24px 48px rgba(15,23,42,0.12)';

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import App from './App.jsx';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import StudentRegister from './pages/StudentRegister';
 import TeacherDashboard from './pages/TeacherDashboard';
 import OrgAdminDashboard from './pages/OrgAdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
@@ -74,6 +75,7 @@ const AppRoutes = () => {
       <Route path="/" element={<App />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/student-register" element={<StudentRegister />} />
       <Route path="/public-exams" element={<PublicExamList />} />
       <Route path="/marketplace" element={<Marketplace />} />
       <Route path="/marketplace/exams/:examId/request" element={<ExamRequest />} />

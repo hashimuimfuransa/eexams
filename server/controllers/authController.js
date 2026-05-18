@@ -12,12 +12,12 @@ const generateToken = (id) => {
   });
 };
 
-// @desc    Register new user (organization or individual teacher)
+// @desc    Register new user (organization, individual teacher, or student)
 // @route   POST /api/auth/register
 // @access  Public
 const register = async (req, res) => {
   try {
-    const { email, password, firstName, lastName, organization, phone, subscriptionPlan, accountType } = req.body;
+    const { email, password, firstName, lastName, organization, phone, subscriptionPlan, accountType, role } = req.body;
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -53,7 +53,7 @@ const register = async (req, res) => {
         subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days free trial
       }
     } else {
-      // Individual teachers: free plan is auto-active, paid plans require admin approval
+      // Individual accounts (teacher or student): free plan is auto-active
       if (finalSubscriptionPlan === 'free') {
         subscriptionStatus = 'active';
         subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year for free plan
@@ -61,6 +61,12 @@ const register = async (req, res) => {
         subscriptionStatus = 'pending'; // paid plan needs admin approval
         subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       }
+    }
+
+    // Determine role: respect client-provided role for students, otherwise use account type
+    let finalRole = role;
+    if (!finalRole) {
+      finalRole = isOrganization ? 'admin' : 'teacher';
     }
 
     // Create user
@@ -71,7 +77,7 @@ const register = async (req, res) => {
       lastName,
       phone,
       userType: isOrganization ? 'organization' : 'individual',
-      role: isOrganization ? 'admin' : 'teacher',
+      role: finalRole,
       subscriptionPlan: finalSubscriptionPlan,
       subscriptionStatus,
       subscriptionExpiresAt
@@ -362,7 +368,7 @@ const verifyToken = async (req, res) => {
 // @access  Public
 const googleAuth = async (req, res) => {
   try {
-    const { credential, accountType, subscriptionPlan, organization, phone } = req.body;
+    const { credential, accountType, subscriptionPlan, organization, phone, role } = req.body;
 
     if (!credential) {
       return res.status(400).json({ message: 'Google credential is required' });
@@ -403,7 +409,7 @@ const googleAuth = async (req, res) => {
       if (accountType && isCompletingRegistration) {
         const isOrg = accountType === 'organization';
         user.userType = isOrg ? 'organization' : 'individual';
-        user.role = isOrg ? 'admin' : 'teacher';
+        user.role = isOrg ? 'admin' : (role || 'teacher');
         needsSave = true;
       }
       if (subscriptionPlan && isCompletingRegistration) {
@@ -476,10 +482,16 @@ const googleAuth = async (req, res) => {
         subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       }
     } else {
-      // Individual teachers get free plan by default
+      // Individual accounts (teacher or student) get free plan by default
       finalSubscriptionPlan = subscriptionPlan || 'free';
       subscriptionStatus = 'active';
       subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    }
+
+    // Determine role: respect client-provided role for students, otherwise use account type
+    let finalRole = role;
+    if (!finalRole) {
+      finalRole = isOrganization ? 'admin' : 'teacher';
     }
 
     // Create new user
@@ -492,7 +504,7 @@ const googleAuth = async (req, res) => {
       googleProfilePicture: picture || null,
       isGoogleUser: true,
       userType: isOrganization ? 'organization' : 'individual',
-      role: isOrganization ? 'admin' : 'teacher',
+      role: finalRole,
       subscriptionPlan: finalSubscriptionPlan,
       subscriptionStatus,
       subscriptionExpiresAt

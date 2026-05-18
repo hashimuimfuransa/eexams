@@ -13,7 +13,13 @@ const ExamRequestSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  // User information (for non-authenticated users)
+  // The authenticated student user (if applicable)
+  student: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  // User information (for non-authenticated users or as backup)
   userInfo: {
     name: {
       type: String,
@@ -88,6 +94,7 @@ const ExamRequestSchema = new mongoose.Schema({
 // Index for efficient queries
 ExamRequestSchema.index({ exam: 1, status: 1 });
 ExamRequestSchema.index({ teacher: 1, status: 1 });
+ExamRequestSchema.index({ student: 1, status: 1 });
 ExamRequestSchema.index({ 'userInfo.email': 1 });
 ExamRequestSchema.index({ accessCode: 1 });
 

@@ -3672,6 +3672,17 @@ function ExamsSection({ exams, setExams }) {
     finally { setDeleting(false); }
   };
 
+  const handleActivateExam = async (examId) => {
+    if (!window.confirm('Activate this exam? Students will be able to see and take it once approved.')) return;
+    try {
+      await api.put(`/admin/exams/${examId}`, { status: 'active' });
+      setExams(p => p.map(e => e._id === examId ? { ...e, status: 'active' } : e));
+      setSnack('Exam activated successfully!');
+    } catch {
+      setSnack('Error activating exam.');
+    }
+  };
+
   const handleEditClick = async (exam) => {
     try {
       const res = await api.get(`/admin/exams/${exam._id}`);
@@ -3717,6 +3728,11 @@ function ExamsSection({ exams, setExams }) {
                     <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted }}>{new Date(e.createdAt).toLocaleDateString()}</Typography></TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                        {e.status === 'draft' && (
+                          <Tooltip title="Activate Exam">
+                            <IconButton size="small" onClick={() => handleActivateExam(e._id)} sx={{ color: '#10B981' }}><CheckCircle sx={{ fontSize: 16 }} /></IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title="Publish / Share"><IconButton size="small" onClick={() => setPublishExamId(e._id)} sx={{ color: tokens.accent }}><Publish sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                         <Tooltip title="Edit"><IconButton size="small" onClick={() => handleEditClick(e)} sx={{ color: tokens.primary }}><Edit sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                         <Tooltip title="Delete"><IconButton size="small" onClick={() => setDeleteId(e._id)} sx={{ color: '#EF4444' }}><Delete sx={{ fontSize: 16 }} /></IconButton></Tooltip>

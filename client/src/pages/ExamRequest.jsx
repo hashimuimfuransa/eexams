@@ -64,22 +64,31 @@ const ExamRequest = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!formData.name || !formData.phone) {
-      setError('Name and phone number are required');
-      return;
+
+    // For authenticated students, no form fields are required
+    // For unauthenticated users, name and phone are required
+    if (!isAuthenticated) {
+      if (!formData.name) {
+        setError('Name is required');
+        return;
+      }
+      if (!formData.phone) {
+        setError('Phone number is required');
+        return;
+      }
     }
 
     try {
       setSubmitting(true);
       setError(null);
-      
+
+      // The server will use authenticated user info if available
       const response = await api.post(`/marketplace/exams/${examId}/request`, formData);
-      
+
       setSuccess(true);
-      
+
       setTimeout(() => {
-        navigate('/marketplace');
+        navigate('/student/dashboard');
       }, 3000);
     } catch (err) {
       console.error('Error submitting request:', err);
@@ -284,85 +293,134 @@ const ExamRequest = () => {
 
                     <Divider sx={{ mb: 3 }} />
 
-                    <form onSubmit={handleSubmit}>
-                      <Grid container spacing={2.5}>
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            label="Full Name *"
-                            name="name"
-                            value={formData.name}
-                            onChange={handleInputChange}
-                            required
-                            disabled={submitting || success}
-                            sx={{ 
-                              '& .MuiOutlinedInput-root': { borderRadius: 2 }
-                            }}
-                          />
-                        </Grid>
+                    {isAuthenticated ? (
+                      <>
+                        <Box sx={{ mb: 3, p: 3, borderRadius: 2, bgcolor: 'rgba(12,189,115,0.08)', border: '1px solid rgba(12,189,115,0.2)' }}>
+                          <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0CBD73', mb: 2 }}>
+                            Payment & Approval Information
+                          </Typography>
+                          <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.8, mb: 2 }}>
+                            To complete your request, please contact us for payment instructions and approval:
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
+                              📞 +250 788 535 156
+                            </Typography>
+                            <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
+                              📞 +250 793 828 834
+                            </Typography>
+                            <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
+                              📞 +250 781 671 517
+                            </Typography>
+                          </Box>
+                        </Box>
 
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Phone Number *"
-                            name="phone"
-                            value={formData.phone}
-                            onChange={handleInputChange}
-                            required
-                            disabled={submitting || success}
-                            sx={{ 
-                              '& .MuiOutlinedInput-root': { borderRadius: 2 }
-                            }}
-                          />
-                        </Grid>
+                        <Button
+                          onClick={handleSubmit}
+                          fullWidth
+                          variant="contained"
+                          disabled={submitting || success}
+                          sx={{
+                            borderRadius: 2,
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            py: 1.5,
+                            background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                            boxShadow: '0 4px 12px rgba(12,189,115,0.35)',
+                            fontSize: 16
+                          }}
+                        >
+                          {submitting ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <CircularProgress size={20} color="inherit" />
+                              Submitting...
+                            </Box>
+                          ) : (
+                            'Request Access'
+                          )}
+                        </Button>
+                      </>
+                    ) : (
+                      <form onSubmit={handleSubmit}>
+                        <Grid container spacing={2.5}>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              label="Full Name *"
+                              name="name"
+                              value={formData.name}
+                              onChange={handleInputChange}
+                              required
+                              disabled={submitting || success}
+                              sx={{
+                                '& .MuiOutlinedInput-root': { borderRadius: 2 }
+                              }}
+                            />
+                          </Grid>
 
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Email Address"
-                            name="email"
-                            type="email"
-                            value={formData.email}
-                            onChange={handleInputChange}
-                            disabled={submitting || success}
-                            sx={{ 
-                              '& .MuiOutlinedInput-root': { borderRadius: 2 }
-                            }}
-                          />
-                        </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              label="Phone Number *"
+                              name="phone"
+                              value={formData.phone}
+                              onChange={handleInputChange}
+                              required
+                              disabled={submitting || success}
+                              sx={{
+                                '& .MuiOutlinedInput-root': { borderRadius: 2 }
+                              }}
+                            />
+                          </Grid>
 
-                        <Grid item xs={12}>
-                          <Button
-                            type="submit"
-                            fullWidth
-                            variant="contained"
-                            disabled={submitting || success}
-                            sx={{
-                              borderRadius: 2,
-                              textTransform: 'none',
-                              fontWeight: 700,
-                              py: 1.5,
-                              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                              boxShadow: '0 4px 12px rgba(12,189,115,0.35)',
-                              fontSize: 16
-                            }}
-                          >
-                            {submitting ? (
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <CircularProgress size={20} color="inherit" />
-                                Submitting...
-                              </Box>
-                            ) : (
-                              'Submit Request'
-                            )}
-                          </Button>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              label="Email Address"
+                              name="email"
+                              type="email"
+                              value={formData.email}
+                              onChange={handleInputChange}
+                              disabled={submitting || success}
+                              sx={{
+                                '& .MuiOutlinedInput-root': { borderRadius: 2 }
+                              }}
+                            />
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <Button
+                              type="submit"
+                              fullWidth
+                              variant="contained"
+                              disabled={submitting || success}
+                              sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                py: 1.5,
+                                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                                boxShadow: '0 4px 12px rgba(12,189,115,0.35)',
+                                fontSize: 16
+                              }}
+                            >
+                              {submitting ? (
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <CircularProgress size={20} color="inherit" />
+                                  Submitting...
+                                </Box>
+                              ) : (
+                                'Submit Request'
+                              )}
+                            </Button>
+                          </Grid>
                         </Grid>
-                      </Grid>
-                    </form>
+                      </form>
+                    )}
 
                     <Box sx={{ mt: 3, p: 2, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
                       <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.6 }}>
-                        <strong>Note:</strong> The teacher will review your request and approve or reject it. 
+                        <strong>Note:</strong> The teacher will review your request and approve or reject it.
                         You will be notified once a decision is made. If approved, you'll receive access to take the exam.
                       </Typography>
                     </Box>

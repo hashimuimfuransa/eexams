@@ -97,6 +97,12 @@ const SharedExamSchema = new mongoose.Schema({
       ref: 'User',
       default: null
     },
+    // Student ID (alternative to student field for direct reference)
+    studentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
     // Email of the student (for tracking)
     email: {
       type: String,
@@ -122,6 +128,16 @@ const SharedExamSchema = new mongoose.Schema({
     isLocked: {
       type: Boolean,
       default: false
+    },
+    // Whether the student has an active session (currently taking exam)
+    isActiveSession: {
+      type: Boolean,
+      default: false
+    },
+    // Last activity timestamp
+    lastActivity: {
+      type: Date,
+      default: null
     },
     // Result reference if completed
     result: {
@@ -259,7 +275,7 @@ SharedExamSchema.methods.isFuture = function() {
 // Lock exam for a student (prevent retaking)
 SharedExamSchema.methods.lockStudent = function(studentId) {
   const student = this.students.find(
-    s => s.student?.toString() === studentId || s.email === studentId
+    s => s.student?.toString() === studentId || s.studentId?.toString() === studentId || s.email === studentId
   );
 
   if (student) {
@@ -272,7 +288,7 @@ SharedExamSchema.methods.lockStudent = function(studentId) {
 // Unlock exam for a student (allow retaking)
 SharedExamSchema.methods.unlockStudent = function(studentId) {
   const student = this.students.find(
-    s => s.student?.toString() === studentId || s.email === studentId
+    s => s.student?.toString() === studentId || s.studentId?.toString() === studentId || s.email === studentId
   );
 
   if (student) {
@@ -299,9 +315,12 @@ SharedExamSchema.methods.addStudent = function(studentData) {
 
   const newStudent = {
     student: studentData.studentId || null,
+    studentId: studentData.studentId || null,
     email: studentData.email,
     name: studentData.name,
     accessMethod: studentData.accessMethod || 'link',
+    isActiveSession: studentData.isActiveSession || false,
+    lastActivity: studentData.lastActivity || null,
     firstAccessedAt: new Date()
   };
 
@@ -312,7 +331,7 @@ SharedExamSchema.methods.addStudent = function(studentData) {
 // Mark student as completed
 SharedExamSchema.methods.markCompleted = function(studentId, resultId) {
   const student = this.students.find(
-    s => s.student?.toString() === studentId || s.email === studentId
+    s => s.student?.toString() === studentId || s.studentId?.toString() === studentId || s.email === studentId
   );
 
   if (student) {

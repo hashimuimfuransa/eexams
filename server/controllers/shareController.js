@@ -544,6 +544,12 @@ const joinSharedExam = async (req, res) => {
         sharedExam.students = sharedExam.students.filter(s => s.email !== email);
         await sharedExam.save();
         // Continue to add student with proper account
+      } else if (!existingStudent.student && !existingStudent.studentId) {
+        // Student entry exists but has no user ID (guest entry), remove and re-add with proper account
+        console.log('Guest entry found for email, removing to add with proper user account');
+        sharedExam.students = sharedExam.students.filter(s => s.email !== email);
+        await sharedExam.save();
+        // Continue to add student with proper account
       } else {
         // Check if student has an active session (currently taking the exam)
         if (existingStudent.isActiveSession) {

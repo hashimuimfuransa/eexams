@@ -24,6 +24,10 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
         return await gradeMultipleChoiceFast(question, answer, modelAnswer);
 
       case 'open-ended':
+      case 'image':
+      case 'image-based':
+      case 'essay':
+      case 'short-answer':
         return await gradeOpenEndedFast(question, answer, modelAnswer);
 
       case 'true-false':

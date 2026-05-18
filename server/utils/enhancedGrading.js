@@ -10,27 +10,34 @@ const groqClient = require('./groqClient');
  */
 const parseAnswerContent = (answer) => {
   if (!answer || typeof answer !== 'string') return '';
-  
+
   let content = answer;
-  
+
   // Extract content from [MATH: ...] format
   const mathMatch = answer.match(/\[MATH:\s*(.*?)\]/);
   if (mathMatch) {
     content = mathMatch[1].trim();
   }
-  
+
   // Extract content from [DRAWING: ...] format (base64 data, ignore for grading)
   const drawingMatch = answer.match(/\[DRAWING:\s*([^\]]*)\]/);
   if (drawingMatch) {
     // Remove drawing data from content for text grading
     content = content.replace(/\[DRAWING:\s*[^\]]*\]/, '').trim();
   }
-  
+
+  // Extract content from [IMAGE_UPLOADED: ...] format (remove the tag, keep the text)
+  const imageMatch = answer.match(/\[IMAGE_UPLOADED:\s*[^\]]*\]/);
+  if (imageMatch) {
+    // Remove image upload tag from content for text grading
+    content = content.replace(/\[IMAGE_UPLOADED:\s*[^\]]*\]/, '').trim();
+  }
+
   // If answer still has brackets, try to extract content between them
   if (content.includes('[') && content.includes(']')) {
     content = content.replace(/\[.*?\]/g, '').trim();
   }
-  
+
   return content;
 };
 

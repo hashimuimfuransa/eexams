@@ -985,7 +985,16 @@ const ExamInterface = () => {
     const currentQuestion = getCurrentQuestion();
     if (currentQuestion) {
       const answer = answers[currentQuestion._id];
-      if (answer && answer.answered) {
+      // Check if there's actual content (text, image upload, or other answer types)
+      const hasContent = answer && (
+        answer.selectedOption ||
+        (answer.textAnswer && answer.textAnswer.trim().length > 0) ||
+        (answer.matchingAnswers && Object.keys(answer.matchingAnswers).length > 0) ||
+        (answer.orderingAnswer && answer.orderingAnswer.length > 0) ||
+        (answer.dragDropAnswer && Object.keys(answer.dragDropAnswer).length > 0)
+      );
+
+      if (hasContent) {
         try {
           await saveAnswerToServer(currentQuestion._id, answer.selectedOption || answer.textAnswer || answer.matchingAnswers || answer.orderingAnswer || answer.dragDropAnswer, currentQuestion.type);
           setLastQuestionSaved(true);
@@ -1293,7 +1302,8 @@ const ExamInterface = () => {
       default:
         // For text-based questions, just update local state without saving to server
         newAnswer.textAnswer = value;
-        newAnswer.answered = false; // Don't mark as answered until explicitly saved
+        // Mark as answered if there's actual content (including image uploads)
+        newAnswer.answered = value && value.trim().length > 0;
         newAnswer.savedToServer = false;
         newAnswer.hasChanges = true;
 

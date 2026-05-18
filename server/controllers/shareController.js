@@ -1167,6 +1167,49 @@ const submitSharedExam = async (req, res) => {
       }
     }
 
+    // If still not found, try to find via ExamRequest (marketplace fallback)
+    if (!studentData) {
+      console.log('Student not found in shared exam, checking ExamRequest...');
+      const ExamRequest = require('../models/ExamRequest');
+      const examRequest = await ExamRequest.findOne({ shareToken, status: 'approved' });
+
+      if (examRequest) {
+        console.log('Found ExamRequest:', examRequest._id);
+        // Get the student user
+        const studentUser = await User.findById(studentId);
+
+        if (studentUser) {
+          console.log('Found student user, adding to shared exam...');
+          // Add the student to the shared exam
+          const newStudentEntry = {
+            student: studentUser._id,
+            studentId: studentUser._id,
+            email: studentUser.email,
+            name: studentUser.firstName + ' ' + studentUser.lastName,
+            accessMethod: 'link',
+            isActiveSession: true,
+            lastActivity: Date.now(),
+            firstAccessedAt: new Date()
+          };
+
+          sharedExam.students.push(newStudentEntry);
+          await sharedExam.save();
+          console.log('Added student to shared exam');
+
+          // Find the newly added student
+          studentData = sharedExam.students.find(s => {
+            if (s.student && s.student._id && s.student._id.toString() === studentId) return true;
+            if (s.studentId && s.studentId.toString() === studentId) return true;
+            return false;
+          });
+
+          if (studentData) {
+            console.log('Found student after adding via ExamRequest');
+          }
+        }
+      }
+    }
+
     if (!studentData) {
       return res.status(403).json({ message: 'Student not found in this exam' });
     }

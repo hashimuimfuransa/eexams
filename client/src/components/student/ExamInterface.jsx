@@ -1057,20 +1057,16 @@ const ExamInterface = () => {
 
       console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
 
-      // For open-ended questions, get the current answer from the ref before saving
+      // For open-ended questions, sync the answer before saving
       if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
         if (openAnswerRef.current) {
           const currentTextAnswer = openAnswerRef.current();
           console.log(`🔍 Open-ended question: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
           if (currentTextAnswer && currentTextAnswer.trim()) {
-            // Update the answer state with the current value from the component
-            setAnswers(prev => ({
-              ...prev,
-              [currentQuestion._id]: {
-                ...prev[currentQuestion._id],
-                textAnswer: currentTextAnswer
-              }
-            }));
+            // Sync the answer to state before saving
+            handleAnswerChange(currentQuestion._id, currentTextAnswer, questionType);
+            // Wait a tick for state to update
+            await new Promise(resolve => setTimeout(resolve, 0));
           }
         }
       }

@@ -4354,7 +4354,8 @@ const updateExam = async (req, res) => {
               section: sec.name,
               matchingPairs: q.matchingPairs,
               itemsToOrder: q.itemsToOrder,
-              dragDropData: q.dragDropData
+              dragDropData: q.dragDropData,
+              imageUrl: q.imageUrl || q.image || ''
             });
             sectionQuestionIds.push(questionId);
           } else {

@@ -3066,7 +3066,7 @@ function PublishDialog({ examId, onClose }) {
                     <Checkbox
                       checked={opt.isCorrect || false}
                       onChange={(e) => {
-                        const newOptions = [...editingQuestion.options];
+                        let newOptions = [...editingQuestion.options];
                         newOptions = newOptions.map((o, i) => ({
                           ...o,
                           isCorrect: i === idx ? e.target.checked : false

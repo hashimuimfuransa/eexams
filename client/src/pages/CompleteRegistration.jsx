@@ -16,9 +16,8 @@ const tokens = {
   surfaceAlt: '#f3f4f6',
   surfaceBorder: '#e5e7eb',
   dark: {
-    surface: '#0f172a',
-    surfaceAlt: '#1e293b',
     surface: '#0B1121',
+    surfaceAlt: '#1e293b',
     textPrimary: '#f8fafc',
     textSecondary: '#94a3b8',
     border: '#334155'

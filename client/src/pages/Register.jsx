@@ -131,6 +131,7 @@ const GOOGLE_TEACHER_STEPS = ['Account', 'Profile', 'Done'];
 const googleStepDisplayMap = { 0: 0, 2: 1, 3: 2, 4: 3 };
 
 const Register = () => {
+  const [showPurposeModal, setShowPurposeModal] = useState(true);
   const [activeStep, setActiveStep] = useState(0);
   const [accountType, setAccountType] = useState('individual'); // 'individual' or 'organization'
   const [email, setEmail] = useState('');
@@ -173,6 +174,15 @@ const Register = () => {
       navigate('/dashboard');
     }
   }, [navigate]);
+
+  // Handle purpose selection
+  const handleDoExams = () => {
+    navigate('/marketplace');
+  };
+
+  const handleCreateExams = () => {
+    setShowPurposeModal(false);
+  };
 
   // Get steps based on account type
   const STEPS = accountType === 'organization' ? ORG_STEPS : TEACHER_STEPS;
@@ -745,43 +755,239 @@ const Register = () => {
 
     if (isTeacherSuccess || isOrgSuccess) {
       return (
-      <div style={{ textAlign: 'center', padding: '20px 0' }}>
-        <div style={{
-          width: 96, height: 96, borderRadius: '50%',
-          background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 24px', boxShadow: '0 16px 40px rgba(16,185,129,0.4)',
-          animation: 'scaleIn 0.5s ease',
-        }}>
-          <Icon.Check s={44} />
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{
+            width: 96, height: 96, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 24px', boxShadow: '0 16px 40px rgba(16,185,129,0.4)',
+            animation: 'scaleIn 0.5s ease',
+          }}>
+            <Icon.Check s={44} />
+          </div>
+          <h2 style={{ fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, marginBottom: 10 }}>
+            You're all set!
+          </h2>
+          <p style={{ fontSize: 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 28, lineHeight: 1.6 }}>
+            Your account has been created. Redirecting you to your dashboard...
+          </p>
+          <button onClick={() => navigate('/login')} style={{
+            padding: '12px 28px', borderRadius: 12,
+            fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
+            background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+            color: 'white', border: 'none', cursor: 'pointer',
+            boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+          }}>
+            Go to login <Icon.Arrow />
+          </button>
         </div>
-        <h2 style={{ fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, marginBottom: 10 }}>
-          You're all set!
-        </h2>
-        <p style={{ fontSize: 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 28, lineHeight: 1.6 }}>
-          Your account has been created. Redirecting you to your dashboard...
-        </p>
-        <button onClick={() => navigate('/login')} style={{
-          padding: '12px 28px', borderRadius: 12,
-          fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
-          background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-          color: 'white', border: 'none', cursor: 'pointer',
-          boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-        }}>
-          Go to login <Icon.Arrow />
-        </button>
-      </div>
       );
     }
     return null;
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      fontFamily: "'DM Sans', sans-serif",
-      background: isDark
+    <>
+      {/* Purpose Selection Modal */}
+      {showPurposeModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20,
+        }}>
+          <div style={{
+            background: isDark ? tokens.dark.surface : tokens.surface,
+            borderRadius: 20,
+            padding: '32px 28px',
+            maxWidth: 400,
+            width: '100%',
+            boxShadow: '0 24px 48px rgba(0, 0, 0, 0.3)',
+            animation: 'scaleIn 0.3s ease',
+            border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+          }}>
+            <div style={{
+              textAlign: 'center',
+              marginBottom: 24,
+            }}>
+              <div style={{
+                width: 56,
+                height: 56,
+                borderRadius: 16,
+                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
+              <h2 style={{
+                fontSize: 22,
+                fontWeight: 800,
+                color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
+                marginBottom: 8,
+                letterSpacing: '-0.02em',
+              }}>
+                What would you like to do?
+              </h2>
+              <p style={{
+                fontSize: 14,
+                color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+                lineHeight: 1.6,
+              }}>
+                Choose how you want to use eexams
+              </p>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}>
+              <button
+                onClick={handleDoExams}
+                style={{
+                  padding: '16px 20px',
+                  borderRadius: 12,
+                  border: `2px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                  background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  transition: 'all 0.2s ease',
+                  fontFamily: "'DM Sans', sans-serif',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = tokens.accent;
+                  e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = isDark ? tokens.dark.border : tokens.surfaceBorder;
+                  e.currentTarget.style.background = isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt;
+                }}
+              >
+                <div style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
+                </div>
+                <div style={{ textAlign: 'left', flex: 1 }}>
+                  <div style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
+                    marginBottom: 2,
+                  }}>
+                    Do Exams
+                  </div>
+                  <div style={{
+                    fontSize: 12,
+                    color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+                  }}>
+                    Browse and take available exams
+                  </div>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={isDark ? tokens.dark.textSecondary : tokens.textSecondary} strokeWidth="2">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              <button
+                onClick={handleCreateExams}
+                style={{
+                  padding: '16px 20px',
+                  borderRadius: 12,
+                  border: `2px solid ${tokens.primary}`,
+                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  transition: 'all 0.2s ease',
+                  fontFamily: "'DM Sans', sans-serif",
+                  boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+                }}
+              >
+                <div style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </div>
+                <div style={{ textAlign: 'left', flex: 1 }}>
+                  <div style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: 'white',
+                    marginBottom: 2,
+                  }}>
+                    Create Exams
+                  </div>
+                  <div style={{
+                    fontSize: 12,
+                    color: 'rgba(255, 255, 255, 0.9)',
+                  }}>
+                    Register as a teacher or organization
+                  </div>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{
+        minHeight: '100vh',
+        fontFamily: "'DM Sans', sans-serif",
+        background: isDark
         ? `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.18) 0%, transparent 70%), ${tokens.dark.bg}`
         : `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.1) 0%, transparent 70%), #F5FBF8`,
       position: 'relative', overflow: 'hidden',
@@ -1039,6 +1245,7 @@ const Register = () => {
         }
       `}</style>
     </div>
+    </>
   );
 };
 

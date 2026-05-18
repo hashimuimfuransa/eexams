@@ -2411,7 +2411,7 @@ function PublishDialog({ examId, onClose }) {
         timeLimit: exam.timeLimit,
         passingScore: exam.passingScore,
         sections: updatedSections
-      });
+      }, { timeout: 30000 }); // 30 second timeout for exam updates
 
       // Refresh the preview
       const r = await api.get(`/admin/exams/${examId}/preview`);
@@ -2437,7 +2437,7 @@ function PublishDialog({ examId, onClose }) {
         timeLimit: exam.timeLimit,
         passingScore: exam.passingScore,
         sections: updatedSections
-      });
+      }, { timeout: 30000 }); // 30 second timeout for exam updates
 
       // Update local exam state
       setExam(prev => ({ ...prev, sections: updatedSections }));

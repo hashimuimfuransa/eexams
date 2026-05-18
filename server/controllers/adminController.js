@@ -4315,57 +4315,57 @@ const updateExam = async (req, res) => {
     } else {
       query.createdBy = req.orgAdminId || req.user._id;
     }
-    const exam = await Exam.findOne(query)
-      .populate({ path: 'sections.questions', model: 'Question' });
+    const exam = await Exam.findOne(query).lean();
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
-    
+
     const { title, description, timeLimit, passingScore, sections, status, isLocked } = req.body;
-    if (title) exam.title = title;
-    if (description) exam.description = description;
-    if (timeLimit) exam.timeLimit = Number(timeLimit);
-    if (passingScore) exam.passingScore = Number(passingScore);
-    if (status) exam.status = status;
-    if (typeof isLocked === 'boolean') exam.isLocked = isLocked;
-    
+
     // Handle sections update if provided
     if (sections && Array.isArray(sections)) {
       const Question = require('../models/Question');
       const updatedSectionQuestions = [];
+      const updateOps = [];
+      const createOps = [];
 
       for (const sec of sections) {
         const sectionQuestionIds = [];
         for (const q of sec.questions || []) {
           if (q._id) {
-            // Update existing question
+            // Update existing question - collect for bulk update
             const questionId = typeof q._id === 'object' ? q._id.toString() : q._id;
-            await Question.findByIdAndUpdate(questionId, {
-              text: q.text,
-              type: q.type,
-              points: q.points || q.marks || 1,
-              marks: q.marks || q.points || 1,
-              difficulty: q.difficulty,
-              correctAnswer: q.correctAnswer,
-              options: q.options,
-              explanation: q.explanation,
-              answerKey: q.answerKey,
-              gradingCriteria: q.gradingCriteria,
-              keyPoints: q.keyPoints,
-              acceptableAnswers: q.acceptableAnswers,
-              section: sec.name,
-              matchingPairs: q.matchingPairs,
-              itemsToOrder: q.itemsToOrder,
-              dragDropData: q.dragDropData,
-              imageUrl: q.imageUrl || q.image || ''
+            updateOps.push({
+              updateOne: {
+                filter: { _id: questionId },
+                update: {
+                  text: q.text,
+                  type: q.type,
+                  points: q.points || q.marks || 1,
+                  marks: q.marks || q.points || 1,
+                  difficulty: q.difficulty,
+                  correctAnswer: q.correctAnswer,
+                  options: q.options,
+                  explanation: q.explanation,
+                  answerKey: q.answerKey,
+                  gradingCriteria: q.gradingCriteria,
+                  keyPoints: q.keyPoints,
+                  acceptableAnswers: q.acceptableAnswers,
+                  section: sec.name,
+                  matchingPairs: q.matchingPairs,
+                  itemsToOrder: q.itemsToOrder,
+                  dragDropData: q.dragDropData,
+                  imageUrl: q.imageUrl || q.image || ''
+                }
+              }
             });
             sectionQuestionIds.push(questionId);
           } else {
-            // Create new question
-            const newQuestion = await Question.create({
+            // Create new question - collect for bulk insert
+            createOps.push({
               ...q,
               exam: exam._id,
               section: sec.name
             });
-            sectionQuestionIds.push(newQuestion._id);
+            sectionQuestionIds.push(null); // Placeholder, will replace after insert
           }
         }
         updatedSectionQuestions.push({
@@ -4375,10 +4375,52 @@ const updateExam = async (req, res) => {
         });
       }
 
-      exam.sections = updatedSectionQuestions;
+      // Execute bulk operations in parallel
+      const [updateResult, createResult] = await Promise.all([
+        updateOps.length > 0 ? Question.bulkWrite(updateOps) : Promise.resolve(null),
+        createOps.length > 0 ? Question.insertMany(createOps) : Promise.resolve([])
+      ]);
+
+      // Update section question IDs with newly created question IDs
+      let createIndex = 0;
+      for (const sec of updatedSectionQuestions) {
+        for (let i = 0; i < sec.questions.length; i++) {
+          if (sec.questions[i] === null && createResult[createIndex]) {
+            sec.questions[i] = createResult[createIndex]._id;
+            createIndex++;
+          }
+        }
+      }
+
+      // Update exam with new sections
+      await Exam.updateOne(
+        { _id: exam._id },
+        {
+          title: title || exam.title,
+          description: description !== undefined ? description : exam.description,
+          timeLimit: timeLimit ? Number(timeLimit) : exam.timeLimit,
+          passingScore: passingScore ? Number(passingScore) : exam.passingScore,
+          status: status || exam.status,
+          isLocked: typeof isLocked === 'boolean' ? isLocked : exam.isLocked,
+          sections: updatedSectionQuestions
+        }
+      );
+    } else {
+      // Only update exam metadata if no sections provided
+      await Exam.updateOne(
+        { _id: exam._id },
+        {
+          title: title || exam.title,
+          description: description !== undefined ? description : exam.description,
+          timeLimit: timeLimit ? Number(timeLimit) : exam.timeLimit,
+          passingScore: passingScore ? Number(passingScore) : exam.passingScore,
+          status: status || exam.status,
+          isLocked: typeof isLocked === 'boolean' ? isLocked : exam.isLocked
+        }
+      );
     }
-    
-    await exam.save();
+
+    // Return updated exam with populated questions
     const updated = await Exam.findById(exam._id)
       .populate({ path: 'sections.questions', model: 'Question' });
     res.json(updated);

@@ -240,11 +240,6 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
       // Don't call updateCombined on every keystroke to prevent typing interruption
     };
 
-    const onBlur = () => {
-      // Save answer when user leaves the math field
-      updateCombined(mathValue, textValue);
-    };
-
     // Allow Enter to insert a new line (\\) in the math field so students
     // can answer multi-part questions on separate lines.
     const onKeyDown = (e) => {
@@ -260,25 +255,14 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
     };
 
     mf.addEventListener('input', onInput);
-    mf.addEventListener('blur', onBlur);
     mf.addEventListener('keydown', onKeyDown);
     setMathReady(true);
 
     return () => {
       mf.removeEventListener('input', onInput);
-      mf.removeEventListener('blur', onBlur);
       mf.removeEventListener('keydown', onKeyDown);
     };
-  }, [activeTab, textValue, updateCombined]); // re-bind when switching to math tab
-
-  // Only update combined answer when component unmounts or when explicitly needed
-  // This prevents typing interruption from frequent state updates
-  useEffect(() => {
-    return () => {
-      // Save on unmount
-      updateCombined(mathValue, textValue);
-    };
-  }, [mathValue, textValue, updateCombined]);
+  }, [activeTab]); // re-bind when switching to math tab
 
   /* Insert a LaTeX snippet at the math-field cursor */
   const insertSymbol = (latex) => {
@@ -298,8 +282,14 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
   };
 
   const handleTextBlur = () => {
-    // Save answer when user leaves the text field
+    // Don't call updateCombined on blur to prevent overwriting saved state
+    // The save will happen when clicking next
+  };
+
+  const handleTabChange = (event, newValue) => {
+    // Sync answer before switching tabs
     updateCombined(mathValue, textValue);
+    setActiveTab(newValue);
   };
 
   const isSection = question?.section;
@@ -311,7 +301,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
     <Box sx={{ mt: 2 }}>
       <Shell elevation={0}>
         {/* ── Tab bar ── */}
-        <TabBar value={activeTab} onChange={(_, v) => setActiveTab(v)}>
+        <TabBar value={activeTab} onChange={handleTabChange}>
           <Tab icon={<Edit fontSize="small" />} label="Written Answer" iconPosition="start" />
           <Tab icon={<Functions fontSize="small" />} label="Math / Equations" iconPosition="start" />
         </TabBar>
@@ -372,7 +362,6 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
                 placeholder="Write your answer here. Show all working clearly and logically."
                 value={textValue}
                 onChange={handleTextChange}
-                onBlur={handleTextBlur}
                 disabled={disabled}
                 variant="outlined"
                 inputProps={{

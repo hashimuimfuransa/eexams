@@ -259,6 +259,11 @@ const ExamInterface = () => {
   const [selectedQuestions, setSelectedQuestions] = useState({});
   const [lastQuestionSaved, setLastQuestionSaved] = useState(false);
 
+  // Reset lastQuestionSaved when exam loads or when switching questions
+  useEffect(() => {
+    setLastQuestionSaved(false);
+  }, [activeQuestionIndex, activeSection]);
+
   // Format time remaining
   const formatTime = (milliseconds) => {
     const totalSeconds = Math.floor(milliseconds / 1000);
@@ -1159,6 +1164,8 @@ const ExamInterface = () => {
       if (activeQuestionIndex < questions.length - 1) {
         console.log(`Moving to next question: ${activeQuestionIndex + 1}`);
         setActiveQuestionIndex(activeQuestionIndex + 1);
+        // Reset lastQuestionSaved when moving to a new question
+        setLastQuestionSaved(false);
       } else {
         // Move to next section with questions if available
         const sectionIndex = exam.sections.findIndex(s => s.name === activeSection);
@@ -1174,6 +1181,8 @@ const ExamInterface = () => {
               console.log(`Moving to next section: ${nextSection.name}`);
               setActiveSection(nextSection.name);
               setActiveQuestionIndex(0);
+              // Reset lastQuestionSaved when moving to a new section
+              setLastQuestionSaved(false);
 
               // Show a message about moving to the next section
               setSnackbar({

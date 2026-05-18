@@ -1083,18 +1083,36 @@ const submitSharedExam = async (req, res) => {
     console.log('Submit exam - answer keys:', Object.keys(answers));
     console.log('Submit exam - sample answer:', Object.values(answers)[0]);
 
-    const sharedExam = await SharedExam.findOne({ shareToken })
-      .populate('students.student', 'email firstName lastName')
-      .populate({
-        path: 'exam',
-        select: 'title description timeLimit totalPoints passingScore sections',
-        populate: {
-          path: 'sections.questions',
-          model: 'Question'
-        }
-      });
+    let sharedExam;
+    try {
+      sharedExam = await SharedExam.findOne({ shareToken })
+        .populate('students.student', 'email firstName lastName')
+        .populate({
+          path: 'exam',
+          select: 'title description timeLimit totalPoints passingScore sections',
+          populate: {
+            path: 'sections.questions',
+            model: 'Question'
+          }
+        });
+      console.log('Shared exam query completed, found:', !!sharedExam);
+    } catch (queryError) {
+      console.error('Error querying shared exam with nested populate:', queryError);
+      // Try fallback without nested populate
+      try {
+        console.log('Trying fallback query without nested populate...');
+        sharedExam = await SharedExam.findOne({ shareToken })
+          .populate('students.student', 'email firstName lastName')
+          .populate('exam', 'title description timeLimit totalPoints passingScore sections');
+        console.log('Fallback query completed, found:', !!sharedExam);
+      } catch (fallbackError) {
+        console.error('Fallback query also failed:', fallbackError);
+        return res.status(500).json({ message: 'Database query error', error: queryError.message });
+      }
+    }
 
     if (!sharedExam) {
+      console.log('Shared exam not found for token:', shareToken);
       return res.status(404).json({ message: 'Share link not found' });
     }
 

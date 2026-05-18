@@ -621,7 +621,203 @@ IMPORTANT: Only return valid JSON, no additional text outside the JSON.`;
   }
 };
 
+/**
+ * Generate model answers for questions using AI
+ * @param {Array} questions - Array of question objects with text, type, options
+ * @returns {Promise<Object>} - Object mapping question IDs to model answers and guidelines
+ */
+const generateModelAnswers = async (questions) => {
+  try {
+    console.log(`🤖 Generating AI model answers for ${questions.length} questions...`);
+
+    const modelAnswers = {};
+
+    // Process questions in batches to avoid overwhelming the API
+    const batchSize = 5;
+    for (let i = 0; i < questions.length; i += batchSize) {
+      const batch = questions.slice(i, i + batchSize);
+      
+      for (const question of batch) {
+        try {
+          const questionId = question._id || question.id || `q_${i}`;
+          const questionText = question.text || '';
+          const questionType = question.type || 'open-ended';
+          const options = question.options || [];
+
+          console.log(`Generating model answer for question: ${questionText.substring(0, 50)}...`);
+
+          // Build prompt based on question type
+          let prompt = '';
+          
+          if (questionType === 'multiple-choice' && options.length > 0) {
+            prompt = `You are an expert educator. Analyze the following multiple-choice question and provide the correct answer with explanation.
+
+Question: ${questionText}
+
+Options:
+${options.map((opt, idx) => `${String.fromCharCode(65 + idx)}. ${opt.text || opt}`).join('\n')}
+
+Please provide:
+1. The correct answer letter (A, B, C, D, etc.)
+2. A detailed explanation of why this is the correct answer
+3. Common misconceptions students might have
+4. Grading guidelines for partial credit (if applicable)
+
+Return your response as valid JSON with this structure:
+{
+  "correctAnswer": "[letter of correct answer]",
+  "answerText": "[the full text of the correct answer]",
+  "explanation": "[detailed explanation]",
+  "misconceptions": ["misconception1", "misconception2"],
+  "gradingGuidelines": "[guidelines for grading]"
+}`;
+          } else if (questionType === 'open-ended' || questionType === 'short-answer' || questionType === 'essay') {
+            prompt = `You are an expert educator. Provide a model answer and grading guidelines for the following question.
+
+Question: ${questionText}
+Question Type: ${questionType}
+
+Please provide:
+1. A comprehensive model answer that demonstrates full understanding
+2. Key concepts that should be included in a good answer
+3. Grading rubric with point allocation
+4. Common mistakes students make
+5. Minimum requirements for partial credit
+
+Return your response as valid JSON with this structure:
+{
+  "modelAnswer": "[comprehensive model answer]",
+  "keyConcepts": ["concept1", "concept2", "concept3"],
+  "gradingRubric": "[detailed rubric with point allocation]",
+  "commonMistakes": ["mistake1", "mistake2"],
+  "minimumRequirements": "[requirements for partial credit]"
+}`;
+          } else if (questionType === 'true-false') {
+            prompt = `You are an expert educator. Analyze the following true/false question and provide the correct answer with explanation.
+
+Question: ${questionText}
+
+Please provide:
+1. The correct answer (True or False)
+2. A detailed explanation of why this is correct
+3. Common misconceptions
+
+Return your response as valid JSON with this structure:
+{
+  "correctAnswer": "True or False",
+  "explanation": "[detailed explanation]",
+  "misconceptions": ["misconception1", "misconception2"]
+}`;
+          } else {
+            // Generic fallback for other question types
+            prompt = `You are an expert educator. Provide a model answer and grading guidelines for the following question.
+
+Question: ${questionText}
+Question Type: ${questionType}
+
+Please provide:
+1. A comprehensive model answer
+2. Key concepts that should be included
+3. Grading guidelines
+
+Return your response as valid JSON with this structure:
+{
+  "modelAnswer": "[comprehensive model answer]",
+  "keyConcepts": ["concept1", "concept2"],
+  "gradingGuidelines": "[grading guidelines]"
+}`;
+          }
+
+          // Call Groq API to generate model answer
+          const response = await groqClient.generateContent(prompt, {
+            systemPrompt: 'You are an expert educator with deep knowledge across all academic subjects. Provide accurate, comprehensive model answers and clear grading guidelines.',
+            model: 'smart',
+            jsonMode: true,
+            temperature: 0.3,
+            maxTokens: 2048
+          });
+
+          // Parse the response
+          let generatedAnswer = response.parsedContent;
+          if (!generatedAnswer && response.text) {
+            try {
+              const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                generatedAnswer = JSON.parse(jsonMatch[0]);
+              }
+            } catch (e) {
+              console.error('Failed to parse model answer JSON:', e);
+            }
+          }
+
+          if (generatedAnswer) {
+            // Extract the appropriate answer text based on question type
+            let answerText = '';
+            if (questionType === 'multiple-choice') {
+              answerText = generatedAnswer.answerText || generatedAnswer.correctAnswer || '';
+            } else if (questionType === 'true-false') {
+              answerText = generatedAnswer.correctAnswer || '';
+            } else {
+              answerText = generatedAnswer.modelAnswer || '';
+            }
+
+            modelAnswers[questionId] = {
+              answerText: answerText,
+              explanation: generatedAnswer.explanation || '',
+              keyConcepts: generatedAnswer.keyConcepts || [],
+              gradingGuidelines: generatedAnswer.gradingGuidelines || generatedAnswer.gradingRubric || '',
+              commonMistakes: generatedAnswer.commonMistakes || generatedAnswer.misconceptions || [],
+              minimumRequirements: generatedAnswer.minimumRequirements || '',
+              aiGenerated: true,
+              generatedAt: new Date().toISOString()
+            };
+
+            console.log(`✅ Generated model answer for question ${questionId}`);
+          } else {
+            console.warn(`⚠️ Failed to generate model answer for question ${questionId}`);
+            modelAnswers[questionId] = {
+              answerText: 'AI generation failed',
+              explanation: '',
+              keyConcepts: [],
+              gradingGuidelines: '',
+              commonMistakes: [],
+              minimumRequirements: '',
+              aiGenerated: false,
+              error: 'Failed to parse AI response'
+            };
+          }
+
+          // Small delay between questions to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+        } catch (error) {
+          console.error(`Error generating model answer for question:`, error);
+          const questionId = question._id || question.id || `q_${i}`;
+          modelAnswers[questionId] = {
+            answerText: '',
+            explanation: '',
+            keyConcepts: [],
+            gradingGuidelines: '',
+            commonMistakes: [],
+            minimumRequirements: '',
+            aiGenerated: false,
+            error: error.message
+          };
+        }
+      }
+    }
+
+    console.log(`🎉 Generated model answers for ${Object.keys(modelAnswers).length} questions`);
+    return modelAnswers;
+
+  } catch (error) {
+    console.error('Error in generateModelAnswers:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   gradeOpenEndedAnswer,
-  gradeWithoutModelAnswer
+  gradeWithoutModelAnswer,
+  generateModelAnswers
 };

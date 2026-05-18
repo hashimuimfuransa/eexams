@@ -6,7 +6,7 @@ const Question = require('../models/Question');
 const Result = require('../models/Result');
 const SharedExam = require('../models/SharedExam');
 const { parseExamFile } = require('../utils/fileParser');
-const { gradeOpenEndedAnswer } = require('../utils/aiGrading');
+const { gradeOpenEndedAnswer, generateModelAnswers } = require('../utils/aiGrading');
 const { gradeQuestionByType } = require('../utils/enhancedGrading');
 
 /**
@@ -265,6 +265,57 @@ const createExam = async (req, res) => {
           console.log(`  Section ${idx} (${section.name}): ${section.questions?.length || 0} questions`);
         });
 
+        // If no answer file was provided, use AI to generate model answers
+        if (!answerFilePath) {
+          console.log('🤖 No answer file provided. Generating AI model answers for grading...');
+          
+          try {
+            // Collect all questions from the exam
+            const allQuestions = [];
+            for (const section of exam.sections) {
+              if (section.questions && section.questions.length > 0) {
+                const questions = await Question.find({ _id: { $in: section.questions } });
+                allQuestions.push(...questions);
+              }
+            }
+
+            if (allQuestions.length > 0) {
+              console.log(`Generating AI model answers for ${allQuestions.length} questions...`);
+              
+              // Generate model answers using AI
+              const modelAnswers = await generateModelAnswers(allQuestions);
+              
+              // Update each question with the AI-generated model answer
+              for (const question of allQuestions) {
+                const questionId = question._id.toString();
+                const generatedAnswer = modelAnswers[questionId];
+                
+                if (generatedAnswer && generatedAnswer.aiGenerated) {
+                  // Update the question with the AI-generated model answer
+                  // Map to existing schema fields to avoid schema changes
+                  await Question.findByIdAndUpdate(questionId, {
+                    correctAnswer: generatedAnswer.answerText || question.correctAnswer,
+                    explanation: generatedAnswer.explanation,
+                    keyPoints: generatedAnswer.keyConcepts,
+                    answerKey: generatedAnswer.gradingGuidelines,
+                    tags: generatedAnswer.commonMistakes,
+                    // Store additional metadata in the description or as a JSON string in a field
+                    // We'll use the existing fields creatively
+                  });
+                  
+                  console.log(`✅ Updated question ${questionId} with AI-generated model answer`);
+                }
+              }
+              
+              console.log(`🎉 Successfully generated and applied AI model answers for ${Object.keys(modelAnswers).length} questions`);
+            }
+          } catch (aiError) {
+            console.error('Error generating AI model answers:', aiError);
+            console.log('⚠️ Continuing with exam creation without AI-generated model answers');
+            // Don't fail the exam creation if AI generation fails
+          }
+        }
+
         // Ensure all three sections (A, B, C) exist even if empty
         const requiredSections = ['A', 'B', 'C'];
         const existingSectionNames = exam.sections.map(s => s.name);
@@ -381,6 +432,55 @@ const createExam = async (req, res) => {
         }
       }
       await exam.save();
+
+      // If no answer file was provided for manually created questions, generate AI model answers
+      if (!answerFilePath) {
+        console.log('🤖 No answer file provided for manually created questions. Generating AI model answers for grading...');
+        
+        try {
+          // Collect all questions from the exam
+          const allQuestions = [];
+          for (const section of exam.sections) {
+            if (section.questions && section.questions.length > 0) {
+              const questions = await Question.find({ _id: { $in: section.questions } });
+              allQuestions.push(...questions);
+            }
+          }
+
+          if (allQuestions.length > 0) {
+            console.log(`Generating AI model answers for ${allQuestions.length} manually created questions...`);
+            
+            // Generate model answers using AI
+            const modelAnswers = await generateModelAnswers(allQuestions);
+            
+            // Update each question with the AI-generated model answer
+            for (const question of allQuestions) {
+              const questionId = question._id.toString();
+              const generatedAnswer = modelAnswers[questionId];
+              
+              if (generatedAnswer && generatedAnswer.aiGenerated) {
+                // Update the question with the AI-generated model answer
+                // Map to existing schema fields to avoid schema changes
+                await Question.findByIdAndUpdate(questionId, {
+                  correctAnswer: generatedAnswer.answerText || question.correctAnswer,
+                  explanation: generatedAnswer.explanation,
+                  keyPoints: generatedAnswer.keyConcepts,
+                  answerKey: generatedAnswer.gradingGuidelines,
+                  tags: generatedAnswer.commonMistakes,
+                });
+                
+                console.log(`✅ Updated question ${questionId} with AI-generated model answer`);
+              }
+            }
+            
+            console.log(`🎉 Successfully generated and applied AI model answers for ${Object.keys(modelAnswers).length} manually created questions`);
+          }
+        } catch (aiError) {
+          console.error('Error generating AI model answers for manually created questions:', aiError);
+          console.log('⚠️ Continuing with exam creation without AI-generated model answers');
+          // Don't fail the exam creation if AI generation fails
+        }
+      }
     }
 
     // Check if the exam has questions before returning it
@@ -720,6 +820,55 @@ const updateExam = async (req, res) => {
     }
 
     const updatedExam = await exam.save();
+
+    // If no answer file is set after update, generate AI model answers
+    if (!updatedExam.answerFile) {
+      console.log('🤖 Exam has no answer file after update. Generating AI model answers for grading...');
+      
+      try {
+        // Collect all questions from the exam
+        const allQuestions = [];
+        for (const section of updatedExam.sections) {
+          if (section.questions && section.questions.length > 0) {
+            const questions = await Question.find({ _id: { $in: section.questions } });
+            allQuestions.push(...questions);
+          }
+        }
+
+        if (allQuestions.length > 0) {
+          console.log(`Generating AI model answers for ${allQuestions.length} questions...`);
+          
+          // Generate model answers using AI
+          const modelAnswers = await generateModelAnswers(allQuestions);
+          
+          // Update each question with the AI-generated model answer
+          for (const question of allQuestions) {
+            const questionId = question._id.toString();
+            const generatedAnswer = modelAnswers[questionId];
+            
+            if (generatedAnswer && generatedAnswer.aiGenerated) {
+              // Update the question with the AI-generated model answer
+              // Map to existing schema fields to avoid schema changes
+              await Question.findByIdAndUpdate(questionId, {
+                correctAnswer: generatedAnswer.answerText || question.correctAnswer,
+                explanation: generatedAnswer.explanation,
+                keyPoints: generatedAnswer.keyConcepts,
+                answerKey: generatedAnswer.gradingGuidelines,
+                tags: generatedAnswer.commonMistakes,
+              });
+              
+              console.log(`✅ Updated question ${questionId} with AI-generated model answer`);
+            }
+          }
+          
+          console.log(`🎉 Successfully generated and applied AI model answers for ${Object.keys(modelAnswers).length} questions`);
+        }
+      } catch (aiError) {
+        console.error('Error generating AI model answers during exam update:', aiError);
+        console.log('⚠️ Continuing with exam update without AI-generated model answers');
+        // Don't fail the exam update if AI generation fails
+      }
+    }
 
     res.json(updatedExam);
   } catch (error) {

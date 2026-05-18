@@ -25,7 +25,10 @@ import {
   ListItemText,
   ListItemIcon,
   Tooltip,
-  Avatar
+  Avatar,
+  CircularProgress,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -39,6 +42,7 @@ import {
   Search as SearchIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 const ExamTemplates = () => {
   const theme = useTheme();
@@ -298,10 +302,19 @@ const ExamTemplates = () => {
   };
 
   // Handle use template
-  const handleUseTemplate = (template) => {
-    // In a real app, this would navigate to create exam with template
-    console.log('Using template:', template);
-    navigate('/admin/exams/create');
+  const handleUseTemplate = async (template) => {
+    try {
+      const response = await axios.post(`/api/admin/templates/${template.id}/use`);
+      const newExam = response.data;
+      navigate(`/admin/exams/${newExam._id}/edit`);
+    } catch (error) {
+      console.error('Error using template:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to use template. Please try again.',
+        severity: 'error'
+      });
+    }
   };
 
   return (
@@ -898,6 +911,23 @@ const ExamTemplates = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

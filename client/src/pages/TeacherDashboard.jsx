@@ -4834,7 +4834,8 @@ function TemplatesSection({ exams, setExams }) {
     try {
       const r = await api.post(`/admin/templates/${id}/use`);
       setExams(p => [r.data, ...p]);
-      setSnack('New exam created from template! Go to My Exams to view it.');
+      setSnack('New exam created from template! Opening editor...');
+      navigate(`/admin/exams/${r.data._id}/edit`);
     } catch { setSnack('Error creating exam from template.'); }
   };
 
@@ -4850,13 +4851,8 @@ function TemplatesSection({ exams, setExams }) {
       const r = await api.post(`/question-bank/${examId}/reuse`);
       console.log('Reuse response:', r.data);
       setExams(p => [r.data, ...p]);
-      setSnack('✓ Exam copied from question bank successfully! Check your exams list.');
-      // Auto-switch to templates tab to see the new exam
-      setTab('templates');
-      // Reload to ensure the new exam appears
-      setTimeout(() => {
-        load();
-      }, 300);
+      setSnack('✓ Exam copied from question bank successfully! Opening editor...');
+      navigate(`/admin/exams/${r.data._id}/edit`);
     } catch (error) {
       console.error('Error reusing exam:', error);
       setSnack('✗ Error copying exam from question bank.');

@@ -56,10 +56,36 @@ const Marketplace = () => {
     navigate(`/marketplace/exams/${examId}/request`);
   };
 
-  const handleShareExam = (examId) => {
-    const shareUrl = `${window.location.origin}/marketplace/exams/${examId}/request`;
-    navigator.clipboard.writeText(shareUrl);
-    alert('Exam link copied to clipboard!');
+  const handleShareExam = async (examId, examTitle) => {
+    const redirectUrl = `/marketplace/exams/${examId}/request`;
+    const shareUrl = `${window.location.origin}/student-register?redirect=${encodeURIComponent(redirectUrl)}`;
+    const shareData = {
+      title: examTitle || 'Exam',
+      text: `Check out this exam on eexams: ${examTitle || 'Exam'}`,
+      url: shareUrl
+    };
+
+    // Try modern Web Share API first
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err) {
+        // User cancelled or error occurred, fall back to clipboard
+        if (err.name !== 'AbortError') {
+          console.error('Share failed:', err);
+        }
+      }
+    }
+
+    // Fallback: copy to clipboard
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      alert('Exam link copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      alert('Failed to copy link. Please copy manually: ' + shareUrl);
+    }
   };
 
   // Get unique target audiences from exams
@@ -367,7 +393,7 @@ const Marketplace = () => {
                       </Button>
                       <Button
                         variant="outlined"
-                        onClick={() => handleShareExam(exam._id)}
+                        onClick={() => handleShareExam(exam._id, exam.title)}
                         sx={{
                           borderRadius: 2,
                           textTransform: 'none',

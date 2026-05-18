@@ -1054,7 +1054,9 @@ const ExamInterface = () => {
       const currentAnswer = answers[currentQuestion._id];
       const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
       const questionSection = currentQuestion.section || 'A';
-      
+
+      console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
+
       // Save fill-in-blank answers
       if (currentAnswer && questionType === 'fill-in-blank' && currentAnswer.textAnswer?.trim()) {
         try {
@@ -1068,6 +1070,7 @@ const ExamInterface = () => {
       // Save open-ended/essay/short-answer/image-based answers for all sections
       if (currentAnswer) {
         if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
+          console.log(`🔍 Open-ended question detected: hasTextAnswer=${!!currentAnswer.textAnswer?.trim()}`);
           if (currentAnswer.textAnswer?.trim()) {
             try {
               await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), questionType);
@@ -1075,6 +1078,8 @@ const ExamInterface = () => {
             } catch (saveError) {
               console.error(`❌ Failed to save ${questionType} answer:`, saveError);
             }
+          } else {
+            console.log(`⚠️ Skipping save: textAnswer is empty`);
           }
         }
       }

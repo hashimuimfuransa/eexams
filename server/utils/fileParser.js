@@ -173,6 +173,17 @@ CRITICAL INSTRUCTIONS:
 6. Preserve the section structure (Section A, B, C, etc.)
 7. Extract all question types: multiple-choice, true-false, fill-in-blank, short answer, essay, matching, ordering
 
+CRITICAL - MODEL ANSWER GENERATION FOR OPEN-ENDED QUESTIONS:
+- For ALL open-ended questions (short answer, essay, open-ended), if a model answer is NOT provided in the document, you MUST generate a comprehensive model answer
+- This is ESPECIALLY important for Section B (Short Answer) and Section C (Essay/Long Answer) questions
+- Generated model answers should be accurate, detailed, and appropriate for the academic level
+- For mathematical questions, show the working/steps and the final answer
+- For conceptual questions, provide clear explanations with key points
+- For calculation questions, include the numerical answer with units where applicable
+- For questions with subquestions (a, b, c), generate answers for EACH subquestion
+- DO NOT leave correctAnswer as "Not provided" or empty - always provide a meaningful answer
+- NEVER skip generating an answer for an open-ended question
+
 SPECIAL HANDLING FOR FILL-IN-THE-BLANK QUESTIONS:
 - When you see patterns like "with ______ ______ sides", the blanks represent missing numbers or words
 - Infer the missing information from context (e.g., "shape with ______ sides" → likely needs a number like "8" for octagon)
@@ -242,7 +253,7 @@ Return valid JSON with this exact structure:
           "questionNumber": 1,
           "text": "Exact question text from document",
           "type": "open-ended",
-          "correctAnswer": "Model answer if provided in document",
+          "correctAnswer": "Extract from document OR generate comprehensive model answer if not provided",
           "points": 5
         }
       ]
@@ -255,7 +266,7 @@ Return valid JSON with this exact structure:
           "questionNumber": 1,
           "text": "Exact question text from document",
           "type": "open-ended",
-          "correctAnswer": "Model answer if provided in document",
+          "correctAnswer": "Extract from document OR generate comprehensive model answer if not provided",
           "points": 15
         }
       ]
@@ -400,6 +411,13 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
           console.log(`Using pre-loaded answer for question ${questionNumber}: ${question.correctAnswer}`);
         }
 
+        // Generate model answer using AI if not provided (for open-ended questions)
+        if ((question.correctAnswer === 'Not provided' || !question.correctAnswer || question.correctAnswer.trim() === '') && 
+            (question.type === 'open-ended' || question.type === 'short-answer' || question.type === 'essay')) {
+          console.log(`Generating AI model answer for question ${questionNumber} in section ${section.name}`);
+          question.correctAnswer = await generateModelAnswer(question.text, question.type, section.name);
+        }
+
         // Post-processing for fill-in-blank questions to infer missing numbers
         if (question.type === 'fill-in-blank' || (question.text && question.text.includes('_____'))) {
           question.correctAnswer = enhanceFillInBlankAnswer(question.text, question.correctAnswer);
@@ -445,6 +463,55 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
   } catch (error) {
     console.error('Error validating extracted data:', error);
     return extractedData; // Return as-is if validation fails
+  }
+};
+
+/**
+ * Generate a model answer for an open-ended question using AI
+ * @param {string} questionText - The question text
+ * @param {string} questionType - The type of question
+ * @param {string} section - The section (A, B, C)
+ * @returns {Promise<string>} - Generated model answer
+ */
+const generateModelAnswer = async (questionText, questionType, section) => {
+  try {
+    // Detect if question has subquestions
+    const hasSubquestions = /[a-c]\)[.\s]/.test(questionText) || /[a-c]\.[.\s]/.test(questionText);
+    
+    const prompt = `You are an expert educator. Generate a comprehensive and accurate model answer for this OPEN-ENDED question:
+
+Question: "${questionText}"
+Type: ${questionType}
+Section: ${section}
+${hasSubquestions ? 'NOTE: This question has subquestions (a, b, c). Provide answers for each subquestion clearly labeled.' : ''}
+
+CRITICAL REQUIREMENTS FOR OPEN-ENDED QUESTIONS:
+- Provide a detailed, accurate answer appropriate for the academic level
+- For mathematical questions: Show ALL working/steps clearly, then provide the final answer
+- For conceptual questions: Provide clear explanations with key points and examples
+- For calculation questions: Include the numerical answer with units where applicable
+- For questions with subquestions: Answer each part (a, b, c) separately and clearly
+- Keep the answer comprehensive but well-structured
+- Do not include any meta-commentary about the answer - just provide the answer itself
+
+${hasSubquestions ? 'Format your answer as:\na) [answer for part a]\nb) [answer for part b]\nc) [answer for part c]' : ''}
+
+Return only the model answer, no additional text.`;
+
+    const result = await groqClient.generateContent(prompt, {
+      model: 'smart', // Use smart model for better quality on open questions
+      jsonMode: false,
+      temperature: 0.2, // Lower temperature for more accurate answers
+      maxTokens: 3072, // More tokens for comprehensive open-ended answers
+      systemPrompt: 'You are an expert educator who generates accurate, comprehensive model answers for open-ended exam questions. You excel at providing detailed explanations and showing work for mathematical problems.'
+    });
+
+    const answer = result.text.trim();
+    console.log(`Generated model answer for open question: ${answer.substring(0, 100)}...`);
+    return answer;
+  } catch (error) {
+    console.error('Error generating model answer for open question:', error);
+    return 'Model answer generation failed - please provide manually';
   }
 };
 

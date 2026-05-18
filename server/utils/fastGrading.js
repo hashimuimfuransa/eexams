@@ -310,6 +310,45 @@ Return JSON: {score,feedback,correctedAnswer}`;
     }
   }
 
+  // Extract numerical answers from both student and model answers
+  const extractNumericalAnswer = (text) => {
+    // Look for patterns like "h=13", "h = 13", "answer: 13", "=13", etc.
+    const patterns = [
+      /(?:=|:)\s*(\d+(?:\.\d+)?)/,  // "= 13" or ": 13"
+      /(\d+(?:\.\d+)?)\s*(?:$|answer|result)/i,  // "13" followed by end or answer/result
+      /h\s*=\s*(\d+(?:\.\d+)?)/i,  // "h = 13"
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        return parseFloat(match[1]);
+      }
+    }
+
+    // If no pattern matches, try to find the last number in the text
+    const numbers = text.match(/\d+(?:\.\d+)?/g);
+    if (numbers && numbers.length > 0) {
+      return parseFloat(numbers[numbers.length - 1]);
+    }
+
+    return null;
+  };
+
+  const studentNumerical = extractNumericalAnswer(studentAnswer);
+  const modelNumerical = extractNumericalAnswer(modelAnswer);
+
+  // If both have numerical answers and they match, give full credit
+  if (studentNumerical !== null && modelNumerical !== null && Math.abs(studentNumerical - modelNumerical) < 0.001) {
+    return {
+      score: maxPoints,
+      feedback: `Correct! Your answer (${studentNumerical}) matches the expected result.`,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'numerical_match',
+      isCorrect: true
+    };
+  }
+
   // Extract keywords (3+ characters)
   const keywords = model.split(/\s+/).filter(word => word.length >= 3);
   const matches = keywords.filter(keyword => student.includes(keyword)).length;

@@ -1315,8 +1315,7 @@ const ExamInterface = () => {
       default:
         // For text-based questions, just update local state without saving to server
         newAnswer.textAnswer = value;
-        // Mark as answered if there's actual content (including image uploads)
-        newAnswer.answered = value && value.trim().length > 0;
+        newAnswer.answered = false; // Don't mark as answered until explicitly saved to prevent disabling while typing
         newAnswer.savedToServer = false;
         newAnswer.hasChanges = true;
 

@@ -1064,9 +1064,9 @@ const ExamInterface = () => {
           console.error(`❌ Failed to save fill-in-blank answer:`, saveError);
         }
       }
-      
-      // Save open-ended/essay/short-answer answers for sections B and C
-      if (currentAnswer && (questionSection === 'B' || questionSection === 'C')) {
+
+      // Save open-ended/essay/short-answer/image-based answers for all sections
+      if (currentAnswer) {
         if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
           if (currentAnswer.textAnswer?.trim()) {
             try {

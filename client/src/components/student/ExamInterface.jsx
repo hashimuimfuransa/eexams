@@ -232,8 +232,8 @@ const ExamInterface = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [warningCount, setWarningCount] = useState(0);
   const [fullscreenExitWarning, setFullscreenExitWarning] = useState(false);
-  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showTimeWarning, setShowTimeWarning] = useState(false);
+  const openAnswerRef = useRef(null);
 
   const [exam, setExam] = useState(null);
   const [session, setSession] = useState(null);
@@ -1056,6 +1056,24 @@ const ExamInterface = () => {
       const questionSection = currentQuestion.section || 'A';
 
       console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
+
+      // For open-ended questions, get the current answer from the ref before saving
+      if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
+        if (openAnswerRef.current) {
+          const currentTextAnswer = openAnswerRef.current();
+          console.log(`🔍 Open-ended question: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
+          if (currentTextAnswer && currentTextAnswer.trim()) {
+            // Update the answer state with the current value from the component
+            setAnswers(prev => ({
+              ...prev,
+              [currentQuestion._id]: {
+                ...prev[currentQuestion._id],
+                textAnswer: currentTextAnswer
+              }
+            }));
+          }
+        }
+      }
 
       // Save fill-in-blank answers
       if (currentAnswer && questionType === 'fill-in-blank' && currentAnswer.textAnswer?.trim()) {
@@ -3542,6 +3560,7 @@ const ExamInterface = () => {
                               answer={answers[currentQuestion._id]}
                               onAnswerChange={handleAnswerChange}
                               disabled={false} // Never disable open-ended questions to allow continued editing
+                              answerRef={openAnswerRef}
                             />
                           );
                         }

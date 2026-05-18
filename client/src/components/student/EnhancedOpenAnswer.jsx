@@ -211,13 +211,25 @@ const StatusRow = styled(Box)({
 });
 
 /* ─── Main Component ─────────────────────────────────────── */
-const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled }) => {
+const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answerRef }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [mathValue, setMathValue] = useState('');
   const [textValue, setTextValue] = useState(answer?.textAnswer || '');
   const [activeGroup, setActiveGroup] = useState(SYMBOL_GROUPS[0].label);
   const [mathReady, setMathReady] = useState(false);
   const mathfieldRef = useRef(null);
+
+  // Expose a method to get the current combined answer
+  useEffect(() => {
+    if (answerRef) {
+      answerRef.current = () => {
+        let combined = '';
+        if (mathValue) combined += `[MATH: ${mathValue}] `;
+        if (textValue) combined += textValue;
+        return combined || '';
+      };
+    }
+  }, [mathValue, textValue, answerRef]);
 
   const updateCombined = useCallback(
     (math, text) => {

@@ -1058,16 +1058,23 @@ const ExamInterface = () => {
 
       console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
 
-      // For open-ended questions, sync the answer before saving
+      // For open-ended questions, get the current answer from ref and save directly
       if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
         if (openAnswerRef.current) {
           const currentTextAnswer = openAnswerRef.current();
           console.log(`🔍 Open-ended question: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
           if (currentTextAnswer && currentTextAnswer.trim()) {
-            // Sync the answer to state before saving
-            handleAnswerChange(currentQuestion._id, currentTextAnswer, questionType);
-            // Wait a tick for state to update
-            await new Promise(resolve => setTimeout(resolve, 0));
+            try {
+              // Save directly using the current answer from ref
+              await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
+              console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
+              // Sync to state after successful save
+              handleAnswerChange(currentQuestion._id, currentTextAnswer, questionType);
+            } catch (saveError) {
+              console.error(`❌ Failed to save ${questionType} answer:`, saveError);
+            }
+          } else {
+            console.log(`⚠️ Skipping save: ref textAnswer is empty`);
           }
         }
       }
@@ -1079,23 +1086,6 @@ const ExamInterface = () => {
           console.log(`✅ Saved fill-in-blank answer for question ${currentQuestion._id}`);
         } catch (saveError) {
           console.error(`❌ Failed to save fill-in-blank answer:`, saveError);
-        }
-      }
-
-      // Save open-ended/essay/short-answer/image-based answers for all sections
-      if (currentAnswer) {
-        if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
-          console.log(`🔍 Open-ended question detected: hasTextAnswer=${!!currentAnswer.textAnswer?.trim()}`);
-          if (currentAnswer.textAnswer?.trim()) {
-            try {
-              await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), questionType);
-              console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
-            } catch (saveError) {
-              console.error(`❌ Failed to save ${questionType} answer:`, saveError);
-            }
-          } else {
-            console.log(`⚠️ Skipping save: textAnswer is empty`);
-          }
         }
       }
 

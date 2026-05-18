@@ -232,6 +232,7 @@ const ExamInterface = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [warningCount, setWarningCount] = useState(0);
   const [fullscreenExitWarning, setFullscreenExitWarning] = useState(false);
+  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showTimeWarning, setShowTimeWarning] = useState(false);
   const openAnswerRef = useRef(null);
 

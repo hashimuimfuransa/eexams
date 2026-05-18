@@ -2404,7 +2404,7 @@ function PublishDialog({ examId, onClose }) {
       // Update the question via the exam update endpoint
       const updatedSections = [...exam.sections];
       updatedSections[editingSectionIndex].questions[editingQuestionIndex] = editingQuestion;
-      
+
       await api.put(`/admin/exams/${exam._id}`, {
         title: exam.title,
         description: exam.description,
@@ -2412,7 +2412,7 @@ function PublishDialog({ examId, onClose }) {
         passingScore: exam.passingScore,
         sections: updatedSections
       });
-      
+
       // Refresh the preview
       const r = await api.get(`/admin/exams/${examId}/preview`);
       setPreview(r.data);
@@ -2420,6 +2420,31 @@ function PublishDialog({ examId, onClose }) {
       setSnack('Question updated successfully');
     } catch (err) {
       setSnack(err.response?.data?.message || 'Failed to update question');
+    }
+  };
+
+  const handleDeleteQuestion = async (sectionIndex, questionIndex) => {
+    if (!exam) return;
+    if (!window.confirm('Are you sure you want to delete this question?')) return;
+
+    try {
+      const updatedSections = [...exam.sections];
+      updatedSections[sectionIndex].questions.splice(questionIndex, 1);
+
+      await api.put(`/admin/exams/${exam._id}`, {
+        title: exam.title,
+        description: exam.description,
+        timeLimit: exam.timeLimit,
+        passingScore: exam.passingScore,
+        sections: updatedSections
+      });
+
+      // Refresh the preview
+      const r = await api.get(`/admin/exams/${examId}/preview`);
+      setPreview(r.data);
+      setSnack('Question deleted successfully');
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to delete question');
     }
   };
 
@@ -2727,7 +2752,10 @@ function PublishDialog({ examId, onClose }) {
                                 </Box>
                               )}
                             </Box>
-                            <Tooltip title="Edit question"><IconButton size="small" sx={{ color: tokens.primary, flexShrink: 0 }} onClick={() => handleEditQuestion(q, si, qi)}><Edit sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+                            <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                              <Tooltip title="Edit question"><IconButton size="small" sx={{ color: tokens.primary }} onClick={() => handleEditQuestion(q, si, qi)}><Edit sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+                              <Tooltip title="Delete question"><IconButton size="small" sx={{ color: '#EF4444' }} onClick={() => handleDeleteQuestion(si, qi)}><Delete sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+                            </Box>
                           </Paper>
                         ))}
                         <Button fullWidth size="small" startIcon={<Add />} onClick={() => handleOpenAddQuestion(si)}
@@ -4333,17 +4361,20 @@ function ExamsSection({ exams, setExams }) {
 
   const handleSaveEdit = async (updated) => {
     try {
-      const payload = { 
-        title: updated.title, 
-        description: updated.description, 
-        timeLimit: updated.timeLimit, 
+      const payload = {
+        title: updated.title,
+        description: updated.description,
+        timeLimit: updated.timeLimit,
         passingScore: updated.passingScore,
         sections: updated.sections
       };
       const res = await api.put(`/admin/exams/${updated._id}`, payload);
       setExams(p => p.map(e => e._id === updated._id ? { ...e, ...res.data } : e));
       setEditExam(null);
-    } catch { }
+      setSnack('Exam updated successfully');
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to update exam');
+    }
   };
 
   return (

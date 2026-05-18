@@ -1315,7 +1315,8 @@ const ExamInterface = () => {
       default:
         // For text-based questions, just update local state without saving to server
         newAnswer.textAnswer = value;
-        newAnswer.answered = false; // Don't mark as answered until explicitly saved to prevent disabling while typing
+        // Keep the answered flag if it was already saved, otherwise set to false
+        newAnswer.answered = answers[questionId]?.savedToServer ? true : false;
         newAnswer.savedToServer = false;
         newAnswer.hasChanges = true;
 
@@ -3527,7 +3528,7 @@ const ExamInterface = () => {
                               question={currentQuestion}
                               answer={answers[currentQuestion._id]}
                               onAnswerChange={handleAnswerChange}
-                              disabled={answers[currentQuestion._id]?.answered}
+                              disabled={false} // Never disable open-ended questions to allow continued editing
                             />
                           );
                         }

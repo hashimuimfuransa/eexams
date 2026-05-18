@@ -1068,8 +1068,18 @@ const ExamInterface = () => {
               // Save directly using the current answer from ref
               await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
               console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
-              // Sync to state after successful save
-              handleAnswerChange(currentQuestion._id, currentTextAnswer, questionType);
+              // Sync to state after successful save with answered=true and savedToServer=true
+              setAnswers(prev => ({
+                ...prev,
+                [currentQuestion._id]: {
+                  ...prev[currentQuestion._id],
+                  textAnswer: currentTextAnswer,
+                  answered: true,
+                  savedToServer: true,
+                  hasChanges: false,
+                  lastSaved: new Date().toISOString()
+                }
+              }));
             } catch (saveError) {
               console.error(`❌ Failed to save ${questionType} answer:`, saveError);
             }

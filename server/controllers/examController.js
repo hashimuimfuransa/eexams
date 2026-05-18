@@ -982,6 +982,10 @@ const startExam = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
+    // Check if student is assigned to this exam (marketplace approval)
+    const isAssigned = exam.assignedTo && exam.assignedTo.includes(req.user._id);
+    console.log(`Student ${req.user._id} assigned to exam ${exam._id}: ${isAssigned}`);
+
     // Check if exam is locked
     if (exam.isLocked) {
       console.log(`Student ${req.user._id} attempted to start locked exam ${exam._id}`);

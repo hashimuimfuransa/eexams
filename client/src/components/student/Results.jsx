@@ -393,7 +393,7 @@ const Results = () => {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box>
                 <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
-                  {detailedResult.exam.title}
+                  {detailedResult.exam?.title || 'Exam (Deleted)'}
                 </Typography>
                 <Typography variant="subtitle1">
                   Completed on {formatDate(detailedResult.endTime)}
@@ -885,11 +885,11 @@ const Results = () => {
                               WebkitBoxOrient: 'vertical'
                             }}
                           >
-                            {result.exam.title}
+                            {result.exam?.title || 'Exam (Deleted)'}
                           </Typography>
 
                           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                            {result.exam.description}
+                            {result.exam?.description || 'This exam has been deleted'}
                           </Typography>
 
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -983,13 +983,13 @@ const Results = () => {
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                              <strong>Time:</strong> {result.exam.timeLimit} min
+                              <strong>Time:</strong> {result.exam?.timeLimit || 'N/A'} min
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                              <strong>Questions:</strong> {result.exam.totalQuestions || 'N/A'}
+                              <strong>Questions:</strong> {result.exam?.totalQuestions || 'N/A'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                              <strong>Passing Score:</strong> {result.exam.passingScore}%
+                              <strong>Passing Score:</strong> {result.exam?.passingScore || 'N/A'}%
                             </Typography>
                           </Box>
                         </Box>

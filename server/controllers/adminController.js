@@ -3754,6 +3754,142 @@ const deleteTemplate = async (req, res) => {
   }
 };
 
+// ─── Question Bank ──────────────────────────────────────────────────────────────
+
+// @desc    Get all publicly listed exams from question bank
+// @route   GET /api/admin/question-bank
+// @access  Private (Any authenticated user - teachers from any org)
+const getQuestionBank = async (req, res) => {
+  try {
+    // Fetch all publicly listed exams - accessible to any teacher from any organization
+    const exams = await Exam.find({
+      isPubliclyListed: true,
+      isLocked: false,
+      status: { $ne: 'template' }
+    })
+      .populate('createdBy', 'fullName')
+      .select('title description timeLimit passingScore sections totalPoints createdAt createdBy publicDescription publicPrice targetAudience')
+      .populate({ path: 'sections.questions', select: 'text type points' })
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(exams);
+  } catch (err) {
+    console.error('getQuestionBank error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Add exam to question bank (set as publicly listed)
+// @route   POST /api/question-bank/:examId/add
+// @access  Private (Premium users only)
+const addToQuestionBank = async (req, res) => {
+  try {
+    const exam = await Exam.findOne({
+      _id: req.params.examId,
+      createdBy: req.user._id
+    });
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Check if user has premium plan
+    const userPlan = req.user.subscriptionPlan?.toLowerCase() || 'free';
+    if (userPlan !== 'premium' && userPlan !== 'enterprise') {
+      return res.status(403).json({ message: 'Adding exams to the question bank requires a Premium plan or higher' });
+    }
+
+    // Set exam as publicly listed
+    exam.isPubliclyListed = true;
+    await exam.save();
+
+    res.json({ message: 'Exam added to question bank successfully', exam });
+  } catch (err) {
+    console.error('addToQuestionBank error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Duplicate an exam from question bank as teacher's own exam
+// @route   POST /api/admin/question-bank/:examId/reuse
+// @access  Private/Admin or Teacher
+const reuseQuestionBankExam = async (req, res) => {
+  try {
+    const sourceExam = await Exam.findOne({ 
+      _id: req.params.examId, 
+      isPubliclyListed: true,
+      isLocked: false,
+      status: { $ne: 'template' }
+    }).populate({ path: 'sections.questions', select: 'text type options points correctAnswer section' });
+
+    if (!sourceExam) {
+      return res.status(404).json({ message: 'Exam not found in question bank' });
+    }
+
+    // Create a deep copy of the exam
+    const newExam = new Exam({
+      title: sourceExam.title + ' (Copy)',
+      description: sourceExam.description,
+      timeLimit: sourceExam.timeLimit,
+      passingScore: sourceExam.passingScore,
+      sections: sourceExam.sections,
+      totalPoints: sourceExam.totalPoints,
+      allowSelectiveAnswering: sourceExam.allowSelectiveAnswering,
+      sectionBRequiredQuestions: sourceExam.sectionBRequiredQuestions,
+      sectionCRequiredQuestions: sourceExam.sectionCRequiredQuestions,
+      createdBy: req.user._id,
+      status: 'draft',
+      isLocked: true,
+      isPubliclyListed: false, // Not publicly listed by default
+    });
+
+    await newExam.save();
+
+    // Create copies of all questions
+    const questionMap = new Map();
+    for (const section of sourceExam.sections) {
+      for (const questionId of section.questions) {
+        const originalQuestion = await Question.findById(questionId);
+        if (originalQuestion) {
+          const newQuestion = new Question({
+            text: originalQuestion.text,
+            type: originalQuestion.type,
+            options: originalQuestion.options,
+            correctAnswer: originalQuestion.correctAnswer,
+            points: originalQuestion.points,
+            exam: newExam._id,
+            section: originalQuestion.section,
+            difficulty: originalQuestion.difficulty,
+            matchingPairs: originalQuestion.matchingPairs,
+            itemsToOrder: originalQuestion.itemsToOrder,
+          });
+          await newQuestion.save();
+          questionMap.set(questionId.toString(), newQuestion._id);
+        }
+      }
+    }
+
+    // Update exam sections with new question IDs
+    for (let i = 0; i < newExam.sections.length; i++) {
+      const section = newExam.sections[i];
+      const newQuestionIds = section.questions.map(qId => questionMap.get(qId.toString())).filter(id => id);
+      newExam.sections[i].questions = newQuestionIds;
+    }
+
+    await newExam.save();
+
+    // Populate the new exam with questions for response
+    const populatedExam = await Exam.findById(newExam._id)
+      .populate('createdBy', 'fullName')
+      .populate({ path: 'sections.questions', select: 'text type points' });
+
+    res.status(201).json(populatedExam);
+  } catch (err) {
+    console.error('reuseQuestionBankExam error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
 // @desc    Get report summary for this admin's students and exams
@@ -4283,3 +4419,6 @@ const updateStudentInExam = async (req, res) => {
 
 module.exports.removeStudentFromExam = removeStudentFromExam;
 module.exports.updateStudentInExam = updateStudentInExam;
+module.exports.getQuestionBank = getQuestionBank;
+module.exports.reuseQuestionBankExam = reuseQuestionBankExam;
+module.exports.addToQuestionBank = addToQuestionBank;

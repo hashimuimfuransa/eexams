@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
-import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore } from '@mui/icons-material';
+import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
@@ -54,6 +54,12 @@ const Marketplace = () => {
 
     // If authenticated as student, redirect to exam request page
     navigate(`/marketplace/exams/${examId}/request`);
+  };
+
+  const handleShareExam = (examId) => {
+    const shareUrl = `${window.location.origin}/marketplace/exams/${examId}/request`;
+    navigator.clipboard.writeText(shareUrl);
+    alert('Exam link copied to clipboard!');
   };
 
   // Get unique target audiences from exams
@@ -344,20 +350,36 @@ const Marketplace = () => {
                       </Box>
                     )}
 
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      onClick={() => handleRequestAccess(exam._id)}
-                      sx={{
-                        borderRadius: 2,
-                        textTransform: 'none',
-                        fontWeight: 700,
-                        background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                        boxShadow: '0 4px 12px rgba(12,189,115,0.35)'
-                      }}
-                    >
-                      Request Access
-                    </Button>
+                    <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        onClick={() => handleRequestAccess(exam._id)}
+                        sx={{
+                          borderRadius: 2,
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                          boxShadow: '0 4px 12px rgba(12,189,115,0.35)'
+                        }}
+                      >
+                        Request Access
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={() => handleShareExam(exam._id)}
+                        sx={{
+                          borderRadius: 2,
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          minWidth: 48,
+                          borderColor: '#0D406C',
+                          color: '#0D406C'
+                        }}
+                      >
+                        <Share />
+                      </Button>
+                    </Box>
                   </CardContent>
                 </Card>
               </Grid>

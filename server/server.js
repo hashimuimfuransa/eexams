@@ -118,6 +118,7 @@ const resultsRoutes = require('./routes/results');
 const studentListRoutes = require('./routes/studentList');
 const publicExamRoutes = require('./routes/publicExam');
 const marketplaceRoutes = require('./routes/marketplace');
+const questionBankRoutes = require('./routes/questionBank');
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -131,6 +132,7 @@ app.use('/api/results', resultsRoutes);
 app.use('/api/student-lists', studentListRoutes);
 app.use('/api/public', publicExamRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/question-bank', questionBankRoutes);
 
 // Log registered routes for debugging
 console.log('Registered API routes:');

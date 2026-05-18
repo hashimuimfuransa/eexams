@@ -219,22 +219,34 @@ const getStudentResults = async (req, res) => {
     // Add additional exam details to each result
     const enrichedResults = results.map(result => {
       const resultObj = result.toObject();
-      
+
+      // Skip results with missing exam data
+      if (!result.exam) {
+        return {
+          ...resultObj,
+          exam: null,
+          totalQuestions: 0,
+          passingScore: 50,
+          percentage: 0,
+          passed: false
+        };
+      }
+
       // Calculate total questions from exam sections
-      const totalQuestions = result.exam.sections?.reduce((sum, section) => {
+      const totalQuestions = result.exam?.sections?.reduce((sum, section) => {
         return sum + (section.questions?.length || 0);
       }, 0) || 0;
-      
+
       // Calculate percentage
-      const percentage = result.maxPossibleScore > 0 
-        ? Math.round((result.totalScore / result.maxPossibleScore) * 100) 
+      const percentage = result.maxPossibleScore > 0
+        ? Math.round((result.totalScore / result.maxPossibleScore) * 100)
         : 0;
-      
+
       // Determine pass/fail
-      const passed = result.exam.passingScore 
-        ? percentage >= result.exam.passingScore 
+      const passed = result.exam.passingScore
+        ? percentage >= result.exam.passingScore
         : percentage >= 50; // Default 50% if no passing score set
-      
+
       return {
         ...resultObj,
         exam: {

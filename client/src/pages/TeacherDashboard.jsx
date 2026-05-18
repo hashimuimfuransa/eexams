@@ -17,7 +17,7 @@ import {
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
-  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt
+  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -2165,6 +2165,7 @@ function ExamPreviewPanel({ exam }) {
 
 /* ── PUBLISH DIALOG ── */
 function PublishDialog({ examId, onClose }) {
+  const { user } = useAuth();
   const isXs = useMediaQuery('(max-width:600px)');
   const [tab, setTab] = useState(0);
   const [preview, setPreview] = useState(null);
@@ -2188,6 +2189,7 @@ function PublishDialog({ examId, onClose }) {
   const [loadingAssigned, setLoadingAssigned] = useState(false);
   const [resettingExpiration, setResettingExpiration] = useState(false);
   const [shareStats, setShareStats] = useState(null);
+  const [addingToBank, setAddingToBank] = useState(false);
 
   useEffect(() => {
     api.get(`/admin/exams/${examId}/preview`).then(r => {
@@ -2305,6 +2307,28 @@ function PublishDialog({ examId, onClose }) {
     }
   };
 
+  const handleAddToQuestionBank = async () => {
+    const userPlan = user?.subscriptionPlan?.toLowerCase() || 'free';
+    if (userPlan !== 'premium' && userPlan !== 'enterprise') {
+      setSnack('Adding exams to the question bank requires a Premium plan or higher');
+      return;
+    }
+
+    setAddingToBank(true);
+    try {
+      await api.post(`/question-bank/${examId}/add`);
+      setSnack('✓ Exam added to question bank successfully!');
+      // Refresh the preview to show updated status
+      const r = await api.get(`/admin/exams/${examId}/preview`);
+      setPreview(r.data);
+    } catch (err) {
+      console.error('Error adding to question bank:', err);
+      setSnack(err.response?.data?.message || 'Failed to add exam to question bank');
+    } finally {
+      setAddingToBank(false);
+    }
+  };
+
   const copyLink = (link, label) => { navigator.clipboard.writeText(link); setCopied(label); setTimeout(() => setCopied(''), 2500); };
 
   const addRow = () => setStudentRows(p => [...p, { firstName: '', lastName: '', email: '', class: '' }]);
@@ -2392,7 +2416,27 @@ function PublishDialog({ examId, onClose }) {
             </Typography>
           </Box>
         </Box>
-        <IconButton onClick={onClose} sx={{ color: 'white' }}><Close /></IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleAddToQuestionBank}
+            disabled={addingToBank}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 700,
+              borderColor: 'rgba(255,255,255,0.5)',
+              color: 'white',
+              fontSize: 12,
+              px: 2,
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
+            }}
+          >
+            {addingToBank ? 'Adding...' : 'Add to Exam Bank'}
+          </Button>
+          <IconButton onClick={onClose} sx={{ color: 'white' }}><Close /></IconButton>
+        </Box>
       </Box>
 
       {/* Tabs */}
@@ -4716,11 +4760,19 @@ function ReportsSection() {
 /* ── TEMPLATES ── */
 function TemplatesSection({ exams, setExams }) {
   const [templates, setTemplates] = useState([]);
+  const [questionBank, setQuestionBank] = useState([]);
+  const [filteredQuestionBank, setFilteredQuestionBank] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingQB, setLoadingQB] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveDialog, setSaveDialog] = useState(false);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [snack, setSnack] = useState('');
+  const [tab, setTab] = useState('templates'); // 'templates' or 'question-bank'
+  const [searchTerm, setSearchTerm] = useState('');
+  const [levelFilter, setLevelFilter] = useState('all');
+  const [previewDialog, setPreviewDialog] = useState(false);
+  const [previewExam, setPreviewExam] = useState(null);
   const isXs = useMediaQuery('(max-width:600px)');
 
   const load = useCallback(() => {
@@ -4728,7 +4780,41 @@ function TemplatesSection({ exams, setExams }) {
     api.get('/admin/templates').then(r => setTemplates(r.data || [])).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
+  const loadQuestionBank = useCallback(() => {
+    setLoadingQB(true);
+    api.get('/question-bank').then(r => {
+      setQuestionBank(r.data || []);
+      setFilteredQuestionBank(r.data || []);
+    }).catch(() => {}).finally(() => setLoadingQB(false));
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadQuestionBank(); }, [loadQuestionBank]);
+
+  // Filter question bank based on search and level
+  useEffect(() => {
+    let filtered = questionBank;
+
+    // Filter by search term
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(exam =>
+        exam.title?.toLowerCase().includes(term) ||
+        exam.description?.toLowerCase().includes(term) ||
+        exam.publicDescription?.toLowerCase().includes(term)
+      );
+    }
+
+    // Filter by level (targetAudience can act as level)
+    if (levelFilter !== 'all') {
+      filtered = filtered.filter(exam =>
+        exam.targetAudience?.toLowerCase() === levelFilter.toLowerCase() ||
+        exam.publicDescription?.toLowerCase().includes(levelFilter.toLowerCase())
+      );
+    }
+
+    setFilteredQuestionBank(filtered);
+  }, [searchTerm, levelFilter, questionBank]);
 
   const handleSaveAsTemplate = async () => {
     if (!selectedExamId) return;
@@ -4756,97 +4842,276 @@ function TemplatesSection({ exams, setExams }) {
     catch { setSnack('Error deleting template.'); }
   };
 
+  const handleReuseQuestionBank = async (examId) => {
+    try {
+      console.log('Reusing exam from question bank:', examId);
+      const r = await api.post(`/question-bank/${examId}/reuse`);
+      console.log('Reuse response:', r.data);
+      setExams(p => [r.data, ...p]);
+      setSnack('✓ Exam copied from question bank successfully! Check your exams list.');
+      // Auto-switch to templates tab to see the new exam
+      setTab('templates');
+      // Reload to ensure the new exam appears
+      setTimeout(() => {
+        load();
+      }, 300);
+    } catch (error) {
+      console.error('Error reusing exam:', error);
+      setSnack('✗ Error copying exam from question bank.');
+    }
+  };
+
+  const handlePreview = (exam) => {
+    setPreviewExam(exam);
+    setPreviewDialog(true);
+  };
+
+  const handleClosePreview = () => {
+    setPreviewDialog(false);
+    setPreviewExam(null);
+  };
+
   const totalQs = (t) => t.sections?.reduce((s, sec) => s + (sec.questions?.length || 0), 0) || 0;
 
   return (
     <Box>
       <SectionTitle action={
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button size="small" startIcon={<Refresh fontSize="small" />} onClick={load} sx={{ color: tokens.accent, textTransform: 'none', fontWeight: 700 }}>Refresh</Button>
-          <Button size="small" variant="contained" startIcon={<Add fontSize="small" />} onClick={() => setSaveDialog(true)}
-            sx={{ background: gradients.brand, borderRadius: 2.5, textTransform: 'none', fontWeight: 700 }}>
-            Save Exam as Template
-          </Button>
+          <Button size="small" startIcon={<Refresh fontSize="small" />} onClick={() => { load(); loadQuestionBank(); }} sx={{ color: tokens.accent, textTransform: 'none', fontWeight: 700 }}>Refresh</Button>
+          {tab === 'templates' && (
+            <Button size="small" variant="contained" startIcon={<Add fontSize="small" />} onClick={() => setSaveDialog(true)}
+              sx={{ background: gradients.brand, borderRadius: 2.5, textTransform: 'none', fontWeight: 700 }}>
+              Save Exam as Template
+            </Button>
+          )}
         </Box>
       }>Templates</SectionTitle>
+
+      {/* Tabs */}
+      <Box sx={{ mb: 2.5, display: 'flex', gap: 1, borderBottom: `1px solid ${tokens.surfaceBorder}`, pb: 2 }}>
+        <Button
+          size="small"
+          onClick={() => setTab('templates')}
+          sx={{
+            color: tab === 'templates' ? tokens.primary : tokens.textMuted,
+            fontWeight: 700,
+            textTransform: 'none',
+            borderBottom: tab === 'templates' ? `2px solid ${tokens.primary}` : 'none',
+            borderRadius: 0,
+            pb: 2,
+            fontSize: 13
+          }}
+        >
+          My Templates
+        </Button>
+        <Button
+          size="small"
+          onClick={() => setTab('question-bank')}
+          sx={{
+            color: tab === 'question-bank' ? tokens.primary : tokens.textMuted,
+            fontWeight: 700,
+            textTransform: 'none',
+            borderBottom: tab === 'question-bank' ? `2px solid ${tokens.primary}` : 'none',
+            borderRadius: 0,
+            pb: 2,
+            fontSize: 13
+          }}
+        >
+          Question Bank
+        </Button>
+      </Box>
 
       {/* Info banner */}
       <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 3, bgcolor: 'rgba(13,64,108,0.04)', border: `1px solid rgba(13,64,108,0.1)`, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
         <Description sx={{ color: tokens.primary, mt: 0.25, flexShrink: 0 }} />
         <Box>
-          <Typography fontWeight={700} sx={{ fontSize: 13.5, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>What are templates?</Typography>
+          <Typography fontWeight={700} sx={{ fontSize: 13.5, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>
+            {tab === 'templates' ? 'What are templates?' : 'What is the Question Bank?'}
+          </Typography>
           <Typography sx={{ fontSize: 12.5, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mt: 0.25 }}>
-            Save any of your exams as a reusable template. Use a template to instantly create a new draft exam with the same structure, questions, and settings — then customise it as needed.
+            {tab === 'templates'
+              ? 'Save any of your exams as a reusable template. Use a template to instantly create a new draft exam with the same structure, questions, and settings — then customise it as needed.'
+              : 'Browse and reuse publicly available exams from the question bank. When you reuse an exam, a copy is created for you to edit and customise as your own. The original exam remains unchanged.'}
           </Typography>
         </Box>
       </Paper>
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress sx={{ color: tokens.accent }} /></Box>
-      ) : templates.length === 0 ? (
-        <Paper elevation={0} sx={{ p: 5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', textAlign: 'center' }}>
-          <Box sx={{ width: 64, height: 64, borderRadius: 3, bgcolor: 'rgba(13,64,108,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
-            <Description sx={{ fontSize: 32, color: tokens.primary }} />
-          </Box>
-          <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary }}>No templates yet</Typography>
-          <Typography sx={{ color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mb: 2.5, mt: 0.5 }}>Save one of your exams as a template to get started.</Typography>
-          <Button variant="contained" startIcon={<Add />} onClick={() => setSaveDialog(true)} sx={{ background: gradients.brand, borderRadius: 2.5, textTransform: 'none', fontWeight: 700 }}>
-            Save Exam as Template
-          </Button>
-        </Paper>
-      ) : (
-        <Grid container spacing={2.5}>
-          {templates.map(t => (
-            <Grid item xs={12} sm={6} md={4} key={t._id}>
-              <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s', '&:hover': { boxShadow: '0 6px 24px rgba(13,64,108,0.09)' } }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
-                  <Box sx={{ width: 42, height: 42, borderRadius: 2.5, bgcolor: 'rgba(13,64,108,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Description sx={{ color: tokens.primary, fontSize: 22 }} />
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Tooltip title="Use template (creates new exam)">
-                      <IconButton size="small" onClick={() => handleUse(t._id)} sx={{ color: tokens.accent, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}><ContentCopy fontSize="small" /></IconButton>
-                    </Tooltip>
-                    <Tooltip title="Delete template">
-                      <IconButton size="small" onClick={() => handleDelete(t._id)} sx={{ color: '#EF4444', '&:hover': { bgcolor: 'rgba(239,68,68,0.07)' } }}><Delete fontSize="small" /></IconButton>
-                    </Tooltip>
-                  </Box>
-                </Box>
+      {tab === 'templates' ? (
+        <>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress sx={{ color: tokens.accent }} /></Box>
+          ) : templates.length === 0 ? (
+            <Paper elevation={0} sx={{ p: 5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', textAlign: 'center' }}>
+              <Box sx={{ width: 64, height: 64, borderRadius: 3, bgcolor: 'rgba(13,64,108,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+                <Description sx={{ fontSize: 32, color: tokens.primary }} />
+              </Box>
+              <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary }}>No templates yet</Typography>
+              <Typography sx={{ color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mb: 2.5, mt: 0.5 }}>Save one of your exams as a template to get started.</Typography>
+              <Button variant="contained" startIcon={<Add />} onClick={() => setSaveDialog(true)} sx={{ background: gradients.brand, borderRadius: 2.5, textTransform: 'none', fontWeight: 700 }}>
+                Save Exam as Template
+              </Button>
+            </Paper>
+          ) : (
+            <Grid container spacing={2.5}>
+              {templates.map(t => (
+                <Grid item xs={12} sm={6} md={4} key={t._id}>
+                  <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s', '&:hover': { boxShadow: '0 6px 24px rgba(13,64,108,0.09)' } }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
+                      <Box sx={{ width: 42, height: 42, borderRadius: 2.5, bgcolor: 'rgba(13,64,108,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Description sx={{ color: tokens.primary, fontSize: 22 }} />
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Tooltip title="Use template (creates new exam)">
+                          <IconButton size="small" onClick={() => handleUse(t._id)} sx={{ color: tokens.accent, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}><ContentCopy fontSize="small" /></IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete template">
+                          <IconButton size="small" onClick={() => handleDelete(t._id)} sx={{ color: '#EF4444', '&:hover': { bgcolor: 'rgba(239,68,68,0.07)' } }}><Delete fontSize="small" /></IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
 
-                <Typography fontWeight={700} sx={{ fontSize: 14.5, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", mb: 0.5, flexGrow: 1 }}>
-                  {t.title.replace('[Template] ', '')}
-                </Typography>
-                <Typography variant="caption" sx={{ color: tokens.textMuted, mb: 1.5, display: 'block', fontFamily: "'DM Sans',sans-serif" }} noWrap>
-                  {t.description}
-                </Typography>
+                    <Typography fontWeight={700} sx={{ fontSize: 14.5, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", mb: 0.5, flexGrow: 1 }}>
+                      {t.title.replace('[Template] ', '')}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, mb: 1.5, display: 'block', fontFamily: "'DM Sans',sans-serif" }} noWrap>
+                      {t.description}
+                    </Typography>
 
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
-                  <Chip label={`${t.timeLimit} min`} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600, fontSize: 11 }} />
-                  <Chip label={`${totalQs(t)} questions`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.08)', color: tokens.accentDark, fontWeight: 600, fontSize: 11 }} />
-                  <Chip label={`Pass: ${t.passingScore}%`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.08)', color: tokens.warning, fontWeight: 600, fontSize: 11 }} />
-                </Box>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
+                      <Chip label={`${t.timeLimit} min`} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600, fontSize: 11 }} />
+                      <Chip label={`${totalQs(t)} questions`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.08)', color: tokens.accentDark, fontWeight: 600, fontSize: 11 }} />
+                      <Chip label={`Pass: ${t.passingScore}%`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.08)', color: tokens.warning, fontWeight: 600, fontSize: 11 }} />
+                    </Box>
 
-                <Divider sx={{ mb: 1.5 }} />
+                    <Divider sx={{ mb: 1.5 }} />
 
-                {t.sections?.map((sec, si) => (
-                  <Box key={si} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
-                    <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>{sec.questions?.length || 0} questions</Typography>
-                  </Box>
-                ))}
+                    {t.sections?.map((sec, si) => (
+                      <Box key={si} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
+                        <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>{sec.questions?.length || 0} questions</Typography>
+                      </Box>
+                    ))}
 
-                <Button fullWidth size="small" startIcon={<PlayArrow fontSize="small" />} onClick={() => handleUse(t._id)}
-                  sx={{ mt: 1.5, color: tokens.accent, fontWeight: 700, fontSize: 12.5, textTransform: 'none', bgcolor: 'rgba(12,189,115,0.06)', borderRadius: 2, py: 0.75, '&:hover': { bgcolor: 'rgba(12,189,115,0.12)' } }}>
-                  Use This Template
-                </Button>
+                    <Button fullWidth size="small" startIcon={<PlayArrow fontSize="small" />} onClick={() => handleUse(t._id)}
+                      sx={{ mt: 1.5, color: tokens.accent, fontWeight: 700, fontSize: 12.5, textTransform: 'none', bgcolor: 'rgba(12,189,115,0.06)', borderRadius: 2, py: 0.75, '&:hover': { bgcolor: 'rgba(12,189,115,0.12)' } }}>
+                      Use This Template
+                    </Button>
 
-                <Typography variant="caption" sx={{ color: tokens.textMuted, mt: 1, textAlign: 'center', display: 'block', fontSize: 11 }}>
-                  Created {new Date(t.createdAt).toLocaleDateString()}
-                </Typography>
-              </Paper>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, mt: 1, textAlign: 'center', display: 'block', fontSize: 11 }}>
+                      Created {new Date(t.createdAt).toLocaleDateString()}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
+          )}
+        </>
+      ) : (
+        <>
+          {/* Search and Filter Bar for Question Bank */}
+          <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              placeholder="Search exams..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: <Search sx={{ mr: 1, color: tokens.textMuted }} />,
+                sx: { borderRadius: 2 }
+              }}
+              sx={{ flexGrow: 1, minWidth: 200 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Level</InputLabel>
+              <Select
+                value={levelFilter}
+                label="Level"
+                onChange={(e) => setLevelFilter(e.target.value)}
+                sx={{ borderRadius: 2 }}
+              >
+                <MenuItem value="all">All Levels</MenuItem>
+                <MenuItem value="beginner">Beginner</MenuItem>
+                <MenuItem value="intermediate">Intermediate</MenuItem>
+                <MenuItem value="advanced">Advanced</MenuItem>
+              </Select>
+            </FormControl>
+          </Paper>
+
+          {loadingQB ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress sx={{ color: tokens.accent }} /></Box>
+          ) : filteredQuestionBank.length === 0 ? (
+            <Paper elevation={0} sx={{ p: 5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', textAlign: 'center' }}>
+              <Box sx={{ width: 64, height: 64, borderRadius: 3, bgcolor: 'rgba(13,64,108,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+                <Quiz sx={{ fontSize: 32, color: tokens.primary }} />
+              </Box>
+              <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary }}>
+                {searchTerm || levelFilter !== 'all' ? 'No matching exams found' : 'No exams in question bank'}
+              </Typography>
+              <Typography sx={{ color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mb: 2.5, mt: 0.5 }}>
+                {searchTerm || levelFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'There are no publicly available exams to reuse at the moment.'}
+              </Typography>
+            </Paper>
+          ) : (
+            <Grid container spacing={2.5}>
+              {filteredQuestionBank.map(exam => (
+                <Grid item xs={12} sm={6} md={4} key={exam._id}>
+                  <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s', '&:hover': { boxShadow: '0 6px 24px rgba(13,64,108,0.09)' } }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
+                      <Box sx={{ width: 42, height: 42, borderRadius: 2.5, bgcolor: 'rgba(13,64,108,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Quiz sx={{ color: tokens.primary, fontSize: 22 }} />
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Tooltip title="Preview questions">
+                          <IconButton size="small" onClick={() => handlePreview(exam)} sx={{ color: tokens.primary, '&:hover': { bgcolor: 'rgba(13,64,108,0.1)' } }}><Visibility fontSize="small" /></IconButton>
+                        </Tooltip>
+                        <Tooltip title="Reuse exam (creates copy for you)">
+                          <IconButton size="small" onClick={() => handleReuseQuestionBank(exam._id)} sx={{ color: tokens.accent, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}><ContentCopy fontSize="small" /></IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
+
+                    <Typography fontWeight={700} sx={{ fontSize: 14.5, color: tokens.textPrimary, fontFamily: '"DM Sans",sans-serif', mb: 0.5, flexGrow: 1 }}>
+                      {exam.title}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, mb: 1.5, display: 'block', fontFamily: '"DM Sans",sans-serif' }} noWrap>
+                      {exam.publicDescription || exam.description}
+                    </Typography>
+
+                    {exam.createdBy && (
+                      <Typography variant="caption" sx={{ color: tokens.textMuted, mb: 1, display: 'block', fontFamily: '"DM Sans",sans-serif' }}>
+                        By {exam.createdBy.fullName || 'Unknown'}
+                      </Typography>
+                    )}
+
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
+                      <Chip label={`${exam.timeLimit} min`} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600, fontSize: 11 }} />
+                      <Chip label={`${totalQs(exam)} questions`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.08)', color: tokens.accentDark, fontWeight: 600, fontSize: 11 }} />
+                      <Chip label={`Pass: ${exam.passingScore}%`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.08)', color: tokens.warning, fontWeight: 600, fontSize: 11 }} />
+                    </Box>
+
+                    <Divider sx={{ mb: 1.5 }} />
+
+                    {exam.sections?.map((sec, si) => (
+                      <Box key={si} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
+                        <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>{sec.questions?.length || 0} questions</Typography>
+                      </Box>
+                    ))}
+
+                    <Button fullWidth size="small" startIcon={<PlayArrow fontSize="small" />} onClick={() => handleReuseQuestionBank(exam._id)}
+                      sx={{ mt: 1.5, color: tokens.accent, fontWeight: 700, fontSize: 12.5, textTransform: 'none', bgcolor: 'rgba(12,189,115,0.06)', borderRadius: 2, py: 0.75, '&:hover': { bgcolor: 'rgba(12,189,115,0.12)' } }}>
+                      Reuse This Exam
+                    </Button>
+
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, mt: 1, textAlign: 'center', display: 'block', fontSize: 11 }}>
+                      Created {new Date(exam.createdAt).toLocaleDateString()}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </>
       )}
 
       {/* Save as template dialog */}
@@ -4873,6 +5138,88 @@ function TemplatesSection({ exams, setExams }) {
             sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand }}>
             {saving ? <CircularProgress size={18} color="inherit" /> : 'Save Template'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Preview Dialog for Question Bank Exams */}
+      <Dialog open={previewDialog} onClose={handleClosePreview} maxWidth="md" fullWidth fullScreen={isXs} PaperProps={{ sx: { borderRadius: isXs ? 0 : 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: '"DM Sans",sans-serif', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Visibility sx={{ color: tokens.primary }} /> Exam Preview
+        </DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          {previewExam && (
+            <Box>
+              <Typography variant="h6" fontWeight={700} sx={{ fontFamily: '"DM Sans",sans-serif', mb: 1 }}>
+                {previewExam.title}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {previewExam.publicDescription || previewExam.description}
+              </Typography>
+
+              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <Chip label={`${previewExam.timeLimit} min`} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600 }} />
+                <Chip label={`${totalQs(previewExam)} questions`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.08)', color: tokens.accentDark, fontWeight: 600 }} />
+              </Box>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 2 }}>
+                Sample Questions (First 5):
+              </Typography>
+
+              {previewExam.sections && previewExam.sections.length > 0 ? (
+                <Box>
+                  {previewExam.sections.slice(0, 2).map((section, si) => (
+                    <Box key={si} sx={{ mb: 2 }}>
+                      <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+                        Section {section.name}: {section.description || ''}
+                      </Typography>
+                      {section.questions && section.questions.length > 0 ? (
+                        <Box>
+                          {section.questions.slice(0, 3).map((question, qi) => (
+                            <Paper key={qi} elevation={0} sx={{ p: 1.5, mb: 1, border: `1px solid ${tokens.surfaceBorder}`, borderRadius: 2 }}>
+                              <Typography variant="caption" fontWeight={600} sx={{ color: tokens.primary }}>
+                                Q{qi + 1}:
+                              </Typography>
+                              <Typography variant="body2" sx={{ ml: 1 }}>
+                                {question.text || 'No question text available'}
+                              </Typography>
+                              {question.type && (
+                                <Chip label={question.type} size="small" sx={{ mt: 1, fontSize: 10 }} />
+                              )}
+                            </Paper>
+                          ))}
+                        </Box>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          No questions in this section
+                        </Typography>
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No sections available in this exam
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={handleClosePreview} sx={{ borderRadius: 2, textTransform: 'none' }}>Close</Button>
+          {previewExam && (
+            <Button
+              variant="contained"
+              onClick={() => {
+                handleClosePreview();
+                handleReuseQuestionBank(previewExam._id);
+              }}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand }}
+            >
+              Reuse This Exam
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

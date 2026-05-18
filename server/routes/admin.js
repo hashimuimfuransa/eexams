@@ -46,6 +46,8 @@ const {
   useTemplate,
   deleteTemplate,
   getReportsSummary,
+  getQuestionBank,
+  reuseQuestionBankExam,
 } = require('../controllers/adminController');
 const { shareExam, getExamPreview, createStudentAccounts, removeStudentFromExam, updateStudentInExam, updateExam, deleteExam } = require('../controllers/adminController');
 const auth = require('../middleware/auth');
@@ -181,6 +183,9 @@ router.get('/templates', getTemplates);
 router.post('/templates', createTemplate);
 router.post('/templates/:id/use', useTemplate);
 router.delete('/templates/:id', deleteTemplate);
+
+// Note: Question Bank routes are moved to a separate router to allow access from any organization
+// See questionBank.js routes
 
 // Reports routes
 router.get('/reports/summary', getReportsSummary);

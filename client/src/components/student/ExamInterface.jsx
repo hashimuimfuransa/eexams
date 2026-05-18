@@ -992,9 +992,10 @@ const ExamInterface = () => {
 
     // For open-ended questions, get the current answer from ref
     if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
+      console.log(`🔍 Last question save: questionType=${questionType}, openAnswerRef.current=${!!openAnswerRef.current}`);
       if (openAnswerRef.current) {
         const currentTextAnswer = openAnswerRef.current();
-        console.log(`🔍 Last question save: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
+        console.log(`🔍 Last question save: ref textAnswer="${currentTextAnswer}", state textAnswer="${currentAnswer?.textAnswer}"`);
         if (currentTextAnswer && currentTextAnswer.trim()) {
           try {
             await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
@@ -3634,11 +3635,11 @@ const ExamInterface = () => {
                         ) : (
                           <Button
                             variant="contained"
-                            onClick={handleSaveLastQuestion}
-                            endIcon={<Save />}
+                            onClick={handleNextQuestion}
+                            endIcon={<NavigateNext />}
                             sx={{ borderRadius: 0 }} // Remove rounded corners
                           >
-                            Save Question
+                            Next Question
                           </Button>
                         )
                       ) : (

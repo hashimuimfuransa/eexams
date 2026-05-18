@@ -999,7 +999,7 @@ const ExamInterface = () => {
     console.log(`🔍 handleSaveLastQuestion: openAnswerRef.current=${!!openAnswerRef.current}`);
 
     // For open-ended questions, get the current answer from ref and save directly (same as handleNextQuestion)
-    if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
+    if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image') {
       let currentTextAnswer = '';
       if (openAnswerRef.current) {
         currentTextAnswer = openAnswerRef.current();

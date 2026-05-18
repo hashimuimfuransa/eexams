@@ -1122,6 +1122,10 @@ const ExamInterface = () => {
                   lastSaved: new Date().toISOString()
                 }
               }));
+              // Set lastQuestionSaved to true if this is the last question
+              if (isLastQuestion()) {
+                setLastQuestionSaved(true);
+              }
             } catch (saveError) {
               console.error(`❌ Failed to save ${questionType} answer:`, saveError);
             }
@@ -1191,8 +1195,11 @@ const ExamInterface = () => {
             });
           }
         } else {
-          // Show submit dialog when reaching the last question
-          setConfirmSubmit(true);
+          setSnackbar({
+            open: true,
+            message: 'You have reached the last question',
+            severity: 'info'
+          });
         }
       }
     } catch (error) {

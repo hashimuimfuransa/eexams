@@ -3827,10 +3827,14 @@ const getQuestionBank = async (req, res) => {
       status: { $ne: 'template' }
     })
       .populate('createdBy', 'fullName')
-      .select('title description timeLimit passingScore sections totalPoints createdAt createdBy publicDescription publicPrice targetAudience')
+      .select('title description timeLimit passingScore sections totalPoints createdAt createdBy publicDescription publicPrice targetAudience isPubliclyListed isLocked status')
       .populate({ path: 'sections.questions', select: 'text type points' })
       .sort({ createdAt: -1 })
       .lean();
+    
+    console.log('Question bank exams count:', exams.length); // Debug log
+    console.log('Question bank exams:', exams.map(e => ({ id: e._id, title: e.title, isPubliclyListed: e.isPubliclyListed, isLocked: e.isLocked, status: e.status }))); // Debug log
+    
     res.json(exams);
   } catch (err) {
     console.error('getQuestionBank error:', err);
@@ -3874,8 +3878,9 @@ const addToQuestionBank = async (req, res) => {
       return res.status(403).json({ message: 'Adding exams to the question bank requires a Premium plan or higher' });
     }
 
-    // Set exam as publicly listed
+    // Set exam as publicly listed and unlock it
     exam.isPubliclyListed = true;
+    exam.isLocked = false;
     await exam.save();
 
     res.json({ message: 'Exam added to question bank successfully', exam });

@@ -12,8 +12,11 @@ const getMarketplaceExams = async (req, res) => {
     const exams = await Exam.find({ isPubliclyListed: true, isLocked: false })
       .populate('createdBy', 'fullName')
       .populate('sections.questions')
-      .select('title description timeLimit publicPrice publicDescription targetAudience createdAt createdBy sections')
+      .select('title description timeLimit publicPrice publicDescription targetAudience createdAt createdBy sections isPubliclyListed isLocked status')
       .sort({ createdAt: -1 });
+
+    console.log('Marketplace exams count:', exams.length); // Debug log
+    console.log('Marketplace exams:', exams.map(e => ({ id: e._id, title: e.title, isPubliclyListed: e.isPubliclyListed, isLocked: e.isLocked, status: e.status }))); // Debug log
 
     res.json(exams);
   } catch (error) {

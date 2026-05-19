@@ -231,6 +231,7 @@ const ExamInterface = () => {
   const [securityActive, setSecurityActive] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [warningCount, setWarningCount] = useState(0);
+  const [screenshotWarningCount, setScreenshotWarningCount] = useState(0);
   const [fullscreenExitWarning, setFullscreenExitWarning] = useState(false);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showTimeWarning, setShowTimeWarning] = useState(false);
@@ -780,36 +781,79 @@ const ExamInterface = () => {
           e.preventDefault();
           // Clear clipboard to prevent screenshot capture
           navigator.clipboard.writeText('');
-          setSnackbar({
-            open: true,
-            message: 'Screen capture is not allowed during the exam.',
-            severity: 'warning'
+          setScreenshotWarningCount(prev => {
+            const newCount = prev + 1;
+            if (newCount >= 2) {
+              // Auto-submit on second warning
+              setSnackbar({
+                open: true,
+                message: 'Second screenshot warning detected! Exam will be submitted automatically.',
+                severity: 'error'
+              });
+              if (handleSubmitExamRef.current) {
+                setTimeout(() => handleSubmitExamRef.current(), 1000);
+              }
+            } else {
+              setSnackbar({
+                open: true,
+                message: `Screen capture warning ${newCount}/2. Next attempt will auto-submit your exam.`,
+                severity: 'warning'
+              });
+            }
+            return newCount;
           });
-          setWarningCount(prev => prev + 1);
           return false;
         }
 
         // Prevent Windows screenshot shortcuts (Win+Shift+S, Win+PrintScreen)
         if ((e.metaKey || e.key === 'Meta') && (e.shiftKey && e.key === 'S')) {
           e.preventDefault();
-          setSnackbar({
-            open: true,
-            message: 'Screen capture is not allowed during the exam.',
-            severity: 'warning'
+          setScreenshotWarningCount(prev => {
+            const newCount = prev + 1;
+            if (newCount >= 2) {
+              setSnackbar({
+                open: true,
+                message: 'Second screenshot warning detected! Exam will be submitted automatically.',
+                severity: 'error'
+              });
+              if (handleSubmitExamRef.current) {
+                setTimeout(() => handleSubmitExamRef.current(), 1000);
+              }
+            } else {
+              setSnackbar({
+                open: true,
+                message: `Screen capture warning ${newCount}/2. Next attempt will auto-submit your exam.`,
+                severity: 'warning'
+              });
+            }
+            return newCount;
           });
-          setWarningCount(prev => prev + 1);
           return false;
         }
 
         // Prevent Mac screenshot shortcuts (Cmd+Shift+3, Cmd+Shift+4, Cmd+Shift+5)
         if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5')) {
           e.preventDefault();
-          setSnackbar({
-            open: true,
-            message: 'Screen capture is not allowed during the exam.',
-            severity: 'warning'
+          setScreenshotWarningCount(prev => {
+            const newCount = prev + 1;
+            if (newCount >= 2) {
+              setSnackbar({
+                open: true,
+                message: 'Second screenshot warning detected! Exam will be submitted automatically.',
+                severity: 'error'
+              });
+              if (handleSubmitExamRef.current) {
+                setTimeout(() => handleSubmitExamRef.current(), 1000);
+              }
+            } else {
+              setSnackbar({
+                open: true,
+                message: `Screen capture warning ${newCount}/2. Next attempt will auto-submit your exam.`,
+                severity: 'warning'
+              });
+            }
+            return newCount;
           });
-          setWarningCount(prev => prev + 1);
           return false;
         }
 
@@ -817,12 +861,26 @@ const ExamInterface = () => {
         if ((e.ctrlKey || e.metaKey) && (e.key === 'PrintScreen' || e.key === 'SysRq')) {
           e.preventDefault();
           navigator.clipboard.writeText('');
-          setSnackbar({
-            open: true,
-            message: 'Screen capture is not allowed during the exam.',
-            severity: 'warning'
+          setScreenshotWarningCount(prev => {
+            const newCount = prev + 1;
+            if (newCount >= 2) {
+              setSnackbar({
+                open: true,
+                message: 'Second screenshot warning detected! Exam will be submitted automatically.',
+                severity: 'error'
+              });
+              if (handleSubmitExamRef.current) {
+                setTimeout(() => handleSubmitExamRef.current(), 1000);
+              }
+            } else {
+              setSnackbar({
+                open: true,
+                message: `Screen capture warning ${newCount}/2. Next attempt will auto-submit your exam.`,
+                severity: 'warning'
+              });
+            }
+            return newCount;
           });
-          setWarningCount(prev => prev + 1);
           return false;
         }
 
@@ -830,12 +888,26 @@ const ExamInterface = () => {
         if (e.altKey && (e.key === 'PrintScreen' || e.key === 'SysRq')) {
           e.preventDefault();
           navigator.clipboard.writeText('');
-          setSnackbar({
-            open: true,
-            message: 'Screen capture is not allowed during the exam.',
-            severity: 'warning'
+          setScreenshotWarningCount(prev => {
+            const newCount = prev + 1;
+            if (newCount >= 2) {
+              setSnackbar({
+                open: true,
+                message: 'Second screenshot warning detected! Exam will be submitted automatically.',
+                severity: 'error'
+              });
+              if (handleSubmitExamRef.current) {
+                setTimeout(() => handleSubmitExamRef.current(), 1000);
+              }
+            } else {
+              setSnackbar({
+                open: true,
+                message: `Screen capture warning ${newCount}/2. Next attempt will auto-submit your exam.`,
+                severity: 'warning'
+              });
+            }
+            return newCount;
           });
-          setWarningCount(prev => prev + 1);
           return false;
         }
       }
@@ -888,11 +960,25 @@ const ExamInterface = () => {
             const types = item.types;
             // Check if clipboard contains image data
             if (types.some(type => type.startsWith('image/'))) {
-              setWarningCount(prev => prev + 1);
-              setSnackbar({
-                open: true,
-                message: 'Screenshot detected! Screen capture is not allowed during the exam.',
-                severity: 'error'
+              setScreenshotWarningCount(prev => {
+                const newCount = prev + 1;
+                if (newCount >= 2) {
+                  setSnackbar({
+                    open: true,
+                    message: 'Second screenshot warning detected! Exam will be submitted automatically.',
+                    severity: 'error'
+                  });
+                  if (handleSubmitExamRef.current) {
+                    setTimeout(() => handleSubmitExamRef.current(), 1000);
+                  }
+                } else {
+                  setSnackbar({
+                    open: true,
+                    message: `Screenshot detected! Warning ${newCount}/2. Next attempt will auto-submit your exam.`,
+                    severity: 'error'
+                  });
+                }
+                return newCount;
               });
               // Clear the clipboard
               await navigator.clipboard.writeText('');
@@ -909,11 +995,25 @@ const ExamInterface = () => {
     // Detect Screen Capture API usage
     const handleScreenCaptureRequest = async () => {
       if (!examCompleted) {
-        setWarningCount(prev => prev + 1);
-        setSnackbar({
-          open: true,
-          message: 'Screen capture attempt detected! This is not allowed during the exam.',
-          severity: 'error'
+        setScreenshotWarningCount(prev => {
+          const newCount = prev + 1;
+          if (newCount >= 2) {
+            setSnackbar({
+              open: true,
+              message: 'Second screenshot warning detected! Exam will be submitted automatically.',
+              severity: 'error'
+            });
+            if (handleSubmitExamRef.current) {
+              setTimeout(() => handleSubmitExamRef.current(), 1000);
+            }
+          } else {
+            setSnackbar({
+              open: true,
+              message: `Screen capture attempt detected! Warning ${newCount}/2. Next attempt will auto-submit your exam.`,
+              severity: 'error'
+            });
+          }
+          return newCount;
         });
         // Attempt to cancel any active screen capture
         try {

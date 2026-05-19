@@ -310,16 +310,23 @@ const StudentRegister = () => {
         subscriptionPlan: 'free',
         role: 'student'
       };
-      const { isNewUser } = await googleLogin(checkData, false); // Don't save session yet for new users
+      const { user, isNewUser } = await googleLogin(checkData, true); // Save session for existing users
 
-      if (!isNewUser) {
-        // User already exists - log them in and redirect to dashboard
+      console.log('[Google Auth] User data:', user);
+      console.log('[Google Auth] isNewUser:', isNewUser);
+      console.log('[Google Auth] User role:', user?.role);
+
+      // Check if user is already a student (regardless of isNewUser flag)
+      if (user.role === 'student' || !isNewUser) {
+        // User already exists as a student - log them in and redirect to dashboard
+        console.log('[Google Auth] Redirecting to dashboard');
         setSnackbar({ open: true, message: 'Welcome back! Logging you in...', severity: 'success' });
         setTimeout(() => {
           navigate('/student/dashboard');
         }, 500);
       } else {
-        // New user - show registration form
+        // New user or user with different role - show registration form
+        console.log('[Google Auth] Showing registration form');
         setEmail(payload.email || '');
         setFirstName(payload.given_name || '');
         setLastName(payload.family_name || '');

@@ -73,6 +73,9 @@ const createShare = async (req, res) => {
       existingShare = await SharedExam.findOne({ shareToken });
     }
 
+    // Generate SEO-friendly slug from exam title
+    const examSlug = SharedExam.generateSlug(exam.title);
+
     // Create share settings
     const settings = {
       publicAccess: publicAccess !== undefined ? publicAccess : true,
@@ -125,6 +128,7 @@ const createShare = async (req, res) => {
       exam: examId,
       sharedBy: req.user._id,
       shareToken,
+      examSlug,
       shareType: shareType || 'link',
       settings,
       invitedEmails: invitedEmailsList,
@@ -132,8 +136,8 @@ const createShare = async (req, res) => {
       isActive: true
     });
 
-    // Generate share URL
-    const shareUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/exam/${shareToken}`;
+    // Generate SEO-friendly share URL
+    const shareUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/exam/${examSlug}/${shareToken}`;
 
     // Log activity
     await ActivityLog.logActivity({
@@ -192,6 +196,7 @@ const getExamShares = async (req, res) => {
       shares: shares.map(share => ({
         id: share._id,
         shareToken: share.shareToken,
+        examSlug: share.examSlug,
         shareType: share.shareType,
         isActive: share.isActive,
         settings: share.settings,
@@ -199,7 +204,7 @@ const getExamShares = async (req, res) => {
         studentsCount: share.students.length,
         invitedCount: share.invitedEmails.length,
         createdAt: share.createdAt,
-        shareUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/exam/${share.shareToken}`
+        shareUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/exam/${share.examSlug}/${share.shareToken}`
       }))
     });
 

@@ -120,6 +120,7 @@ const studentListRoutes = require('./routes/studentList');
 const publicExamRoutes = require('./routes/publicExam');
 const marketplaceRoutes = require('./routes/marketplace');
 const questionBankRoutes = require('./routes/questionBank');
+const seoController = require('./controllers/seoController');
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -161,6 +162,9 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// SEO endpoints
+app.get('/sitemap.xml', seoController.generateSitemap);
 
 // Optimize mongoose settings for faster performance
 mongoose.set('bufferCommands', false); // Disable mongoose buffering for faster responses

@@ -35,6 +35,12 @@ const SharedExamSchema = new mongoose.Schema({
     unique: true,
     index: true
   },
+  // SEO-friendly slug for exam name
+  examSlug: {
+    type: String,
+    required: true,
+    index: true
+  },
   // Share type: 'link' (public link) or 'email' (specific invite)
   shareType: {
     type: String,
@@ -227,6 +233,18 @@ SharedExamSchema.statics.generateShareToken = function() {
     token += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return token;
+};
+
+// Generate SEO-friendly slug from exam title
+SharedExamSchema.statics.generateSlug = function(title) {
+  if (!title) return 'exam';
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 100);
 };
 
 // Update updatedAt on save

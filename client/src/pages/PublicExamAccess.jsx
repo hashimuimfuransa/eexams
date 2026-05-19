@@ -3,9 +3,10 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Paper, Typography, TextField, Button, CircularProgress, Alert } from '@mui/material';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
+import { Helmet } from 'react-helmet-async';
 
 const PublicExamAccess = () => {
-  const { shareToken } = useParams();
+  const { shareToken, examSlug } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, login, logout } = useContext(AuthContext);
@@ -80,7 +81,8 @@ const PublicExamAccess = () => {
       }
       
       // Update the URL with the shareToken for consistency
-      navigate(`/exam/${response.data.shareToken}`, { replace: true });
+      const slug = response.data.examSlug || 'exam';
+      navigate(`/exam/${slug}/${response.data.shareToken}`, { replace: true });
     } catch (err) {
       console.error('Error loading exam with access code:', err);
       setError(err.response?.data?.message || 'Invalid access code. Please check and try again.');
@@ -257,6 +259,39 @@ const PublicExamAccess = () => {
     );
   }
 
+  // Generate structured data for SEO when exam is loaded
+  const generateStructuredData = () => {
+    if (!exam?.exam) return null;
+    
+    const examData = exam.exam;
+    const questionCount = examData.sections?.reduce((sum, s) => sum + (s.questions?.length || 0), 0) || 0;
+    
+    return {
+      "@context": "https://schema.org",
+      "@type": "Quiz",
+      "name": examData.title,
+      "description": examData.description || examData.publicDescription,
+      "timeRequired": `PT${examData.timeLimit}M`,
+      "numberOfQuestions": questionCount,
+      "educationalLevel": examData.targetAudience || "General",
+      "educationalUse": "Assessment",
+      "learningResourceType": "Exam",
+      "provider": {
+        "@type": "Organization",
+        "name": "eexams",
+        "url": "https://www.eexams.net"
+      },
+      "url": `${window.location.origin}${window.location.pathname}`,
+      "inLanguage": "en",
+      "about": {
+        "@type": "Thing",
+        "name": examData.title
+      }
+    };
+  };
+
+  const structuredData = generateStructuredData();
+
   if (passwordRequired) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9', p: 2 }}>
@@ -292,9 +327,28 @@ const PublicExamAccess = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9', p: 2 }}>
-      <Paper elevation={0} sx={{ p: 4, borderRadius: 3, maxWidth: 500, border: '1px solid #e2e8f0' }}>
-        {showLogoutPrompt && (
+    <>
+      <Helmet>
+        <title>{exam?.exam?.title || 'Exam'} - eexams | Online Exam Platform</title>
+        <meta name="description" content={exam?.exam?.description || exam?.exam?.publicDescription || `Take this ${exam?.exam?.title || 'exam'} on eexams - Rwanda's leading online exam platform.`} />
+        <meta name="keywords" content={`${exam?.exam?.title || 'exam'}, online exam, Rwanda, education, ${exam?.exam?.targetAudience || 'assessment'}, eexams`} />
+        <link rel="canonical" href={`${window.location.origin}${window.location.pathname}`} />
+        <meta property="og:title" content={`${exam?.exam?.title || 'Exam'} - eexams`} />
+        <meta property="og:description" content={exam?.exam?.description || exam?.exam?.publicDescription || `Take this ${exam?.exam?.title || 'exam'} on eexams.`} />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={`${window.location.origin}${window.location.pathname}`} />
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:title" content={`${exam?.exam?.title || 'Exam'} - eexams`} />
+        <meta property="twitter:description" content={exam?.exam?.description || exam?.exam?.publicDescription || `Take this ${exam?.exam?.title || 'exam'} on eexams.`} />
+        {structuredData && (
+          <script type="application/ld+json">
+            {JSON.stringify(structuredData)}
+          </script>
+        )}
+      </Helmet>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9', p: 2 }}>
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 3, maxWidth: 500, border: '1px solid #e2e8f0' }}>
+          {showLogoutPrompt && (
           <>
             <Alert severity="warning" sx={{ mb: 3 }}>
               <Typography variant="body2" fontWeight={600}>
@@ -365,6 +419,7 @@ const PublicExamAccess = () => {
         </Button>
       </Paper>
     </Box>
+    </>
   );
 };
 

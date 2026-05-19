@@ -10,7 +10,6 @@ import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import StudentRoutes from './StudentRoutes';
 import NotFound from './pages/NotFound';
 import PublicExamAccess from './pages/PublicExamAccess';
-import PublicExamList from './pages/PublicExamList';
 import ExamResult from './pages/ExamResult';
 import PendingApproval from './pages/PendingApproval';
 import CompleteRegistration from './pages/CompleteRegistration';
@@ -69,6 +68,7 @@ const AppRoutes = () => {
     <Routes>
       {/* Public exam access - must be before catch-all routes */}
       <Route path="/join/:shareToken" element={<PublicExamAccess />} />
+      <Route path="/exam/:examSlug/:shareToken" element={<PublicExamAccess />} />
       <Route path="/exam/:shareToken" element={<PublicExamAccess />} />
       <Route path="/access-code" element={<PublicExamAccess />} />
       <Route path="/exam-result/:resultId" element={<ExamResult />} />
@@ -78,7 +78,7 @@ const AppRoutes = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/student-register" element={<StudentRegister />} />
-      <Route path="/public-exams" element={<PublicExamList />} />
+      <Route path="/public-exams" element={<Navigate to="/marketplace" replace />} />
       <Route path="/marketplace" element={<Marketplace />} />
       <Route path="/marketplace/exams/:examId/request" element={<ExamRequest />} />
       <Route path="/privacy" element={<Privacy />} />

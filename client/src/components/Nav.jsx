@@ -61,7 +61,7 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
     { id: 'how-it-works', label: 'How it works' },
     { id: 'faq', label: 'FAQ' },
     { id: 'contact', label: 'Contact' },
-    { id: 'marketplace', label: 'Exam Bank', route: '/marketplace' },
+    { id: 'marketplace', label: 'Public Exams', route: '/marketplace' },
   ];
 
   const navBg = isDark

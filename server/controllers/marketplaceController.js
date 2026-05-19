@@ -361,7 +361,7 @@ const approveExamRequest = async (req, res) => {
     const accessCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     // Generate exam slug from exam title
-    const examSlug = SharedExam.generateSlug(exam?.title || 'marketplace-exam');
+    const examSlug = SharedExam.generateSlug(exam?.title || 'marketplace-exam') || 'marketplace-exam';
 
     const sharedExam = await SharedExam.create({
       exam: request.exam,

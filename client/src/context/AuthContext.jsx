@@ -225,7 +225,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Google OAuth login function
-  const googleLogin = async (googleData) => {
+  const googleLogin = async (googleData, saveNewUserSession = false) => {
     try {
       setLoading(true);
       setError(null);
@@ -251,11 +251,13 @@ export const AuthProvider = ({ children }) => {
         phone: response.data.phone,
       };
 
-      // Only persist session for existing (returning) users.
+      // Only persist session for existing (returning) users by default.
       // New users must complete registration first — do NOT save to
       // localStorage so the Register page's "already logged in" guard
       // does not fire and redirect them away to the dashboard.
-      if (!response.data.isNewUser) {
+      // However, if saveNewUserSession is true (e.g., for student registration),
+      // save the session even for new users.
+      if (!response.data.isNewUser || saveNewUserSession) {
         localStorage.setItem('user', JSON.stringify(user));
         localStorage.setItem('token', response.data.token);
         setUser(user);

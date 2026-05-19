@@ -243,7 +243,7 @@ const StudentRegister = () => {
           role: 'student',
           phone
         };
-        const { user, isNewUser } = await googleLogin(googleData);
+        const { user, isNewUser } = await googleLogin(googleData, true);
         if (isNewUser) {
           setSnackbar({ open: true, message: 'Student account created successfully!', severity: 'success' });
         } else {
@@ -293,7 +293,7 @@ const StudentRegister = () => {
   };
 
   // Handle Google OAuth response
-  const handleGoogleCredentialResponse = useCallback((response) => {
+  const handleGoogleCredentialResponse = useCallback(async (response) => {
     const credential = response.credential;
     setGoogleCredential(credential);
 
@@ -301,14 +301,37 @@ const StudentRegister = () => {
     const payload = JSON.parse(atob(credential.split('.')[1]));
     setGoogleUserData(payload);
 
-    // Pre-fill form with Google data and skip to review
-    setEmail(payload.email || '');
-    setFirstName(payload.given_name || '');
-    setLastName(payload.family_name || '');
-    setStep(5);
+    setLoading(true);
+    try {
+      // Check if user already exists by calling Google login with minimal data
+      const checkData = {
+        credential,
+        accountType: 'individual',
+        subscriptionPlan: 'free',
+        role: 'student'
+      };
+      const { isNewUser } = await googleLogin(checkData, false); // Don't save session yet for new users
 
-    setSnackbar({ open: true, message: 'Google account connected! Please complete your registration.', severity: 'success' });
-  }, []);
+      if (!isNewUser) {
+        // User already exists - log them in and redirect to dashboard
+        setSnackbar({ open: true, message: 'Welcome back! Logging you in...', severity: 'success' });
+        setTimeout(() => {
+          navigate('/student/dashboard');
+        }, 500);
+      } else {
+        // New user - show registration form
+        setEmail(payload.email || '');
+        setFirstName(payload.given_name || '');
+        setLastName(payload.family_name || '');
+        setStep(5);
+        setSnackbar({ open: true, message: 'Google account connected! Please complete your registration.', severity: 'success' });
+      }
+    } catch (err) {
+      setSnackbar({ open: true, message: 'Failed to connect Google account. Please try again.', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate, googleLogin]);
 
   // Initialize Google Sign-In
   useEffect(() => {

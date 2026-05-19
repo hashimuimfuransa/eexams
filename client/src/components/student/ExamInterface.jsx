@@ -264,6 +264,12 @@ const ExamInterface = () => {
     setLastQuestionSaved(false);
   }, [activeQuestionIndex, activeSection]);
 
+  // Detect if user is on a mobile device
+  const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+           window.innerWidth <= 768;
+  };
+
   // Format time remaining
   const formatTime = (milliseconds) => {
     const totalSeconds = Math.floor(milliseconds / 1000);
@@ -3915,9 +3921,13 @@ const ExamInterface = () => {
             borderTop: '4px solid',
             borderColor: 'primary.main',
             maxWidth: 500,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            cursor: isMobileDevice() ? 'pointer' : 'default'
           },
           zIndex: 9999 // Ensure it's on top of everything
+        }}
+        PaperProps={{
+          onClick: isMobileDevice() ? toggleFullscreen : undefined
         }}
       >
         <DialogTitle id="fullscreen-required-title" sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
@@ -3926,27 +3936,24 @@ const ExamInterface = () => {
             Fullscreen Mode Required
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent onClick={isMobileDevice() ? toggleFullscreen : undefined}>
           <Box sx={{ mt: 2, mb: 2 }}>
             <Typography variant="h5" gutterBottom color="primary.main" fontWeight="bold">
-              Fullscreen Mode Required
+              Fullscreen Required
             </Typography>
             <Typography variant="body1" paragraph fontWeight="medium">
-              You must enter fullscreen mode to start or continue this exam.
+              Enter fullscreen to start the exam.
             </Typography>
-            <Typography variant="body1" paragraph>
-              For exam security and to prevent cheating, this exam can only be taken in fullscreen mode. Your exam cannot proceed until you enter fullscreen mode.
-            </Typography>
-            <Typography variant="body1" paragraph>
-              Please click the button below to enter fullscreen mode. If your browser blocks the automatic fullscreen request,
-              you may need to enable it in your browser settings or manually click the fullscreen button.
-            </Typography>
-            <Box sx={{ mt: 3, p: 2, bgcolor: 'primary.lighter', borderRadius: 1, border: '1px solid', borderColor: 'primary.light' }}>
-              <Typography variant="body2" color="primary.dark" fontWeight="medium">
-                <InfoOutlined sx={{ fontSize: 'small', mr: 1, verticalAlign: 'middle' }} />
-                If you continue to have issues entering fullscreen mode, please contact your instructor or administrator.
+            {isMobileDevice() ? (
+              <Typography variant="body1" paragraph fontWeight="bold" color="primary.main">
+                <TouchApp sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Tap anywhere to enter fullscreen
               </Typography>
-            </Box>
+            ) : (
+              <Typography variant="body1" paragraph>
+                Click the button below to enter fullscreen.
+              </Typography>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -3954,13 +3961,13 @@ const ExamInterface = () => {
             onClick={toggleFullscreen}
             variant="contained"
             color="primary"
-            size="large"
+            size={isMobileDevice() ? "medium" : "large"}
             autoFocus
             startIcon={<Fullscreen />}
             sx={{
-              py: 2,
-              px: 4,
-              fontSize: '1.1rem',
+              py: isMobileDevice() ? 1.5 : 2,
+              px: isMobileDevice() ? 3 : 4,
+              fontSize: isMobileDevice() ? '1rem' : '1.1rem',
               fontWeight: 'bold',
               animation: 'pulse-warning 1.5s infinite',
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',

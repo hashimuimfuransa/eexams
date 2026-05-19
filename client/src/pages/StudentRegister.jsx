@@ -158,16 +158,13 @@ const StudentRegister = () => {
   const redirectUrl = searchParams.get('redirect') || '/student/dashboard';
 
   // Check if already logged in - redirect to intended destination
+  // Only redirect if user is already a student, otherwise allow registration flow
   useEffect(() => {
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (token && user.role) {
-      console.log('[StudentRegister] User already logged in, redirecting...');
-      if (redirectUrl && redirectUrl !== '/student/dashboard') {
-        navigate(redirectUrl);
-      } else {
-        navigate('/student/dashboard');
-      }
+    if (token && user.role === 'student') {
+      console.log('[StudentRegister] Student already logged in, redirecting to:', redirectUrl);
+      navigate(redirectUrl);
     }
   }, [navigate, redirectUrl]);
 
@@ -318,11 +315,11 @@ const StudentRegister = () => {
 
       // Check if user is already a student (regardless of isNewUser flag)
       if (user.role === 'student' || !isNewUser) {
-        // User already exists as a student - log them in and redirect to dashboard
-        console.log('[Google Auth] Redirecting to dashboard');
+        // User already exists as a student - log them in and redirect to intended destination
+        console.log('[Google Auth] Redirecting to:', redirectUrl);
         setSnackbar({ open: true, message: 'Welcome back! Logging you in...', severity: 'success' });
         setTimeout(() => {
-          navigate('/student/dashboard');
+          navigate(redirectUrl);
         }, 500);
       } else {
         // New user or user with different role - show registration form

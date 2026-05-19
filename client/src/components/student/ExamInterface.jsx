@@ -792,13 +792,32 @@ const ExamInterface = () => {
     // Function to handle visibility change (tab switching)
     const handleVisibilityChange = () => {
       if (document.hidden && !examCompleted) {
-        // User switched to another tab
+        // User switched to another tab - start 30 second timer
         setWarningCount(prev => prev + 1);
         setSnackbar({
           open: true,
-          message: 'Switching tabs during the exam is not allowed. This incident has been recorded.',
+          message: 'Switching tabs during the exam is not allowed. Exam will auto-submit in 30 seconds if you do not return.',
           severity: 'error'
         });
+
+        // Start 30 second timer for auto-submit
+        window.visibilityTimer = setTimeout(() => {
+          if (!examCompleted && handleSubmitExamRef.current) {
+            console.log('🔒 Auto-submitting exam due to screen absence (30 seconds)');
+            handleSubmitExamRef.current();
+          }
+        }, 30000); // 30 seconds
+      } else {
+        // User returned to the screen - cancel the timer if it exists
+        if (window.visibilityTimer) {
+          clearTimeout(window.visibilityTimer);
+          window.visibilityTimer = null;
+          setSnackbar({
+            open: true,
+            message: 'You have returned to the exam. Auto-submit timer cancelled.',
+            severity: 'info'
+          });
+        }
       }
     };
 

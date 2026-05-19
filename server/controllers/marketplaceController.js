@@ -360,10 +360,14 @@ const approveExamRequest = async (req, res) => {
     // Generate a unique 6-digit access code
     const accessCode = Math.floor(100000 + Math.random() * 900000).toString();
 
+    // Generate exam slug from exam title
+    const examSlug = SharedExam.generateSlug(exam?.title || 'marketplace-exam');
+
     const sharedExam = await SharedExam.create({
       exam: request.exam,
       sharedBy: req.user._id,
       shareToken,
+      examSlug,
       shareType: 'link',
       settings: {
         publicAccess: true,

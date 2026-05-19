@@ -18,6 +18,6 @@ services:
       - key: GEMINI_API_KEY
         sync: false # This will be set manually in the Render dashboard
       - key: FRONTEND_URL
-        value: https://eexams-z1ob.onrender.com
+        value: https://www.eexams.net
       - key: UPLOADS_PATH
         value: /app/tmp/uploads

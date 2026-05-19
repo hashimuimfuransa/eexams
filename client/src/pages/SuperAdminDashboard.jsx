@@ -179,6 +179,10 @@ function OrganizationsSection() {
   const [typeFilter, setTypeFilter] = useState('');
   const [sortBy, setSortBy] = useState('name');
 
+  // Delete organization state
+  const [deleteDialog, setDeleteDialog] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(()=>{
     api.get('/superadmin/organizations').then(r=>{
       const data = (r.data||[]).map(o => {
@@ -242,6 +246,20 @@ function OrganizationsSection() {
   };
   const handleToggle=async(o)=>{
     try{await api.put(`/superadmin/organizations/${o._id}/toggle-block`);setAllOrgs(p=>p.map(x=>x._id===o._id?{...x,isBlocked:!x.isBlocked}:x));}catch{}
+  };
+
+  const handleDeleteOrganization=async()=>{
+    if(!deleteDialog)return;
+    setDeleting(true);
+    try{
+      await api.delete(`/superadmin/organizations/${deleteDialog._id}`);
+      setAllOrgs(p=>p.filter(o=>o._id!==deleteDialog._id));
+      setDeleteDialog(null);
+    }catch(err){
+      console.error('Delete organization error:',err);
+    }finally{
+      setDeleting(false);
+    }
   };
 
   const StatBadge = ({ icon, value, label, color }) => (
@@ -339,6 +357,13 @@ function OrganizationsSection() {
                           {o.isBlocked?<CheckCircle fontSize="small"/>:<Block fontSize="small"/>}
                         </IconButton>
                       </Tooltip>
+                      {isOrg && (
+                        <Tooltip title="Delete Organization">
+                          <IconButton size="small" onClick={()=>setDeleteDialog(o)} sx={{color:'#EF4444',bgcolor:'rgba(239,68,68,0.1)','&:hover':{bgcolor:'rgba(239,68,68,0.2)'},width:32,height:32}}>
+                            <Delete fontSize="small"/>
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </Box>
                   </Box>
                 </Paper>
@@ -487,6 +512,45 @@ function OrganizationsSection() {
           <Button onClick={()=>setSelected(null)} sx={{borderRadius:2,textTransform:'none',fontWeight:600}}>Cancel</Button>
           <Button variant="contained" onClick={handleSave} disabled={saving} sx={{borderRadius:2,background:gradients.brand,textTransform:'none',fontWeight:700,px:3}}>
             {saving?'Saving…':'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Organization Confirmation Dialog */}
+      <Dialog open={!!deleteDialog} onClose={()=>setDeleteDialog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{fontWeight:700}}>
+          Delete Organization
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{mb:2}}>Are you sure you want to <b>permanently delete</b> this organization?</Typography>
+          <Box sx={{p:2,bgcolor:'#FEF2F2',borderRadius:2,border:'1px solid #FECACA',mb:2}}>
+            <Typography variant="body2" fontWeight={600} sx={{color:'#7F1D1D'}}>⚠️ Warning: This action cannot be undone!</Typography>
+            <Typography variant="body2" sx={{color:'#991B1B',mt:0.5}}>All teachers, students, exams, and results associated with this organization will be permanently removed.</Typography>
+          </Box>
+          {deleteDialog&&(
+            <Box sx={{display:'flex',alignItems:'center',gap:2,p:2,bgcolor:'#F8FAFC',borderRadius:2}}>
+              <Avatar sx={{width:40,height:40,bgcolor:tokens.primary,color:'white'}}>{deleteDialog.organization?.charAt(0)||deleteDialog.firstName?.charAt(0)}</Avatar>
+              <Box>
+                <Typography fontWeight={600}>{deleteDialog.organization||`${deleteDialog.firstName} ${deleteDialog.lastName}`}</Typography>
+                <Typography variant="caption" sx={{color:tokens.textMuted}}>{deleteDialog.email} • {deleteDialog.role}</Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{px:3,pb:2}}>
+          <Button onClick={()=>setDeleteDialog(null)} disabled={deleting} sx={{textTransform:'none'}}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleDeleteOrganization}
+            disabled={deleting}
+            sx={{
+              textTransform:'none',
+              bgcolor:'#EF4444',
+              '&:hover':{bgcolor:'#DC2626'}
+            }}
+            startIcon={deleting?<CircularProgress size={16} sx={{color:'white'}}/>:<Delete/>}
+          >
+            {deleting?'Deleting...':'Delete Permanently'}
           </Button>
         </DialogActions>
       </Dialog>

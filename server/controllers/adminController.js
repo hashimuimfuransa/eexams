@@ -548,43 +548,56 @@ const getExamResults = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found or not authorized' });
     }
 
-    // Get students created by this admin OR by teachers under this admin
-    let studentIds;
-    if (req.user.role === 'admin') {
-      // For admins: include students created by teachers under this admin
-      const teachers = await User.find({
-        role: 'teacher',
-        parentAdmin: req.orgAdminId
-      }).select('_id').lean();
-
-      const teacherIds = teachers.map(t => t._id);
-      const students = await User.find({
-        role: 'student',
-        $or: [
-          { createdBy: req.orgAdminId },
-          { createdBy: { $in: teacherIds } }
-        ]
-      }).select('_id');
-
-      studentIds = students.map(student => student._id);
+    // For public exams, show ALL results regardless of who created the student
+    // For private exams, only show results from students created by this admin or their teachers
+    let results;
+    if (exam.isPubliclyListed) {
+      // Public exam: show all results
+      results = await Result.find({
+        exam: examId
+      })
+        .populate('student', 'fullName firstName lastName studentId email organization studentClass')
+        .populate('exam', 'title')
+        .sort({ totalScore: -1, endTime: -1 });
     } else {
-      // For teachers: show students created by themselves or by their admin
-      const students = await User.find({
-        role: 'student',
-        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
-      }).select('_id');
+      // Private exam: get students created by this admin OR by teachers under this admin
+      let studentIds;
+      if (req.user.role === 'admin') {
+        // For admins: include students created by teachers under this admin
+        const teachers = await User.find({
+          role: 'teacher',
+          parentAdmin: req.orgAdminId
+        }).select('_id').lean();
 
-      studentIds = students.map(student => student._id);
+        const teacherIds = teachers.map(t => t._id);
+        const students = await User.find({
+          role: 'student',
+          $or: [
+            { createdBy: req.orgAdminId },
+            { createdBy: { $in: teacherIds } }
+          ]
+        }).select('_id');
+
+        studentIds = students.map(student => student._id);
+      } else {
+        // For teachers: show students created by themselves or by their admin
+        const students = await User.find({
+          role: 'student',
+          $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+        }).select('_id');
+
+        studentIds = students.map(student => student._id);
+      }
+
+      // Get results for this exam from students created by this admin or their teachers
+      results = await Result.find({
+        exam: examId,
+        student: { $in: studentIds }
+      })
+        .populate('student', 'fullName firstName lastName studentId email organization studentClass')
+        .populate('exam', 'title')
+        .sort({ totalScore: -1, endTime: -1 });
     }
-
-    // Get results for this exam from students created by this admin or their teachers
-    const results = await Result.find({
-      exam: examId,
-      student: { $in: studentIds }
-    })
-      .populate('student', 'fullName firstName lastName studentId email organization studentClass')
-      .populate('exam', 'title')
-      .sort({ totalScore: -1, endTime: -1 });
 
     // Format results with additional calculated fields
     const formattedResults = results.map(result => {
@@ -824,49 +837,68 @@ const getExamLeaderboard = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found or access denied' });
     }
 
-    // Get students created by this admin OR by teachers under this admin
-    let studentIds;
-    if (req.user.role === 'admin') {
-      // For admins: include students created by teachers under this admin
-      const teachers = await User.find({
-        role: 'teacher',
-        parentAdmin: req.orgAdminId
-      }).select('_id').lean();
-
-      const teacherIds = teachers.map(t => t._id);
-      const students = await User.find({
-        role: 'student',
-        $or: [
-          { createdBy: req.orgAdminId },
-          { createdBy: { $in: teacherIds } }
-        ]
-      }).select('_id').lean();
-
-      studentIds = students.map(student => student._id);
-    } else {
-      // For teachers: show students created by themselves or by their admin
-      const students = await User.find({
-        role: 'student',
-        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
-      }).select('_id').lean();
-
-      studentIds = students.map(student => student._id);
-    }
-
-    // Get completed results for this exam from admin's students and students of their teachers
-    const results = await Result.find({
-      exam: examId,
-      isCompleted: true,
-      student: { $in: studentIds }
-    })
-      .populate({
-        path: 'student',
-        select: 'firstName lastName email organization class',
-        options: { virtuals: true }
+    // For public exams, show ALL results regardless of who created the student
+    // For private exams, only show results from students created by this admin or their teachers
+    let results;
+    if (exam.isPubliclyListed) {
+      // Public exam: show all completed results
+      results = await Result.find({
+        exam: examId,
+        isCompleted: true
       })
-      .populate('exam', 'title maxPossibleScore')
-      .select('totalScore maxPossibleScore startTime endTime')
-      .limit(100); // Limit for performance
+        .populate({
+          path: 'student',
+          select: 'firstName lastName email organization class',
+          options: { virtuals: true }
+        })
+        .populate('exam', 'title maxPossibleScore')
+        .select('totalScore maxPossibleScore startTime endTime')
+        .limit(100); // Limit for performance
+    } else {
+      // Private exam: get students created by this admin OR by teachers under this admin
+      let studentIds;
+      if (req.user.role === 'admin') {
+        // For admins: include students created by teachers under this admin
+        const teachers = await User.find({
+          role: 'teacher',
+          parentAdmin: req.orgAdminId
+        }).select('_id').lean();
+
+        const teacherIds = teachers.map(t => t._id);
+        const students = await User.find({
+          role: 'student',
+          $or: [
+            { createdBy: req.orgAdminId },
+            { createdBy: { $in: teacherIds } }
+          ]
+        }).select('_id').lean();
+
+        studentIds = students.map(student => student._id);
+      } else {
+        // For teachers: show students created by themselves or by their admin
+        const students = await User.find({
+          role: 'student',
+          $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+        }).select('_id').lean();
+
+        studentIds = students.map(student => student._id);
+      }
+
+      // Get completed results for this exam from admin's students and students of their teachers
+      results = await Result.find({
+        exam: examId,
+        isCompleted: true,
+        student: { $in: studentIds }
+      })
+        .populate({
+          path: 'student',
+          select: 'firstName lastName email organization class',
+          options: { virtuals: true }
+        })
+        .populate('exam', 'title maxPossibleScore')
+        .select('totalScore maxPossibleScore startTime endTime')
+        .limit(100); // Limit for performance
+    }
 
     // Format the results for the leaderboard
     const leaderboardData = results.map(result => {

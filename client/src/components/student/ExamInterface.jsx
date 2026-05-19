@@ -775,9 +775,61 @@ const ExamInterface = () => {
           return false;
         }
 
-        // Prevent PrintScreen
-        if (e.key === 'PrintScreen') {
+        // Prevent PrintScreen (various combinations)
+        if (e.key === 'PrintScreen' || e.key === 'SysRq') {
           e.preventDefault();
+          // Clear clipboard to prevent screenshot capture
+          navigator.clipboard.writeText('');
+          setSnackbar({
+            open: true,
+            message: 'Screen capture is not allowed during the exam.',
+            severity: 'warning'
+          });
+          setWarningCount(prev => prev + 1);
+          return false;
+        }
+
+        // Prevent Windows screenshot shortcuts (Win+Shift+S, Win+PrintScreen)
+        if ((e.metaKey || e.key === 'Meta') && (e.shiftKey && e.key === 'S')) {
+          e.preventDefault();
+          setSnackbar({
+            open: true,
+            message: 'Screen capture is not allowed during the exam.',
+            severity: 'warning'
+          });
+          setWarningCount(prev => prev + 1);
+          return false;
+        }
+
+        // Prevent Mac screenshot shortcuts (Cmd+Shift+3, Cmd+Shift+4, Cmd+Shift+5)
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5')) {
+          e.preventDefault();
+          setSnackbar({
+            open: true,
+            message: 'Screen capture is not allowed during the exam.',
+            severity: 'warning'
+          });
+          setWarningCount(prev => prev + 1);
+          return false;
+        }
+
+        // Prevent Ctrl+PrintScreen
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'PrintScreen' || e.key === 'SysRq')) {
+          e.preventDefault();
+          navigator.clipboard.writeText('');
+          setSnackbar({
+            open: true,
+            message: 'Screen capture is not allowed during the exam.',
+            severity: 'warning'
+          });
+          setWarningCount(prev => prev + 1);
+          return false;
+        }
+
+        // Prevent Alt+PrintScreen
+        if (e.altKey && (e.key === 'PrintScreen' || e.key === 'SysRq')) {
+          e.preventDefault();
+          navigator.clipboard.writeText('');
           setSnackbar({
             open: true,
             message: 'Screen capture is not allowed during the exam.',
@@ -792,6 +844,9 @@ const ExamInterface = () => {
     // Function to handle visibility change (tab switching)
     const handleVisibilityChange = () => {
       if (document.hidden && !examCompleted) {
+        // Add blur class to prevent screenshots when tab is inactive
+        document.body.classList.add('blur-on-inactive');
+
         // User switched to another tab - start 30 second timer
         setWarningCount(prev => prev + 1);
         setSnackbar({
@@ -808,6 +863,9 @@ const ExamInterface = () => {
           }
         }, 30000); // 30 seconds
       } else {
+        // Remove blur class when user returns
+        document.body.classList.remove('blur-on-inactive');
+
         // User returned to the screen - cancel the timer if it exists
         if (window.visibilityTimer) {
           clearTimeout(window.visibilityTimer);
@@ -820,6 +878,62 @@ const ExamInterface = () => {
         }
       }
     };
+
+    // Monitor clipboard for image data (indicates screenshot)
+    const handleClipboardChange = async () => {
+      if (!examCompleted) {
+        try {
+          const clipboardItems = await navigator.clipboard.read();
+          for (const item of clipboardItems) {
+            const types = item.types;
+            // Check if clipboard contains image data
+            if (types.some(type => type.startsWith('image/'))) {
+              setWarningCount(prev => prev + 1);
+              setSnackbar({
+                open: true,
+                message: 'Screenshot detected! Screen capture is not allowed during the exam.',
+                severity: 'error'
+              });
+              // Clear the clipboard
+              await navigator.clipboard.writeText('');
+              break;
+            }
+          }
+        } catch (err) {
+          // Clipboard access might be denied, which is normal
+          // Don't show error for this
+        }
+      }
+    };
+
+    // Detect Screen Capture API usage
+    const handleScreenCaptureRequest = async () => {
+      if (!examCompleted) {
+        setWarningCount(prev => prev + 1);
+        setSnackbar({
+          open: true,
+          message: 'Screen capture attempt detected! This is not allowed during the exam.',
+          severity: 'error'
+        });
+        // Attempt to cancel any active screen capture
+        try {
+          if (document.pictureInPictureElement) {
+            document.exitPictureInPicture();
+          }
+        } catch (err) {
+          // Ignore errors
+        }
+      }
+    };
+
+    // Override navigator.mediaDevices.getDisplayMedia to detect screen capture attempts
+    const originalGetDisplayMedia = navigator.mediaDevices?.getDisplayMedia;
+    if (originalGetDisplayMedia && !examCompleted) {
+      navigator.mediaDevices.getDisplayMedia = async function(...args) {
+        handleScreenCaptureRequest();
+        throw new Error('Screen capture is not allowed during exams');
+      };
+    }
 
     // Add event listener to prevent context menu
     const handleContextMenu = (e) => {
@@ -836,6 +950,11 @@ const ExamInterface = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     document.addEventListener('contextmenu', handleContextMenu);
 
+    // Monitor clipboard changes periodically
+    const clipboardInterval = setInterval(() => {
+      handleClipboardChange();
+    }, 2000); // Check every 2 seconds
+
     // Push current state to history to enable popstate detection
     window.history.pushState(null, '', window.location.pathname);
 
@@ -846,6 +965,15 @@ const ExamInterface = () => {
       window.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.removeEventListener('contextmenu', handleContextMenu);
+      clearInterval(clipboardInterval);
+
+      // Restore original getDisplayMedia function
+      if (originalGetDisplayMedia) {
+        navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia;
+      }
+
+      // Remove blur class on cleanup
+      document.body.classList.remove('blur-on-inactive');
     };
   }, [examCompleted]);
 
@@ -2633,6 +2761,14 @@ const ExamInterface = () => {
         py: 2
       }}
     >
+      {/* Screen capture prevention overlay */}
+      {securityActive && !examCompleted && (
+        <>
+          <div className="exam-capture-prevention" />
+          <div className="exam-watermark" />
+        </>
+      )}
+
       <Container
         maxWidth="lg"
         sx={{

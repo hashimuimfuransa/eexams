@@ -1,4 +1,17 @@
 services:
+  # Frontend service
+  - type: web
+    name: eexams-frontend
+    env: node
+    plan: free
+    buildCommand: cd client && npm install && npm run build
+    startCommand: cd client && npm install -g serve && serve -s dist -l 10000
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_URL
+        value: https://eexamsbackend.onrender.com/api
+  
   # Backend API service
   - type: web
     name: nationalscore-api

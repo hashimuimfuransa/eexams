@@ -267,9 +267,7 @@ const StudentRegister = () => {
         setSnackbar({ open: true, message: 'Student account created successfully!', severity: 'success' });
       }
 
-      setTimeout(() => {
-        navigate(redirectUrl);
-      }, 1500);
+      navigate(redirectUrl);
     } catch (err) {
       let errorMessage = 'Failed to create account. Please try again.';
       let snackbarMessage = 'Registration failed';

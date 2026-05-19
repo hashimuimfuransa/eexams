@@ -178,6 +178,11 @@ export const AuthProvider = ({ children }) => {
         subscriptionPlan: userData.subscriptionPlan || 'free',
       };
 
+      // Add role if provided (important for students)
+      if (userData.role) {
+        registrationData.role = userData.role;
+      }
+
       // Add organization-specific fields only for organization accounts
       if (userData.accountType === 'organization') {
         registrationData.organization = userData.organization || '';

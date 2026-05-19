@@ -19,6 +19,7 @@ app.use(compression());
 const allowedOrigins = [
   'http://localhost:3000',
   'https://eexams-z1ob.onrender.com',
+  'https://www.eexams.net/',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 

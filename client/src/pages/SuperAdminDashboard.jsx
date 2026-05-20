@@ -67,7 +67,7 @@ export default function SuperAdminDashboard() {
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Super Admin" />}
       topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub="Platform-wide activity and management" user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Super Admin" onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
-      {activeSection === 'home'          && <OverviewSection stats={stats} statsLoading={statsLoading} searchQuery={searchQuery} />}
+      {activeSection === 'home'          && <OverviewSection stats={stats} statsLoading={statsLoading} searchQuery={searchQuery} setActiveSection={setActiveSection} />}
       {activeSection === 'organizations' && <OrganizationsSection searchQuery={searchQuery} />}
       {activeSection === 'users'         && <AllUsersSection searchQuery={searchQuery} />}
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
@@ -78,7 +78,7 @@ export default function SuperAdminDashboard() {
 }
 
 /* ── OVERVIEW ── */
-function OverviewSection({ stats, statsLoading }) {
+function OverviewSection({ stats, statsLoading, setActiveSection }) {
   const [orgs, setOrgs] = useState([]);
   const [loadingOrgs, setLoadingOrgs] = useState(true);
   useEffect(() => { api.get('/superadmin/organizations').then(r => setOrgs((r.data||[]).slice(0,5))).catch(()=>{}).finally(()=>setLoadingOrgs(false)); }, []);
@@ -144,7 +144,7 @@ function OverviewSection({ stats, statsLoading }) {
         {/* Recent orgs */}
         <Grid item xs={12} md={7}>
           <Paper elevation={0} sx={{ p:2.5, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white' }}>
-            <SectionTitle action={<Button size="small" sx={{color:tokens.accent,fontWeight:700,fontSize:12,textTransform:'none'}}>View All</Button>}>Recent Organizations</SectionTitle>
+            <SectionTitle action={<Button size="small" onClick={() => setActiveSection('organizations')} sx={{color:tokens.accent,fontWeight:700,fontSize:12,textTransform:'none'}}>View All</Button>}>Recent Organizations</SectionTitle>
             {loadingOrgs?<CircularProgress size={22} sx={{color:tokens.accent}}/>:orgs.length===0?<Typography sx={{color:tokens.textMuted,fontSize:13}}>No organizations yet.</Typography>:(
               <TableContainer><Table size="small">
                 <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Organization','Plan','Status'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
@@ -161,6 +161,25 @@ function OverviewSection({ stats, statsLoading }) {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Quick Actions */}
+      <Paper elevation={0} sx={{ mt:2.5, p:2.5, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white' }}>
+        <Typography fontWeight={700} sx={{ fontSize:15, fontFamily:"'DM Sans',sans-serif", mb:2 }}>Quick Actions</Typography>
+        <Box sx={{ display:'flex', flexWrap:'wrap', gap:1.5 }}>
+          {[
+            { label:'Organizations', icon:<Business sx={{fontSize:18}}/>,       color:tokens.primary, bg:'rgba(13,64,108,0.07)',   section:'organizations' },
+            { label:'All Users',     icon:<People sx={{fontSize:18}}/>,         color:'#6366F1',      bg:'rgba(99,102,241,0.09)',  section:'users' },
+            { label:'Subscriptions', icon:<AttachMoney sx={{fontSize:18}}/>,    color:tokens.accent,  bg:'rgba(12,189,115,0.09)',  section:'subscriptions' },
+            { label:'Analytics',     icon:<TrendingUp sx={{fontSize:18}}/>,     color:tokens.warning, bg:'rgba(245,158,11,0.09)',  section:'analytics' },
+            { label:'Settings',      icon:<Settings sx={{fontSize:18}}/>,       color:'#64748B',      bg:'rgba(100,116,139,0.09)', section:'settings' },
+          ].map((a,i)=>(
+            <Box key={i} onClick={()=>setActiveSection(a.section)} sx={{ display:'flex', alignItems:'center', gap:1.25, px:{xs:1.5,sm:2.5}, py:1.5, borderRadius:2.5, bgcolor:a.bg, cursor:'pointer', flex:'1 1 120px', minWidth:{xs:0,sm:120}, border:`1px solid ${a.color}18`, transition:'opacity 0.15s', '&:hover':{opacity:0.82} }}>
+              <Box sx={{color:a.color}}>{a.icon}</Box>
+              <Typography fontWeight={700} sx={{color:a.color, fontSize:13.5, fontFamily:"'DM Sans',sans-serif"}}>{a.label}</Typography>
+            </Box>
+          ))}
+        </Box>
+      </Paper>
     </Box>
   );
 }

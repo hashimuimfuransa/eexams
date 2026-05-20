@@ -89,7 +89,7 @@ export default function OrgAdminDashboard() {
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="School Admin" />}
       topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub={user?.organization ? `${user.organization} · School Admin` : "Here's what's happening today."} user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="School Admin" onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
-      {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={filteredTeachers} exams={filteredExams} results={results} />}
+      {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={filteredTeachers} exams={filteredExams} results={results} setActiveSection={setActiveSection} />}
       {activeSection === 'teachers'  && <TeachersSection teachers={filteredTeachers} setTeachers={setTeachers} />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} />}
@@ -101,7 +101,7 @@ export default function OrgAdminDashboard() {
 }
 
 /* ── OVERVIEW ── */
-function OverviewSection({ stats, statsLoading, teachers, exams, results }) {
+function OverviewSection({ stats, statsLoading, teachers, exams, results, setActiveSection }) {
   const avg = results.length ? Math.round(results.reduce((s,r)=>s+(r.percentage??0),0)/results.length) : 0;
   const perfData = results.slice(-7).map(r => Math.round(r.percentage ?? 0));
 
@@ -139,7 +139,7 @@ function OverviewSection({ stats, statsLoading, teachers, exams, results }) {
         {/* Recent Teachers */}
         <Grid item xs={12} sm={5} md={5}>
           <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
-            <SectionTitle action={<Button size="small" sx={{ color: tokens.accent, fontWeight: 700, fontSize: 12, textTransform: 'none' }}>View All</Button>}>Recent Teachers</SectionTitle>
+            <SectionTitle action={<Button size="small" onClick={() => setActiveSection('teachers')} sx={{ color: tokens.accent, fontWeight: 700, fontSize: 12, textTransform: 'none' }}>View All</Button>}>Recent Teachers</SectionTitle>
             {teachers.length === 0 ? <Typography sx={{ color: tokens.textMuted, fontSize: 13 }}>No teachers yet.</Typography> :
               teachers.slice(0, 5).map((t, i) => (
                 <Box key={t._id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.25, borderBottom: i < 4 ? `1px solid ${tokens.surfaceBorder}` : 'none' }}>
@@ -160,7 +160,7 @@ function OverviewSection({ stats, statsLoading, teachers, exams, results }) {
             <SectionTitle action={<Chip label="This Week" size="small" sx={{ bgcolor: '#F1F5F9', color: tokens.textSecondary, fontSize: 11 }} />}>Performance Overview</SectionTitle>
             <AreaChart data={perfData.length >= 3 ? perfData : [55,65,50,80,70,85,75]} color={tokens.accent} />
             {avg > 0 && <Box sx={{ textAlign: 'center', mt: 0.5 }}><Chip label={`${avg}% Average Score`} sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, fontSize: 12 }} /></Box>}
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />}
+            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('analytics')}
               sx={{ mt: 1.5, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
               View Analytics
             </Button>
@@ -173,12 +173,12 @@ function OverviewSection({ stats, statsLoading, teachers, exams, results }) {
         <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "'DM Sans',sans-serif", mb: 2 }}>Quick Actions</Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
           {[
-            { label: 'Add Teacher',    icon: <PersonAdd sx={{ fontSize: 18 }} />,  color: tokens.primary, bg: 'rgba(13,64,108,0.07)' },
-            { label: 'Create Exam',    icon: <Add sx={{ fontSize: 18 }} />,         color: tokens.accent,  bg: 'rgba(12,189,115,0.09)' },
-            { label: 'View Students',  icon: <People sx={{ fontSize: 18 }} />,      color: '#6366F1',      bg: 'rgba(99,102,241,0.09)' },
-            { label: 'View Reports',   icon: <BarChart sx={{ fontSize: 18 }} />,    color: tokens.warning, bg: 'rgba(245,158,11,0.09)' },
+            { label: 'Add Teacher',    icon: <PersonAdd sx={{ fontSize: 18 }} />,  color: tokens.primary, bg: 'rgba(13,64,108,0.07)',   section: 'teachers' },
+            { label: 'View Exams',     icon: <Assignment sx={{ fontSize: 18 }} />, color: tokens.accent,  bg: 'rgba(12,189,115,0.09)',  section: 'exams' },
+            { label: 'View Students',  icon: <People sx={{ fontSize: 18 }} />,      color: '#6366F1',      bg: 'rgba(99,102,241,0.09)',  section: 'students' },
+            { label: 'Analytics',      icon: <BarChart sx={{ fontSize: 18 }} />,    color: tokens.warning, bg: 'rgba(245,158,11,0.09)',  section: 'analytics' },
           ].map((a, i) => (
-            <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderRadius: 2.5, bgcolor: a.bg, cursor: 'pointer', flex: '1 1 130px', minWidth: { xs: 0, sm: 130 }, border: `1px solid ${a.color}18`, '&:hover': { opacity: 0.82 } }}>
+            <Box key={i} onClick={() => setActiveSection(a.section)} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderRadius: 2.5, bgcolor: a.bg, cursor: 'pointer', flex: '1 1 130px', minWidth: { xs: 0, sm: 130 }, border: `1px solid ${a.color}18`, transition: 'opacity 0.15s', '&:hover': { opacity: 0.82 } }}>
               <Box sx={{ color: a.color }}>{a.icon}</Box>
               <Typography fontWeight={700} sx={{ color: a.color, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>{a.label}</Typography>
             </Box>

@@ -681,10 +681,6 @@ const getNavigationItems = (user) => {
     { id: 'settings',  label: 'Settings',   icon: <Settings sx={{ fontSize: 20 }} /> },
   ];
 
-  // Check if user or organization has custom enterprise plan
-  const isCustomEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
-                            (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
-
   // If not custom enterprise, remove AI-related features from home section
   // (The AI tab is part of the home section, not a separate nav item)
   return baseNav;
@@ -858,9 +854,8 @@ const QUESTION_TYPES_META = [
 /* ── HOME ── */
 function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const isCustomEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
-                             (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
-  const [aiMode, setAiMode] = useState(isCustomEnterprise ? 'describe' : 'upload');
+  const { canUseAdvancedAI, hasMarketplaceAccess } = usePlan();
+  const [aiMode, setAiMode] = useState(canUseAdvancedAI ? 'describe' : 'upload');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, sections: [{ name: 'A', description: 'Section A', questions: [] }] });
   const [manualSection, setManualSection] = useState(0);
   const [manualQ, setManualQ] = useState({ text: '', type: 'multiple-choice', points: 2, difficulty: 'medium', options: [{ text: '', isCorrect: false, letter: 'A' }, { text: '', isCorrect: false, letter: 'B' }, { text: '', isCorrect: false, letter: 'C' }, { text: '', isCorrect: false, letter: 'D' }], correctAnswer: '' });
@@ -1315,7 +1310,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     { label: 'Total Students', value: stats?.totalStudents ?? 0,    sub: '+18 this week', subColor: '#6366F1',       iconBg: 'rgba(99,102,241,0.1)',  icon: <People sx={{ color: '#6366F1', fontSize: { xs: 20, sm: 24 } }} />,           spark: [200,220,230,240,244,246,248] },
     { label: 'Average Score',  value: `${Math.round(stats?.averageScore ?? 0)}%`, sub: '+6% this week', subColor: tokens.warning, iconBg: 'rgba(245,158,11,0.1)', icon: <BarChart sx={{ color: tokens.warning, fontSize: { xs: 20, sm: 24 } }} />, spark: [65,70,68,75,72,78,75] },
     { label: 'Pass Rate',      value: `${stats?.passRate ?? 0}%`,     sub: '+4% this week', subColor: '#EC4899',       iconBg: 'rgba(236,72,153,0.1)',  icon: <CheckCircle sx={{ color: '#EC4899', fontSize: { xs: 20, sm: 24 } }} />,        spark: [70,72,74,76,75,78,77] },
-    ...(isCustomEnterprise ? [{ label: 'Pending Approvals', value: pendingApprovals ?? 0, sub: 'Auto-refreshing', subColor: '#F59E0B', iconBg: 'rgba(245,158,11,0.1)', icon: <HourglassEmpty sx={{ color: '#F59E0B', fontSize: { xs: 20, sm: 24 } }} />, spark: [2,3,1,4,2,5,3] }] : []),
+    ...(hasMarketplaceAccess ? [{ label: 'Pending Approvals', value: pendingApprovals ?? 0, sub: 'Auto-refreshing', subColor: '#F59E0B', iconBg: 'rgba(245,158,11,0.1)', icon: <HourglassEmpty sx={{ color: '#F59E0B', fontSize: { xs: 20, sm: 24 } }} />, spark: [2,3,1,4,2,5,3] }] : []),
   ];
 
   return (
@@ -1356,7 +1351,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
         </Box>
 
         <Box sx={{ display: 'flex', bgcolor: 'white', borderBottom: `1px solid ${tokens.surfaceBorder}`, flexWrap: isXs ? 'wrap' : 'nowrap' }}>
-          {[...(isCustomEnterprise ? [{ key: 'describe', label: isXs ? '✏ Describe' : '✏  Describe' }] : []), { key: 'upload', label: isXs ? '☁ Upload' : '☁  Upload Doc' }, { key: 'manual', label: isXs ? '✍ Manual' : '✍  Manual Build' }].map(tab => (
+          {[...(canUseAdvancedAI ? [{ key: 'describe', label: isXs ? '✏ Describe' : '✏  Describe' }] : []), { key: 'upload', label: isXs ? '☁ Upload' : '☁  Upload Doc' }, { key: 'manual', label: isXs ? '✍ Manual' : '✍  Manual Build' }].map(tab => (
             <Button key={tab.key} onClick={() => setAiMode(tab.key)} sx={{ flex: isXs ? '1 1 33%' : 1, py: isXs ? 1 : 1.5, fontWeight: 600, fontSize: { xs: 10, sm: 13 }, textTransform: 'none', borderRadius: 0, fontFamily: "DM Sans,sans-serif", borderBottom: aiMode === tab.key ? `2.5px solid ${tokens.primary}` : '2.5px solid transparent', color: aiMode === tab.key ? tokens.primary : tokens.textMuted, minWidth: isXs ? 0 : 'auto' }}>
               {tab.label}
             </Button>
@@ -2656,7 +2651,7 @@ function PublishDialog({ examId, onClose }) {
           </Box>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {isCustomEnterprise && (
+          {hasMarketplaceAccess && (
             <Button
               size="small"
               variant="outlined"
@@ -4326,7 +4321,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
     const interval = setInterval(fetchPendingApprovals, 30000);
 
     return () => clearInterval(interval);
-  }, [exams, isCustomEnterprise]);
+  }, [exams, hasMarketplaceAccess]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -4447,7 +4442,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
 
       <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden', overflowX: 'auto' }}>
           <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 650 }}>
-            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>{['Title', 'Status', 'Questions', 'Time', 'Created', ...(isCustomEnterprise ? ['Pending Approvals'] : []), 'Actions'].map(h => <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 1.5, py: 1 }}>{h}</TableCell>)}</TableRow></TableHead>
+            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>{['Title', 'Status', 'Questions', 'Time', 'Created', ...(hasMarketplaceAccess ? ['Pending Approvals'] : []), 'Actions'].map(h => <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 1.5, py: 1 }}>{h}</TableCell>)}</TableRow></TableHead>
             <TableBody>
               {filteredExams.length === 0 ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>{exams.length === 0 ? 'No exams yet.' : 'No exams match your filters.'}</TableCell></TableRow> :
                 filteredExams.map(e => {
@@ -6327,4 +6322,5 @@ function TemplatesSection({ exams, setExams }) {
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')} message={snack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
+}
 }

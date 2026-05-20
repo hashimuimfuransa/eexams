@@ -29,6 +29,7 @@ const {
   updateScheduledExam,
   getAllResults,
   getStudentPerformanceAnalytics,
+  getStudentManagementData,
   debugAdminData,
   getStudentResultsForRegrade,
   regradeStudentResult,
@@ -156,6 +157,9 @@ router.get('/leaderboard', getOverallLeaderboard);
 router.get('/results/:resultId', getDetailedResult);
 router.get('/exams/:examId/results/export', exportExamResults);
 router.get('/results', getAllResults);
+
+// Student management data (grades + performance, no plan restriction)
+router.get('/student-management', getStudentManagementData);
 
 // Analytics routes - requires Basic plan or higher
 router.get('/analytics/student-performance', requireAnalytics, getStudentPerformanceAnalytics);

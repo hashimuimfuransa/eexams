@@ -2816,16 +2816,138 @@ const getAllResults = async (req, res) => {
   }
 };
 
+// @desc    Get student management data (grades, performance, weaknesses) for admin
+// @route   GET /api/admin/student-management
+// @access  Private/Admin (no plan restriction — basic management view)
+const getStudentManagementData = async (req, res) => {
+  try {
+    // Collect all student IDs: created by admin + created by admin's teachers
+    let studentQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      studentQuery = { role: 'student' };
+    } else {
+      const teachers = await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean();
+      const teacherIds = teachers.map(t => t._id);
+      studentQuery = {
+        role: 'student',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      };
+    }
+
+    const students = await User.find(studentQuery)
+      .select('-password')
+      .populate('createdBy', 'firstName lastName role')
+      .lean();
+
+    const studentIds = students.map(s => s._id);
+
+    // Get all exams accessible to this org
+    const examQuery = isSuperAdmin(req.user) || !req.orgAdminId
+      ? {}
+      : { $or: [{ createdBy: req.orgAdminId }] };
+    const examIds = (await Exam.find(examQuery).select('_id').lean()).map(e => e._id);
+
+    // Get all completed results for these students
+    const results = await Result.find({
+      isCompleted: true,
+      student: { $in: studentIds },
+      exam: { $in: examIds }
+    })
+      .populate('exam', 'title totalPoints')
+      .lean();
+
+    // Build per-student stats
+    const studentMap = {};
+    students.forEach(s => {
+      studentMap[s._id.toString()] = {
+        _id: s._id,
+        firstName: s.firstName,
+        lastName: s.lastName,
+        email: s.email,
+        class: s.class || '',
+        isBlocked: s.isBlocked || false,
+        createdBy: s.createdBy
+          ? { _id: s.createdBy._id, name: `${s.createdBy.firstName} ${s.createdBy.lastName}`, role: s.createdBy.role }
+          : null,
+        results: [],
+        examsCount: 0,
+        avg: null,
+        best: null,
+        worst: null,
+        trend: 0,
+        weakExams: []
+      };
+    });
+
+    results.forEach(r => {
+      const sid = r.student?.toString();
+      if (!studentMap[sid]) return;
+      const pct = r.maxPossibleScore > 0
+        ? Math.round((r.totalScore / r.maxPossibleScore) * 100)
+        : 0;
+      studentMap[sid].results.push({
+        resultId: r._id,
+        examId: r.exam?._id,
+        examTitle: r.exam?.title || 'Unknown',
+        score: r.totalScore,
+        maxScore: r.maxPossibleScore,
+        percentage: pct,
+        grade: pct >= 90 ? 'A' : pct >= 80 ? 'B' : pct >= 70 ? 'C' : pct >= 60 ? 'D' : 'F',
+        completedAt: r.endTime
+      });
+    });
+
+    Object.values(studentMap).forEach(s => {
+      if (s.results.length === 0) return;
+      const sorted = [...s.results].sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
+      const percentages = sorted.map(r => r.percentage);
+      s.examsCount = percentages.length;
+      s.avg = Math.round(percentages.reduce((a, v) => a + v, 0) / percentages.length);
+      s.best = Math.max(...percentages);
+      s.worst = Math.min(...percentages);
+      // Trend: difference between last 3 avg and first 3 avg
+      if (sorted.length >= 3) {
+        const firstAvg = percentages.slice(0, 3).reduce((a, v) => a + v, 0) / 3;
+        const lastAvg = percentages.slice(-3).reduce((a, v) => a + v, 0) / 3;
+        s.trend = Math.round(lastAvg - firstAvg);
+      }
+      // Weaknesses: exams where student scored below 50%
+      s.weakExams = s.results.filter(r => r.percentage < 50).map(r => r.examTitle);
+    });
+
+    res.json({ students: Object.values(studentMap) });
+  } catch (error) {
+    console.error('Get student management data error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get student performance analytics for admin dashboard
 // @route   GET /api/admin/analytics/student-performance
 // @access  Private/Admin
 const getStudentPerformanceAnalytics = async (req, res) => {
   try {
-    // Get students created by this admin
-    const students = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId
-    }).select('_id firstName lastName fullName email organization studentClass');
+    // Get students created by admin OR by teachers under this admin
+    let studentQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      studentQuery = { role: 'student' };
+    } else {
+      const teachers = await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean();
+      const teacherIds = teachers.map(t => t._id);
+      studentQuery = {
+        role: 'student',
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      };
+    }
+
+    const students = await User.find(studentQuery)
+      .select('_id firstName lastName fullName email organization studentClass');
 
     const studentIds = students.map(student => student._id);
 
@@ -4180,6 +4302,7 @@ module.exports = {
   updateScheduledExam,
   getAllResults,
   getStudentPerformanceAnalytics,
+  getStudentManagementData,
   debugAdminData,
   getStudentResultsForRegrade,
   regradeStudentResult,

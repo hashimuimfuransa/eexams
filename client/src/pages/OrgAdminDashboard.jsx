@@ -558,7 +558,7 @@ function TeachersSection({ teachers, setTeachers }) {
 }
 
 function getPerfTier(avg) {
-  if (avg === null) return { label: 'No Data', color: '#94A3B8', bg: '#F1F5F9' };
+  if (avg === null || avg === undefined) return { label: 'No Data', color: '#94A3B8', bg: '#F1F5F9' };
   if (avg >= 80) return { label: 'Excellent', color: '#0CBD73', bg: 'rgba(12,189,115,0.1)' };
   if (avg >= 60) return { label: 'Good', color: '#6366F1', bg: 'rgba(99,102,241,0.1)' };
   if (avg >= 40) return { label: 'Average', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' };
@@ -566,92 +566,96 @@ function getPerfTier(avg) {
 }
 
 function getPerfFeedback(avg, examsCount) {
-  if (avg === null || examsCount === 0) return 'No exams taken yet.';
+  if (!examsCount || avg === null || avg === undefined) return 'No exams taken yet.';
   if (avg >= 80) return 'Outstanding performance — keep it up!';
-  if (avg >= 60) return 'Good results with room to improve.';
-  if (avg >= 40) return 'Performing at average — needs more practice.';
-  return 'Struggling — consider extra support sessions.';
+  if (avg >= 60) return 'Good results, room to improve.';
+  if (avg >= 40) return 'Average — needs more practice.';
+  return 'Struggling — recommend extra support.';
 }
 
 function StudentsSection() {
   const [students, setStudents] = useState([]);
-  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [perfFilter, setPerfFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [classFilter, setClassFilter] = useState('');
+  const [registeredByFilter, setRegisteredByFilter] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [detailStudent, setDetailStudent] = useState(null);
 
   useEffect(() => {
-    Promise.all([
-      api.get('/admin/students'),
-      api.get('/admin/results')
-    ]).then(([sr, rr]) => {
-      setStudents(sr.data || []);
-      const raw = rr.data;
-      setResults(Array.isArray(raw) ? raw : (raw?.results || []));
-    }).catch(() => {}).finally(() => setLoading(false));
+    api.get('/admin/student-management')
+      .then(r => setStudents(r.data?.students || []))
+      .catch(() => setError('Failed to load students.'))
+      .finally(() => setLoading(false));
   }, []);
 
-  const studentStats = students.map(s => {
-    const sResults = results.filter(r => r.student?._id === s._id || r.student === s._id);
-    const examsCount = sResults.length;
-    const avg = examsCount > 0
-      ? Math.round(sResults.reduce((acc, r) => acc + (r.percentage ?? 0), 0) / examsCount)
-      : null;
-    const best = examsCount > 0 ? Math.max(...sResults.map(r => r.percentage ?? 0)) : null;
-    const tier = getPerfTier(avg);
-    return { ...s, examsCount, avg, best, tier };
-  });
+  // Enrich each student with tier
+  const enriched = students.map(s => ({ ...s, tier: getPerfTier(s.avg) }));
 
-  const filtered = studentStats.filter(s => {
+  // Unique classes and registeredBy names for filter dropdowns
+  const classes = [...new Set(enriched.map(s => s.class).filter(Boolean))].sort();
+  const registeredByOptions = [...new Map(
+    enriched.filter(s => s.createdBy).map(s => [s.createdBy._id, s.createdBy])
+  ).values()];
+
+  const filtered = enriched.filter(s => {
     const matchSearch = `${s.firstName} ${s.lastName} ${s.email}`.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === '' ? true : statusFilter === 'blocked' ? s.isBlocked : !s.isBlocked;
-    const matchPerf = perfFilter === '' ? true : s.tier.label === perfFilter;
-    return matchSearch && matchStatus && matchPerf;
+    const matchStatus = !statusFilter || (statusFilter === 'blocked' ? s.isBlocked : !s.isBlocked);
+    const matchPerf = !perfFilter || s.tier.label === perfFilter;
+    const matchClass = !classFilter || s.class === classFilter;
+    const matchReg = !registeredByFilter || s.createdBy?._id === registeredByFilter;
+    return matchSearch && matchStatus && matchPerf && matchClass && matchReg;
   }).sort((a, b) => {
     if (sortBy === 'score') return (b.avg ?? -1) - (a.avg ?? -1);
     if (sortBy === 'exams') return b.examsCount - a.examsCount;
+    if (sortBy === 'worst') return (a.worst ?? 101) - (b.worst ?? 101);
     return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
   });
 
-  const totalExcellent = studentStats.filter(s => s.tier.label === 'Excellent').length;
-  const totalNeedsHelp = studentStats.filter(s => s.tier.label === 'Needs Help').length;
-  const overallAvg = studentStats.filter(s => s.avg !== null).length > 0
-    ? Math.round(studentStats.filter(s => s.avg !== null).reduce((a, s) => a + s.avg, 0) / studentStats.filter(s => s.avg !== null).length)
+  const withExams = enriched.filter(s => s.examsCount > 0);
+  const totalExcellent = enriched.filter(s => s.tier.label === 'Excellent').length;
+  const totalNeedsHelp = enriched.filter(s => s.tier.label === 'Needs Help').length;
+  const overallAvg = withExams.length > 0
+    ? Math.round(withExams.reduce((a, s) => a + s.avg, 0) / withExams.length)
     : null;
+  const improving = enriched.filter(s => s.trend > 0).length;
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress sx={{ color: tokens.accent }} /></Box>;
+  if (error) return <Box sx={{ p: 3 }}><Typography color="error">{error}</Typography></Box>;
 
   return (
     <Box>
-      <SectionTitle>Students ({students.length})</SectionTitle>
+      <SectionTitle>Students ({enriched.length})</SectionTitle>
 
-      {/* Performance Summary Cards */}
+      {/* Summary Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
-          { label: 'Total Students', value: students.length, color: tokens.primary, bg: 'rgba(13,64,108,0.08)' },
+          { label: 'Total Students', value: enriched.length, color: tokens.primary, bg: 'rgba(13,64,108,0.08)' },
           { label: 'Class Average', value: overallAvg !== null ? `${overallAvg}%` : '—', color: '#6366F1', bg: 'rgba(99,102,241,0.09)' },
           { label: 'Excellent (≥80%)', value: totalExcellent, color: tokens.accentDark, bg: 'rgba(12,189,115,0.09)' },
           { label: 'Needs Help (<40%)', value: totalNeedsHelp, color: '#EF4444', bg: 'rgba(239,68,68,0.07)' },
+          { label: 'Improving Trend', value: improving, color: '#8B5CF6', bg: 'rgba(139,92,246,0.08)' },
+          { label: 'No Exams Yet', value: enriched.length - withExams.length, color: '#94A3B8', bg: '#F1F5F9' },
         ].map((card, i) => (
-          <Grid item xs={6} sm={3} key={i}>
-            <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
-              <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: card.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
-                <Typography fontWeight={800} sx={{ color: card.color, fontSize: 14 }}>{card.value}</Typography>
+          <Grid item xs={6} sm={4} md={2} key={i}>
+            <Paper elevation={0} sx={{ p: 1.75, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+              <Box sx={{ width: 34, height: 34, borderRadius: 2, bgcolor: card.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 0.75 }}>
+                <Typography fontWeight={800} sx={{ color: card.color, fontSize: 13 }}>{card.value}</Typography>
               </Box>
-              <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>{card.label}</Typography>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.3 }}>{card.label}</Typography>
             </Paper>
           </Grid>
         ))}
       </Grid>
 
-      {/* Filters Row */}
+      {/* Filters */}
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
-        <TextField size="small" placeholder="Search students…" value={search} onChange={e => setSearch(e.target.value)}
-          sx={{ width: 180, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-        <Select size="small" value={perfFilter} onChange={e => setPerfFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 130, fontSize: 13 }}>
+        <TextField size="small" placeholder="Search by name / email…" value={search} onChange={e => setSearch(e.target.value)}
+          sx={{ width: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <Select size="small" value={perfFilter} onChange={e => setPerfFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 140, fontSize: 13 }}>
           <MenuItem value="">All Performance</MenuItem>
           <MenuItem value="Excellent">Excellent (≥80%)</MenuItem>
           <MenuItem value="Good">Good (60–79%)</MenuItem>
@@ -664,107 +668,191 @@ function StudentsSection() {
           <MenuItem value="active">Active</MenuItem>
           <MenuItem value="blocked">Blocked</MenuItem>
         </Select>
-        <Select size="small" value={sortBy} onChange={e => setSortBy(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 120, fontSize: 13 }}>
-          <MenuItem value="name">Sort: Name</MenuItem>
-          <MenuItem value="score">Sort: Score ↓</MenuItem>
-          <MenuItem value="exams">Sort: Exams ↓</MenuItem>
+        {classes.length > 0 && (
+          <Select size="small" value={classFilter} onChange={e => setClassFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 110, fontSize: 13 }}>
+            <MenuItem value="">All Classes</MenuItem>
+            {classes.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+          </Select>
+        )}
+        {registeredByOptions.length > 1 && (
+          <Select size="small" value={registeredByFilter} onChange={e => setRegisteredByFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 140, fontSize: 13 }}>
+            <MenuItem value="">All Registrants</MenuItem>
+            {registeredByOptions.map(r => (
+              <MenuItem key={r._id} value={r._id}>{r.name} ({r.role})</MenuItem>
+            ))}
+          </Select>
+        )}
+        <Select size="small" value={sortBy} onChange={e => setSortBy(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 130, fontSize: 13 }}>
+          <MenuItem value="name">Sort: Name A–Z</MenuItem>
+          <MenuItem value="score">Sort: Avg Score ↓</MenuItem>
+          <MenuItem value="exams">Sort: Most Exams</MenuItem>
+          <MenuItem value="worst">Sort: Weakest First</MenuItem>
         </Select>
       </Box>
 
       <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
-        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 620 }}>
+        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 750 }}>
           <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
-            {['Student', 'Email / Class', 'Exams Taken', 'Avg Score', 'Performance', 'Feedback', 'Status'].map(h =>
-              <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, whiteSpace: 'nowrap' }}>{h}</TableCell>)}
+            {['Student', 'Class', 'Registered By', 'Exams', 'Avg', 'Best', 'Worst', 'Trend', 'Performance', 'Weaknesses', 'Status'].map(h =>
+              <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11, whiteSpace: 'nowrap', py: 1.25 }}>{h}</TableCell>)}
           </TableRow></TableHead>
           <TableBody>
             {filtered.length === 0
-              ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>No students match your filters.</TableCell></TableRow>
-              : filtered.map(s => (
-                <TableRow key={s._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' }, cursor: 'pointer' }} onClick={() => setDetailStudent(s)}>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, fontSize: 13 }}>{s.firstName?.charAt(0)}</Avatar>
-                      <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{s.firstName} {s.lastName}</Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ color: tokens.textMuted }}>{s.email}</Typography>
-                    {s.class && <Chip label={s.class} size="small" sx={{ mt: 0.25, fontSize: 10, height: 18, bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} />}
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={700} sx={{ color: tokens.textPrimary }}>{s.examsCount}</Typography>
-                  </TableCell>
-                  <TableCell>
-                    {s.avg !== null
-                      ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          <Typography variant="body2" fontWeight={700} sx={{ color: s.tier.color }}>{s.avg}%</Typography>
-                          <LinearProgress variant="determinate" value={s.avg} sx={{ width: 50, height: 5, borderRadius: 3, bgcolor: s.tier.bg, '& .MuiLinearProgress-bar': { bgcolor: s.tier.color } }} />
+              ? <TableRow><TableCell colSpan={11} align="center" sx={{ py: 5, color: tokens.textMuted }}>No students match your filters.</TableCell></TableRow>
+              : filtered.map(s => {
+                  const tier = s.tier;
+                  return (
+                    <TableRow key={s._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' }, cursor: 'pointer' }} onClick={() => setDetailStudent(s)}>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                          <Avatar sx={{ width: 30, height: 30, bgcolor: tier.bg, color: tier.color, fontWeight: 700, fontSize: 12 }}>{s.firstName?.charAt(0)}</Avatar>
+                          <Box>
+                            <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif", lineHeight: 1.2 }}>{s.firstName} {s.lastName}</Typography>
+                            <Typography variant="caption" sx={{ color: tokens.textMuted }}>{s.email}</Typography>
+                          </Box>
                         </Box>
-                      : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
-                  </TableCell>
-                  <TableCell>
-                    <Chip label={s.tier.label} size="small" sx={{ bgcolor: s.tier.bg, color: s.tier.color, fontWeight: 700, fontSize: 11 }} />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="caption" sx={{ color: tokens.textMuted, fontStyle: 'italic', maxWidth: 160, display: 'block' }}>
-                      {getPerfFeedback(s.avg, s.examsCount)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip label={s.isBlocked ? 'Blocked' : 'Active'} size="small" sx={{ bgcolor: s.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: s.isBlocked ? '#EF4444' : tokens.accentDark, fontWeight: 600 }} />
-                  </TableCell>
-                </TableRow>
-              ))}
+                      </TableCell>
+                      <TableCell>
+                        {s.class ? <Chip label={s.class} size="small" sx={{ fontSize: 10, height: 18, bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600 }} /> : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        {s.createdBy
+                          ? <Box><Typography variant="caption" fontWeight={600} sx={{ color: tokens.textPrimary }}>{s.createdBy.name}</Typography>
+                              <Chip label={s.createdBy.role} size="small" sx={{ ml: 0.5, fontSize: 9, height: 16, bgcolor: s.createdBy.role === 'teacher' ? 'rgba(99,102,241,0.1)' : 'rgba(13,64,108,0.08)', color: s.createdBy.role === 'teacher' ? '#4F46E5' : tokens.primary }} /></Box>
+                          : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
+                      </TableCell>
+                      <TableCell><Typography variant="body2" fontWeight={700}>{s.examsCount}</Typography></TableCell>
+                      <TableCell>
+                        {s.avg !== null && s.avg !== undefined
+                          ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Typography variant="body2" fontWeight={700} sx={{ color: tier.color }}>{s.avg}%</Typography>
+                              <LinearProgress variant="determinate" value={s.avg} sx={{ width: 40, height: 4, borderRadius: 2, bgcolor: tier.bg, '& .MuiLinearProgress-bar': { bgcolor: tier.color } }} />
+                            </Box>
+                          : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        {s.best !== null && s.best !== undefined
+                          ? <Typography variant="body2" fontWeight={600} sx={{ color: '#0CBD73' }}>{s.best}%</Typography>
+                          : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        {s.worst !== null && s.worst !== undefined
+                          ? <Typography variant="body2" fontWeight={600} sx={{ color: s.worst < 40 ? '#EF4444' : tokens.textPrimary }}>{s.worst}%</Typography>
+                          : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        {s.examsCount >= 3
+                          ? <Chip label={s.trend > 0 ? `+${s.trend}%` : `${s.trend}%`} size="small"
+                              sx={{ fontSize: 10, height: 18, fontWeight: 700,
+                                bgcolor: s.trend > 0 ? 'rgba(12,189,115,0.1)' : s.trend < 0 ? 'rgba(239,68,68,0.08)' : '#F1F5F9',
+                                color: s.trend > 0 ? '#0CBD73' : s.trend < 0 ? '#EF4444' : '#94A3B8' }} />
+                          : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={tier.label} size="small" sx={{ bgcolor: tier.bg, color: tier.color, fontWeight: 700, fontSize: 10 }} />
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 160 }}>
+                        {s.weakExams?.length > 0
+                          ? <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3 }}>
+                              {s.weakExams.slice(0, 2).map((w, i) => (
+                                <Chip key={i} label={w} size="small" sx={{ fontSize: 9, height: 17, bgcolor: 'rgba(239,68,68,0.07)', color: '#B91C1C', maxWidth: 140 }} />
+                              ))}
+                              {s.weakExams.length > 2 && <Typography variant="caption" sx={{ color: tokens.textMuted }}>+{s.weakExams.length - 2} more</Typography>}
+                            </Box>
+                          : <Typography variant="caption" sx={{ color: tokens.textMuted }}>None</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={s.isBlocked ? 'Blocked' : 'Active'} size="small"
+                          sx={{ bgcolor: s.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: s.isBlocked ? '#EF4444' : tokens.accentDark, fontWeight: 600 }} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
           </TableBody>
         </Table></TableContainer>
       </Paper>
 
       {/* Student Detail Dialog */}
-      <Dialog open={!!detailStudent} onClose={() => setDetailStudent(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <Dialog open={!!detailStudent} onClose={() => setDetailStudent(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         {detailStudent && (() => {
-          const sResults = results.filter(r => r.student?._id === detailStudent._id || r.student === detailStudent._id);
+          const tier = detailStudent.tier;
           return (
             <>
-              <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                {detailStudent.firstName} {detailStudent.lastName}
+              <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Avatar sx={{ width: 38, height: 38, bgcolor: tier.bg, color: tier.color, fontWeight: 700 }}>{detailStudent.firstName?.charAt(0)}</Avatar>
+                  <Box>
+                    <Typography fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", lineHeight: 1.2 }}>{detailStudent.firstName} {detailStudent.lastName}</Typography>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted }}>{detailStudent.email}</Typography>
+                  </Box>
+                </Box>
                 <IconButton size="small" onClick={() => setDetailStudent(null)}><Close fontSize="small" /></IconButton>
               </DialogTitle>
-              <DialogContent>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
-                  <Chip label={detailStudent.tier.label} sx={{ bgcolor: detailStudent.tier.bg, color: detailStudent.tier.color, fontWeight: 700 }} />
-                  {detailStudent.class && <Chip label={`Class: ${detailStudent.class}`} sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} />}
-                  <Chip label={detailStudent.isBlocked ? 'Blocked' : 'Active'} sx={{ bgcolor: detailStudent.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: detailStudent.isBlocked ? '#EF4444' : tokens.accentDark }} />
+              <DialogContent sx={{ pt: 2 }}>
+                {/* Chips row */}
+                <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 2 }}>
+                  <Chip label={tier.label} sx={{ bgcolor: tier.bg, color: tier.color, fontWeight: 700, fontSize: 12 }} />
+                  {detailStudent.class && <Chip label={`Class: ${detailStudent.class}`} sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontSize: 12 }} />}
+                  {detailStudent.createdBy && <Chip label={`By: ${detailStudent.createdBy.name}`} sx={{ bgcolor: 'rgba(99,102,241,0.08)', color: '#4F46E5', fontSize: 12 }} />}
+                  <Chip label={detailStudent.isBlocked ? 'Blocked' : 'Active'} sx={{ bgcolor: detailStudent.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: detailStudent.isBlocked ? '#EF4444' : tokens.accentDark, fontSize: 12 }} />
                 </Box>
-                <Typography variant="body2" sx={{ color: tokens.textMuted, mb: 0.5 }}>{detailStudent.email}</Typography>
-                <Box sx={{ p: 1.5, bgcolor: detailStudent.tier.bg, borderRadius: 2, mb: 2 }}>
-                  <Typography variant="body2" fontWeight={600} sx={{ color: detailStudent.tier.color }}>
+
+                {/* System feedback */}
+                <Box sx={{ p: 1.5, bgcolor: tier.bg, borderRadius: 2, mb: 2, border: `1px solid ${tier.color}22` }}>
+                  <Typography variant="body2" fontWeight={600} sx={{ color: tier.color }}>
                     💬 {getPerfFeedback(detailStudent.avg, detailStudent.examsCount)}
                   </Typography>
                 </Box>
+
+                {/* Stats mini cards */}
                 <Grid container spacing={1.5} sx={{ mb: 2 }}>
                   {[
                     { label: 'Exams Taken', value: detailStudent.examsCount },
-                    { label: 'Avg Score', value: detailStudent.avg !== null ? `${detailStudent.avg}%` : '—' },
-                    { label: 'Best Score', value: detailStudent.best !== null ? `${Math.round(detailStudent.best)}%` : '—' },
+                    { label: 'Avg Score', value: detailStudent.avg !== null && detailStudent.avg !== undefined ? `${detailStudent.avg}%` : '—' },
+                    { label: 'Best Score', value: detailStudent.best !== null && detailStudent.best !== undefined ? `${detailStudent.best}%` : '—' },
+                    { label: 'Worst Score', value: detailStudent.worst !== null && detailStudent.worst !== undefined ? `${detailStudent.worst}%` : '—' },
+                    { label: 'Trend', value: detailStudent.examsCount >= 3 ? (detailStudent.trend > 0 ? `+${detailStudent.trend}%` : `${detailStudent.trend}%`) : 'N/A' },
                   ].map((m, i) => (
                     <Grid item xs={4} key={i}>
-                      <Paper elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, textAlign: 'center' }}>
-                        <Typography fontWeight={800} sx={{ color: tokens.textPrimary, fontSize: 18 }}>{m.value}</Typography>
-                        <Typography sx={{ fontSize: 10.5, color: tokens.textMuted }}>{m.label}</Typography>
+                      <Paper elevation={0} sx={{ p: 1.25, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, textAlign: 'center' }}>
+                        <Typography fontWeight={800} sx={{ color: tokens.textPrimary, fontSize: 16 }}>{m.value}</Typography>
+                        <Typography sx={{ fontSize: 10, color: tokens.textMuted }}>{m.label}</Typography>
                       </Paper>
                     </Grid>
                   ))}
                 </Grid>
-                {sResults.length > 0 && (
+
+                {/* Weaknesses */}
+                {detailStudent.weakExams?.length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography fontWeight={700} sx={{ fontSize: 12.5, mb: 0.75, color: '#B91C1C' }}>⚠️ Weaknesses (scored &lt;50%)</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {detailStudent.weakExams.map((w, i) => (
+                        <Chip key={i} label={w} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.07)', color: '#B91C1C', fontSize: 11 }} />
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Exam history */}
+                {detailStudent.results?.length > 0 && (
                   <>
-                    <Typography fontWeight={700} sx={{ fontSize: 13, mb: 1 }}>Exam History</Typography>
-                    {sResults.slice(0, 6).map((r, i) => (
-                      <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.75, borderBottom: i < sResults.length - 1 ? `1px solid ${tokens.surfaceBorder}` : 'none' }}>
-                        <Typography variant="body2" sx={{ color: tokens.textPrimary, maxWidth: 160 }} noWrap>{r.exam?.title || 'Exam'}</Typography>
-                        <Chip label={`${Math.round(r.percentage ?? 0)}%`} size="small" sx={{ bgcolor: getPerfTier(r.percentage).bg, color: getPerfTier(r.percentage).color, fontWeight: 700, fontSize: 11 }} />
-                      </Box>
-                    ))}
+                    <Typography fontWeight={700} sx={{ fontSize: 12.5, mb: 1 }}>All Grades</Typography>
+                    {[...detailStudent.results].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)).map((r, i) => {
+                      const rTier = getPerfTier(r.percentage);
+                      return (
+                        <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.75, borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
+                          <Box sx={{ flexGrow: 1, minWidth: 0, mr: 1 }}>
+                            <Typography variant="body2" fontWeight={600} noWrap>{r.examTitle}</Typography>
+                            <Typography variant="caption" sx={{ color: tokens.textMuted }}>{r.score}/{r.maxScore} pts · {r.completedAt ? new Date(r.completedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+                            <Chip label={r.grade} size="small" sx={{ fontWeight: 800, fontSize: 11, bgcolor: rTier.bg, color: rTier.color, minWidth: 28 }} />
+                            <Typography variant="body2" fontWeight={700} sx={{ color: rTier.color, minWidth: 38, textAlign: 'right' }}>{r.percentage}%</Typography>
+                          </Box>
+                        </Box>
+                      );
+                    })}
                   </>
                 )}
               </DialogContent>

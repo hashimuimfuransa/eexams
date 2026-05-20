@@ -867,23 +867,126 @@ function StudentsSection() {
   );
 }
 
+function statusColor(status) {
+  if (status === 'active') return { color: tokens.accent, bg: 'rgba(12,189,115,0.1)' };
+  if (status === 'draft') return { color: tokens.warning, bg: 'rgba(245,158,11,0.1)' };
+  if (status === 'scheduled') return { color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' };
+  if (status === 'completed') return { color: '#6366F1', bg: 'rgba(99,102,241,0.1)' };
+  if (status === 'locked') return { color: '#EF4444', bg: 'rgba(239,68,68,0.08)' };
+  return { color: tokens.textSecondary, bg: '#F1F5F9' };
+}
+
 function ExamsSection({ exams }) {
-  return(
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
+
+  const filtered = exams.filter(e => {
+    const matchSearch = !search || e.title?.toLowerCase().includes(search.toLowerCase()) ||
+      e.description?.toLowerCase().includes(search.toLowerCase()) ||
+      (typeof e.createdBy === 'string' && e.createdBy.toLowerCase().includes(search.toLowerCase()));
+    const matchStatus = !statusFilter || (e.status || 'draft') === statusFilter;
+    return matchSearch && matchStatus;
+  }).sort((a, b) => {
+    if (sortBy === 'newest') return new Date(b.createdAt) - new Date(a.createdAt);
+    if (sortBy === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (sortBy === 'title') return (a.title || '').localeCompare(b.title || '');
+    if (sortBy === 'questions') return (b.questions || 0) - (a.questions || 0);
+    if (sortBy === 'students') return (b.students || 0) - (a.students || 0);
+    return 0;
+  });
+
+  const statusCounts = { total: exams.length, active: 0, draft: 0, scheduled: 0, completed: 0, locked: 0 };
+  exams.forEach(e => { const s = e.status || 'draft'; if (statusCounts[s] !== undefined) statusCounts[s]++; });
+
+  return (
     <Box>
-      <SectionTitle>Exams</SectionTitle>
-      <Paper elevation={0} sx={{borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',overflow:'hidden'}}>
-        <TableContainer sx={{overflowX:'auto'}}><Table sx={{minWidth:500}}>
-          <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Title','Status','Questions','Time','Created'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
+      <SectionTitle>Exams ({exams.length})</SectionTitle>
+
+      {/* Summary Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {[
+          { label: 'Total', value: statusCounts.total, color: tokens.primary, bg: 'rgba(13,64,108,0.08)' },
+          { label: 'Active', value: statusCounts.active, color: tokens.accent, bg: 'rgba(12,189,115,0.1)' },
+          { label: 'Draft', value: statusCounts.draft, color: tokens.warning, bg: 'rgba(245,158,11,0.1)' },
+          { label: 'Scheduled', value: statusCounts.scheduled, color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' },
+          { label: 'Completed', value: statusCounts.completed, color: '#6366F1', bg: 'rgba(99,102,241,0.1)' },
+          { label: 'Locked', value: statusCounts.locked, color: '#EF4444', bg: 'rgba(239,68,68,0.08)' },
+        ].map((c, i) => (
+          <Grid item xs={6} sm={4} md={2} key={i}>
+            <Paper elevation={0} onClick={() => setStatusFilter(c.label === 'Total' ? '' : c.label.toLowerCase())}
+              sx={{ p: 1.75, borderRadius: 3, border: `1px solid ${statusFilter === (c.label === 'Total' ? 'NONE' : c.label.toLowerCase()) ? c.color : tokens.surfaceBorder}`, bgcolor: 'white', cursor: 'pointer', '&:hover': { borderColor: c.color } }}>
+              <Box sx={{ width: 32, height: 32, borderRadius: 2, bgcolor: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 0.75 }}>
+                <Typography fontWeight={800} sx={{ color: c.color, fontSize: 13 }}>{c.value}</Typography>
+              </Box>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>{c.label}</Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Filters */}
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <TextField size="small" placeholder="Search exams…" value={search} onChange={e => setSearch(e.target.value)}
+          sx={{ width: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <Select size="small" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 120, fontSize: 13 }}>
+          <MenuItem value="">All Status</MenuItem>
+          <MenuItem value="active">Active</MenuItem>
+          <MenuItem value="draft">Draft</MenuItem>
+          <MenuItem value="scheduled">Scheduled</MenuItem>
+          <MenuItem value="completed">Completed</MenuItem>
+          <MenuItem value="locked">Locked</MenuItem>
+        </Select>
+        <Select size="small" value={sortBy} onChange={e => setSortBy(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 140, fontSize: 13 }}>
+          <MenuItem value="newest">Sort: Newest First</MenuItem>
+          <MenuItem value="oldest">Sort: Oldest First</MenuItem>
+          <MenuItem value="title">Sort: Title A–Z</MenuItem>
+          <MenuItem value="questions">Sort: Most Questions</MenuItem>
+          <MenuItem value="students">Sort: Most Students</MenuItem>
+        </Select>
+        {(search || statusFilter) && (
+          <Button size="small" onClick={() => { setSearch(''); setStatusFilter(''); }} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textMuted, fontSize: 12 }}>
+            Clear filters
+          </Button>
+        )}
+      </Box>
+
+      <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
+        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 620 }}>
+          <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+            {['Title', 'Status', 'Questions', 'Students', 'Completion', 'Time Limit', 'Created By', 'Created'].map(h =>
+              <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11, whiteSpace: 'nowrap', py: 1.25 }}>{h}</TableCell>)}
+          </TableRow></TableHead>
           <TableBody>
-            {exams.length===0?<TableRow><TableCell colSpan={5} align="center" sx={{py:5,color:tokens.textMuted}}>No exams.</TableCell></TableRow>:
-            exams.map(e=>{const sc=e.status==='active'?tokens.accent:e.status==='draft'?tokens.warning:'#6366F1';return(
-              <TableRow key={e._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
-                <TableCell><Typography variant="body2" fontWeight={600}>{e.title}</Typography></TableCell>
-                <TableCell><Chip label={e.status||'draft'} size="small" sx={{bgcolor:`${sc}14`,color:sc,fontWeight:600,textTransform:'capitalize'}}/></TableCell>
-                <TableCell><Chip label={e.questions?.length||0} size="small" sx={{bgcolor:'rgba(13,64,108,0.07)',color:tokens.primary}}/></TableCell>
-                <TableCell><Typography variant="body2" sx={{color:tokens.textMuted}}>{e.timeLimit} min</Typography></TableCell>
-                <TableCell><Typography variant="caption" sx={{color:tokens.textMuted}}>{new Date(e.createdAt).toLocaleDateString()}</Typography></TableCell>
-              </TableRow>);})}
+            {filtered.length === 0
+              ? <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: tokens.textMuted }}>No exams match your filters.</TableCell></TableRow>
+              : filtered.map(e => {
+                  const sc = statusColor(e.status || 'draft');
+                  return (
+                    <TableRow key={e._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                      <TableCell sx={{ maxWidth: 220 }}>
+                        <Typography variant="body2" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif" }} noWrap>{e.title}</Typography>
+                        {e.description && <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block' }} noWrap>{e.description}</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={e.status || 'draft'} size="small" sx={{ bgcolor: sc.bg, color: sc.color, fontWeight: 700, fontSize: 10, textTransform: 'capitalize' }} />
+                        {e.isLocked && <Chip label="Locked" size="small" sx={{ ml: 0.5, fontSize: 9, height: 16, bgcolor: 'rgba(239,68,68,0.08)', color: '#EF4444', fontWeight: 600 }} />}
+                      </TableCell>
+                      <TableCell><Chip label={e.questions || 0} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600 }} /></TableCell>
+                      <TableCell><Typography variant="body2" fontWeight={600}>{e.students || 0}</Typography></TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <LinearProgress variant="determinate" value={e.completionRate || 0}
+                            sx={{ width: 44, height: 4, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.07)', '& .MuiLinearProgress-bar': { bgcolor: tokens.accent } }} />
+                          <Typography variant="caption" fontWeight={600} sx={{ color: tokens.textMuted }}>{e.completionRate || 0}%</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell><Typography variant="body2" sx={{ color: tokens.textMuted }}>{e.timeLimit} min</Typography></TableCell>
+                      <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted }}>{e.createdBy || '—'}</Typography></TableCell>
+                      <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted, whiteSpace: 'nowrap' }}>{new Date(e.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography></TableCell>
+                    </TableRow>
+                  );
+                })}
           </TableBody>
         </Table></TableContainer>
       </Paper>
@@ -891,10 +994,61 @@ function ExamsSection({ exams }) {
   );
 }
 
+function gradeColor(grade) {
+  if (grade === 'A') return { color: '#0CBD73', bg: 'rgba(12,189,115,0.1)' };
+  if (grade === 'B') return { color: '#6366F1', bg: 'rgba(99,102,241,0.1)' };
+  if (grade === 'C') return { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' };
+  if (grade === 'D') return { color: '#FB923C', bg: 'rgba(251,146,60,0.1)' };
+  return { color: '#EF4444', bg: 'rgba(239,68,68,0.08)' };
+}
+
 function ResultsSection({ results }) {
+  const [search, setSearch] = useState('');
+  const [gradeFilter, setGradeFilter] = useState('');
+  const [examFilter, setExamFilter] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
   const [selectedResult, setSelectedResult] = useState(null);
   const [detailedResult, setDetailedResult] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Unique exam titles for filter dropdown
+  const examTitles = [...new Set(results.map(r => r.exam?.title).filter(Boolean))].sort();
+
+  const getGradeBand = (pct) => {
+    if (pct >= 90) return 'A';
+    if (pct >= 80) return 'B';
+    if (pct >= 70) return 'C';
+    if (pct >= 60) return 'D';
+    return 'F';
+  };
+
+  const filtered = results.filter(r => {
+    const name = `${r.student?.firstName || ''} ${r.student?.lastName || ''} ${r.student?.email || ''}`.toLowerCase();
+    const matchSearch = !search || name.includes(search.toLowerCase()) || r.exam?.title?.toLowerCase().includes(search.toLowerCase());
+    const pct = Math.round(r.percentage ?? 0);
+    const band = r.grade || getGradeBand(pct);
+    const matchGrade = !gradeFilter || band === gradeFilter;
+    const matchExam = !examFilter || r.exam?.title === examFilter;
+    return matchSearch && matchGrade && matchExam;
+  }).sort((a, b) => {
+    const dateA = new Date(a.endTime || a.submittedAt || a.createdAt);
+    const dateB = new Date(b.endTime || b.submittedAt || b.createdAt);
+    if (sortBy === 'newest') return dateB - dateA;
+    if (sortBy === 'oldest') return dateA - dateB;
+    if (sortBy === 'score-desc') return (b.percentage ?? 0) - (a.percentage ?? 0);
+    if (sortBy === 'score-asc') return (a.percentage ?? 0) - (b.percentage ?? 0);
+    const nameA = `${a.student?.firstName} ${a.student?.lastName}`;
+    const nameB = `${b.student?.firstName} ${b.student?.lastName}`;
+    if (sortBy === 'student') return nameA.localeCompare(nameB);
+    return 0;
+  });
+
+  // Summary stats
+  const total = results.length;
+  const passed = results.filter(r => (r.percentage ?? 0) >= 50).length;
+  const avgPct = total > 0 ? Math.round(results.reduce((s, r) => s + (r.percentage ?? 0), 0) / total) : 0;
+  const gradeCounts = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+  results.forEach(r => { const b = r.grade || getGradeBand(Math.round(r.percentage ?? 0)); if (gradeCounts[b] !== undefined) gradeCounts[b]++; });
 
   const handleViewDetails = async (result) => {
     setSelectedResult(result);
@@ -909,80 +1063,205 @@ function ResultsSection({ results }) {
     }
   };
 
-  const handleCloseDetail = () => {
-    setSelectedResult(null);
-    setDetailedResult(null);
-  };
-
-  return(
+  return (
     <Box>
-      <SectionTitle>Results</SectionTitle>
-      <Paper elevation={0} sx={{borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',overflow:'hidden'}}>
-        <TableContainer sx={{overflowX:'auto'}}><Table sx={{minWidth:440}}>
-          <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Student','Exam','Score','Date','Actions'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
+      <SectionTitle>Results ({total})</SectionTitle>
+
+      {/* Summary Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {[
+          { label: 'Total Results', value: total, color: tokens.primary, bg: 'rgba(13,64,108,0.08)' },
+          { label: 'Class Average', value: `${avgPct}%`, color: '#6366F1', bg: 'rgba(99,102,241,0.09)' },
+          { label: `Passed (≥50%)`, value: passed, color: tokens.accentDark, bg: 'rgba(12,189,115,0.09)' },
+          { label: 'Failed (<50%)', value: total - passed, color: '#EF4444', bg: 'rgba(239,68,68,0.07)' },
+          ...['A', 'B', 'C', 'D', 'F'].map(g => ({ label: `Grade ${g}`, value: gradeCounts[g], color: gradeColor(g).color, bg: gradeColor(g).bg })),
+        ].map((c, i) => (
+          <Grid item xs={6} sm={4} md={2} key={i}>
+            <Paper elevation={0} sx={{ p: 1.75, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+              <Box sx={{ width: 32, height: 32, borderRadius: 2, bgcolor: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 0.75 }}>
+                <Typography fontWeight={800} sx={{ color: c.color, fontSize: 13 }}>{c.value}</Typography>
+              </Box>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>{c.label}</Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Filters */}
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <TextField size="small" placeholder="Search student / exam…" value={search} onChange={e => setSearch(e.target.value)}
+          sx={{ width: 210, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <Select size="small" value={gradeFilter} onChange={e => setGradeFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 110, fontSize: 13 }}>
+          <MenuItem value="">All Grades</MenuItem>
+          {['A', 'B', 'C', 'D', 'F'].map(g => <MenuItem key={g} value={g}>Grade {g}</MenuItem>)}
+        </Select>
+        {examTitles.length > 0 && (
+          <Select size="small" value={examFilter} onChange={e => setExamFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 160, fontSize: 13 }}>
+            <MenuItem value="">All Exams</MenuItem>
+            {examTitles.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+          </Select>
+        )}
+        <Select size="small" value={sortBy} onChange={e => setSortBy(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 150, fontSize: 13 }}>
+          <MenuItem value="newest">Sort: Newest First</MenuItem>
+          <MenuItem value="oldest">Sort: Oldest First</MenuItem>
+          <MenuItem value="score-desc">Sort: Score High–Low</MenuItem>
+          <MenuItem value="score-asc">Sort: Score Low–High</MenuItem>
+          <MenuItem value="student">Sort: Student A–Z</MenuItem>
+        </Select>
+        {(search || gradeFilter || examFilter) && (
+          <Button size="small" onClick={() => { setSearch(''); setGradeFilter(''); setExamFilter(''); }}
+            sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textMuted, fontSize: 12 }}>Clear</Button>
+        )}
+      </Box>
+
+      <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
+        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 640 }}>
+          <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+            {['Student', 'Exam', 'Score', 'Grade', 'Time Taken', 'Submitted', 'Actions'].map(h =>
+              <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11, whiteSpace: 'nowrap', py: 1.25 }}>{h}</TableCell>)}
+          </TableRow></TableHead>
           <TableBody>
-            {results.length===0?<TableRow><TableCell colSpan={5} align="center" sx={{py:5,color:tokens.textMuted}}>No results.</TableCell></TableRow>:
-            results.slice(0,50).map(r=>{const pct=Math.round(r.percentage??0);return(
-              <TableRow key={r._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
-                <TableCell>{r.student?.firstName} {r.student?.lastName}</TableCell>
-                <TableCell sx={{color:tokens.textMuted}}>{r.exam?.title}</TableCell>
-                <TableCell><Box sx={{display:'flex',alignItems:'center',gap:1}}><LinearProgress variant="determinate" value={pct} sx={{width:60,height:6,borderRadius:3,bgcolor:'#EEF2FF','& .MuiLinearProgress-bar':{bgcolor:pct>=70?tokens.accent:'#EF4444',borderRadius:3}}}/><Typography sx={{fontSize:12,fontWeight:700,color:pct>=70?tokens.accentDark:'#EF4444'}}>{pct}%</Typography></Box></TableCell>
-                <TableCell><Typography variant="caption" sx={{color:tokens.textMuted}}>{new Date(r.submittedAt||r.createdAt).toLocaleDateString()}</Typography></TableCell>
-                <TableCell>
-                  <Button size="small" onClick={() => handleViewDetails(r)} sx={{textTransform:'none',fontWeight:600,fontSize:11}}>
-                    View Details
-                  </Button>
-                </TableCell>
-              </TableRow>);})}
+            {filtered.length === 0
+              ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>No results match your filters.</TableCell></TableRow>
+              : filtered.slice(0, 100).map(r => {
+                  const pct = Math.round(r.percentage ?? 0);
+                  const band = r.grade || getGradeBand(pct);
+                  const gc = gradeColor(band);
+                  const submittedAt = r.endTime || r.submittedAt || r.createdAt;
+                  return (
+                    <TableRow key={r._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                          <Avatar sx={{ width: 28, height: 28, bgcolor: gc.bg, color: gc.color, fontWeight: 700, fontSize: 11 }}>
+                            {(r.student?.firstName || '?').charAt(0)}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif", lineHeight: 1.2 }}>
+                              {r.student?.firstName} {r.student?.lastName}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: tokens.textMuted }}>{r.student?.email}</Typography>
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 180 }}>
+                        <Typography variant="body2" fontWeight={600} noWrap>{r.exam?.title || '—'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <LinearProgress variant="determinate" value={pct}
+                            sx={{ width: 48, height: 5, borderRadius: 2, bgcolor: gc.bg, '& .MuiLinearProgress-bar': { bgcolor: gc.color } }} />
+                          <Typography variant="body2" fontWeight={700} sx={{ color: gc.color }}>{pct}%</Typography>
+                        </Box>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>{r.totalScore}/{r.maxPossibleScore} pts</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={band} size="small" sx={{ bgcolor: gc.bg, color: gc.color, fontWeight: 800, fontSize: 11, minWidth: 28 }} />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ color: tokens.textMuted }}>{r.timeTaken ? `${r.timeTaken} min` : '—'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted, whiteSpace: 'nowrap' }}>
+                          {submittedAt ? new Date(submittedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Button size="small" variant="outlined" onClick={() => handleViewDetails(r)}
+                          sx={{ textTransform: 'none', fontWeight: 600, fontSize: 11, borderRadius: 1.5, py: 0.25, borderColor: tokens.surfaceBorder, color: tokens.primary, '&:hover': { borderColor: tokens.primary, bgcolor: 'rgba(13,64,108,0.04)' } }}>
+                          Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
           </TableBody>
         </Table></TableContainer>
+        {filtered.length > 100 && (
+          <Box sx={{ p: 1.5, borderTop: `1px solid ${tokens.surfaceBorder}`, textAlign: 'center' }}>
+            <Typography variant="caption" sx={{ color: tokens.textMuted }}>Showing 100 of {filtered.length} results — use filters to narrow down</Typography>
+          </Box>
+        )}
       </Paper>
 
       {/* Detailed Result Dialog */}
-      <Dialog open={!!selectedResult} onClose={handleCloseDetail} maxWidth="md" fullWidth PaperProps={{sx:{borderRadius:3}}}>
-        <DialogTitle sx={{fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>
-          Detailed Result - {selectedResult?.student?.firstName} {selectedResult?.student?.lastName}
-        </DialogTitle>
-        <DialogContent sx={{pt:'16px !important'}}>
-          {loadingDetail?<Box sx={{display:'flex',justifyContent:'center',py:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>:
-          detailedResult?(
-            <Box>
-              <Box sx={{mb:3,p:2,bgcolor:'#F8FAFC',borderRadius:2}}>
-                <Typography fontWeight={600} sx={{mb:1}}>Exam: {detailedResult.exam?.title}</Typography>
-                <Typography variant="body2" sx={{color:tokens.textMuted}}>
-                  Score: {detailedResult.totalScore}/{detailedResult.maxPossibleScore} ({detailedResult.percentage}%) | 
-                  Time: {detailedResult.timeTaken} min | 
-                  Grade: {detailedResult.grade}
+      <Dialog open={!!selectedResult} onClose={() => { setSelectedResult(null); setDetailedResult(null); }} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedResult && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box>
+                <Typography fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif" }}>
+                  {selectedResult.student?.firstName} {selectedResult.student?.lastName}
                 </Typography>
+                <Typography variant="caption" sx={{ color: tokens.textMuted }}>{selectedResult.exam?.title}</Typography>
               </Box>
-              
-              <Typography fontWeight={600} sx={{mb:2}}>Answer Analysis</Typography>
-              {detailedResult.answers?.map((answer,idx)=>(
-                <Box key={idx} sx={{mb:2,p:2,border:`1px solid ${tokens.surfaceBorder}`,borderRadius:2}}>
-                  <Box sx={{display:'flex',justifyContent:'space-between',alignItems:'center',mb:1}}>
-                    <Typography variant="body2" fontWeight={600}>Question {idx+1}</Typography>
-                    <Chip 
-                      label={answer.isCorrect?'Correct':'Incorrect'} 
-                      size="small" 
-                      sx={{bgcolor:answer.isCorrect?'rgba(12,189,115,0.1)':'rgba(239,68,68,0.1)',color:answer.isCorrect?tokens.accent:'#EF4444',fontWeight:600}}
-                    />
-                  </Box>
-                  <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mb:1}}>
-                    Points: {answer.score}/{answer.question?.points} | Method: {answer.gradingMethod}
-                  </Typography>
-                  {answer.feedback && (
-                    <Typography variant="body2" sx={{color:tokens.textSecondary,fontSize:12}}>
-                      Feedback: {answer.feedback}
-                    </Typography>
-                  )}
-                </Box>
-              ))}
-            </Box>
-          ):<Typography sx={{color:tokens.textMuted}}>No detailed data available.</Typography>}
-        </DialogContent>
-        <DialogActions sx={{px:3,pb:2.5}}>
-          <Button onClick={handleCloseDetail} sx={{borderRadius:2,textTransform:'none'}}>Close</Button>
-        </DialogActions>
+              <IconButton size="small" onClick={() => { setSelectedResult(null); setDetailedResult(null); }}><Close fontSize="small" /></IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ pt: '8px !important' }}>
+              {loadingDetail
+                ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress sx={{ color: tokens.accent }} /></Box>
+                : detailedResult ? (
+                    <Box>
+                      {/* Score header */}
+                      <Box sx={{ mb: 2.5, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                        {(() => {
+                          const pct = detailedResult.percentage ?? Math.round((detailedResult.totalScore / (detailedResult.maxPossibleScore || 1)) * 100);
+                          const band = detailedResult.grade || getGradeBand(pct);
+                          const gc = gradeColor(band);
+                          return (
+                            <>
+                              <Chip label={band} sx={{ fontWeight: 800, fontSize: 16, height: 36, px: 1, bgcolor: gc.bg, color: gc.color }} />
+                              <Box>
+                                <Typography fontWeight={700}>{pct}% — {detailedResult.totalScore}/{detailedResult.maxPossibleScore} pts</Typography>
+                                <Typography variant="caption" sx={{ color: tokens.textMuted }}>
+                                  Time taken: {detailedResult.timeTaken || '—'} min &nbsp;·&nbsp;
+                                  Submitted: {detailedResult.endTime ? new Date(detailedResult.endTime).toLocaleString() : '—'}
+                                </Typography>
+                              </Box>
+                            </>
+                          );
+                        })()}
+                      </Box>
+
+                      {/* Answer analysis */}
+                      <Typography fontWeight={700} sx={{ mb: 1.5, fontSize: 13 }}>Answer Analysis ({detailedResult.answers?.length || 0} questions)</Typography>
+                      {detailedResult.answers?.length > 0
+                        ? detailedResult.answers.map((ans, idx) => {
+                            const correct = ans.isCorrect;
+                            return (
+                              <Box key={idx} sx={{ mb: 1.5, p: 1.75, border: `1px solid ${correct ? 'rgba(12,189,115,0.25)' : 'rgba(239,68,68,0.2)'}`, borderRadius: 2, bgcolor: correct ? 'rgba(12,189,115,0.03)' : 'rgba(239,68,68,0.02)' }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                  <Typography variant="body2" fontWeight={700}>Q{idx + 1}</Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                    <Chip label={correct ? 'Correct' : 'Incorrect'} size="small"
+                                      sx={{ bgcolor: correct ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)', color: correct ? tokens.accent : '#EF4444', fontWeight: 700, fontSize: 10 }} />
+                                    <Typography variant="caption" fontWeight={700} sx={{ color: tokens.textMuted }}>
+                                      {ans.score ?? 0}/{ans.question?.points ?? 0} pts
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                                {ans.gradingMethod && (
+                                  <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block', mb: ans.feedback ? 0.5 : 0 }}>
+                                    Method: {ans.gradingMethod}
+                                  </Typography>
+                                )}
+                                {ans.feedback && (
+                                  <Box sx={{ mt: 0.5, p: 1, bgcolor: 'rgba(99,102,241,0.05)', borderRadius: 1.5, borderLeft: '3px solid #6366F1' }}>
+                                    <Typography variant="caption" sx={{ color: '#4F46E5', fontStyle: 'italic' }}>💬 {ans.feedback}</Typography>
+                                  </Box>
+                                )}
+                              </Box>
+                            );
+                          })
+                        : <Typography sx={{ color: tokens.textMuted, fontSize: 13 }}>No answer data available.</Typography>}
+                    </Box>
+                  )
+                : <Typography sx={{ color: tokens.textMuted }}>No detailed data available.</Typography>}
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5 }}>
+              <Button onClick={() => { setSelectedResult(null); setDetailedResult(null); }} sx={{ borderRadius: 2, textTransform: 'none' }}>Close</Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </Box>
   );

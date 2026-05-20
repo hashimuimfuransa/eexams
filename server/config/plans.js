@@ -7,7 +7,7 @@ const PLANS = {
     price: 0,
     priceRWF: 0,
     maxExams: 5,
-    maxStudents: 30,
+    maxStudents: 5,
     maxTeachers: 1,
     aiFeatures: false,
     advancedAI: false,
@@ -19,7 +19,8 @@ const PLANS = {
     storageLimit: 100, // MB
     features: [
       'Create up to 5 exams',
-      'Up to 30 students',
+      'Up to 5 students',
+      '1 teacher account',
       'Basic question types',
       'Manual grading',
       'Email support'
@@ -27,8 +28,8 @@ const PLANS = {
   },
   basic: {
     name: 'Basic',
-    price: 9,
-    priceRWF: 9000, // 9,000 RWF
+    price: 100,
+    priceRWF: 100000, // 100,000 RWF
     maxExams: 30,
     maxStudents: 200,
     maxTeachers: 3,
@@ -50,8 +51,8 @@ const PLANS = {
   },
   premium: {
     name: 'Premium',
-    price: 29,
-    priceRWF: 29000, // 29,000 RWF
+    price: 200,
+    priceRWF: 200000, // 200,000 RWF
     maxExams: Infinity,
     maxStudents: Infinity,
     maxTeachers: 10,
@@ -136,7 +137,7 @@ const ORG_PLANS = {
     price: 0,
     priceRWF: 0,
     maxExams: 5,
-    maxStudents: 30,
+    maxStudents: 5,
     maxTeachers: 1,
     aiFeatures: false,
     advancedAI: false,
@@ -147,7 +148,7 @@ const ORG_PLANS = {
     storageLimit: 100,
     features: [
       '1 teacher account',
-      'Up to 30 students',
+      'Up to 5 students',
       '5 exams',
       'Basic support',
       'No credit card required'
@@ -155,8 +156,8 @@ const ORG_PLANS = {
   },
   basic: {
     name: 'Basic (Org)',
-    price: 15,
-    priceRWF: 15000,
+    price: 100,
+    priceRWF: 100000,
     maxExams: 50,
     maxStudents: 300,
     maxTeachers: 5,
@@ -178,8 +179,8 @@ const ORG_PLANS = {
   },
   premium: {
     name: 'Premium (Org)',
-    price: 49,
-    priceRWF: 49000,
+    price: 300,
+    priceRWF: 300000,
     maxExams: Infinity,
     maxStudents: Infinity,
     maxTeachers: 20,

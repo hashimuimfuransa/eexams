@@ -20,7 +20,11 @@ const {
   getSubscriptionRequests,
   approveSubscriptionRequest,
   rejectSubscriptionRequest,
-  getAllSubscriptions
+  getAllSubscriptions,
+  getMarketplaceExamsWithStats,
+  getExamUsageDetails,
+  updateExamMarketplaceSettings,
+  updateExamDetails
 } = require('../controllers/superAdminController');
 const auth = require('../middleware/auth');
 
@@ -70,6 +74,12 @@ router.delete('/exams/:id', deleteExam);
 
 router.get('/results', getAllResults);
 router.get('/overview', getSystemOverview);
+
+// Exam marketplace management routes
+router.get('/marketplace-exams', getMarketplaceExamsWithStats);
+router.get('/marketplace-exams/:id/usage', getExamUsageDetails);
+router.put('/marketplace-exams/:id/settings', updateExamMarketplaceSettings);
+router.put('/marketplace-exams/:id', updateExamDetails);
 
 // Subscription management routes
 router.get('/subscription-requests', getSubscriptionRequests);

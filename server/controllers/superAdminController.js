@@ -1135,6 +1135,334 @@ const getAllSubscriptions = async (req, res) => {
   }
 };
 
+// ==================== EXAM MARKETPLACE MANAGEMENT ====================
+
+// @desc    Get all marketplace exams with comprehensive statistics
+// @route   GET /api/superadmin/marketplace-exams
+// @access  Private/SuperAdmin
+const getMarketplaceExamsWithStats = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, status, search, sortBy = 'createdAt' } = req.query;
+
+    // Build query
+    const query = {};
+    if (status) {
+      if (status === 'public') query.isPubliclyListed = true;
+      else if (status === 'private') query.isPubliclyListed = false;
+    }
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Get exams with creator info
+    let examsQuery = Exam.find(query)
+      .populate('createdBy', 'firstName lastName email organization')
+      .populate('level', 'name subLevels')
+      .populate('sections.questions');
+
+    // Sort
+    if (sortBy === 'requests') {
+      examsQuery = examsQuery.sort({ 'requestCount': -1 });
+    } else if (sortBy === 'completions') {
+      examsQuery = examsQuery.sort({ 'completionCount': -1 });
+    } else if (sortBy === 'price') {
+      examsQuery = examsQuery.sort({ publicPrice: -1 });
+    } else {
+      examsQuery = examsQuery.sort({ createdAt: -1 });
+    }
+
+    const exams = await examsQuery
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    // Get total count
+    const total = await Exam.countDocuments(query);
+
+    // Get comprehensive stats for each exam
+    const ExamRequest = require('../models/ExamRequest');
+    const Result = require('../models/Result');
+
+    const examsWithStats = await Promise.all(
+      exams.map(async (exam) => {
+        // Count requests
+        const requestCount = await ExamRequest.countDocuments({ exam: exam._id });
+        const approvedRequests = await ExamRequest.countDocuments({ exam: exam._id, status: 'approved' });
+        const pendingRequests = await ExamRequest.countDocuments({ exam: exam._id, status: 'pending' });
+        const rejectedRequests = await ExamRequest.countDocuments({ exam: exam._id, status: 'rejected' });
+
+        // Count completions
+        const completedCount = await Result.countDocuments({ exam: exam._id, isCompleted: true });
+        const inProgressCount = await Result.countDocuments({ exam: exam._id, isCompleted: false });
+
+        // Calculate average score
+        const completedResults = await Result.find({ exam: exam._id, isCompleted: true });
+        let totalScore = 0;
+        let maxScore = 0;
+        completedResults.forEach(r => {
+          totalScore += r.totalScore || 0;
+          maxScore += r.maxPossibleScore || 0;
+        });
+        const averageScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+
+        // Get unique users who requested
+        const uniqueRequesters = await ExamRequest.distinct('student', { exam: exam._id, student: { $ne: null } });
+        const uniqueRequestersCount = uniqueRequesters.length;
+
+        // Get recent requests
+        const recentRequests = await ExamRequest.find({ exam: exam._id })
+          .populate('student', 'firstName lastName email')
+          .sort({ requestedAt: -1 })
+          .limit(5);
+
+        return {
+          ...exam.toObject(),
+          stats: {
+            requestCount,
+            approvedRequests,
+            pendingRequests,
+            rejectedRequests,
+            completedCount,
+            inProgressCount,
+            averageScore,
+            uniqueRequestersCount,
+            completionRate: requestCount > 0 ? Math.round((completedCount / requestCount) * 100) : 0
+          },
+          recentRequests
+        };
+      })
+    );
+
+    // Get overall marketplace stats
+    const totalMarketplaceExams = await Exam.countDocuments({ isPubliclyListed: true });
+    const totalRequests = await ExamRequest.countDocuments();
+    const totalCompletions = await Result.countDocuments({ isCompleted: true });
+
+    res.json({
+      exams: examsWithStats,
+      stats: {
+        totalMarketplaceExams,
+        totalRequests,
+        totalCompletions,
+        overallCompletionRate: totalRequests > 0 ? Math.round((totalCompletions / totalRequests) * 100) : 0
+      },
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get marketplace exams with stats error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get detailed usage information for a specific exam
+// @route   GET /api/superadmin/marketplace-exams/:id/usage
+// @access  Private/SuperAdmin
+const getExamUsageDetails = async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.id)
+      .populate('createdBy', 'firstName lastName email organization')
+      .populate('level', 'name subLevels');
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    const ExamRequest = require('../models/ExamRequest');
+    const Result = require('../models/Result');
+
+    // Get all requests with student info
+    const allRequests = await ExamRequest.find({ exam: exam._id })
+      .populate('student', 'firstName lastName email')
+      .sort({ requestedAt: -1 });
+
+    // Get all results with student info
+    const allResults = await Result.find({ exam: exam._id })
+      .populate('student', 'firstName lastName email')
+      .sort({ createdAt: -1 });
+
+    // Group requests by status
+    const requestsByStatus = {
+      pending: allRequests.filter(r => r.status === 'pending'),
+      approved: allRequests.filter(r => r.status === 'approved'),
+      rejected: allRequests.filter(r => r.status === 'rejected')
+    };
+
+    // Group results by completion status
+    const resultsByStatus = {
+      completed: allResults.filter(r => r.isCompleted),
+      inProgress: allResults.filter(r => !r.isCompleted)
+    };
+
+    // Calculate performance metrics
+    const completedResults = resultsByStatus.completed;
+    let totalScore = 0;
+    let maxScore = 0;
+    const scoreDistribution = { excellent: 0, good: 0, average: 0, poor: 0 };
+
+    completedResults.forEach(r => {
+      totalScore += r.totalScore || 0;
+      maxScore += r.maxPossibleScore || 0;
+      const percentage = r.maxPossibleScore > 0 ? (r.totalScore / r.maxPossibleScore) * 100 : 0;
+      if (percentage >= 80) scoreDistribution.excellent++;
+      else if (percentage >= 60) scoreDistribution.good++;
+      else if (percentage >= 40) scoreDistribution.average++;
+      else scoreDistribution.poor++;
+    });
+
+    const averageScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+
+    // Get unique users
+    const uniqueStudents = new Set();
+    allRequests.forEach(r => {
+      if (r.student) uniqueStudents.add(r.student._id.toString());
+    });
+    allResults.forEach(r => {
+      if (r.student) uniqueStudents.add(r.student._id.toString());
+    });
+
+    // Timeline data (last 30 days)
+    const timeline = [];
+    const now = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const dayRequests = allRequests.filter(r => 
+        r.requestedAt.toISOString().split('T')[0] === dateStr
+      ).length;
+      
+      const dayCompletions = allResults.filter(r => 
+        r.isCompleted && r.updatedAt.toISOString().split('T')[0] === dateStr
+      ).length;
+
+      timeline.push({ date: dateStr, requests: dayRequests, completions: dayCompletions });
+    }
+
+    res.json({
+      exam,
+      stats: {
+        totalRequests: allRequests.length,
+        approvedRequests: requestsByStatus.approved.length,
+        pendingRequests: requestsByStatus.pending.length,
+        rejectedRequests: requestsByStatus.rejected.length,
+        totalResults: allResults.length,
+        completedResults: completedResults.length,
+        inProgressResults: resultsByStatus.inProgress.length,
+        averageScore,
+        scoreDistribution,
+        uniqueStudents: uniqueStudents.size,
+        completionRate: allRequests.length > 0 ? Math.round((completedResults.length / allRequests.length) * 100) : 0
+      },
+      requests: {
+        all: allRequests,
+        byStatus: requestsByStatus
+      },
+      results: {
+        all: allResults,
+        byStatus: resultsByStatus
+      },
+      timeline
+    });
+  } catch (error) {
+    console.error('Get exam usage details error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Update exam marketplace settings (super admin override)
+// @route   PUT /api/superadmin/marketplace-exams/:id/settings
+// @access  Private/SuperAdmin
+const updateExamMarketplaceSettings = async (req, res) => {
+  try {
+    const { isPubliclyListed, publicPrice, publicDescription, targetAudience, status } = req.body;
+
+    const exam = await Exam.findById(req.params.id);
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Update fields (super admin can override any setting)
+    if (isPubliclyListed !== undefined) exam.isPubliclyListed = isPubliclyListed;
+    if (publicPrice !== undefined) exam.publicPrice = parseFloat(publicPrice);
+    if (publicDescription !== undefined) exam.publicDescription = publicDescription;
+    if (targetAudience !== undefined) exam.targetAudience = targetAudience;
+    if (status !== undefined) exam.status = status;
+
+    await exam.save();
+
+    // Log the activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'update_exam_marketplace_settings',
+      details: {
+        examId: exam._id,
+        examTitle: exam.title,
+        changes: req.body
+      }
+    });
+
+    res.json({
+      message: 'Exam marketplace settings updated successfully',
+      exam
+    });
+  } catch (error) {
+    console.error('Update exam marketplace settings error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Update basic exam details
+// @route   PUT /api/superadmin/marketplace-exams/:id
+// @access  Private/SuperAdmin
+const updateExamDetails = async (req, res) => {
+  try {
+    const { title, description, timeLimit, passingScore, isLocked } = req.body;
+
+    const exam = await Exam.findById(req.params.id);
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Update fields
+    if (title) exam.title = title;
+    if (description) exam.description = description;
+    if (timeLimit !== undefined) exam.timeLimit = parseInt(timeLimit);
+    if (passingScore !== undefined) exam.passingScore = parseInt(passingScore);
+    if (isLocked !== undefined) exam.isLocked = isLocked;
+
+    await exam.save();
+
+    // Log the activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'update_exam_details',
+      details: {
+        examId: exam._id,
+        examTitle: exam.title,
+        changes: req.body
+      }
+    });
+
+    res.json({
+      message: 'Exam details updated successfully',
+      exam
+    });
+  } catch (error) {
+    console.error('Update exam details error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAllOrganizations,
   getOrganizationById,
@@ -1155,5 +1483,9 @@ module.exports = {
   getSubscriptionRequests,
   approveSubscriptionRequest,
   rejectSubscriptionRequest,
-  getAllSubscriptions
+  getAllSubscriptions,
+  getMarketplaceExamsWithStats,
+  getExamUsageDetails,
+  updateExamMarketplaceSettings,
+  updateExamDetails
 };

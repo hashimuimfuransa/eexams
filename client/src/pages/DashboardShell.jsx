@@ -31,15 +31,13 @@ export function getDynamicGreeting(name) {
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 const INDIVIDUAL_PLANS = [
-  { id: 'basic',      label: 'Basic',      price: '9,000 RWF/mo',  color: '#0CBD73', features: ['30 exams/mo', '200 students', 'AI features', 'Analytics'] },
-  { id: 'premium',    label: 'Premium',    price: '29,000 RWF/mo', color: '#0D406C', features: ['Unlimited exams', 'Unlimited students', 'Full AI', '24/7 support'] },
-  { id: 'enterprise', label: 'Enterprise', price: 'Custom pricing', color: '#8B5CF6', features: ['Everything in Premium', 'White-label', 'API access', 'Dedicated manager'] },
+  { id: 'basic',      label: 'Basic',      price: '100,000 RWF/mo',  color: '#0CBD73', features: ['30 exams/mo', '200 students', 'AI features', 'Analytics'] },
+  { id: 'premium',    label: 'Premium',    price: '200,000 RWF/mo', color: '#0D406C', features: ['Unlimited exams', 'Unlimited students', 'Full AI', '24/7 support'] },
 ];
 
 const ORG_PLANS = [
-  { id: 'basic',      label: 'Basic',      price: '15,000 RWF/mo', color: '#0CBD73', features: ['30 exams/mo', '200 students', 'AI features', 'Analytics'] },
-  { id: 'premium',    label: 'Premium',    price: '49,000 RWF/mo', color: '#0D406C', features: ['Unlimited exams', 'Unlimited students', 'Full AI', '24/7 support'] },
-  { id: 'enterprise', label: 'Enterprise', price: 'Custom pricing', color: '#8B5CF6', features: ['Everything in Premium', 'White-label', 'API access', 'Dedicated manager'] },
+  { id: 'basic',      label: 'Basic',      price: '100,000 RWF/mo', color: '#0CBD73', features: ['50 exams/mo', '300 students', 'AI features', 'Analytics'] },
+  { id: 'premium',    label: 'Premium',    price: '300,000 RWF/mo', color: '#0D406C', features: ['Unlimited exams', 'Unlimited students', 'Full AI', '24/7 support'] },
 ];
 
 export function Sidebar({ user, logout, activeSection, setActiveSection, onClose, isMobile, nav, portalLabel }) {

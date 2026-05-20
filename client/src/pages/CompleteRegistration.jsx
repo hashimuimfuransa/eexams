@@ -38,28 +38,21 @@ const PLANS = [
     name: 'Free Plan',
     price: 'Free',
     description: 'Perfect for individual teachers getting started',
-    features: ['Create up to 5 exams', 'Basic analytics', 'Email support']
+    features: ['Create up to 5 exams', 'Up to 5 students', '1 teacher account', 'Basic analytics', 'Email support']
   },
   {
     id: 'basic',
     name: 'Basic Plan',
-    price: '9,000 RWF/month',
+    price: '100,000 RWF/month',
     description: 'For growing educators with more needs',
-    features: ['Up to 30 exams', 'Advanced analytics', 'Priority support', 'AI features']
+    features: ['Up to 30 exams', 'Up to 200 students', 'Advanced analytics', 'Priority support', 'AI features']
   },
   {
     id: 'premium',
     name: 'Premium Plan',
-    price: '29,000 RWF/month',
+    price: '200,000 RWF/month',
     description: 'Best for schools and institutions',
-    features: ['Unlimited exams', 'Everything in Basic', 'Advanced AI', 'Priority support']
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise Plan',
-    price: 'Custom Pricing',
-    description: 'For large institutions & multi-school systems',
-    features: ['Everything in Premium', 'Unlimited teachers', 'White-label & custom branding', 'Full API access', 'Dedicated account manager', 'Custom integrations', 'SLA guarantee', 'On-premise option', 'Bulk student import', 'Multi-school management']
+    features: ['Unlimited exams', 'Unlimited students', 'Everything in Basic', 'Advanced AI', 'Priority support']
   }
 ];
 
@@ -392,9 +385,12 @@ export default function CompleteRegistration() {
             style={{
               padding: '20px',
               borderRadius: '12px',
-              border: `2px solid ${selectedPlan === plan.id ? tokens.accent : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-              background: selectedPlan === plan.id ? `${tokens.accent}10` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
-              cursor: 'pointer'
+              border: `3px solid ${selectedPlan === plan.id ? tokens.accent : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+              background: selectedPlan === plan.id ? `${tokens.accent}15` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+              cursor: 'pointer',
+              boxShadow: selectedPlan === plan.id ? '0 4px 20px rgba(43, 127, 255, 0.3)' : 'none',
+              transform: selectedPlan === plan.id ? 'scale(1.02)' : 'scale(1)',
+              transition: 'all 0.2s ease'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>

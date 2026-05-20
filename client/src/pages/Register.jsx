@@ -658,16 +658,15 @@ const Register = () => {
     if (activeStep === 3) {
       // Different plans for individuals vs organizations
       const orgPlans = [
-        { id: 'free', name: 'Free Trial', price: '0 RWF', period: '30 days', teacherLimit: '1 teacher', features: ['1 teacher account', 'Up to 30 students', '5 exams', 'Basic support', 'No credit card required'], color: '#64748B', popular: false },
-        { id: 'basic', name: 'Basic', price: '15,000 RWF', period: '/month', teacherLimit: 'Up to 5 teachers', features: ['Up to 5 teacher accounts', 'Up to 300 students', '50 exams/month', 'AI features', 'Full analytics', 'Priority email support'], color: '#0CBD73', popular: true },
-        { id: 'premium', name: 'Premium', price: '49,000 RWF', period: '/month', teacherLimit: 'Up to 20 teachers', features: ['Up to 20 teacher accounts', 'Unlimited students', 'Unlimited exams', 'Advanced AI', '24/7 priority support', 'Auto-grading'], color: '#0D406C', popular: false },
-        { id: 'enterprise', name: 'Enterprise', price: 'Custom', period: '', teacherLimit: 'Unlimited teachers', features: ['Unlimited teacher accounts', 'Unlimited students & exams', 'Everything in Premium', 'White-label & custom branding', 'Full API access', 'Dedicated account manager', 'SLA guarantee', 'On-premise option', 'Bulk import', 'Multi-school management'], color: '#8B5CF6', popular: false }
+        { id: 'free', name: 'Free Trial', price: '0 RWF', period: '30 days', teacherLimit: '1 teacher', features: ['1 teacher account', 'Up to 5 students', '5 exams', 'Basic support', 'No credit card required'], color: '#64748B', popular: false },
+        { id: 'basic', name: 'Basic', price: '100,000 RWF', period: '/month', teacherLimit: 'Up to 5 teachers', features: ['Up to 5 teacher accounts', 'Up to 300 students', '50 exams/month', 'AI features', 'Full analytics', 'Priority email support'], color: '#0CBD73', popular: true },
+        { id: 'premium', name: 'Premium', price: '300,000 RWF', period: '/month', teacherLimit: 'Up to 20 teachers', features: ['Up to 20 teacher accounts', 'Unlimited students', 'Unlimited exams', 'Advanced AI', '24/7 priority support', 'Auto-grading'], color: '#0D406C', popular: false }
       ];
 
       const individualPlans = [
-        { id: 'free', name: 'Free', price: '0 RWF', period: 'forever', features: ['Up to 30 students', '5 exams', 'Basic support', 'Standard templates'], color: '#64748B', popular: false },
-        { id: 'basic', name: 'Basic', price: '9,000 RWF', period: '/month', features: ['Up to 200 students', '30 exams', 'AI features', 'Priority support', 'Analytics'], color: '#0CBD73', popular: true },
-        { id: 'premium', name: 'Premium', price: '29,000 RWF', period: '/month', features: ['Unlimited students', 'Unlimited exams', 'Full AI features', '24/7 support', 'Advanced analytics', 'API access'], color: '#0D406C', popular: false }
+        { id: 'free', name: 'Free', price: '0 RWF', period: 'forever', features: ['Up to 5 students', '5 exams', '1 teacher', 'Basic support', 'Standard templates'], color: '#64748B', popular: false },
+        { id: 'basic', name: 'Basic', price: '100,000 RWF', period: '/month', features: ['Up to 200 students', '30 exams', 'AI features', 'Priority support', 'Analytics'], color: '#0CBD73', popular: true },
+        { id: 'premium', name: 'Premium', price: '200,000 RWF', period: '/month', features: ['Unlimited students', 'Unlimited exams', 'Full AI features', '24/7 support', 'Advanced analytics', 'API access'], color: '#0D406C', popular: false }
       ];
 
       const plans = accountType === 'organization' ? orgPlans : individualPlans;
@@ -689,14 +688,16 @@ const Register = () => {
                 style={{
                   padding: '16px 20px',
                   borderRadius: 12,
-                  border: `2px solid ${subscriptionPlan === plan.id ? plan.color : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                  background: subscriptionPlan === plan.id ? `${plan.color}10` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                  border: `3px solid ${subscriptionPlan === plan.id ? plan.color : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                  background: subscriptionPlan === plan.id ? `${plan.color}15` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 16,
                   transition: 'all 0.2s ease',
-                  position: 'relative'
+                  position: 'relative',
+                  boxShadow: subscriptionPlan === plan.id ? `0 4px 20px ${plan.color}30` : 'none',
+                  transform: subscriptionPlan === plan.id ? 'scale(1.02)' : 'scale(1)'
                 }}
               >
                 {plan.popular && (

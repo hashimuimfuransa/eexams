@@ -23,6 +23,7 @@ const nav = [
   { id: 'organizations', label: 'Organizations & Teachers', icon: <Business sx={{ fontSize: 20 }} /> },
   { id: 'users',         label: 'All Users',               icon: <People sx={{ fontSize: 20 }} /> },
   { id: 'subscriptions', label: 'Subscriptions',             icon: <AttachMoney sx={{ fontSize: 20 }} /> },
+  { id: 'marketplace',   label: 'Exam Bank Marketplace',    icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'analytics',     label: 'Analytics',               icon: <TrendingUp sx={{ fontSize: 20 }} /> },
   { id: 'settings',      label: 'Settings',                icon: <Settings sx={{ fontSize: 20 }} /> },
 ];
@@ -71,6 +72,7 @@ export default function SuperAdminDashboard() {
       {activeSection === 'organizations' && <OrganizationsSection searchQuery={searchQuery} />}
       {activeSection === 'users'         && <AllUsersSection searchQuery={searchQuery} />}
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
+      {activeSection === 'marketplace'   && <ExamBankMarketplaceSection searchQuery={searchQuery} />}
       {activeSection === 'analytics'     && <AnalyticsSection stats={stats} />}
       {activeSection === 'settings'      && <SettingsSection user={user} />}
     </DashboardShell>
@@ -803,10 +805,9 @@ function SubscriptionsSection({ stats }) {
   const [actionUser, setActionUser] = useState(null); // {user, action: 'approve'|'reject'|'delete'}
 
   const plans=[
-    {name:'Free',price:'0 RWF/mo',key:'free',features:['5 exams/month','Basic AI','30 students max']},
-    {name:'Basic',price:'9,000 RWF/mo',key:'basic',features:['30 exams/month','Full AI','200 students','Analytics']},
-    {name:'Premium',price:'29,000 RWF/mo',key:'premium',features:['Unlimited exams','Advanced AI','Unlimited students','Priority support']},
-    {name:'Enterprise',price:'Custom',key:'enterprise',features:['Everything in Premium','Unlimited teachers','White-label & custom branding','API access','Dedicated account manager','Custom integrations','SLA guarantee','On-premise option','Bulk student import','Multi-school management']},
+    {name:'Free',price:'0 RWF/mo',key:'free',features:['5 exams/month','Basic AI','5 students max','1 teacher']},
+    {name:'Basic',price:'100,000 RWF/mo',key:'basic',features:['30 exams/month','Full AI','200 students','Analytics']},
+    {name:'Premium',price:'200,000 RWF/mo (Individual) / 300,000 RWF/mo (Org)',key:'premium',features:['Unlimited exams','Advanced AI','Unlimited students','Priority support']},
   ];
 
   // Super Admin Contact Info
@@ -1503,6 +1504,438 @@ function SettingsSection({ user }) {
           </Paper>
         </Grid>
       </Grid>
+
+      <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity={snack.severity} onClose={() => setSnack(s => ({ ...s, open: false }))} sx={{ borderRadius: 2 }}>{snack.msg}</Alert>
+      </Snackbar>
+    </Box>
+  );
+}
+
+/* ── EXAM BANK MARKETPLACE ── */
+function ExamBankMarketplaceSection({ searchQuery }) {
+  const [exams, setExams] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedExam, setSelectedExam] = useState(null);
+  const [examDetails, setExamDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [editDialog, setEditDialog] = useState(null);
+  const [deleteDialog, setDeleteDialog] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  // Filter states
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+
+  useEffect(() => {
+    fetchExams();
+  }, [statusFilter, sortBy]);
+
+  const fetchExams = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/superadmin/marketplace-exams', {
+        params: { status: statusFilter, sortBy }
+      });
+      setExams(res.data.exams || []);
+      setStats(res.data.stats);
+    } catch (err) {
+      console.error('Failed to fetch marketplace exams:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchExamDetails = async (examId) => {
+    setDetailsLoading(true);
+    try {
+      const res = await api.get(`/superadmin/marketplace-exams/${examId}/usage`);
+      setExamDetails(res.data);
+      setSelectedExam(examId);
+    } catch (err) {
+      console.error('Failed to fetch exam details:', err);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const handleEditSettings = async () => {
+    if (!editDialog) return;
+    setSaving(true);
+    try {
+      await api.put(`/superadmin/marketplace-exams/${editDialog._id}/settings`, {
+        isPubliclyListed: editDialog.isPubliclyListed,
+        publicPrice: editDialog.publicPrice,
+        publicDescription: editDialog.publicDescription,
+        targetAudience: editDialog.targetAudience,
+        status: editDialog.status
+      });
+      setSnack({ open: true, msg: 'Exam settings updated successfully', severity: 'success' });
+      setEditDialog(null);
+      fetchExams();
+    } catch (err) {
+      setSnack({ open: true, msg: err.response?.data?.message || 'Failed to update settings', severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteExam = async () => {
+    if (!deleteDialog) return;
+    setSaving(true);
+    try {
+      await api.delete(`/superadmin/exams/${deleteDialog._id}`);
+      setSnack({ open: true, msg: 'Exam deleted successfully', severity: 'success' });
+      setDeleteDialog(null);
+      if (selectedExam === deleteDialog._id) {
+        setSelectedExam(null);
+        setExamDetails(null);
+      }
+      fetchExams();
+    } catch (err) {
+      setSnack({ open: true, msg: err.response?.data?.message || 'Failed to delete exam', severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const [snack, setSnack] = useState({ open: false, msg: '', severity: 'info' });
+
+  const StatCard = ({ label, value, icon, color, bg }) => (
+    <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ width: 48, height: 48, borderRadius: 2.5, bgcolor: bg, display: 'flex', alignItems: 'center', justifyContent: center }}>{icon}</Box>
+      <Box>
+        <Typography variant="h4" fontWeight={800} sx={{ color, fontFamily: "'DM Sans',sans-serif", lineHeight: 1 }}>{value || '—'}</Typography>
+        <Typography variant="caption" sx={{ color: tokens.textMuted, fontWeight: 600 }}>{label}</Typography>
+      </Box>
+    </Box>
+  );
+
+  return (
+    <Box>
+      <SectionTitle>Exam Bank Marketplace</SectionTitle>
+
+      {/* Overall Stats */}
+      {stats && (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={6} md={3}>
+            <StatCard label="Marketplace Exams" value={stats.totalMarketplaceExams} icon={<School sx={{ color: tokens.primary, fontSize: 24 }} />} color={tokens.primary} bg="rgba(13,64,108,0.1)" />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <StatCard label="Total Requests" value={stats.totalRequests} icon={<People sx={{ color: tokens.accent, fontSize: 24 }} />} color={tokens.accent} bg="rgba(12,189,115,0.1)" />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <StatCard label="Completions" value={stats.totalCompletions} icon={<CheckCircle sx={{ color: '#6366F1', fontSize: 24 }} />} color="#6366F1" bg="rgba(99,102,241,0.1)" />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <StatCard label="Completion Rate" value={`${stats.overallCompletionRate}%`} icon={<TrendingUp sx={{ color: tokens.warning, fontSize: 24 }} />} color={tokens.warning} bg="rgba(245,158,11,0.1)" />
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Filter Bar */}
+      <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search exams..."
+              value={searchQuery}
+              InputProps={{
+                startAdornment: <Box component="span" sx={{ color: tokens.textMuted, mr: 1 }}>🔍</Box>
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#FAFBFC' } }}
+            />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="">All Status</MuiMenuItem>
+                <MuiMenuItem value="public">Public</MuiMenuItem>
+                <MuiMenuItem value="private">Private</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Sort By</InputLabel>
+              <Select label="Sort By" value={sortBy} onChange={(e) => setSortBy(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="createdAt">Recently Added</MuiMenuItem>
+                <MuiMenuItem value="requests">Most Requests</MuiMenuItem>
+                <MuiMenuItem value="completions">Most Completions</MuiMenuItem>
+                <MuiMenuItem value="price">Highest Price</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Button fullWidth variant="outlined" onClick={fetchExams} sx={{ borderRadius: 2, height: 37, textTransform: 'none', fontWeight: 600 }}>Refresh</Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
+          <CircularProgress sx={{ color: tokens.accent }} />
+        </Box>
+      ) : exams.length === 0 ? (
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 3, border: `1px dashed ${tokens.surfaceBorder}`, bgcolor: '#FAFBFC', textAlign: 'center' }}>
+          <Typography sx={{ color: tokens.textMuted }}>No exams found in marketplace.</Typography>
+        </Paper>
+      ) : (
+        <Grid container spacing={2}>
+          {exams.map((exam) => (
+            <Grid item xs={12} md={6} lg={4} key={exam._id}>
+              <Paper elevation={0} sx={{
+                p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white',
+                transition: 'all 0.2s ease', '&:hover': { boxShadow: '0 8px 30px rgba(13,64,108,0.12)', transform: 'translateY(-2px)' },
+                cursor: 'pointer'
+              }} onClick={() => fetchExamDetails(exam._id)}>
+                {/* Header */}
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body1" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", mb: 0.5 }} noWrap>{exam.title}</Typography>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block' }}>
+                      By {exam.createdBy?.organization || `${exam.createdBy?.firstName} ${exam.createdBy?.lastName}`}
+                    </Typography>
+                  </Box>
+                  <Chip
+                    label={exam.isPubliclyListed ? 'Public' : 'Private'}
+                    size="small"
+                    sx={{
+                      height: 22, fontSize: '11px', fontWeight: 600,
+                      bgcolor: exam.isPubliclyListed ? 'rgba(12,189,115,0.1)' : 'rgba(100,116,139,0.1)',
+                      color: exam.isPubliclyListed ? tokens.accent : '#64748B'
+                    }}
+                  />
+                </Box>
+
+                {/* Stats */}
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#F8FAFC', px: 1.25, py: 0.5, borderRadius: 1.5 }}>
+                    <People sx={{ fontSize: 14, color: tokens.accent }} />
+                    <Typography variant="caption" fontWeight={700} sx={{ color: tokens.textPrimary }}>{exam.stats?.requestCount || 0}</Typography>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, fontSize: '10px' }}>requests</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#F8FAFC', px: 1.25, py: 0.5, borderRadius: 1.5 }}>
+                    <CheckCircle sx={{ fontSize: 14, color: '#6366F1' }} />
+                    <Typography variant="caption" fontWeight={700} sx={{ color: tokens.textPrimary }}>{exam.stats?.completedCount || 0}</Typography>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, fontSize: '10px' }}>completed</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#F8FAFC', px: 1.25, py: 0.5, borderRadius: 1.5 }}>
+                    <TrendingUp sx={{ fontSize: 14, color: tokens.warning }} />
+                    <Typography variant="caption" fontWeight={700} sx={{ color: tokens.textPrimary }}>{exam.stats?.averageScore || 0}%</Typography>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, fontSize: '10px' }}>avg score</Typography>
+                  </Box>
+                </Box>
+
+                {/* Footer */}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pt: 1.5, borderTop: `1px solid ${tokens.surfaceBorder}` }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {exam.publicPrice > 0 && (
+                      <Typography variant="body2" fontWeight={700} sx={{ color: tokens.accent }}>{exam.publicPrice} RWF</Typography>
+                    )}
+                    {exam.level && (
+                      <Chip label={exam.level.name} size="small" sx={{ height: 20, fontSize: '10px', bgcolor: 'rgba(99,102,241,0.1)', color: '#6366F1', fontWeight: 600 }} />
+                    )}
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Tooltip title="Edit Settings">
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); setEditDialog(exam); }} sx={{ color: tokens.primary, bgcolor: `${tokens.primary}10`, '&:hover': { bgcolor: `${tokens.primary}20` }, width: 32, height: 32 }}>
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete Exam">
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteDialog(exam); }} sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.1)', '&:hover': { bgcolor: 'rgba(239,68,68,0.2)' }, width: 32, height: 32 }}>
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Exam Details Dialog */}
+      <Dialog open={!!selectedExam} onClose={() => setSelectedExam(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 1 }}>
+          Exam Usage Details
+          {selectedExam && <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block', mt: 0.5 }}>{exams.find(e => e._id === selectedExam)?.title}</Typography>}
+        </DialogTitle>
+        <DialogContent sx={{ pt: '20px !important' }}>
+          {detailsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress sx={{ color: tokens.accent }} />
+            </Box>
+          ) : examDetails ? (
+            <Grid container spacing={2}>
+              {/* Stats Overview */}
+              <Grid item xs={12}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, bgcolor: '#F8FAFC', border: `1px solid ${tokens.surfaceBorder}` }}>
+                  <Typography fontWeight={700} sx={{ mb: 2 }}>Performance Overview</Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6} md={3}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={800} sx={{ color: tokens.primary }}>{examDetails.stats.totalRequests}</Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>Total Requests</Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={6} md={3}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={800} sx={{ color: tokens.accent }}>{examDetails.stats.completedResults}</Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>Completed</Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={6} md={3}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={800} sx={{ color: '#6366F1' }}>{examDetails.stats.averageScore}%</Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>Avg Score</Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={6} md={3}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={800} sx={{ color: tokens.warning }}>{examDetails.stats.completionRate}%</Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>Completion Rate</Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+
+              {/* Recent Requests */}
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, maxHeight: 400, overflow: 'auto' }}>
+                  <Typography fontWeight={700} sx={{ mb: 2 }}>Recent Requests</Typography>
+                  {examDetails.requests.all.length === 0 ? (
+                    <Typography variant="body2" sx={{ color: tokens.textMuted }}>No requests yet.</Typography>
+                  ) : (
+                    examDetails.requests.all.slice(0, 10).map((req) => (
+                      <Box key={req._id} sx={{ p: 1.5, borderRadius: 2, bgcolor: '#F8FAFC', mb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Typography variant="body2" fontWeight={600}>{req.student?.firstName} {req.student?.lastName}</Typography>
+                          <Chip label={req.status} size="small" sx={{
+                            height: 20, fontSize: '10px', fontWeight: 600,
+                            bgcolor: req.status === 'approved' ? 'rgba(12,189,115,0.1)' : req.status === 'rejected' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+                            color: req.status === 'approved' ? tokens.accent : req.status === 'rejected' ? '#EF4444' : tokens.warning
+                          }} />
+                        </Box>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>{new Date(req.requestedAt).toLocaleDateString()}</Typography>
+                      </Box>
+                    ))
+                  )}
+                </Paper>
+              </Grid>
+
+              {/* Score Distribution */}
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }}>
+                  <Typography fontWeight={700} sx={{ mb: 2 }}>Score Distribution</Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {[
+                      { label: 'Excellent (80%+)', value: examDetails.stats.scoreDistribution.excellent, color: tokens.accent },
+                      { label: 'Good (60-79%)', value: examDetails.stats.scoreDistribution.good, color: '#6366F1' },
+                      { label: 'Average (40-59%)', value: examDetails.stats.scoreDistribution.average, color: tokens.warning },
+                      { label: 'Poor (<40%)', value: examDetails.stats.scoreDistribution.poor, color: '#EF4444' },
+                    ].map((item) => (
+                      <Box key={item.label}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography variant="caption" fontWeight={600}>{item.label}</Typography>
+                          <Typography variant="caption" fontWeight={700} sx={{ color: item.color }}>{item.value}</Typography>
+                        </Box>
+                        <LinearProgress variant="determinate" value={examDetails.stats.completedResults > 0 ? (item.value / examDetails.stats.completedResults) * 100 : 0}
+                          sx={{ height: 8, borderRadius: 4, bgcolor: `${item.color}15`, '& .MuiLinearProgress-bar': { bgcolor: item.color, borderRadius: 4 } }} />
+                      </Box>
+                    ))}
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+          ) : null}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setSelectedExam(null)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Settings Dialog */}
+      <Dialog open={!!editDialog} onClose={() => setEditDialog(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 1 }}>
+          Edit Exam Settings
+          {editDialog && <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block', mt: 0.5 }}>{editDialog.title}</Typography>}
+        </DialogTitle>
+        <DialogContent sx={{ pt: '20px !important' }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ fontWeight: 600 }}>Visibility</InputLabel>
+                <Select label="Visibility" value={editDialog?.isPubliclyListed || false} onChange={(e) => setEditDialog(d => ({ ...d, isPubliclyListed: e.target.value }))} sx={{ borderRadius: 2 }}>
+                  <MuiMenuItem value={true}>Public (Marketplace)</MuiMenuItem>
+                  <MuiMenuItem value={false}>Private</MuiMenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Price (RWF)" type="number" size="small" value={editDialog?.publicPrice || 0} onChange={(e) => setEditDialog(d => ({ ...d, publicPrice: e.target.value }))} sx={{ borderRadius: 2 }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Public Description" multiline rows={3} size="small" value={editDialog?.publicDescription || ''} onChange={(e) => setEditDialog(d => ({ ...d, publicDescription: e.target.value }))} sx={{ borderRadius: 2 }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Target Audience" size="small" value={editDialog?.targetAudience || ''} onChange={(e) => setEditDialog(d => ({ ...d, targetAudience: e.target.value }))} sx={{ borderRadius: 2 }} />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ fontWeight: 600 }}>Status</InputLabel>
+                <Select label="Status" value={editDialog?.status || 'draft'} onChange={(e) => setEditDialog(d => ({ ...d, status: e.target.value }))} sx={{ borderRadius: 2 }}>
+                  <MuiMenuItem value="draft">Draft</MuiMenuItem>
+                  <MuiMenuItem value="scheduled">Scheduled</MuiMenuItem>
+                  <MuiMenuItem value="active">Active</MuiMenuItem>
+                  <MuiMenuItem value="completed">Completed</MuiMenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setEditDialog(null)} disabled={saving} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
+          <Button variant="contained" onClick={handleEditSettings} disabled={saving} sx={{ borderRadius: 2, background: gradients.brand, textTransform: 'none', fontWeight: 700, px: 3 }}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete Exam</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>Are you sure you want to <b>permanently delete</b> this exam?</Typography>
+          <Box sx={{ p: 2, bgcolor: '#FEF2F2', borderRadius: 2, border: '1px solid #FECACA', mb: 2 }}>
+            <Typography variant="body2" fontWeight={600} sx={{ color: '#7F1D1D' }}>⚠️ Warning: This action cannot be undone!</Typography>
+            <Typography variant="body2" sx={{ color: '#991B1B', mt: 0.5 }}>All requests, results, and associated data will be permanently removed.</Typography>
+          </Box>
+          {deleteDialog && (
+            <Box sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 2 }}>
+              <Typography fontWeight={600}>{deleteDialog.title}</Typography>
+              <Typography variant="caption" sx={{ color: tokens.textMuted }}>{deleteDialog.createdBy?.organization || `${deleteDialog.createdBy?.firstName} ${deleteDialog.createdBy?.lastName}`}</Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteDialog(null)} disabled={saving} sx={{ textTransform: 'none' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleDeleteExam}
+            disabled={saving}
+            sx={{ bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' } }}
+          >
+            {saving ? 'Deleting…' : 'Delete Exam'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={snack.severity} onClose={() => setSnack(s => ({ ...s, open: false }))} sx={{ borderRadius: 2 }}>{snack.msg}</Alert>

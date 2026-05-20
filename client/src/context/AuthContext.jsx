@@ -291,6 +291,8 @@ export const AuthProvider = ({ children }) => {
         ...user,
         firstName: userData.firstName || user.firstName,
         lastName: userData.lastName || user.lastName,
+        phone: userData.phone !== undefined ? userData.phone : user.phone,
+        gender: userData.gender !== undefined ? userData.gender : user.gender,
         class: userData.class,
         organization: userData.organization
       };

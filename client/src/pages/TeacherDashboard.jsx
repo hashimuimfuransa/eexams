@@ -18,7 +18,7 @@ import {
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
-  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility
+  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -4978,21 +4978,124 @@ function AnalyticsSection({ results, exams }) {
 }
 
 function SettingsSection({ user }) {
-  const [first,setFirst]=useState(user?.firstName||'');
-  const [last,setLast]=useState(user?.lastName||'');
-  const [saved,setSaved]=useState(false);
-  const save=async()=>{try{await api.put('/profile',{firstName:first,lastName:last});setSaved(true);setTimeout(()=>setSaved(false),2500);}catch{}};
-  return(
+  const { updateUserProfile } = useAuth();
+  const [profile, setProfile] = useState({ firstName: user?.firstName||'', lastName: user?.lastName||'', phone: user?.phone||'', gender: user?.gender||'' });
+  const [pwd, setPwd] = useState({ current: '', newPwd: '', confirm: '' });
+  const [showPwd, setShowPwd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savingPwd, setSavingPwd] = useState(false);
+  const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
+  const tf = { size: 'small', sx: { '& .MuiOutlinedInput-root': { borderRadius: 2 } } };
+
+  const handleProfile = async () => {
+    if (!profile.firstName.trim() || !profile.lastName.trim()) return setSnack({ open: true, msg: 'First and last name are required.', severity: 'error' });
+    setSaving(true);
+    try {
+      const res = await api.put('/profile', { firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone, gender: profile.gender });
+      updateUserProfile(res.data);
+      setSnack({ open: true, msg: 'Profile updated successfully.', severity: 'success' });
+    } catch (e) {
+      setSnack({ open: true, msg: e.response?.data?.message || 'Failed to save profile.', severity: 'error' });
+    } finally { setSaving(false); }
+  };
+
+  const handlePassword = async () => {
+    if (!pwd.current || !pwd.newPwd) return setSnack({ open: true, msg: 'Fill in current and new password.', severity: 'error' });
+    if (pwd.newPwd.length < 6) return setSnack({ open: true, msg: 'New password must be at least 6 characters.', severity: 'error' });
+    if (pwd.newPwd !== pwd.confirm) return setSnack({ open: true, msg: 'New passwords do not match.', severity: 'error' });
+    setSavingPwd(true);
+    try {
+      await api.put('/auth/change-password', { currentPassword: pwd.current, newPassword: pwd.newPwd });
+      setPwd({ current: '', newPwd: '', confirm: '' });
+      setSnack({ open: true, msg: 'Password changed successfully.', severity: 'success' });
+    } catch (e) {
+      setSnack({ open: true, msg: e.response?.data?.message || 'Failed to change password.', severity: 'error' });
+    } finally { setSavingPwd(false); }
+  };
+
+  return (
     <Box>
       <SectionTitle>Settings</SectionTitle>
-      <Paper elevation={0} sx={{p:3,borderRadius:3,bgcolor:'white',border:`1px solid ${tokens.surfaceBorder}`}}>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}><TextField fullWidth label="First Name" value={first} onChange={e=>setFirst(e.target.value)} size="small" sx={{'& .MuiOutlinedInput-root':{borderRadius:2}}}/></Grid>
-          <Grid item xs={12} md={6}><TextField fullWidth label="Last Name" value={last} onChange={e=>setLast(e.target.value)} size="small" sx={{'& .MuiOutlinedInput-root':{borderRadius:2}}}/></Grid>
-          <Grid item xs={12}><TextField fullWidth label="Email" defaultValue={user?.email} size="small" InputProps={{readOnly:true}} sx={{'& .MuiOutlinedInput-root':{borderRadius:2}}}/></Grid>
-          <Grid item xs={12}><Button variant="contained" onClick={save} sx={{borderRadius:2,fontWeight:700,background:gradients.brand,textTransform:'none'}}>{saved?'✓ Saved!':'Save Changes'}</Button></Grid>
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={6}>
+          <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, height: '100%' }}>
+            <Typography fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", mb: 2 }}>Profile Information</Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" value={profile.firstName} onChange={e => setProfile(p => ({ ...p, firstName: e.target.value }))} {...tf} /></Grid>
+              <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" value={profile.lastName} onChange={e => setProfile(p => ({ ...p, lastName: e.target.value }))} {...tf} /></Grid>
+              <Grid item xs={12}><TextField fullWidth label="Email" value={user?.email || ''} {...tf} InputProps={{ readOnly: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#F8FAFC' } }} /></Grid>
+              <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={profile.phone} onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))} placeholder="+250 7XX XXX XXX" {...tf} /></Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+                  <InputLabel>Gender</InputLabel>
+                  <Select label="Gender" value={profile.gender} onChange={e => setProfile(p => ({ ...p, gender: e.target.value }))}>
+                    <MenuItem value="">Prefer not to say</MenuItem>
+                    <MenuItem value="male">Male</MenuItem>
+                    <MenuItem value="female">Female</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <Button variant="contained" onClick={handleProfile} disabled={saving} sx={{ borderRadius: 2, fontWeight: 700, background: gradients.brand, textTransform: 'none', minWidth: 140 }}>
+                  {saving ? <CircularProgress size={18} sx={{ color: 'white' }} /> : 'Save Profile'}
+                </Button>
+              </Grid>
+            </Grid>
+          </Paper>
         </Grid>
-      </Paper>
+
+        <Grid item xs={12} md={6}>
+          <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, height: '100%' }}>
+            <Typography fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", mb: 2 }}>Change Password</Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField fullWidth label="Current Password" type={showPwd ? 'text' : 'password'} value={pwd.current} onChange={e => setPwd(p => ({ ...p, current: e.target.value }))} {...tf}
+                  InputProps={{ endAdornment: <InputAdornment position="end"><IconButton size="small" onClick={() => setShowPwd(v => !v)}>{showPwd ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}</IconButton></InputAdornment> }} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField fullWidth label="New Password" type={showPwd ? 'text' : 'password'} value={pwd.newPwd} onChange={e => setPwd(p => ({ ...p, newPwd: e.target.value }))} {...tf}
+                  InputProps={{ endAdornment: <InputAdornment position="end"><IconButton size="small" onClick={() => setShowPwd(v => !v)}>{showPwd ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}</IconButton></InputAdornment> }} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField fullWidth label="Confirm New Password" type={showPwd ? 'text' : 'password'} value={pwd.confirm} onChange={e => setPwd(p => ({ ...p, confirm: e.target.value }))} {...tf}
+                  error={!!pwd.confirm && pwd.confirm !== pwd.newPwd}
+                  helperText={pwd.confirm && pwd.confirm !== pwd.newPwd ? 'Passwords do not match' : ''}
+                  InputProps={{ endAdornment: <InputAdornment position="end"><IconButton size="small" onClick={() => setShowPwd(v => !v)}>{showPwd ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}</IconButton></InputAdornment> }} />
+              </Grid>
+              <Grid item xs={12}>
+                <Button variant="contained" onClick={handlePassword} disabled={savingPwd} sx={{ borderRadius: 2, fontWeight: 700, bgcolor: '#1E293B', textTransform: 'none', minWidth: 160, '&:hover': { bgcolor: '#0F172A' } }}>
+                  {savingPwd ? <CircularProgress size={18} sx={{ color: 'white' }} /> : 'Change Password'}
+                </Button>
+              </Grid>
+            </Grid>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }}>
+            <Typography fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", mb: 1.5 }}>Account Info</Typography>
+            <Grid container spacing={1.5}>
+              {[
+                { label: 'Role', value: user?.role },
+                { label: 'Plan', value: user?.subscriptionPlan || 'free' },
+                { label: 'Organization', value: user?.organization || '—' },
+                { label: 'Account Type', value: user?.userType || '—' },
+              ].map((item, i) => (
+                <Grid item xs={6} sm={3} key={i}>
+                  <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: '#F8FAFC', border: `1px solid ${tokens.surfaceBorder}` }}>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block', mb: 0.25 }}>{item.label}</Typography>
+                    <Typography variant="body2" fontWeight={700} sx={{ textTransform: 'capitalize' }}>{item.value}</Typography>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity={snack.severity} onClose={() => setSnack(s => ({ ...s, open: false }))} sx={{ borderRadius: 2 }}>{snack.msg}</Alert>
+      </Snackbar>
     </Box>
   );
 }

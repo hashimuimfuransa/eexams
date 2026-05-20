@@ -11,7 +11,7 @@ const { getPlanUsage } = require('../middleware/planRestrictions');
 // @access  Private
 router.put('/', auth, async (req, res) => {
   try {
-    const { firstName, lastName, class: studentClass, organization, password, currentPassword } = req.body;
+    const { firstName, lastName, phone, gender, class: studentClass, organization, password, currentPassword } = req.body;
 
     // Find the user
     const user = await User.findById(req.user._id);
@@ -23,7 +23,9 @@ router.put('/', auth, async (req, res) => {
     // Update basic profile fields
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
-    
+    if (phone !== undefined) user.phone = phone;
+    if (gender !== undefined && ['male', 'female', ''].includes(gender)) user.gender = gender;
+
     // Update student-specific fields if user is a student
     if (user.role === 'student') {
       if (studentClass !== undefined) user.class = studentClass;
@@ -62,6 +64,8 @@ router.put('/', auth, async (req, res) => {
       lastName: updatedUser.lastName,
       email: updatedUser.email,
       role: updatedUser.role,
+      phone: updatedUser.phone,
+      gender: updatedUser.gender,
       class: updatedUser.class,
       organization: updatedUser.organization
     });

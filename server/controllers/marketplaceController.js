@@ -12,7 +12,8 @@ const getMarketplaceExams = async (req, res) => {
     const exams = await Exam.find({ isPubliclyListed: true, isLocked: false })
       .populate('createdBy', 'fullName')
       .populate('sections.questions')
-      .select('title description timeLimit publicPrice publicDescription targetAudience createdAt createdBy sections isPubliclyListed isLocked status')
+      .populate('level', 'name description')
+      .select('title description timeLimit publicPrice publicDescription targetAudience level createdAt createdBy sections isPubliclyListed isLocked status')
       .sort({ createdAt: -1 });
 
     console.log('Marketplace exams count:', exams.length); // Debug log
@@ -468,12 +469,14 @@ const rejectExamRequest = async (req, res) => {
   }
 };
 
+const Level = require('../models/Level');
+
 // @desc    Update exam marketplace listing settings
 // @route   PUT /api/marketplace/exams/:id/settings
 // @access  Private (Teacher)
 const updateMarketplaceExamSettings = async (req, res) => {
   try {
-    const { isPubliclyListed, publicPrice, publicDescription, targetAudience } = req.body;
+    const { isPubliclyListed, publicPrice, publicDescription, targetAudience, levelId, newLevelName } = req.body;
 
     // First, check if the exam exists
     const exam = await Exam.findById(req.params.id);
@@ -505,7 +508,25 @@ const updateMarketplaceExamSettings = async (req, res) => {
       exam.targetAudience = targetAudience;
     }
 
+    // Handle level - either select existing or create new
+    if (newLevelName && newLevelName.trim()) {
+      // Create or find existing level
+      const level = await Level.findOrCreate(newLevelName.trim(), req.user._id);
+      exam.level = level._id;
+      // Also update targetAudience for backward compatibility
+      exam.targetAudience = level.name;
+    } else if (levelId) {
+      const level = await Level.findById(levelId);
+      if (level) {
+        exam.level = level._id;
+        exam.targetAudience = level.name;
+      }
+    }
+
     await exam.save();
+
+    // Populate level for response
+    await exam.populate('level');
 
     res.json({
       message: 'Exam marketplace settings updated successfully',
@@ -698,6 +719,225 @@ const getStudentExamRequests = async (req, res) => {
   }
 };
 
+// @desc    Get all levels
+// @route   GET /api/marketplace/levels
+// @access  Public
+const getAllLevels = async (req, res) => {
+  try {
+    const levels = await Level.find({ isActive: true })
+      .sort({ displayOrder: 1, name: 1 });
+    res.json(levels);
+  } catch (error) {
+    console.error('Get all levels error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Create a new level
+// @route   POST /api/marketplace/levels
+// @access  Private (Teacher)
+const createLevel = async (req, res) => {
+  try {
+    const { name, description, displayOrder } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Level name is required' });
+    }
+
+    // Check if level already exists (case-insensitive)
+    const existingLevel = await Level.findOne({
+      name: { $regex: new RegExp(`^${name.trim()}$`, 'i') }
+    });
+
+    if (existingLevel) {
+      return res.status(400).json({ message: 'Level already exists', level: existingLevel });
+    }
+
+    const level = await Level.create({
+      name: name.trim(),
+      description: description || null,
+      displayOrder: displayOrder || 0,
+      createdBy: req.user._id
+    });
+
+    res.status(201).json({
+      message: 'Level created successfully',
+      level
+    });
+  } catch (error) {
+    console.error('Create level error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Update a level
+// @route   PUT /api/marketplace/levels/:id
+// @access  Private (Teacher)
+const updateLevel = async (req, res) => {
+  try {
+    const { name, description, displayOrder, isActive } = req.body;
+
+    const level = await Level.findById(req.params.id);
+    if (!level) {
+      return res.status(404).json({ message: 'Level not found' });
+    }
+
+    // Check for name conflict if name is being changed
+    if (name && name.trim() !== level.name) {
+      const existingLevel = await Level.findOne({
+        name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
+        _id: { $ne: req.params.id }
+      });
+
+      if (existingLevel) {
+        return res.status(400).json({ message: 'Level name already in use' });
+      }
+    }
+
+    if (name !== undefined) level.name = name.trim();
+    if (description !== undefined) level.description = description;
+    if (displayOrder !== undefined) level.displayOrder = displayOrder;
+    if (isActive !== undefined) level.isActive = isActive;
+
+    await level.save();
+
+    res.json({
+      message: 'Level updated successfully',
+      level
+    });
+  } catch (error) {
+    console.error('Update level error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Delete a level
+// @route   DELETE /api/marketplace/levels/:id
+// @access  Private (Teacher)
+const deleteLevel = async (req, res) => {
+  try {
+    const level = await Level.findById(req.params.id);
+    if (!level) {
+      return res.status(404).json({ message: 'Level not found' });
+    }
+
+    // Check if level is in use by any exams
+    const examCount = await Exam.countDocuments({ level: req.params.id });
+    if (examCount > 0) {
+      return res.status(400).json({
+        message: `Cannot delete level. It is currently used by ${examCount} exam(s).`
+      });
+    }
+
+    await Level.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Level deleted successfully' });
+  } catch (error) {
+    console.error('Delete level error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get personalized exam recommendations for student
+// @route   GET /api/marketplace/recommendations
+// @access  Private (Student)
+const getPersonalizedRecommendations = async (req, res) => {
+  try {
+    const studentId = req.user._id;
+
+    // Get student's exam history (completed exams)
+    const completedResults = await Result.find({
+      student: studentId,
+      isCompleted: true
+    }).populate('exam', 'title level targetAudience');
+
+    // Extract levels from completed exams
+    const completedExamIds = completedResults.map(r => r.exam?._id?.toString()).filter(Boolean);
+    const completedLevels = [...new Set(completedResults
+      .map(r => r.exam?.level?.toString() || r.exam?.targetAudience)
+      .filter(Boolean))];
+
+    // Build query for recommended exams
+    let recommendationQuery = {
+      isPubliclyListed: true,
+      isLocked: false,
+      _id: { $nin: completedExamIds }
+    };
+
+    // If student has history, prioritize similar levels
+    if (completedLevels.length > 0) {
+      // First try to find exams with same level/targetAudience
+      const levelRecommendations = await Exam.find({
+        ...recommendationQuery,
+        $or: [
+          { level: { $in: completedLevels } },
+          { targetAudience: { $in: completedLevels } }
+        ]
+      })
+        .populate('createdBy', 'fullName')
+        .populate('level', 'name description')
+        .limit(6);
+
+      if (levelRecommendations.length >= 3) {
+        return res.json({
+          recommendations: levelRecommendations,
+          basedOn: 'level_history',
+          completedExams: completedResults.length
+        });
+      }
+    }
+
+    // Fallback: return newest exams
+    const fallbackRecommendations = await Exam.find(recommendationQuery)
+      .populate('createdBy', 'fullName')
+      .populate('level', 'name description')
+      .sort({ createdAt: -1 })
+      .limit(6);
+
+    res.json({
+      recommendations: fallbackRecommendations,
+      basedOn: completedLevels.length > 0 ? 'mixed' : 'newest',
+      completedExams: completedResults.length
+    });
+  } catch (error) {
+    console.error('Get personalized recommendations error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get student's exam completion status for marketplace exams
+// @route   GET /api/marketplace/exam-completion-status
+// @access  Private (Student)
+const getExamCompletionStatus = async (req, res) => {
+  try {
+    const studentId = req.user._id;
+
+    // Get all completed exams by this student
+    const completedResults = await Result.find({
+      student: studentId,
+      isCompleted: true
+    }).select('exam');
+
+    const completedExamIds = completedResults.map(r => r.exam.toString());
+
+    // Get approved exam requests
+    const approvedRequests = await ExamRequest.find({
+      student: studentId,
+      status: 'approved'
+    }).select('exam');
+
+    const approvedExamIds = approvedRequests.map(r => r.exam.toString());
+
+    res.json({
+      completedExamIds,
+      approvedExamIds,
+      canRetake: completedExamIds // Exams that can be retaken
+    });
+  } catch (error) {
+    console.error('Get exam completion status error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getMarketplaceExams,
   getMarketplaceExamById,
@@ -711,5 +951,11 @@ module.exports = {
   resetAccessLink,
   deleteExamRequest,
   getExamByAccessCode,
-  getStudentExamRequests
+  getStudentExamRequests,
+  getAllLevels,
+  createLevel,
+  updateLevel,
+  deleteLevel,
+  getPersonalizedRecommendations,
+  getExamCompletionStatus
 };

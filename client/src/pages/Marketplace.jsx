@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
-import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share } from '@mui/icons-material';
+import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
@@ -14,10 +14,16 @@ const Marketplace = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [targetAudienceFilter, setTargetAudienceFilter] = useState('all');
   const [priceFilter, setPriceFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
+  const [completedExamIds, setCompletedExamIds] = useState([]);
+  const [approvedExamIds, setApprovedExamIds] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
   const { mode, toggleMode } = useThemeMode();
   const scrollY = useState(0)[0];
+  const isStudent = isAuthenticated && user?.role === 'student';
 
   const handleLogout = () => {
     logout();
@@ -26,7 +32,11 @@ const Marketplace = () => {
 
   useEffect(() => {
     fetchMarketplaceExams();
-  }, []);
+    if (isStudent) {
+      fetchExamCompletionStatus();
+      fetchRecommendations();
+    }
+  }, [isAuthenticated, user]);
 
   const fetchMarketplaceExams = async () => {
     try {
@@ -41,7 +51,29 @@ const Marketplace = () => {
     }
   };
 
-  const handleRequestAccess = (examId) => {
+  const fetchExamCompletionStatus = async () => {
+    try {
+      const response = await api.get('/marketplace/exam-completion-status');
+      setCompletedExamIds(response.data.completedExamIds || []);
+      setApprovedExamIds(response.data.approvedExamIds || []);
+    } catch (err) {
+      console.error('Error fetching exam completion status:', err);
+    }
+  };
+
+  const fetchRecommendations = async () => {
+    try {
+      setLoadingRecommendations(true);
+      const response = await api.get('/marketplace/recommendations');
+      setRecommendations(response.data.recommendations || []);
+    } catch (err) {
+      console.error('Error fetching recommendations:', err);
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  };
+
+  const handleRequestAccess = async (examId, isRetake = false) => {
     // Check if user is authenticated as a student
     const isStudent = isAuthenticated && user?.role === 'student';
     
@@ -52,8 +84,25 @@ const Marketplace = () => {
       return;
     }
 
-    // If authenticated as student, redirect to exam request page
-    navigate(`/marketplace/exams/${examId}/request`);
+    // If authenticated as student
+    if (isRetake) {
+      // For retake, submit request directly without redirecting
+      try {
+        const response = await api.post(`/marketplace/exams/${examId}/request`);
+        // Refresh completion status after successful retake request
+        fetchExamCompletionStatus();
+        // Show success message or redirect to dashboard
+        navigate('/student/dashboard', { state: { message: 'Retake request submitted successfully!' } });
+      } catch (err) {
+        console.error('Error requesting retake:', err);
+        if (err.response?.data?.message) {
+          alert(err.response.data.message);
+        }
+      }
+    } else {
+      // First time request - redirect to exam request page
+      navigate(`/marketplace/exams/${examId}/request`);
+    }
   };
 
   const handleShareExam = async (examId, examTitle) => {
@@ -109,6 +158,24 @@ const Marketplace = () => {
       (priceFilter === 'paid' && exam.publicPrice > 0);
     
     return matchesSearch && matchesAudience && matchesPrice;
+  }).sort((a, b) => {
+    // Sort logic
+    switch (sortBy) {
+      case 'newest':
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      case 'oldest':
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      case 'price-low':
+        return (a.publicPrice || 0) - (b.publicPrice || 0);
+      case 'price-high':
+        return (b.publicPrice || 0) - (a.publicPrice || 0);
+      case 'title-asc':
+        return (a.title || '').localeCompare(b.title || '');
+      case 'title-desc':
+        return (b.title || '').localeCompare(a.title || '');
+      default:
+        return new Date(b.createdAt) - new Date(a.createdAt);
+    }
   });
 
   const calculateTotalQuestions = (sections) => {
@@ -119,6 +186,23 @@ const Marketplace = () => {
     setSearchTerm('');
     setTargetAudienceFilter('all');
     setPriceFilter('all');
+    setSortBy('newest');
+  };
+
+  // Format relative time (e.g., "2 days ago", "Just now")
+  const formatRelativeTime = (dateString) => {
+    if (!dateString) return 'Unknown';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} min ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 604800)} weeks ago`;
+    if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)} months ago`;
+    return `${Math.floor(diffInSeconds / 31536000)} years ago`;
   };
 
   if (loading) {
@@ -169,15 +253,15 @@ const Marketplace = () => {
                 <Typography fontWeight={700} sx={{ color: '#0F172A', fontSize: 15 }}>
                   Filters
                 </Typography>
-                {(searchTerm || targetAudienceFilter !== 'all' || priceFilter !== 'all') && (
+                {(searchTerm || targetAudienceFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
                   <Chip 
-                    label={`${[searchTerm, targetAudienceFilter !== 'all' && targetAudienceFilter, priceFilter !== 'all' && priceFilter].filter(Boolean).length} active`}
+                    label={`${[searchTerm, targetAudienceFilter !== 'all' && targetAudienceFilter, priceFilter !== 'all' && priceFilter, sortBy !== 'newest' && 'sort'].filter(Boolean).length} active`}
                     size="small"
                     sx={{ ml: 2, bgcolor: '#0CBD73', color: 'white', fontWeight: 600, height: 22, fontSize: 11 }}
                   />
                 )}
               </Box>
-              {(searchTerm || targetAudienceFilter !== 'all' || priceFilter !== 'all') && (
+              {(searchTerm || targetAudienceFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
                 <Button
                   onClick={clearFilters}
                   size="small"
@@ -242,6 +326,31 @@ const Marketplace = () => {
                   </Select>
                 </FormControl>
               </Grid>
+
+              {/* Sort By */}
+              <Grid item xs={12} sm={6} lg={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel sx={{ fontSize: 13 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Sort sx={{ fontSize: 16 }} />
+                      Sort By
+                    </Box>
+                  </InputLabel>
+                  <Select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    label="Sort By"
+                    sx={{ borderRadius: 1.5, fontSize: 14 }}
+                  >
+                    <MenuItem value="newest">Newest First</MenuItem>
+                    <MenuItem value="oldest">Oldest First</MenuItem>
+                    <MenuItem value="price-low">Price: Low to High</MenuItem>
+                    <MenuItem value="price-high">Price: High to Low</MenuItem>
+                    <MenuItem value="title-asc">Title: A to Z</MenuItem>
+                    <MenuItem value="title-desc">Title: Z to A</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
             </Grid>
           </Box>
         </Box>
@@ -250,6 +359,103 @@ const Marketplace = () => {
           <Alert severity="error" sx={{ mb: 4, maxWidth: 600, mx: 'auto' }}>
             {error}
           </Alert>
+        )}
+
+        {/* Personalized Recommendations Section */}
+        {isStudent && recommendations.length > 0 && (
+          <Box sx={{ mb: 5 }}>
+            <Typography variant="h5" fontWeight={700} sx={{ mb: 3, color: '#0D406C', display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box component="span" sx={{ fontSize: 24 }}>🎯</Box>
+              Recommended For You
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
+              Based on your exam history
+            </Typography>
+            <Grid container spacing={2}>
+              {recommendations.slice(0, 3).map((exam) => {
+                const totalQuestions = exam.sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
+                const isCompleted = completedExamIds.includes(exam._id);
+                return (
+                  <Grid item xs={12} sm={6} md={4} key={`rec-${exam._id}`}>
+                    <Card
+                      elevation={0}
+                      sx={{
+                        borderRadius: 3,
+                        border: '2px solid #0CBD73',
+                        transition: 'all 0.3s',
+                        cursor: 'pointer',
+                        '&:hover': {
+                          transform: 'translateY(-4px)',
+                          boxShadow: '0 12px 24px rgba(12,189,115,0.2)'
+                        }
+                      }}
+                    >
+                      <CardContent sx={{ p: 2.5 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                          <Chip
+                            label="Recommended"
+                            size="small"
+                            sx={{
+                              background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
+                              color: 'white',
+                              fontWeight: 700,
+                              fontSize: 10
+                            }}
+                          />
+                          {(exam.level?.name || exam.targetAudience) && (
+                            <Chip
+                              label={exam.level?.name || exam.targetAudience}
+                              size="small"
+                              sx={{
+                                background: 'rgba(13,71,161,0.1)',
+                                color: '#0D406C',
+                                fontWeight: 600,
+                                fontSize: 10
+                              }}
+                            />
+                          )}
+                        </Box>
+                        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1, color: '#0F172A', fontSize: 16, lineHeight: 1.3 }}>
+                          {exam.title}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+                          <Chip
+                            label={`${totalQuestions} Questions`}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontSize: 10 }}
+                          />
+                          <Chip
+                            label={`${exam.timeLimit} min`}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontSize: 10 }}
+                          />
+                        </Box>
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          size="small"
+                          onClick={() => handleRequestAccess(exam._id, isCompleted)}
+                          sx={{
+                            borderRadius: 2,
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            background: isCompleted
+                              ? 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)'
+                              : 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                            fontSize: 12
+                          }}
+                        >
+                          {isCompleted ? 'Retake' : 'Request Access'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          </Box>
         )}
 
         {/* Exam Grid */}
@@ -306,6 +512,14 @@ const Marketplace = () => {
                           }}
                         />
                       )}
+                    </Box>
+                    
+                    {/* Published Date */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
+                      <TimeIcon sx={{ fontSize: 14, color: '#94A3B8' }} />
+                      <Typography sx={{ fontSize: 12, color: '#94A3B8', fontWeight: 500 }}>
+                        Published {formatRelativeTime(exam.createdAt)}
+                      </Typography>
                     </Box>
                     
                     {/* Title */}
@@ -377,20 +591,63 @@ const Marketplace = () => {
                     )}
 
                     <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        onClick={() => handleRequestAccess(exam._id)}
-                        sx={{
-                          borderRadius: 2,
-                          textTransform: 'none',
-                          fontWeight: 700,
-                          background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                          boxShadow: '0 4px 12px rgba(12,189,115,0.35)'
-                        }}
-                      >
-                        Request Access
-                      </Button>
+                      {(() => {
+                        const isCompleted = completedExamIds.includes(exam._id);
+                        const isApproved = approvedExamIds.includes(exam._id);
+                        
+                        if (isCompleted) {
+                          return (
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              onClick={() => handleRequestAccess(exam._id, true)}
+                              sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                background: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
+                                boxShadow: '0 4px 12px rgba(139,92,246,0.35)'
+                              }}
+                            >
+                              Retake Exam
+                            </Button>
+                          );
+                        } else if (isApproved) {
+                          return (
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              disabled
+                              sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                background: '#E2E8F0',
+                                color: '#64748B'
+                              }}
+                            >
+                              Already Approved
+                            </Button>
+                          );
+                        } else {
+                          return (
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              onClick={() => handleRequestAccess(exam._id, false)}
+                              sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                                boxShadow: '0 4px 12px rgba(12,189,115,0.35)'
+                              }}
+                            >
+                              Request Access
+                            </Button>
+                          );
+                        }
+                      })()}
                       <Button
                         variant="outlined"
                         onClick={() => handleShareExam(exam._id, exam.title)}

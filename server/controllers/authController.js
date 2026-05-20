@@ -1,9 +1,17 @@
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const crypto = require('crypto');
+const sgMail = require('@sendgrid/mail');
 const User = require('../models/User');
+const emailService = require('../utils/emailService');
 
 // Google OAuth client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// Initialize SendGrid with API key
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -91,6 +99,18 @@ const register = async (req, res) => {
     const user = await User.create(userData);
 
     if (user) {
+      // Send welcome email
+      emailService.sendWelcomeEmail(user).catch(err => {
+        console.error('[Auth] Failed to send welcome email:', err);
+      });
+
+      // Send pending approval email for organization accounts or paid plans
+      if (isOrganization || (subscriptionPlan && subscriptionPlan !== 'free')) {
+        emailService.sendPendingApprovalEmail(user, accountType).catch(err => {
+          console.error('[Auth] Failed to send pending approval email:', err);
+        });
+      }
+
       // Generate token
       const token = generateToken(user._id);
 
@@ -545,6 +565,184 @@ const googleAuth = async (req, res) => {
   }
 };
 
+// @desc    Forgot password - send reset email
+// @route   POST /api/auth/forgot-password
+// @access  Public
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email });
+
+    // Don't reveal if user exists or not for security
+    if (!user) {
+      return res.json({ message: 'If an account with that email exists, a password reset link has been sent.' });
+    }
+
+    // Don't allow password reset for Google-only users
+    if (user.isGoogleUser && !user.password) {
+      return res.json({ message: 'If an account with that email exists, a password reset link has been sent.' });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Save hashed token and expiry to user
+    user.resetPasswordToken = resetTokenHash;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiry
+    await user.save();
+
+    // Send email with SendGrid
+    if (process.env.SENDGRID_API_KEY) {
+      const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+
+      const msg = {
+        to: user.email,
+        from: process.env.SENDGRID_FROM_EMAIL || 'noreply@eexams.com',
+        subject: 'Password Reset Request - eexams',
+        html: `
+          <div style="font-family: 'DM Sans', sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #F5FBF8; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #0D406C; font-size: 24px; margin-bottom: 10px;">Password Reset Request</h1>
+              <p style="color: #475569; font-size: 16px;">You requested a password reset for your eexams account.</p>
+            </div>
+            <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+              <p style="color: #0F172A; font-size: 15px; margin-bottom: 20px; line-height: 1.6;">
+                Hello ${user.firstName || 'there'},
+              </p>
+              <p style="color: #475569; font-size: 15px; margin-bottom: 25px; line-height: 1.6;">
+                We received a request to reset your password. Click the button below to create a new password. This link will expire in 1 hour.
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #0D406C 0%, #0CBD73 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 700; font-size: 16px; box-shadow: 0 8px 24px rgba(12,189,115,0.35);">
+                  Reset Password
+                </a>
+              </div>
+              <p style="color: #475569; font-size: 14px; margin-bottom: 15px; line-height: 1.6;">
+                Or copy and paste this link into your browser:
+              </p>
+              <p style="background: #F5FBF8; padding: 12px; border-radius: 8px; word-break: break-all; font-size: 13px; color: #0D406C;">
+                ${resetUrl}
+              </p>
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #E2E8F0;">
+                <p style="color: #94A3B8; font-size: 13px; line-height: 1.5;">
+                  If you didn't request this password reset, you can safely ignore this email. Your password will not be changed.
+                </p>
+              </div>
+            </div>
+            <div style="text-align: center; margin-top: 30px; color: #94A3B8; font-size: 12px;">
+              <p>© ${new Date().getFullYear()} eexams. All rights reserved.</p>
+            </div>
+          </div>
+        `,
+      };
+
+      await sgMail.send(msg);
+      console.log(`[PasswordReset] Reset email sent to ${user.email}`);
+    } else {
+      console.log('[PasswordReset] SENDGRID_API_KEY not configured, email not sent');
+      // For development, log the reset URL
+      const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+      console.log(`[PasswordReset] Reset URL (dev): ${resetUrl}`);
+    }
+
+    res.json({ message: 'If an account with that email exists, a password reset link has been sent.' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Failed to send reset email. Please try again later.' });
+  }
+};
+
+// @desc    Reset password with token
+// @route   POST /api/auth/reset-password
+// @access  Public
+const resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({ message: 'Token and new password are required' });
+    }
+
+    // Hash the token from request
+    const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with valid reset token
+    const user = await User.findOne({
+      resetPasswordToken: resetTokenHash,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired reset token. Please request a new password reset.' });
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
+    }
+
+    // Update password and clear reset token fields
+    user.password = password;
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    // Send password reset confirmation email
+    emailService.sendPasswordResetConfirmationEmail(user).catch(err => {
+      console.error('[Auth] Failed to send password reset confirmation:', err);
+    });
+
+    console.log(`[PasswordReset] Password reset successful for ${user.email}`);
+
+    res.json({ message: 'Password reset successful. You can now log in with your new password.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Failed to reset password. Please try again.' });
+  }
+};
+
+// @desc    Verify reset token validity
+// @route   GET /api/auth/verify-reset-token
+// @access  Public
+const verifyResetToken = async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({ message: 'Token is required' });
+    }
+
+    // Hash the token from request
+    const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with valid reset token
+    const user = await User.findOne({
+      resetPasswordToken: resetTokenHash,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    res.json({ valid: true, email: user.email });
+  } catch (error) {
+    console.error('Verify reset token error:', error);
+    res.status(500).json({ message: 'Failed to verify token' });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -552,5 +750,8 @@ module.exports = {
   updateProfile,
   changePassword,
   verifyToken,
-  googleAuth
+  googleAuth,
+  forgotPassword,
+  resetPassword,
+  verifyResetToken
 };

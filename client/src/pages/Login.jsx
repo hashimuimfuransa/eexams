@@ -535,7 +535,7 @@ const Login = () => {
             />
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-              <RouterLink to="#" style={{ fontSize: 13.5, fontWeight: 600, color: tokens.accent, textDecoration: 'none' }}>
+              <RouterLink to="/forgot-password" style={{ fontSize: 13.5, fontWeight: 600, color: tokens.accent, textDecoration: 'none' }}>
                 Forgot password?
               </RouterLink>
             </div>

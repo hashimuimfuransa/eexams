@@ -24,7 +24,9 @@ import {
   Lock,
   School,
   AccessTime,
-  Refresh
+  Refresh,
+  ArrowForward,
+  AddCircle
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -127,6 +129,23 @@ const Dashboard = memo(() => {
     fetchData(true);
   };
 
+  const handleDirectRequest = async (examId, examTitle) => {
+    try {
+      const response = await api.post(`/marketplace/exams/${examId}/request`);
+      // Refresh the data to update the pending requests list
+      await fetchData(true);
+      // Show success message
+      alert(`Request for "${examTitle}" submitted successfully! The teacher will review your request.`);
+    } catch (err) {
+      console.error('Error requesting exam:', err);
+      if (err.response?.data?.message) {
+        alert(err.response.data.message);
+      } else {
+        alert('Failed to submit request. Please try again.');
+      }
+    }
+  };
+
   const calculatePercentage = (score, maxScore) => {
     if (!score || !maxScore || maxScore === 0) return 0;
     return Math.round((score / maxScore) * 100);
@@ -214,13 +233,22 @@ const Dashboard = memo(() => {
               Available Exams
             </Typography>
             <Button
-              variant="text"
+              variant="contained"
               component={RouterLink}
               to="/student/exams"
               size="small"
-              sx={{ color: 'primary.main', fontWeight: 'bold' }}
+              endIcon={<ArrowForward />}
+              sx={{
+                fontWeight: 'bold',
+                textTransform: 'none',
+                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
+                '&:hover': {
+                  boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
+                }
+              }}
             >
-              View All →
+              View All Exams
             </Button>
           </Box>
 
@@ -404,13 +432,22 @@ const Dashboard = memo(() => {
               Exam Bank
             </Typography>
             <Button
-              variant="text"
+              variant="contained"
               component={RouterLink}
               to="/marketplace"
               size="small"
-              sx={{ color: 'primary.main', fontWeight: 'bold' }}
+              endIcon={<ArrowForward />}
+              sx={{
+                fontWeight: 'bold',
+                textTransform: 'none',
+                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
+                '&:hover': {
+                  boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
+                }
+              }}
             >
-              View All →
+              View All Exams
             </Button>
           </Box>
 
@@ -433,6 +470,7 @@ const Dashboard = memo(() => {
                 const totalQuestions = exam.sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
                 const isRequested = pendingRequests.some(r => r.exam?._id === exam._id);
                 const isApproved = pendingRequests.some(r => r.exam?._id === exam._id && r.status === 'approved');
+                const isCompleted = results.some(r => r.exam?._id === exam._id || r.exam === exam._id);
 
                 return (
                   <Card
@@ -495,7 +533,22 @@ const Dashboard = memo(() => {
                           </Box>
                         </Box>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 140 }}>
-                          {isApproved ? (
+                          {isCompleted ? (
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={() => handleDirectRequest(exam._id, exam.title)}
+                              startIcon={<AddCircle />}
+                              sx={{
+                                fontWeight: 'bold',
+                                textTransform: 'none',
+                                background: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
+                                boxShadow: '0 2px 8px rgba(139,92,246,0.3)'
+                              }}
+                            >
+                              Retake
+                            </Button>
+                          ) : isApproved ? (
                             <Button
                               variant="outlined"
                               disabled
@@ -522,16 +575,17 @@ const Dashboard = memo(() => {
                           ) : (
                             <Button
                               variant="contained"
-                              component={RouterLink}
-                              to={`/marketplace/exams/${exam._id}/request`}
                               size="small"
+                              onClick={() => handleDirectRequest(exam._id, exam.title)}
+                              startIcon={<AddCircle />}
                               sx={{
                                 fontWeight: 'bold',
                                 textTransform: 'none',
-                                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)'
+                                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                                boxShadow: '0 2px 8px rgba(12,189,115,0.3)'
                               }}
                             >
-                              Request Access
+                              Request
                             </Button>
                           )}
                         </Box>

@@ -98,6 +98,11 @@ const ExamSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  level: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Level',
+    default: null
+  },
   sections: [{
     name: {
       type: String,

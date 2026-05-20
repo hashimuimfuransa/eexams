@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getProfile, updateProfile, changePassword, verifyToken, googleAuth } = require('../controllers/authController');
+const { register, login, getProfile, updateProfile, changePassword, verifyToken, googleAuth, forgotPassword, resetPassword, verifyResetToken } = require('../controllers/authController');
 const auth = require('../middleware/auth');
 const { validateLogin, validateRegister } = require('../middleware/validation');
 
@@ -18,6 +18,21 @@ router.post('/login', validateLogin, login);
 // @desc    Google OAuth login/register
 // @access  Public
 router.post('/google', googleAuth);
+
+// @route   POST /api/auth/forgot-password
+// @desc    Send password reset email
+// @access  Public
+router.post('/forgot-password', forgotPassword);
+
+// @route   POST /api/auth/reset-password
+// @desc    Reset password with token
+// @access  Public
+router.post('/reset-password', resetPassword);
+
+// @route   GET /api/auth/verify-reset-token
+// @desc    Verify reset token validity
+// @access  Public
+router.get('/verify-reset-token', verifyResetToken);
 
 // @route   GET /api/auth/profile
 // @desc    Get user profile

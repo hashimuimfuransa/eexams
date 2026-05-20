@@ -402,9 +402,11 @@ const Marketplace = () => {
                               fontSize: 10
                             }}
                           />
-                          {(exam.level?.name || exam.targetAudience) && (
+                          {(exam.level?.name || exam.targetAudience || exam.subLevel) && (
                             <Chip
-                              label={exam.level?.name || exam.targetAudience}
+                              label={exam.subLevel 
+                                ? `${exam.level?.name || exam.targetAudience} - ${exam.subLevel}`
+                                : (exam.level?.name || exam.targetAudience)}
                               size="small"
                               sx={{
                                 background: 'rgba(13,71,161,0.1)',
@@ -500,9 +502,11 @@ const Marketplace = () => {
                           letterSpacing: '0.04em'
                         }} 
                       />
-                      {exam.targetAudience && (
+                      {(exam.targetAudience || exam.level?.name || exam.subLevel) && (
                         <Chip 
-                          label={exam.targetAudience}
+                          label={exam.subLevel 
+                            ? `${exam.level?.name || exam.targetAudience} - ${exam.subLevel}`
+                            : (exam.targetAudience || exam.level?.name)}
                           size="small"
                           sx={{
                             background: 'rgba(13,71,161,0.1)',

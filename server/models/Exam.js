@@ -103,6 +103,10 @@ const ExamSchema = new mongoose.Schema({
     ref: 'Level',
     default: null
   },
+  subLevel: {
+    type: String, // Stores the sub-level name (e.g., "P6", "S3")
+    default: null
+  },
   sections: [{
     name: {
       type: String,

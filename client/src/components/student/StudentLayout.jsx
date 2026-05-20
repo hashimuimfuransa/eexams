@@ -27,7 +27,14 @@ import {
   LinearProgress,
   Zoom,
   Fade,
-  Slide
+  Slide,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -55,7 +62,12 @@ import {
   Verified,
   WorkspacePremium,
   AutoGraph,
-  Close
+  Close,
+  ExpandMore as ExpandMoreIcon,
+  Support,
+  Email,
+  Phone,
+  QuestionAnswer
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
@@ -73,6 +85,7 @@ const StudentLayout = ({ children }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
   const [examSubmenuOpen, setExamSubmenuOpen] = useState(true);
+  const [helpDialogOpen, setHelpDialogOpen] = useState(false);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -101,6 +114,14 @@ const StudentLayout = ({ children }) => {
 
   const toggleExamSubmenu = () => {
     setExamSubmenuOpen(!examSubmenuOpen);
+  };
+
+  const handleHelpOpen = () => {
+    setHelpDialogOpen(true);
+  };
+
+  const handleHelpClose = () => {
+    setHelpDialogOpen(false);
   };
 
   const isActive = (path) => {
@@ -1013,6 +1034,7 @@ const StudentLayout = ({ children }) => {
               <IconButton
                 size="large"
                 color="inherit"
+                onClick={handleHelpOpen}
                 sx={{
                   bgcolor: 'rgba(255,255,255,0.1)',
                   '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
@@ -1225,6 +1247,109 @@ const StudentLayout = ({ children }) => {
           </Button>
         </Box>
       </Menu>
+
+      {/* Help Dialog */}
+      <Dialog
+        open={helpDialogOpen}
+        onClose={handleHelpClose}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 0 }
+        }}
+      >
+        <DialogTitle sx={{
+          background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+          color: 'white',
+          fontWeight: 'bold'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Support />
+            Help & Support
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Accordion defaultExpanded sx={{ borderRadius: 0, mb: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography fontWeight="bold">How do I start an exam?</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography variant="body2" color="text.secondary">
+                Go to the Dashboard or Available Exams page, find the exam you want to take,
+                and click the "Start Exam" button. Make sure you have a stable internet connection.
+              </Typography>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion sx={{ borderRadius: 0, mb: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography fontWeight="bold">Where can I see my results?</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography variant="body2" color="text.secondary">
+                Your exam results are available on the Dashboard under "Completed Exams" section,
+                or you can navigate to the Results page from the Exams menu in the sidebar.
+              </Typography>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion sx={{ borderRadius: 0, mb: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography fontWeight="bold">How do I request an exam from the Exam Bank?</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography variant="body2" color="text.secondary">
+                Browse the Exam Bank section on your Dashboard or visit the Marketplace page.
+                Click "Request" on any exam you're interested in. Your teacher will need to approve
+                the request before you can access it.
+              </Typography>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion sx={{ borderRadius: 0, mb: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography fontWeight="bold">What if I get disconnected during an exam?</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography variant="body2" color="text.secondary">
+                Don't worry! Your progress is automatically saved. You can log back in and
+                resume the exam from where you left off by clicking "Continue Exam" on the Dashboard.
+              </Typography>
+            </AccordionDetails>
+          </Accordion>
+
+          <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 0 }}>
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <QuestionAnswer fontSize="small" />
+                Need more help?
+              </Box>
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Contact our support team:
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
+              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Email fontSize="small" color="primary" />
+                support@eexams.com
+              </Typography>
+              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Phone fontSize="small" color="primary" />
+                +250 788 535 156
+              </Typography>
+              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Phone fontSize="small" color="primary" />
+                +250 793 828 834
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleHelpClose} variant="contained" sx={{ borderRadius: 0 }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

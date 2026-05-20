@@ -20,6 +20,9 @@ const {
   createLevel,
   updateLevel,
   deleteLevel,
+  addSubLevel,
+  updateSubLevel,
+  deleteSubLevel,
   getPersonalizedRecommendations,
   getExamCompletionStatus
 } = require('../controllers/marketplaceController');
@@ -55,5 +58,10 @@ router.put('/exams/:id/settings', isAdminOrTeacher, updateMarketplaceExamSetting
 router.post('/levels', isAdminOrTeacher, createLevel);
 router.put('/levels/:id', isAdminOrTeacher, updateLevel);
 router.delete('/levels/:id', isAdminOrTeacher, deleteLevel);
+
+// Sub-level management routes (Teacher only)
+router.post('/levels/:id/sublevels', isAdminOrTeacher, addSubLevel);
+router.put('/levels/:id/sublevels/:subLevelId', isAdminOrTeacher, updateSubLevel);
+router.delete('/levels/:id/sublevels/:subLevelId', isAdminOrTeacher, deleteSubLevel);
 
 module.exports = router;

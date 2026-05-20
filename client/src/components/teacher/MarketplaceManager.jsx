@@ -41,7 +41,8 @@ const MarketplaceManager = ({ exam }) => {
     publicPrice: exam?.publicPrice || 0,
     publicDescription: exam?.publicDescription || '',
     targetAudience: exam?.targetAudience || '',
-    levelId: exam?.level?._id || null
+    levelId: exam?.level?._id || null,
+    subLevel: exam?.subLevel || ''
   });
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -51,7 +52,8 @@ const MarketplaceManager = ({ exam }) => {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, requestId: null });
   const [levels, setLevels] = useState([]);
   const [loadingLevels, setLoadingLevels] = useState(false);
-  const [newLevelDialog, setNewLevelDialog] = useState({ open: false, name: '', description: '' });
+  const [newLevelDialog, setNewLevelDialog] = useState({ open: false, name: '', description: '', subLevels: [] });
+  const [subLevelDialog, setSubLevelDialog] = useState({ open: false, levelId: null, name: '', description: '' });
   const [previewExam, setPreviewExam] = useState(null);
   const [previewDialog, setPreviewDialog] = useState(false);
 
@@ -69,9 +71,17 @@ const MarketplaceManager = ({ exam }) => {
       publicPrice: exam?.publicPrice || 0,
       publicDescription: exam?.publicDescription || '',
       targetAudience: exam?.targetAudience || '',
-      levelId: exam?.level?._id || null
+      levelId: exam?.level?._id || null,
+      subLevel: exam?.subLevel || ''
     });
   }, [exam]);
+
+  // Get available sub-levels for selected level
+  const getAvailableSubLevels = () => {
+    if (!settings.levelId) return [];
+    const selectedLevel = levels.find(l => l._id === settings.levelId);
+    return selectedLevel?.subLevels?.filter(s => s.isActive) || [];
+  };
 
   const fetchRequests = async () => {
     try {
@@ -110,7 +120,7 @@ const MarketplaceManager = ({ exam }) => {
       });
       setLevels([...levels, response.data.level]);
       setSettings({ ...settings, levelId: response.data.level._id });
-      setNewLevelDialog({ open: false, name: '', description: '' });
+      setNewLevelDialog({ open: false, name: '', description: '', subLevels: [] });
       setMessage({ type: 'success', text: 'Level created successfully' });
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
@@ -118,11 +128,52 @@ const MarketplaceManager = ({ exam }) => {
       if (error.response?.data?.message === 'Level already exists') {
         // Level already exists, use the existing one
         setSettings({ ...settings, levelId: error.response.data.level._id });
-        setNewLevelDialog({ open: false, name: '', description: '' });
+        setNewLevelDialog({ open: false, name: '', description: '', subLevels: [] });
         setMessage({ type: 'success', text: 'Existing level selected' });
         setTimeout(() => setMessage(null), 3000);
       } else {
         setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to create level' });
+      }
+    }
+  };
+
+  const handleCreateSubLevel = async () => {
+    try {
+      if (!subLevelDialog.name.trim()) {
+        setMessage({ type: 'error', text: 'Sub-level name is required' });
+        return;
+      }
+      const response = await api.post(`/marketplace/levels/${subLevelDialog.levelId}/sublevels`, {
+        name: subLevelDialog.name.trim(),
+        description: subLevelDialog.description.trim() || undefined
+      });
+      // Update levels list with new sub-level
+      setLevels(levels.map(level => 
+        level._id === subLevelDialog.levelId 
+          ? { ...level, subLevels: [...(level.subLevels || []), response.data.subLevel] }
+          : level
+      ));
+      // Auto-select the new sub-level
+      setSettings({ ...settings, subLevel: response.data.subLevel.name });
+      setSubLevelDialog({ open: false, levelId: null, name: '', description: '' });
+      setMessage({ type: 'success', text: 'Sub-level created successfully' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error) {
+      console.error('Error creating sub-level:', error);
+      if (error.response?.data?.message === 'Sub-level with this name already exists') {
+        // Sub-level already exists, use it
+        const existingLevel = levels.find(l => l._id === subLevelDialog.levelId);
+        const existingSub = existingLevel?.subLevels?.find(
+          s => s.name.toLowerCase() === subLevelDialog.name.trim().toLowerCase()
+        );
+        if (existingSub) {
+          setSettings({ ...settings, subLevel: existingSub.name });
+        }
+        setSubLevelDialog({ open: false, levelId: null, name: '', description: '' });
+        setMessage({ type: 'success', text: 'Existing sub-level selected' });
+        setTimeout(() => setMessage(null), 3000);
+      } else {
+        setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to create sub-level' });
       }
     }
   };
@@ -286,9 +337,10 @@ const MarketplaceManager = ({ exam }) => {
                   onChange={(e) => {
                     const value = e.target.value;
                     if (value === 'create_new') {
-                      setNewLevelDialog({ open: true, name: '', description: '' });
+                      setNewLevelDialog({ open: true, name: '', description: '', subLevels: [] });
                     } else {
                       handleSettingsChange('levelId', value);
+                      handleSettingsChange('subLevel', ''); // Reset sub-level when level changes
                       // Update targetAudience to match level name
                       const selectedLevel = levels.find(l => l._id === value);
                       if (selectedLevel) {
@@ -307,7 +359,12 @@ const MarketplaceManager = ({ exam }) => {
                   {levels.map((level) => (
                     <MenuItem key={level._id} value={level._id}>
                       {level.name}
-                      {level.description && (
+                      {level.subLevels?.length > 0 && (
+                        <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73' }}>
+                          ({level.subLevels.filter(s => s.isActive).length} sub-levels)
+                        </Typography>
+                      )}
+                      {level.description && !level.subLevels?.length && (
                         <Typography component="span" variant="caption" sx={{ ml: 1, color: '#64748B' }}>
                           ({level.description})
                         </Typography>
@@ -322,6 +379,57 @@ const MarketplaceManager = ({ exam }) => {
               </FormControl>
               <Typography variant="caption" sx={{ color: '#64748B', mt: 0.5, display: 'block' }}>
                 Select an existing level or create a new one to avoid duplicates
+              </Typography>
+            </Grid>
+
+            {/* Sub-Level Selection */}
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth disabled={!settings.levelId}>
+                <InputLabel id="sublevel-select-label">Sub-Level (Optional)</InputLabel>
+                <Select
+                  labelId="sublevel-select-label"
+                  value={settings.subLevel || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === 'create_new_sub') {
+                      setSubLevelDialog({ open: true, levelId: settings.levelId, name: '', description: '' });
+                    } else {
+                      handleSettingsChange('subLevel', value);
+                      // Update targetAudience to include sub-level
+                      const selectedLevel = levels.find(l => l._id === settings.levelId);
+                      if (selectedLevel && value) {
+                        handleSettingsChange('targetAudience', `${selectedLevel.name} - ${value}`);
+                      } else if (selectedLevel) {
+                        handleSettingsChange('targetAudience', selectedLevel.name);
+                      }
+                    }
+                  }}
+                  label="Sub-Level (Optional)"
+                  sx={{ borderRadius: 2 }}
+                >
+                  <MenuItem value="">
+                    <em>{settings.levelId ? 'Select sub-level (optional)' : 'Select a level first'}</em>
+                  </MenuItem>
+                  {getAvailableSubLevels().map((subLevel) => (
+                    <MenuItem key={subLevel._id} value={subLevel.name}>
+                      {subLevel.name}
+                      {subLevel.description && (
+                        <Typography component="span" variant="caption" sx={{ ml: 1, color: '#64748B' }}>
+                          ({subLevel.description})
+                        </Typography>
+                      )}
+                    </MenuItem>
+                  ))}
+                  {settings.levelId && (
+                    <MenuItem value="create_new_sub" sx={{ color: '#0CBD73', fontWeight: 600 }}>
+                      <Add sx={{ fontSize: 18, mr: 0.5 }} />
+                      Create New Sub-Level
+                    </MenuItem>
+                  )}
+                </Select>
+              </FormControl>
+              <Typography variant="caption" sx={{ color: '#64748B', mt: 0.5, display: 'block' }}>
+                Optional: Select or create a sub-level (e.g., P6 under Primary, S3 under Secondary)
               </Typography>
             </Grid>
 
@@ -583,7 +691,7 @@ const MarketplaceManager = ({ exam }) => {
       </Dialog>
 
       {/* Create New Level Dialog */}
-      <Dialog open={newLevelDialog.open} onClose={() => setNewLevelDialog({ open: false, name: '', description: '' })} maxWidth="sm" fullWidth>
+      <Dialog open={newLevelDialog.open} onClose={() => setNewLevelDialog({ open: false, name: '', description: '', subLevels: [] })} maxWidth="sm" fullWidth>
         <DialogTitle>Create New Level</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -594,7 +702,7 @@ const MarketplaceManager = ({ exam }) => {
             label="Level Name"
             value={newLevelDialog.name}
             onChange={(e) => setNewLevelDialog({ ...newLevelDialog, name: e.target.value })}
-            placeholder="e.g., P6, S3, University, etc."
+            placeholder="e.g., Primary, Secondary, University, etc."
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             autoFocus
           />
@@ -606,13 +714,53 @@ const MarketplaceManager = ({ exam }) => {
             placeholder="Brief description of this level..."
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+            Tip: You can add sub-levels (like P1-P6, S1-S6) after creating this level.
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setNewLevelDialog({ open: false, name: '', description: '' })}>
+          <Button onClick={() => setNewLevelDialog({ open: false, name: '', description: '', subLevels: [] })}>
             Cancel
           </Button>
           <Button onClick={handleCreateLevel} variant="contained" sx={{ borderRadius: 2 }}>
             Create Level
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create New Sub-Level Dialog */}
+      <Dialog open={subLevelDialog.open} onClose={() => setSubLevelDialog({ open: false, levelId: null, name: '', description: '' })} maxWidth="sm" fullWidth>
+        <DialogTitle>Create New Sub-Level</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Create a new sub-level under {' '}
+            <strong>{levels.find(l => l._id === subLevelDialog.levelId)?.name}</strong>.
+            {' '}Examples: P1, P2, P3... or S1, S2, S3...
+          </Typography>
+          <TextField
+            fullWidth
+            label="Sub-Level Name"
+            value={subLevelDialog.name}
+            onChange={(e) => setSubLevelDialog({ ...subLevelDialog, name: e.target.value })}
+            placeholder="e.g., P6, S3, Year 1, etc."
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            autoFocus
+          />
+          <TextField
+            fullWidth
+            label="Description (optional)"
+            value={subLevelDialog.description}
+            onChange={(e) => setSubLevelDialog({ ...subLevelDialog, description: e.target.value })}
+            placeholder="Brief description of this sub-level..."
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSubLevelDialog({ open: false, levelId: null, name: '', description: '' })}>
+            Cancel
+          </Button>
+          <Button onClick={handleCreateSubLevel} variant="contained" sx={{ borderRadius: 2 }}>
+            Create Sub-Level
           </Button>
         </DialogActions>
       </Dialog>
@@ -634,9 +782,11 @@ const MarketplaceManager = ({ exam }) => {
                   letterSpacing: '0.04em'
                 }}
               />
-              {(previewExam?.level || previewExam?.targetAudience) && (
+              {(previewExam?.level || previewExam?.targetAudience || previewExam?.subLevel) && (
                 <Chip
-                  label={previewExam?.level?.name || previewExam?.targetAudience}
+                  label={previewExam?.subLevel 
+                    ? `${previewExam?.level?.name || previewExam?.targetAudience} - ${previewExam?.subLevel}`
+                    : (previewExam?.level?.name || previewExam?.targetAudience)}
                   size="small"
                   sx={{
                     background: 'rgba(13,71,161,0.1)',

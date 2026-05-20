@@ -12,8 +12,8 @@ const getMarketplaceExams = async (req, res) => {
     const exams = await Exam.find({ isPubliclyListed: true, isLocked: false })
       .populate('createdBy', 'fullName')
       .populate('sections.questions')
-      .populate('level', 'name description')
-      .select('title description timeLimit publicPrice publicDescription targetAudience level createdAt createdBy sections isPubliclyListed isLocked status')
+      .populate('level', 'name description subLevels')
+      .select('title description timeLimit publicPrice publicDescription targetAudience level subLevel createdAt createdBy sections isPubliclyListed isLocked status')
       .sort({ createdAt: -1 });
 
     console.log('Marketplace exams count:', exams.length); // Debug log
@@ -476,7 +476,7 @@ const Level = require('../models/Level');
 // @access  Private (Teacher)
 const updateMarketplaceExamSettings = async (req, res) => {
   try {
-    const { isPubliclyListed, publicPrice, publicDescription, targetAudience, levelId, newLevelName } = req.body;
+    const { isPubliclyListed, publicPrice, publicDescription, targetAudience, levelId, newLevelName, subLevel } = req.body;
 
     // First, check if the exam exists
     const exam = await Exam.findById(req.params.id);
@@ -506,6 +506,11 @@ const updateMarketplaceExamSettings = async (req, res) => {
     }
     if (targetAudience !== undefined) {
       exam.targetAudience = targetAudience;
+    }
+
+    // Handle sub-level
+    if (subLevel !== undefined) {
+      exam.subLevel = subLevel || null;
     }
 
     // Handle level - either select existing or create new
@@ -837,6 +842,128 @@ const deleteLevel = async (req, res) => {
   }
 };
 
+// @desc    Add a sub-level to a level
+// @route   POST /api/marketplace/levels/:id/sublevels
+// @access  Private (Teacher)
+const addSubLevel = async (req, res) => {
+  try {
+    const { name, description, displayOrder } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Sub-level name is required' });
+    }
+
+    const level = await Level.findById(req.params.id);
+    if (!level) {
+      return res.status(404).json({ message: 'Level not found' });
+    }
+
+    // Check for duplicate sub-level name
+    const existingSub = level.subLevels.find(
+      s => s.name.toLowerCase() === name.trim().toLowerCase()
+    );
+    if (existingSub) {
+      return res.status(400).json({ message: 'Sub-level with this name already exists' });
+    }
+
+    level.subLevels.push({
+      name: name.trim(),
+      description: description || null,
+      displayOrder: displayOrder || 0
+    });
+
+    await level.save();
+
+    res.status(201).json({
+      message: 'Sub-level added successfully',
+      subLevel: level.subLevels[level.subLevels.length - 1],
+      level
+    });
+  } catch (error) {
+    console.error('Add sub-level error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Update a sub-level
+// @route   PUT /api/marketplace/levels/:id/sublevels/:subLevelId
+// @access  Private (Teacher)
+const updateSubLevel = async (req, res) => {
+  try {
+    const { name, description, displayOrder, isActive } = req.body;
+
+    const level = await Level.findById(req.params.id);
+    if (!level) {
+      return res.status(404).json({ message: 'Level not found' });
+    }
+
+    const subLevel = level.subLevels.id(req.params.subLevelId);
+    if (!subLevel) {
+      return res.status(404).json({ message: 'Sub-level not found' });
+    }
+
+    // Check for name conflict if name is being changed
+    if (name && name.trim() !== subLevel.name) {
+      const existingSub = level.subLevels.find(
+        s => s._id.toString() !== req.params.subLevelId &&
+             s.name.toLowerCase() === name.trim().toLowerCase()
+      );
+      if (existingSub) {
+        return res.status(400).json({ message: 'Sub-level name already in use' });
+      }
+    }
+
+    if (name !== undefined) subLevel.name = name.trim();
+    if (description !== undefined) subLevel.description = description;
+    if (displayOrder !== undefined) subLevel.displayOrder = displayOrder;
+    if (isActive !== undefined) subLevel.isActive = isActive;
+
+    await level.save();
+
+    res.json({
+      message: 'Sub-level updated successfully',
+      subLevel,
+      level
+    });
+  } catch (error) {
+    console.error('Update sub-level error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Delete a sub-level
+// @route   DELETE /api/marketplace/levels/:id/sublevels/:subLevelId
+// @access  Private (Teacher)
+const deleteSubLevel = async (req, res) => {
+  try {
+    const level = await Level.findById(req.params.id);
+    if (!level) {
+      return res.status(404).json({ message: 'Level not found' });
+    }
+
+    const subLevel = level.subLevels.id(req.params.subLevelId);
+    if (!subLevel) {
+      return res.status(404).json({ message: 'Sub-level not found' });
+    }
+
+    // Check if sub-level is in use by any exams
+    const examCount = await Exam.countDocuments({ subLevel: req.params.subLevelId });
+    if (examCount > 0) {
+      return res.status(400).json({
+        message: `Cannot delete sub-level. It is currently used by ${examCount} exam(s).`
+      });
+    }
+
+    subLevel.remove();
+    await level.save();
+
+    res.json({ message: 'Sub-level deleted successfully', level });
+  } catch (error) {
+    console.error('Delete sub-level error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get personalized exam recommendations for student
 // @route   GET /api/marketplace/recommendations
 // @access  Private (Student)
@@ -956,6 +1083,9 @@ module.exports = {
   createLevel,
   updateLevel,
   deleteLevel,
+  addSubLevel,
+  updateSubLevel,
+  deleteSubLevel,
   getPersonalizedRecommendations,
   getExamCompletionStatus
 };

@@ -2682,7 +2682,7 @@ function PublishDialog({ examId, onClose }) {
           <Tab label="✏️ Edit Questions" />
           <Tab label="🔗 Public Link" />
           <Tab label="🔒 Private / Invite" />
-          {isCustomEnterprise && <Tab label="🌐 Public Marketplace" />}
+          {hasMarketplaceAccess && <Tab label="🌐 Public Marketplace" />}
         </Tabs>
       </Box>
 
@@ -4284,8 +4284,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
 }
 
 function ExamsSection({ exams, setExams, setActiveSection, user }) {
-  const isCustomEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
-                             (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
+  const { hasMarketplaceAccess } = usePlan();
   const [publishExamId, setPublishExamId] = useState(null);
   const [editExam, setEditExam] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
@@ -4298,7 +4297,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
 
   // Fetch pending approvals for each exam with auto-refresh (enterprise only)
   useEffect(() => {
-    if (!isCustomEnterprise) return;
+    if (!hasMarketplaceAccess) return;
     const fetchPendingApprovals = async () => {
       const approvals = {};
       await Promise.all(
@@ -4458,7 +4457,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                     <TableCell><Chip label={totalQuestions} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} /></TableCell>
                     <TableCell><Typography variant="body2" sx={{ color: tokens.textMuted }}>{e.timeLimit} min</Typography></TableCell>
                     <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted }}>{new Date(e.createdAt).toLocaleDateString()}</Typography></TableCell>
-                    {isCustomEnterprise && (
+                    {hasMarketplaceAccess && (
                       <TableCell>
                         {pendingCount > 0 ? (
                           <Chip label={pendingCount} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: '#F59E0B', fontWeight: 700 }} />

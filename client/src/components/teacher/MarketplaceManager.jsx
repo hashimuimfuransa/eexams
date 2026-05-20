@@ -343,7 +343,7 @@ const MarketplaceManager = ({ exam }) => {
                 <InputLabel id="level-select-label">Level / Target Audience</InputLabel>
                 <Select
                   labelId="level-select-label"
-                  value={settings.levelId || ''}
+                  value={settings.levelId ? String(settings.levelId) : ''}
                   onChange={(e) => {
                     const value = e.target.value;
                     if (value === 'create_new') {
@@ -352,7 +352,7 @@ const MarketplaceManager = ({ exam }) => {
                       handleSettingsChange('levelId', value);
                       handleSettingsChange('subLevel', ''); // Reset sub-level when level changes
                       // Update targetAudience to match level name
-                      const selectedLevel = levels.find(l => l._id === value);
+                      const selectedLevel = levels.find(l => String(l._id) === value);
                       if (selectedLevel) {
                         handleSettingsChange('targetAudience', selectedLevel.name);
                       }
@@ -367,18 +367,20 @@ const MarketplaceManager = ({ exam }) => {
                     <em>Select a level</em>
                   </MenuItem>
                   {levels.map((level) => (
-                    <MenuItem key={level._id} value={level._id}>
-                      {level.name}
-                      {level.subLevels?.length > 0 && (
-                        <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73' }}>
-                          ({level.subLevels.filter(s => s.isActive).length} sub-levels)
-                        </Typography>
-                      )}
-                      {level.description && !level.subLevels?.length && (
-                        <Typography component="span" variant="caption" sx={{ ml: 1, color: '#64748B' }}>
-                          ({level.description})
-                        </Typography>
-                      )}
+                    <MenuItem key={String(level._id)} value={String(level._id)}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <span>{level.name}</span>
+                        {level.subLevels?.length > 0 && (
+                          <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73' }}>
+                            ({level.subLevels.filter(s => s.isActive).length} sub-levels)
+                          </Typography>
+                        )}
+                        {level.description && !level.subLevels?.length && (
+                          <Typography component="span" variant="caption" sx={{ ml: 1, color: '#64748B' }}>
+                            ({level.description})
+                          </Typography>
+                        )}
+                      </Box>
                     </MenuItem>
                   ))}
                   <MenuItem value="create_new" sx={{ color: '#0CBD73', fontWeight: 600 }}>

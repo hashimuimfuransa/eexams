@@ -210,10 +210,15 @@ const MarketplaceManager = ({ exam }) => {
   };
 
   const handlePreview = () => {
+    const selectedLevel = levels.find(l => l._id === settings.levelId);
     setPreviewExam({
       ...exam,
       ...settings,
-      level: levels.find(l => l._id === settings.levelId)
+      level: selectedLevel,
+      // Ensure targetAudience reflects current level/subLevel selection
+      targetAudience: settings.subLevel && selectedLevel 
+        ? `${selectedLevel.name} - ${settings.subLevel}`
+        : (selectedLevel?.name || settings.targetAudience)
     });
     setPreviewDialog(true);
   };

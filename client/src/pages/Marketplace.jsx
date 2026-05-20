@@ -57,7 +57,9 @@ const Marketplace = () => {
   // Get available sub-levels for selected level
   const getAvailableSubLevels = () => {
     if (levelFilter === 'all') return [];
-    const selectedLevel = levels.find(l => l._id === levelFilter);
+    // Try to find by ID first, then by name
+    const selectedLevel = levels.find(l => l._id === levelFilter) || 
+                         levels.find(l => l.name === levelFilter);
     return selectedLevel?.subLevels?.filter(s => s.isActive) || [];
   };
 
@@ -169,21 +171,27 @@ const Marketplace = () => {
       exam.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       exam.publicDescription?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    // Level filter (new hierarchical filtering)
-    const matchesLevel = 
-      levelFilter === 'all' || 
-      (exam.level?._id === levelFilter) ||
-      (exam.level?.name === targetAudienceFilter);
+    // Level filter - handles both level ID and level name matching
+    let matchesLevel = levelFilter === 'all';
+    if (!matchesLevel && levelFilter !== 'all') {
+      // Check if levelFilter matches level ID
+      if (exam.level?._id === levelFilter) {
+        matchesLevel = true;
+      }
+      // Check if levelFilter matches level name (fallback for backward compatibility)
+      else if (exam.level?.name === levelFilter) {
+        matchesLevel = true;
+      }
+      // Check if levelFilter matches targetAudience string (legacy exams)
+      else if (exam.targetAudience === levelFilter) {
+        matchesLevel = true;
+      }
+    }
     
-    // Sub-level filter
+    // Sub-level filter - only applies when a specific level is selected
     const matchesSubLevel = 
       subLevelFilter === 'all' || 
       exam.subLevel === subLevelFilter;
-    
-    // Target audience filter (fallback for backward compatibility)
-    const matchesAudience = 
-      targetAudienceFilter === 'all' || 
-      exam.targetAudience === targetAudienceFilter;
     
     // Price filter
     const matchesPrice = 
@@ -306,7 +314,13 @@ const Marketplace = () => {
                 </Typography>
                 {(searchTerm || levelFilter !== 'all' || subLevelFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
                   <Chip 
-                    label={`${[searchTerm, levelFilter !== 'all' && levels.find(l => l._id === levelFilter)?.name, subLevelFilter !== 'all' && subLevelFilter, priceFilter !== 'all' && priceFilter, sortBy !== 'newest' && 'sort'].filter(Boolean).length} active`}
+                    label={`${[
+                      searchTerm && 'search', 
+                      levelFilter !== 'all' && (levels.find(l => l._id === levelFilter)?.name || levelFilter), 
+                      subLevelFilter !== 'all' && subLevelFilter, 
+                      priceFilter !== 'all' && priceFilter, 
+                      sortBy !== 'newest' && 'sort'
+                    ].filter(Boolean).length} active`}
                     size="small"
                     sx={{ ml: 2, bgcolor: '#0CBD73', color: 'white', fontWeight: 600, height: 22, fontSize: 11 }}
                   />

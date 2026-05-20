@@ -590,6 +590,10 @@ function AllUsersSection() {
   const [viewUser,setViewUser]=useState(null);
   const [actionDialog,setActionDialog]=useState(null); // 'block', 'unblock', 'delete'
   const [processing,setProcessing]=useState(false);
+  const [createDialog, setCreateDialog] = useState(false);
+  const [newSuperAdmin, setNewSuperAdmin] = useState({ firstName: '', lastName: '', email: '', password: '', phone: '', organization: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
   const fetchUsers=()=>{
     setLoading(true);
@@ -636,12 +640,39 @@ function AllUsersSection() {
     setActionDialog(action);
   };
 
+  const handleCreateSuperAdmin = async () => {
+    if (!newSuperAdmin.firstName || !newSuperAdmin.lastName || !newSuperAdmin.email || !newSuperAdmin.password) {
+      setSnack({ open: true, msg: 'All fields are required', severity: 'error' });
+      return;
+    }
+    setProcessing(true);
+    try {
+      await api.post('/superadmin/create-superadmin', newSuperAdmin);
+      setSnack({ open: true, msg: 'Super admin created successfully', severity: 'success' });
+      setCreateDialog(false);
+      setNewSuperAdmin({ firstName: '', lastName: '', email: '', password: '', phone: '', organization: '' });
+      fetchUsers();
+    } catch (err) {
+      setSnack({ open: true, msg: err.response?.data?.message || 'Failed to create super admin', severity: 'error' });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const filtered=users.filter(u=>`${u.firstName} ${u.lastName} ${u.email} ${u.organization||''}`.toLowerCase().includes(search.toLowerCase()));
 
   return(
     <Box>
       <SectionTitle action={
         <Box sx={{display:'flex',gap:1}}>
+          <Button
+            variant="contained"
+            startIcon={<Add fontSize="small"/>}
+            onClick={() => setCreateDialog(true)}
+            sx={{borderRadius:2,fontWeight:700,background:gradients.brand,textTransform:'none',px:2}}
+          >
+            Add Super Admin
+          </Button>
           <FormControl size="small" sx={{width:120}}>
             <InputLabel>Filter Role</InputLabel>
             <Select label="Filter Role" value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} sx={{borderRadius:2}}>
@@ -788,6 +819,107 @@ function AllUsersSection() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Create Super Admin Dialog */}
+      <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans', sans-serif", pb: 1 }}>
+          Add New Super Admin
+          <IconButton size="small" onClick={() => setCreateDialog(false)} sx={{ position: 'absolute', right: 16, top: 16, color: tokens.textMuted }}><Close fontSize="small" /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: '8px !important' }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="First Name"
+                size="small"
+                value={newSuperAdmin.firstName}
+                onChange={e => setNewSuperAdmin({ ...newSuperAdmin, firstName: e.target.value })}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Last Name"
+                size="small"
+                value={newSuperAdmin.lastName}
+                onChange={e => setNewSuperAdmin({ ...newSuperAdmin, lastName: e.target.value })}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Email"
+                size="small"
+                type="email"
+                value={newSuperAdmin.email}
+                onChange={e => setNewSuperAdmin({ ...newSuperAdmin, email: e.target.value })}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Password"
+                size="small"
+                type={showPassword ? 'text' : 'password'}
+                value={newSuperAdmin.password}
+                onChange={e => setNewSuperAdmin({ ...newSuperAdmin, password: e.target.value })}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton size="small" onClick={() => setShowPassword(!showPassword)} edge="end">
+                        {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Phone (Optional)"
+                size="small"
+                value={newSuperAdmin.phone}
+                onChange={e => setNewSuperAdmin({ ...newSuperAdmin, phone: e.target.value })}
+                placeholder="+250 7XX XXX XXX"
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Organization (Optional)"
+                size="small"
+                value={newSuperAdmin.organization}
+                onChange={e => setNewSuperAdmin({ ...newSuperAdmin, organization: e.target.value })}
+                placeholder="TestFy Rwanda"
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setCreateDialog(false)} disabled={processing} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateSuperAdmin}
+            disabled={processing}
+            sx={{ borderRadius: 2, background: gradients.brand, textTransform: 'none', fontWeight: 700, px: 3 }}
+            startIcon={processing ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <Add fontSize="small" />}
+          >
+            {processing ? 'Creating...' : 'Create Super Admin'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity={snack.severity} onClose={() => setSnack(s => ({ ...s, open: false }))} sx={{ borderRadius: 2 }}>{snack.msg}</Alert>
+      </Snackbar>
     </Box>
   );
 }
@@ -1391,8 +1523,9 @@ function AnalyticsSection({ stats }) {
 
 function SettingsSection({ user }) {
   const { updateUserProfile } = useAuth();
-  const [profile, setProfile] = useState({ firstName: user?.firstName||'', lastName: user?.lastName||'', phone: user?.phone||'', gender: user?.gender||'' });
+  const [profile, setProfile] = useState({ firstName: user?.firstName||'', lastName: user?.lastName||'', email: user?.email||'', phone: user?.phone||'', gender: user?.gender||'' });
   const [pwd, setPwd] = useState({ current: '', newPwd: '', confirm: '' });
+  const [emailPwd, setEmailPwd] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingPwd, setSavingPwd] = useState(false);
@@ -1401,11 +1534,32 @@ function SettingsSection({ user }) {
 
   const handleProfile = async () => {
     if (!profile.firstName.trim() || !profile.lastName.trim()) return setSnack({ open: true, msg: 'First and last name are required.', severity: 'error' });
+    if (!profile.email.trim()) return setSnack({ open: true, msg: 'Email is required.', severity: 'error' });
+    
+    // If email is being changed, require current password
+    if (profile.email !== user?.email && !emailPwd) {
+      return setSnack({ open: true, msg: 'Current password is required to change email.', severity: 'error' });
+    }
+    
     setSaving(true);
     try {
-      const res = await api.put('/profile', { firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone, gender: profile.gender });
+      const payload = { 
+        firstName: profile.firstName, 
+        lastName: profile.lastName, 
+        phone: profile.phone, 
+        gender: profile.gender 
+      };
+      
+      // Include email and current password if email is being changed
+      if (profile.email !== user?.email) {
+        payload.email = profile.email;
+        payload.currentPassword = emailPwd;
+      }
+      
+      const res = await api.put('/profile', payload);
       updateUserProfile(res.data);
       setSnack({ open: true, msg: 'Profile updated successfully.', severity: 'success' });
+      setEmailPwd('');
     } catch (e) {
       setSnack({ open: true, msg: e.response?.data?.message || 'Failed to save profile.', severity: 'error' });
     } finally { setSaving(false); }
@@ -1435,7 +1589,27 @@ function SettingsSection({ user }) {
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" value={profile.firstName} onChange={e => setProfile(p => ({ ...p, firstName: e.target.value }))} {...tf} /></Grid>
               <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" value={profile.lastName} onChange={e => setProfile(p => ({ ...p, lastName: e.target.value }))} {...tf} /></Grid>
-              <Grid item xs={12}><TextField fullWidth label="Email" value={user?.email || ''} {...tf} InputProps={{ readOnly: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#F8FAFC' } }} /></Grid>
+              <Grid item xs={12}>
+                <TextField 
+                  fullWidth 
+                  label="Email" 
+                  value={profile.email} 
+                  onChange={e => setProfile(p => ({ ...p, email: e.target.value }))} 
+                  {...tf} 
+                />
+              </Grid>
+              {profile.email !== user?.email && (
+                <Grid item xs={12}>
+                  <TextField 
+                    fullWidth 
+                    label="Current Password (required to change email)" 
+                    type="password" 
+                    value={emailPwd} 
+                    onChange={e => setEmailPwd(e.target.value)} 
+                    {...tf} 
+                  />
+                </Grid>
+              )}
               <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={profile.phone} onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))} placeholder="+250 7XX XXX XXX" {...tf} /></Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
@@ -1523,6 +1697,8 @@ function ExamBankMarketplaceSection({ searchQuery }) {
   const [editDialog, setEditDialog] = useState(null);
   const [deleteDialog, setDeleteDialog] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [levels, setLevels] = useState([]);
+  const [loadingLevels, setLoadingLevels] = useState(false);
 
   // Filter states
   const [statusFilter, setStatusFilter] = useState('');
@@ -1530,6 +1706,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
 
   useEffect(() => {
     fetchExams();
+    fetchLevels();
   }, [statusFilter, sortBy]);
 
   const fetchExams = async () => {
@@ -1560,6 +1737,24 @@ function ExamBankMarketplaceSection({ searchQuery }) {
     }
   };
 
+  const fetchLevels = async () => {
+    try {
+      setLoadingLevels(true);
+      const response = await api.get('/marketplace/levels');
+      setLevels(response.data);
+    } catch (error) {
+      console.error('Error fetching levels:', error);
+    } finally {
+      setLoadingLevels(false);
+    }
+  };
+
+  const getAvailableSubLevels = () => {
+    if (!editDialog?.levelId) return [];
+    const selectedLevel = levels.find(l => l._id === editDialog.levelId);
+    return selectedLevel?.subLevels?.filter(s => s.isActive) || [];
+  };
+
   const handleEditSettings = async () => {
     if (!editDialog) return;
     setSaving(true);
@@ -1569,6 +1764,8 @@ function ExamBankMarketplaceSection({ searchQuery }) {
         publicPrice: editDialog.publicPrice,
         publicDescription: editDialog.publicDescription,
         targetAudience: editDialog.targetAudience,
+        levelId: editDialog.levelId,
+        subLevel: editDialog.subLevel,
         status: editDialog.status
       });
       setSnack({ open: true, msg: 'Exam settings updated successfully', severity: 'success' });
@@ -1604,7 +1801,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
 
   const StatCard = ({ label, value, icon, color, bg }) => (
     <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, display: 'flex', alignItems: 'center', gap: 2 }}>
-      <Box sx={{ width: 48, height: 48, borderRadius: 2.5, bgcolor: bg, display: 'flex', alignItems: 'center', justifyContent: center }}>{icon}</Box>
+      <Box sx={{ width: 48, height: 48, borderRadius: 2.5, bgcolor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</Box>
       <Box>
         <Typography variant="h4" fontWeight={800} sx={{ color, fontFamily: "'DM Sans',sans-serif", lineHeight: 1 }}>{value || '—'}</Typography>
         <Typography variant="caption" sx={{ color: tokens.textMuted, fontWeight: 600 }}>{label}</Typography>
@@ -1743,7 +1940,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                   </Box>
                   <Box sx={{ display: 'flex', gap: 0.5 }}>
                     <Tooltip title="Edit Settings">
-                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); setEditDialog(exam); }} sx={{ color: tokens.primary, bgcolor: `${tokens.primary}10`, '&:hover': { bgcolor: `${tokens.primary}20` }, width: 32, height: 32 }}>
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); setEditDialog({ ...exam, levelId: exam.level?._id || null, subLevel: exam.subLevel || '' }); }} sx={{ color: tokens.primary, bgcolor: `${tokens.primary}10`, '&:hover': { bgcolor: `${tokens.primary}20` }, width: 32, height: 32 }}>
                         <Edit fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -1886,6 +2083,58 @@ function ExamBankMarketplaceSection({ searchQuery }) {
             </Grid>
             <Grid item xs={12}>
               <TextField fullWidth label="Target Audience" size="small" value={editDialog?.targetAudience || ''} onChange={(e) => setEditDialog(d => ({ ...d, targetAudience: e.target.value }))} sx={{ borderRadius: 2 }} />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ fontWeight: 600 }}>Level</InputLabel>
+                <Select
+                  label="Level"
+                  value={editDialog?.levelId ? String(editDialog.levelId) : ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setEditDialog(d => ({ ...d, levelId: value, subLevel: '' }));
+                  }}
+                  sx={{ borderRadius: 2 }}
+                  disabled={loadingLevels}
+                >
+                  <MuiMenuItem value="">
+                    <em>Select a level</em>
+                  </MuiMenuItem>
+                  {levels.map((level) => (
+                    <MuiMenuItem
+                      key={String(level._id)}
+                      value={String(level._id)}
+                    >
+                      {level.name}
+                      {level.subLevels?.filter(s => s.isActive).length > 0 && (
+                        <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73', fontSize: 10 }}>
+                          ({level.subLevels.filter(s => s.isActive).length} sub)
+                        </Typography>
+                      )}
+                    </MuiMenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small" disabled={getAvailableSubLevels().length === 0}>
+                <InputLabel sx={{ fontWeight: 600 }}>Sub-Level</InputLabel>
+                <Select
+                  label="Sub-Level"
+                  value={editDialog?.subLevel || ''}
+                  onChange={(e) => setEditDialog(d => ({ ...d, subLevel: e.target.value }))}
+                  sx={{ borderRadius: 2 }}
+                >
+                  <MuiMenuItem value="">
+                    {getAvailableSubLevels().length === 0 ? 'No sub-levels' : 'All'}
+                  </MuiMenuItem>
+                  {getAvailableSubLevels().map(subLevel => (
+                    <MuiMenuItem key={subLevel._id} value={subLevel.name}>
+                      {subLevel.name}
+                    </MuiMenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12}>
               <FormControl fullWidth size="small">

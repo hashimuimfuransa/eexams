@@ -1,6 +1,76 @@
 const User = require('../models/User');
 const Exam = require('../models/Exam');
 const ActivityLog = require('../models/ActivityLog');
+const bcrypt = require('bcryptjs');
+
+// @desc    Create a new super admin
+// @route   POST /api/superadmin/create-superadmin
+// @access  Private/SuperAdmin
+const createSuperAdmin = async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, phone, organization } = req.body;
+
+    // Validation
+    if (!email || !password || !firstName || !lastName) {
+      return res.status(400).json({ message: 'Email, password, first name, and last name are required' });
+    }
+
+    // Check if user already exists
+    const userExists = await User.findOne({ email: email.toLowerCase() });
+    if (userExists) {
+      return res.status(400).json({ message: 'User with this email already exists' });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create super admin
+    const superAdmin = await User.create({
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      firstName,
+      lastName,
+      phone: phone || '',
+      organization: organization || 'TestFy Rwanda',
+      role: 'superadmin',
+      userType: 'organization',
+      subscriptionPlan: 'enterprise',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+    });
+
+    // Log the activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'create_superadmin',
+      details: {
+        createdSuperAdminId: superAdmin._id,
+        createdSuperAdminName: `${superAdmin.firstName} ${superAdmin.lastName}`,
+        createdSuperAdminEmail: superAdmin.email,
+        createdBy: `${req.user.firstName} ${req.user.lastName}`
+      }
+    });
+
+    // Return the created super admin without password
+    res.status(201).json({
+      _id: superAdmin._id,
+      email: superAdmin.email,
+      firstName: superAdmin.firstName,
+      lastName: superAdmin.lastName,
+      phone: superAdmin.phone,
+      organization: superAdmin.organization,
+      role: superAdmin.role,
+      userType: superAdmin.userType,
+      subscriptionPlan: superAdmin.subscriptionPlan,
+      subscriptionStatus: superAdmin.subscriptionStatus,
+      createdAt: superAdmin.createdAt
+    });
+  } catch (error) {
+    console.error('Create super admin error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 
 // @desc    Get all organizations (admins, superadmins, and individual teachers)
 // @route   GET /api/superadmin/organizations
@@ -1464,6 +1534,7 @@ const updateExamDetails = async (req, res) => {
 };
 
 module.exports = {
+  createSuperAdmin,
   getAllOrganizations,
   getOrganizationById,
   updateOrganizationSubscription,

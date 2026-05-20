@@ -3070,6 +3070,43 @@ const ExamInterface = () => {
         </Box>
       </Paper>
 
+      {/* Mobile Submit Button - Visible only on mobile devices */}
+      <Box
+        sx={{
+          display: { xs: 'block', md: 'none' },
+          mb: 3,
+          position: 'sticky',
+          top: 0,
+          zIndex: 1000,
+          bgcolor: mode === 'dark' ? 'background.default' : 'background.paper',
+          p: 2,
+          borderRadius: 2,
+          boxShadow: mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : '0 2px 12px rgba(0,0,0,0.1)',
+          border: mode === 'dark' ? `1px solid ${alpha(theme.palette.divider, 0.2)}` : 'none'
+        }}
+      >
+        <Button
+          variant="contained"
+          color="primary"
+          fullWidth
+          onClick={() => {
+            if (!submitting && !examCompleted) {
+              setConfirmSubmit(true);
+            }
+          }}
+          startIcon={<Send />}
+          disabled={submitting || examCompleted}
+          sx={{
+            py: 1.5,
+            fontSize: '1rem',
+            fontWeight: 'bold',
+            borderRadius: 2
+          }}
+        >
+          {submitting ? 'Submitting...' : 'Submit Exam'}
+        </Button>
+      </Box>
+
       {/* Exam Content */}
       <Grid container spacing={4}>
         {/* Sidebar */}

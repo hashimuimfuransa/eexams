@@ -39,6 +39,7 @@ const ActivityLogSchema = new mongoose.Schema({
       'block_organization',
       'unblock_organization',
       'update_organization_subscription',
+      'create_superadmin',
       // Teacher management actions
       'add_teacher',
       'edit_teacher',

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
+  createSuperAdmin,
   getAllOrganizations,
   getOrganizationById,
   updateOrganizationSubscription,
@@ -53,6 +54,9 @@ router.use((req, res, next) => {
 
 // Dashboard stats
 router.get('/dashboard-stats', getSuperAdminDashboardStats);
+
+// Super admin management routes
+router.post('/create-superadmin', createSuperAdmin);
 
 // Organization management routes
 router.get('/organizations', getAllOrganizations);

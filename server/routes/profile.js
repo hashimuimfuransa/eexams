@@ -11,13 +11,36 @@ const { getPlanUsage } = require('../middleware/planRestrictions');
 // @access  Private
 router.put('/', auth, async (req, res) => {
   try {
-    const { firstName, lastName, phone, gender, class: studentClass, organization, password, currentPassword } = req.body;
+    const { firstName, lastName, email, phone, gender, class: studentClass, organization, password, currentPassword } = req.body;
 
     // Find the user
     const user = await User.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Handle email change
+    if (email && email !== user.email) {
+      // Require current password to change email
+      if (!currentPassword) {
+        return res.status(400).json({ message: 'Current password is required to change email' });
+      }
+
+      // Verify current password
+      const isMatch = await user.comparePassword(currentPassword);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Current password is incorrect' });
+      }
+
+      // Check if email already exists
+      const existingUser = await User.findOne({ email: email.toLowerCase() });
+      if (existingUser) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+
+      // Update email
+      user.email = email.toLowerCase();
     }
 
     // Update basic profile fields
@@ -32,8 +55,8 @@ router.put('/', auth, async (req, res) => {
       if (organization !== undefined) user.organization = organization;
     }
 
-    // Handle password change if provided
-    if (password && currentPassword) {
+    // Handle password change if provided (separate from email change)
+    if (password && currentPassword && !email) {
       // Verify current password
       const isMatch = await user.comparePassword(currentPassword);
       if (!isMatch) {

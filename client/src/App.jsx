@@ -708,13 +708,10 @@ function CTABanner({ mode }) {
         <div style={{
           maxWidth: 1200, margin: '0 auto',
           borderRadius: 28, padding: 'clamp(32px, 8vw, 72px) clamp(24px, 8vw, 64px)',
-          background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 55%, #5AD5A2 100%)',
+          background: '#0D406C',
           position: 'relative', overflow: 'hidden',
           boxShadow: '0 32px 64px rgba(13,64,108,0.3)',
         }}>
-          {/* Background decoration */}
-          <div style={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
-          <div style={{ position: 'absolute', bottom: -60, left: -20, width: 280, height: 280, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
 
           <div className="cta-inner" style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 40 }}>
             <div style={{ maxWidth: 600 }}>

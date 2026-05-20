@@ -4487,10 +4487,12 @@ const shareExam = async (req, res) => {
 
     if (!share) {
       const token = SharedExam.generateShareToken();
+      const examSlug = SharedExam.generateSlug(exam.title || 'exam');
       share = await SharedExam.create({
         exam: examId,
         sharedBy: req.orgAdminId,
         shareToken: token,
+        examSlug,
         shareType,
         settings: {
           publicAccess: settings.publicAccess !== false,

@@ -179,7 +179,12 @@ const MarketplaceManager = ({ exam }) => {
   };
 
   const handleSettingsChange = (field, value) => {
-    setSettings({ ...settings, [field]: value });
+    console.log('[DEBUG] handleSettingsChange:', { field, value, currentSettings: settings });
+    setSettings(prev => {
+      const newSettings = { ...prev, [field]: value };
+      console.log('[DEBUG] Settings updated:', newSettings);
+      return newSettings;
+    });
   };
 
   const handleSaveSettings = async () => {
@@ -346,6 +351,7 @@ const MarketplaceManager = ({ exam }) => {
                   value={settings.levelId ? String(settings.levelId) : ''}
                   onChange={(e) => {
                     const value = e.target.value;
+                    console.log('[DEBUG] Select onChange:', { value });
                     if (value === 'create_new') {
                       setNewLevelDialog({ open: true, name: '', description: '', subLevels: [] });
                     } else {
@@ -353,14 +359,17 @@ const MarketplaceManager = ({ exam }) => {
                       handleSettingsChange('subLevel', ''); // Reset sub-level when level changes
                       // Update targetAudience to match level name
                       const selectedLevel = levels.find(l => String(l._id) === value);
+                      console.log('[DEBUG] Selected level from onChange:', selectedLevel);
                       if (selectedLevel) {
                         handleSettingsChange('targetAudience', selectedLevel.name);
                       }
                     }
                   }}
                   renderValue={(selected) => {
+                    console.log('[DEBUG] renderValue called:', { selected, levelsCount: levels.length });
                     if (!selected) return <em>Select a level</em>;
                     const selectedLevel = levels.find(l => String(l._id) === selected);
+                    console.log('[DEBUG] renderValue found level:', selectedLevel);
                     return selectedLevel ? selectedLevel.name : <em>Select a level</em>;
                   }}
                   label="Level / Target Audience"
@@ -372,8 +381,17 @@ const MarketplaceManager = ({ exam }) => {
                     <em>Select a level</em>
                   </MenuItem>
                   {levels.map((level) => (
-                    <MenuItem key={String(level._id)} value={String(level._id)}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <MenuItem
+                      key={String(level._id)}
+                      value={String(level._id)}
+                      onClick={() => {
+                        console.log('[DEBUG] MenuItem clicked:', { levelId: level._id, levelName: level.name });
+                        handleSettingsChange('levelId', String(level._id));
+                        handleSettingsChange('subLevel', '');
+                        handleSettingsChange('targetAudience', level.name);
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
                         <span>{level.name}</span>
                         {level.subLevels?.length > 0 && (
                           <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73' }}>

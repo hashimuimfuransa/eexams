@@ -137,6 +137,7 @@ const Login = () => {
 
   // Google OAuth refs
   const googleInitialized = useRef(false);
+  const googlePromptInProgress = useRef(false);
 
   const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
@@ -375,10 +376,18 @@ const Login = () => {
           window.google.accounts.id.initialize({
             client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '192720000772-1qkm1i0lmg52b17vaslf0gm56lll3p0m.apps.googleusercontent.com',
             callback: handleGoogleCredentialResponse,
-            auto_select: false,
+            auto_select: true,  // Enable for returning users - shows "Continue as [Name]"
             cancel_on_tap_outside: true,
           });
           googleInitialized.current = true;
+
+          // Check for returning Google user (one-tap prompt)
+          window.google.accounts.id.prompt((notification) => {
+            if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+              // User dismissed or not shown, continue normally
+              console.log('[GoogleAuth] One-tap not shown:', notification.getNotDisplayedReason() || notification.getSkippedReason());
+            }
+          });
         }
       } catch (err) {
         console.error('[GoogleAuth] Error:', err);
@@ -413,21 +422,39 @@ const Login = () => {
 
       {/* Top bar */}
       <header style={{ position: 'relative', zIndex: 2, padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <RouterLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
-          <img
-            src="/logo.png"
-            alt="eexams"
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 12,
-              objectFit: 'cover',
-              backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent',
-              padding: isDark ? '4px' : '0',
-              boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : 'none'
-            }}
-          />
-        </RouterLink>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <RouterLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+            <img
+              src="/logo.png"
+              alt="eexams"
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: 12,
+                objectFit: 'cover',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent',
+                padding: isDark ? '4px' : '0',
+                boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : 'none'
+              }}
+            />
+          </RouterLink>
+          <RouterLink to="/" style={{
+            display: 'flex', alignItems: 'center',
+            padding: '8px 14px', borderRadius: 10,
+            fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14,
+            color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+            textDecoration: 'none', transition: 'all 0.2s',
+          }}
+            onMouseEnter={e => { e.target.style.color = tokens.accent; e.target.style.background = tokens.accentGlow; }}
+            onMouseLeave={e => { e.target.style.color = isDark ? tokens.dark.textSecondary : tokens.textSecondary; e.target.style.background = 'none'; }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            Home
+          </RouterLink>
+        </div>
         <button onClick={toggleMode} style={{
           width: 38, height: 38, borderRadius: 10,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
@@ -571,8 +598,21 @@ const Login = () => {
           <button
             type="button"
             onClick={() => {
+              if (googlePromptInProgress.current) {
+                console.log('[GoogleAuth] Prompt already in progress, ignoring click');
+                return;
+              }
               if (window.google && googleInitialized.current) {
-                window.google.accounts.id.prompt();
+                googlePromptInProgress.current = true;
+                window.google.accounts.id.prompt((notification) => {
+                  // Reset the flag when prompt closes (regardless of outcome)
+                  googlePromptInProgress.current = false;
+                  if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                    console.log('[GoogleAuth] Prompt not displayed:', notification.getNotDisplayedReason() || notification.getSkippedReason());
+                  }
+                });
+              } else {
+                setSnackbar({ open: true, message: 'Google sign-in is loading. Please try again in a moment.', severity: 'warning' });
               }
             }}
             className="google-btn"

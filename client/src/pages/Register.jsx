@@ -814,7 +814,45 @@ const Register = () => {
             boxShadow: '0 24px 48px rgba(0, 0, 0, 0.3)',
             animation: 'scaleIn 0.3s ease',
             border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+            position: 'relative',
           }}>
+            {/* Close button */}
+            <button
+              onClick={() => navigate('/')}
+              style={{
+                position: 'absolute',
+                top: 16,
+                right: 16,
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = tokens.danger;
+                e.currentTarget.style.color = tokens.danger;
+                e.currentTarget.style.background = 'rgba(239,68,68,0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = isDark ? tokens.dark.border : tokens.surfaceBorder;
+                e.currentTarget.style.color = isDark ? tokens.dark.textSecondary : tokens.textSecondary;
+                e.currentTarget.style.background = isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt;
+              }}
+              title="Go back to home"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+
             <div style={{
               textAlign: 'center',
               marginBottom: 24,
@@ -980,6 +1018,41 @@ const Register = () => {
                 </svg>
               </button>
             </div>
+
+            {/* Go Back link */}
+            <div style={{ textAlign: 'center', marginTop: 20 }}>
+              <button
+                onClick={() => navigate('/')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = tokens.danger;
+                  e.currentTarget.style.background = 'rgba(239,68,68,0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = isDark ? tokens.dark.textSecondary : tokens.textSecondary;
+                  e.currentTarget.style.background = 'none';
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+                Go back to home
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1006,21 +1079,39 @@ const Register = () => {
       <div style={{ position: 'absolute', bottom: '10%', right: '5%', width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(157,246,214,0.16) 0%, transparent 70%)', animation: 'float2 10s ease-in-out infinite', zIndex: 0 }} />
 
       <header style={{ position: 'relative', zIndex: 2, padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <RouterLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
-          <img
-            src="/logo.png"
-            alt="eexams"
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 12,
-              objectFit: 'cover',
-              backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent',
-              padding: isDark ? '4px' : '0',
-              boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : 'none'
-            }}
-          />
-        </RouterLink>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <RouterLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+            <img
+              src="/logo.png"
+              alt="eexams"
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: 12,
+                objectFit: 'cover',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent',
+                padding: isDark ? '4px' : '0',
+                boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : 'none'
+              }}
+            />
+          </RouterLink>
+          <RouterLink to="/" style={{
+            display: 'flex', alignItems: 'center',
+            padding: '8px 14px', borderRadius: 10,
+            fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14,
+            color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+            textDecoration: 'none', transition: 'all 0.2s',
+          }}
+            onMouseEnter={e => { e.target.style.color = tokens.accent; e.target.style.background = tokens.accentGlow; }}
+            onMouseLeave={e => { e.target.style.color = isDark ? tokens.dark.textSecondary : tokens.textSecondary; e.target.style.background = 'none'; }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            Home
+          </RouterLink>
+        </div>
         <button onClick={toggleMode} style={{
           width: 38, height: 38, borderRadius: 10,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,

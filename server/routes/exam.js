@@ -135,11 +135,15 @@ function buildSectionsInstruction(questionTypes) {
   const typeSchemas = {
     'multiple-choice': 'MCQ with options[{text,isCorrect,letter}], correctAnswer(letter), explanation',
     'true-false': 'True/False with options[{text,isCorrect,letter}], correctAnswer("True"/"False"), explanation',
-    'open-ended': 'Essay with correctAnswer(comprehensive), marks, gradingCriteria[{criteria,points}]',
-    'fill-in-blank': 'Fill blank with correctAnswer, acceptableAnswers[], explanation',
-    'short-answer': 'Short answer with correctAnswer, keyPoints[], marks',
-    'matching': 'Match with leftItems[], rightItems[], correctAnswer[{left,right}], explanation, marks',
-    'ordering': 'Order with items[], correctAnswer[indices], explanation, marks'
+    'open-ended': 'Essay with correctAnswer(comprehensive string), marks, gradingCriteria[{criteria,points}]',
+    'fill-blank': 'Fill blank with correctAnswer(string), acceptableAnswers[], explanation',
+    'fill-in-blank': 'Fill blank with correctAnswer(string), acceptableAnswers[], explanation',
+    'short-answer': 'Short answer with correctAnswer(string), keyPoints[], marks',
+    'matching': 'Match with leftItems[], rightItems[], matchingPairs{leftColumn[], rightColumn[], correctPairs[{left,right}]}, correctAnswer(explanation string), marks',
+    'ordering': 'Order with items[], itemsToOrder{items[], correctOrder[indices]}, correctAnswer(explanation string), marks',
+    'drag-drop': 'Drag-drop with dragDropData{dropZones[], draggableItems[], correctPlacements[{item,zone}]}, correctAnswer(explanation string), marks',
+    'image-based': 'Image-based with imageUrl, correctAnswer(string), explanation',
+    'image': 'Image with imageUrl, correctAnswer(string), explanation'
   };
 
   return questionTypes.map((qt, idx) => {
@@ -168,7 +172,7 @@ function mapQuestionType(type) {
   }
   // Fill in blank variations
   if (t.includes('fill') || t.includes('blank') || t.includes('gap') || t.includes('completion')) {
-    return 'fill-blank';
+    return 'fill-in-blank';
   }
   // Open ended variations
   if (t.includes('open') || t.includes('essay') || t.includes('long') || t.includes('descriptive')) {
@@ -181,6 +185,14 @@ function mapQuestionType(type) {
   // Ordering variations
   if (t.includes('order') || t.includes('sequence') || t.includes('rank') || t.includes('arrange')) {
     return 'ordering';
+  }
+  // Drag and drop variations
+  if (t.includes('drag') || t.includes('drop') || t.includes('drag-drop')) {
+    return 'drag-drop';
+  }
+  // Image variations
+  if (t.includes('image') || t.includes('picture') || t.includes('photo')) {
+    return 'image-based';
   }
   // Short answer variations
   if (t.includes('short') || t.includes('brief') || t.includes('one-word')) {
@@ -486,6 +498,43 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         questionData.correctAnswer = 'Not provided';
       }
 
+      // Add drag-drop-specific fields
+      if (q.type === 'drag-drop') {
+        // Handle different formats for correctAnswer
+        let correctPlacements = [];
+        if (typeof q.correctAnswer === 'string') {
+          // Try to parse as JSON first
+          try {
+            const parsed = JSON.parse(q.correctAnswer);
+            if (Array.isArray(parsed)) {
+              correctPlacements = parsed;
+            }
+          } catch {
+            // If string, assume it's a fallback and generate default placements
+            const dropZoneCount = (q.dropZones || q.dragDropData?.dropZones || []).length;
+            const itemCount = (q.draggableItems || q.dragDropData?.draggableItems || []).length;
+            const count = Math.min(dropZoneCount, itemCount);
+            correctPlacements = Array.from({ length: count }, (_, i) => ({ item: i, zone: i }));
+          }
+        } else if (Array.isArray(q.correctAnswer)) {
+          correctPlacements = q.correctAnswer;
+        }
+
+        // Fallback to existing correctPlacements if available
+        if (correctPlacements.length === 0 && q.dragDropData?.correctPlacements) {
+          correctPlacements = q.dragDropData.correctPlacements;
+        }
+
+        questionData.dragDropData = {
+          dropZones: q.dropZones || q.dragDropData?.dropZones || [],
+          draggableItems: q.draggableItems || q.dragDropData?.draggableItems || [],
+          correctPlacements
+        };
+
+        // Set correctAnswer to default string for drag-drop questions
+        questionData.correctAnswer = 'Not provided';
+      }
+
       // Normalize gradingCriteria for open-ended questions
       if (q.type === 'open-ended' || q.type === 'essay') {
         if (Array.isArray(questionData.gradingCriteria)) {
@@ -603,14 +652,42 @@ QUESTION FORMAT RULES:
 - correctAnswer for fill-in-blank: string answer
 - correctAnswer for short-answer: string answer
 - correctAnswer for open-ended/essay: comprehensive string answer
-- correctAnswer for matching: array of objects [{left: string, right: string}] NOT a string
-- correctAnswer for ordering: array of numbers [0, 1, 2, 3] NOT a string
+- correctAnswer for matching: MUST be a string (use explanation). Put the actual pairs in matchingPairs.correctPairs as array of objects [{left: string, right: string}]
+- correctAnswer for ordering: MUST be a string (use explanation). Put the actual order in itemsToOrder.correctOrder as array of numbers [0, 1, 2, 3]
 - options for multiple-choice/true-false: array of objects [{text, isCorrect, letter}]
 - gradingCriteria for open-ended: array of objects [{criteria: string, points: number}]
 - leftItems/rightItems for matching: array of strings
 - items for ordering: array of strings
 
-IMPORTANT: Arrays must be JSON arrays, not string representations like "[0, 1, 2]".`;
+CRITICAL FOR MATCHING QUESTIONS:
+{
+  "type": "matching",
+  "text": "Match the items",
+  "leftItems": ["Item 1", "Item 2"],
+  "rightItems": ["Match 1", "Match 2"],
+  "matchingPairs": {
+    "leftColumn": ["Item 1", "Item 2"],
+    "rightColumn": ["Match 1", "Match 2"],
+    "correctPairs": [{"left": "Item 1", "right": "Match 1"}, {"left": "Item 2", "right": "Match 2"}]
+  },
+  "correctAnswer": "Explanation of the matches",
+  "explanation": "Detailed explanation"
+}
+
+CRITICAL FOR ORDERING QUESTIONS:
+{
+  "type": "ordering",
+  "text": "Order these items",
+  "items": ["Item 1", "Item 2", "Item 3"],
+  "itemsToOrder": {
+    "items": ["Item 1", "Item 2", "Item 3"],
+    "correctOrder": [0, 1, 2]
+  },
+  "correctAnswer": "Explanation of the correct order",
+  "explanation": "Detailed explanation"
+}
+
+IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer must ALWAYS be a string for all question types.`;
 
     const aiResponse = await groqClient.generateContent(systemPrompt, {
       model: 'balanced',
@@ -675,11 +752,46 @@ IMPORTANT: Arrays must be JSON arrays, not string representations like "[0, 1, 2
       }
 
       // Handle matching questions: ensure matchingPairs is properly set
-      if (qType === 'matching' && Array.isArray(question.correctAnswer)) {
-        question.matchingPairs = question.matchingPairs || {};
-        question.matchingPairs.correctPairs = question.correctAnswer;
-        question.matchingPairs.leftColumn = question.leftItems || question.matchingPairs?.leftColumn || [];
-        question.matchingPairs.rightColumn = question.rightItems || question.matchingPairs?.rightColumn || [];
+      if (qType === 'matching') {
+        // If correctAnswer is an array, move it to matchingPairs.correctPairs
+        if (Array.isArray(question.correctAnswer)) {
+          question.matchingPairs = question.matchingPairs || {};
+          question.matchingPairs.correctPairs = question.correctAnswer;
+          question.matchingPairs.leftColumn = question.leftItems || question.matchingPairs?.leftColumn || [];
+          question.matchingPairs.rightColumn = question.rightItems || question.matchingPairs?.rightColumn || [];
+          question.correctAnswer = question.explanation || 'Not provided'; // Set to string for schema
+        }
+        // If correctAnswer is a string but looks like JSON, try to parse it
+        else if (typeof question.correctAnswer === 'string' && question.correctAnswer.trim().startsWith('[')) {
+          try {
+            const parsed = JSON.parse(question.correctAnswer);
+            if (Array.isArray(parsed)) {
+              question.matchingPairs = question.matchingPairs || {};
+              question.matchingPairs.correctPairs = parsed;
+              question.matchingPairs.leftColumn = question.leftItems || question.matchingPairs?.leftColumn || [];
+              question.matchingPairs.rightColumn = question.rightItems || question.matchingPairs?.rightColumn || [];
+              question.correctAnswer = question.explanation || 'Not provided'; // Set to string for schema
+            }
+          } catch (e) {
+            // If parsing fails, leave as-is
+          }
+        }
+        // Ensure matchingPairs structure exists even if correctAnswer is already a string
+        if (!question.matchingPairs) {
+          question.matchingPairs = {
+            leftColumn: question.leftItems || [],
+            rightColumn: question.rightItems || [],
+            correctPairs: []
+          };
+        }
+      }
+
+      // Handle drag-drop questions: ensure dragDropData is properly set
+      if (qType === 'drag-drop' && Array.isArray(question.correctAnswer)) {
+        question.dragDropData = question.dragDropData || {};
+        question.dragDropData.correctPlacements = question.correctAnswer;
+        question.dragDropData.dropZones = question.dropZones || question.dragDropData?.dropZones || [];
+        question.dragDropData.draggableItems = question.draggableItems || question.dragDropData?.draggableItems || [];
         question.correctAnswer = question.explanation || 'Not provided'; // Set to string for schema
       }
 
@@ -813,7 +925,17 @@ IMPORTANT: Arrays must be JSON arrays, not string representations like "[0, 1, 2
                 baseQuestion.matchingPairs = q.matchingPairs;
               }
 
-              // Set correctAnswer to a string for matching questions (not the array of objects)
+              // Ensure matchingPairs structure exists
+              if (!baseQuestion.matchingPairs) {
+                baseQuestion.matchingPairs = {
+                  leftColumn: q.leftItems || [],
+                  rightColumn: q.rightItems || [],
+                  correctPairs: []
+                };
+              }
+
+              // CRITICAL: Set correctAnswer to a string for matching questions (not the array of objects)
+              // This is required by the Question schema
               baseQuestion.correctAnswer = q.explanation || 'Not provided';
             }
 
@@ -857,7 +979,27 @@ IMPORTANT: Arrays must be JSON arrays, not string representations like "[0, 1, 2
                 correctOrder
               };
               // Ensure correctAnswer is a string
-              baseQuestion.correctAnswer = 'Not provided';
+              baseQuestion.correctAnswer = q.explanation || 'Not provided';
+            }
+
+            // Add drag-drop-specific fields
+            if (questionType === 'drag-drop') {
+              baseQuestion.dropZones = q.dropZones || [];
+              baseQuestion.draggableItems = q.draggableItems || [];
+              // Handle correctAnswer array for drag-drop questions
+              let correctPlacements = [];
+              if (Array.isArray(q.correctAnswer)) {
+                correctPlacements = q.correctAnswer;
+              } else if (q.dragDropData?.correctPlacements) {
+                correctPlacements = q.dragDropData.correctPlacements;
+              }
+              baseQuestion.dragDropData = {
+                dropZones: q.dropZones || q.dragDropData?.dropZones || [],
+                draggableItems: q.draggableItems || q.dragDropData?.draggableItems || [],
+                correctPlacements
+              };
+              // Ensure correctAnswer is a string
+              baseQuestion.correctAnswer = q.explanation || 'Not provided';
             }
 
             allQuestions.push(baseQuestion);

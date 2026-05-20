@@ -565,119 +565,6 @@ function MarketplaceShowcase({ mode }) {
   );
 }
 
-// ─── Features ────────────────────────────────────────────────────────────────
-function Features({ mode }) {
-  const isDark = mode === 'dark';
-  const bg = isDark ? '#030712' : '#F5FBF8';
-  const cardBg = isDark ? '#111827' : '#FFFFFF';
-  const border = isDark ? '#1E293B' : '#E2E8F0';
-  const text = isDark ? '#94A3B8' : '#0F172A';
-
-  const features = [
-    {
-      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44l-1.4-8a2.5 2.5 0 0 1 2.46-2.56H12"/><path d="M14.5 22A2.5 2.5 0 0 0 12 19.5v-15a2.5 2.5 0 0 1 4.96.44l1.4 8a2.5 2.5 0 0 1-2.46 2.56H12"/></svg>,
-      title: 'AI-powered grading',
-      desc: 'Grade open-ended responses in seconds with state-of-the-art NLP that understands Kinyarwanda and English.',
-      color: '#0CBD73',
-      tag: 'Core',
-    },
-    {
-      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>,
-      title: 'Timed, live exams',
-      desc: 'Auto-submit on expiry, countdown timers, and real-time browser lockdown for academic integrity.',
-      color: '#0D406C',
-      tag: 'Security',
-    },
-    {
-      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>,
-      title: 'Deep analytics',
-      desc: 'Visual dashboards, per-question stats, class-wide trends, and exportable PDF/Excel reports.',
-      color: '#5AD5A2',
-      tag: 'Insights',
-    },
-    {
-      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
-      title: 'Enterprise security',
-      desc: 'End-to-end encryption, randomized question ordering, and AI proctoring to detect suspicious activity.',
-      color: '#F59E0B',
-      tag: 'Security',
-    },
-    {
-      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-      title: 'Student management',
-      desc: 'Bulk import, group assignments, role management, and individual student progress tracking.',
-      color: '#0D406C',
-      tag: 'Admin',
-    },
-    {
-      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>,
-      title: 'Works on any device',
-      desc: 'Fully responsive — desktop, tablet, or smartphone. No app installation required, ever.',
-      color: '#5AD5A2',
-      tag: 'Platform',
-    },
-  ];
-
-  return (
-    <section id="features" style={{ padding: 'clamp(60px, 12vw, 100px) 0', background: bg }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
-        <Reveal>
-          <div style={{ textAlign: 'center', marginBottom: 64 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`, marginBottom: 20 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.06em', textTransform: 'uppercase' }}>Features</span>
-            </div>
-            <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(2rem, 4vw, 3rem)', letterSpacing: '-0.03em', color: text, marginBottom: 16 }}>
-              Everything exams need.<br />
-              <span style={{ background: 'linear-gradient(135deg, #0D406C 0%, #5AD5A2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Nothing they don't.</span>
-            </h2>
-            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 18, color: isDark ? '#94A3B8' : '#64748B', maxWidth: 560, margin: '0 auto', lineHeight: 1.7 }}>
-              Built specifically for Rwanda's institutions — from National Exams to university finals.
-            </p>
-          </div>
-        </Reveal>
-
-        <div className="features-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
-          {features.map((f, i) => (
-            <Reveal key={i} delay={i * 80}>
-              <div style={{
-                padding: 28, borderRadius: 20,
-                background: cardBg,
-                border: `1px solid ${border}`,
-                transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-                cursor: 'default',
-              }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = isDark ? '0 20px 40px rgba(0,0,0,0.3)' : '0 20px 40px rgba(15,23,42,0.1)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                {/* Icon */}
-                <div style={{ width: 48, height: 48, borderRadius: 14, background: `${f.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: f.color, marginBottom: 18 }}>
-                  {f.icon}
-                </div>
-                {/* Tag */}
-                <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 100, background: `${f.color}15`, color: f.color, fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.04em', marginBottom: 10 }}>
-                  {f.tag}
-                </div>
-                <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 18, color: text, marginBottom: 10 }}>
-                  {f.title}
-                </h3>
-                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, lineHeight: 1.65, color: isDark ? '#94A3B8' : '#64748B' }}>
-                  {f.desc}
-                </p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 // ─── How it works ─────────────────────────────────────────────────────────────
 function HowItWorks({ mode }) {
   const isDark = mode === 'dark';
@@ -881,12 +768,53 @@ function Contact({ mode }) {
   const text = isDark ? '#94A3B8' : '#0F172A';
   const inputBg = isDark ? '#111827' : '#F8FAFC';
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    subject: '',
+    message: ''
+  });
 
   const inputStyle = {
     width: '100%', padding: '12px 16px', borderRadius: 10,
     border: `1.5px solid ${border}`, background: inputBg,
     fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: text,
     outline: 'none', transition: 'border-color 0.2s',
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSent(true);
+        setFormData({ name: '', email: '', subject: '', message: '' });
+      } else {
+        setError(data.error || 'Failed to send message. Please try again.');
+      }
+    } catch (err) {
+      setError('Failed to send message. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   return (
@@ -924,37 +852,71 @@ function Contact({ mode }) {
                   <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 28 }}>
                     Have a question, need a demo, or want pricing info? We're here.
                   </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {error && (
+                    <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', marginBottom: 16, color: '#EF4444', fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>
+                      {error}
+                    </div>
+                  )}
+                  <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-                      <input style={inputStyle} placeholder="Your name"
+                      <input
+                        style={inputStyle}
+                        name="name"
+                        placeholder="Your name"
+                        value={formData.name}
+                        onChange={handleChange}
                         onFocus={e => e.target.style.borderColor = '#0CBD73'}
                         onBlur={e => e.target.style.borderColor = border}
+                        required
                       />
-                      <input style={inputStyle} placeholder="Email address"
+                      <input
+                        style={inputStyle}
+                        name="email"
+                        type="email"
+                        placeholder="Email address"
+                        value={formData.email}
+                        onChange={handleChange}
                         onFocus={e => e.target.style.borderColor = '#0CBD73'}
                         onBlur={e => e.target.style.borderColor = border}
+                        required
                       />
                     </div>
-                    <input style={inputStyle} placeholder="Subject"
+                    <input
+                      style={inputStyle}
+                      name="subject"
+                      placeholder="Subject"
+                      value={formData.subject}
+                      onChange={handleChange}
                       onFocus={e => e.target.style.borderColor = '#0CBD73'}
                       onBlur={e => e.target.style.borderColor = border}
                     />
-                    <textarea style={{ ...inputStyle, height: 140, resize: 'vertical' }} placeholder="Your message..."
+                    <textarea
+                      style={{ ...inputStyle, height: 140, resize: 'vertical' }}
+                      name="message"
+                      placeholder="Your message..."
+                      value={formData.message}
+                      onChange={handleChange}
                       onFocus={e => e.target.style.borderColor = '#0CBD73'}
                       onBlur={e => e.target.style.borderColor = border}
+                      required
                     />
-                    <button onClick={() => setSent(true)} style={{
-                      width: '100%', padding: '14px', borderRadius: 12,
-                      background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                      color: 'white', border: 'none', cursor: 'pointer',
-                      fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 16,
-                      boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    }}>
-                      Send message
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      style={{
+                        width: '100%', padding: '14px', borderRadius: 12,
+                        background: loading ? 'rgba(13, 64, 108, 0.5)' : 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                        color: 'white', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+                        fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 16,
+                        boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        opacity: loading ? 0.7 : 1,
+                      }}
+                    >
+                      {loading ? 'Sending...' : 'Send message'}
+                      {!loading && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
                     </button>
-                  </div>
+                  </form>
                 </>
               )}
             </div>
@@ -966,7 +928,6 @@ function Contact({ mode }) {
               {[
                 { icon: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.93 12 19.79 19.79 0 0 1 1.93 3.26 2 2 0 0 1 3.9 1.07h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 15.91z"/>, label: 'Phone', value: '+250 788 535 156\n+250 793 828 834\n+250 781 671 517', color: '#0CBD73', isPhone: true },
                 { icon: <><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></>, label: 'Email', value: 'info@excellencecoachinghub.com', color: '#0D406C', isEmail: true },
-                { icon: <><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></>, label: 'Office', value: 'KG 15 Ave', color: '#5AD5A2' },
               ].map((item, i) => (
                 <div key={i} style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 20, cursor: item.isEmail ? 'pointer' : 'default' }} onClick={item.isEmail ? () => window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${item.value}`, '_blank') : undefined}>
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: `${item.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.color, flexShrink: 0 }}>
@@ -978,6 +939,44 @@ function Contact({ mode }) {
                   </div>
                 </div>
               ))}
+
+              {/* Google Map */}
+              <div style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Our Location</div>
+                <div style={{ borderRadius: 12, overflow: 'hidden', height: 250 }}>
+                  <iframe
+                    src={`https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3987.5!2d${30.070017513493255}!3d${-1.9276507991997323}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMcKwNTcnMTIuMCJTIDMwwKDAzJzQyLjAiIkU!5e0!3m2!1sen!2srw!4v1700000000000!5m2!1sen!2srw`}
+                    width="100%"
+                    height="100%"
+                    style={{ border: 0 }}
+                    allowFullScreen=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+                <a
+                  href={`https://www.google.com/maps?q=${-1.9276507991997323},${30.070017513493255}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginTop: 16,
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#0CBD73',
+                    textDecoration: 'none',
+                    transition: 'color 0.2s',
+                  }}
+                  onMouseEnter={e => e.target.style.color = '#0A9E5C'}
+                  onMouseLeave={e => e.target.style.color = '#0CBD73'}
+                >
+                  Open in Google Maps
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              </div>
 
               {/* Social */}
               <div style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
@@ -1133,7 +1132,6 @@ function App() {
       <main>
         <Hero mode={mode} isAuthenticated={isAuthenticated} user={user} />
         <MarketplaceShowcase mode={mode} />
-        <Features mode={mode} />
         <HowItWorks mode={mode} />
         <CTABanner mode={mode} />
         <FAQ mode={mode} />

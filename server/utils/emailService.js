@@ -6,7 +6,7 @@ if (process.env.SENDGRID_API_KEY) {
 }
 
 // Email configuration
-const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@eexams.com';
+const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@eexams.net';
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
 // Brand colors matching the app
@@ -331,7 +331,7 @@ const wrapEmail = (content, subject) => {
   <div class="email-wrapper">
     <div class="email-container">
       <div class="email-header">
-        <img src="https://testfyrwanda.com/logo.png" alt="eexams Logo" class="logo" onerror="this.style.display='none'">
+        <img src="${CLIENT_URL}/logo.png" alt="eexams Logo" class="logo" onerror="this.style.display='none'">
         <h1>${subject}</h1>
       </div>
       <div class="email-body">
@@ -1155,6 +1155,74 @@ const sendStudentUpdateEmail = async (student, changes) => {
 };
 
 /**
+ * Send contact form submission email to admin
+ */
+const sendContactEmail = async (contactData) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, contact email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const { name, email: senderEmail, subject, message } = contactData;
+
+    const content = `
+      <p class="greeting">New Contact Form Submission</p>
+      
+      <p class="message">
+        You have received a new message from the contact form on eexams.
+      </p>
+      
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: rgba(12, 189, 115, 0.05);">
+        <div class="info-box-title" style="color: ${BRAND.accent};">
+          <span style="font-size: 18px;">📧</span> Contact Information
+        </div>
+        <ul class="details-list">
+          <li>
+            <span class="label">Name</span>
+            <span class="value">${name || 'Not provided'}</span>
+          </li>
+          <li>
+            <span class="label">Email</span>
+            <span class="value">${senderEmail || 'Not provided'}</span>
+          </li>
+          <li>
+            <span class="label">Subject</span>
+            <span class="value">${subject || 'No subject'}</span>
+          </li>
+        </ul>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">💬</span> Message
+        </div>
+        <p class="message" style="margin: 0; white-space: pre-wrap; line-height: 1.6;">
+          ${message || 'No message provided'}
+        </p>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="message" style="font-size: 13px; text-align: center;">
+        This message was sent from the eexams contact form at ${new Date().toLocaleString()}
+      </p>
+    `;
+
+    const email = wrapEmail(content, `Contact Form: ${subject || 'New Message'}`);
+    email.to = process.env.CONTACT_EMAIL || 'info@excellencecoachinghub.com';
+    email.replyTo = senderEmail;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Contact email sent from ${senderEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send contact email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Send password reset notification to student when teacher resets their password
  */
 const sendStudentPasswordResetEmail = async (student, newPassword) => {
@@ -1237,6 +1305,7 @@ module.exports = {
   sendStudentUpdateEmail,
   sendTeacherWelcomeEmail,
   sendTeacherUpdateEmail,
+  sendContactEmail,
   FROM_EMAIL,
   CLIENT_URL,
 };

@@ -358,6 +358,11 @@ const MarketplaceManager = ({ exam }) => {
                       }
                     }
                   }}
+                  renderValue={(selected) => {
+                    if (!selected) return <em>Select a level</em>;
+                    const selectedLevel = levels.find(l => String(l._id) === selected);
+                    return selectedLevel ? selectedLevel.name : <em>Select a level</em>;
+                  }}
                   label="Level / Target Audience"
                   sx={{ borderRadius: 2 }}
                   disabled={loadingLevels}
@@ -414,13 +419,17 @@ const MarketplaceManager = ({ exam }) => {
                     } else {
                       handleSettingsChange('subLevel', value);
                       // Update targetAudience to include sub-level
-                      const selectedLevel = levels.find(l => l._id === settings.levelId);
+                      const selectedLevel = levels.find(l => String(l._id) === String(settings.levelId));
                       if (selectedLevel && value) {
                         handleSettingsChange('targetAudience', `${selectedLevel.name} - ${value}`);
                       } else if (selectedLevel) {
                         handleSettingsChange('targetAudience', selectedLevel.name);
                       }
                     }
+                  }}
+                  renderValue={(selected) => {
+                    if (!selected) return <em>Select sub-level (optional)</em>;
+                    return selected;
                   }}
                   label={!settings.levelId 
                     ? 'Select a level first' 

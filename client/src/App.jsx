@@ -981,18 +981,24 @@ function Contact({ mode }) {
               {/* Social */}
               <div style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
                 <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Follow us</div>
-                <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {[
-                    { name: 'Facebook', color: '#1877F2', path: <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>, url: 'https://facebook.com/ech.info' },
-                    { name: 'Twitter/X', color: '#000', path: <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/>, url: 'https://twitter.com/ech_info' },
-                    { name: 'LinkedIn', color: '#0A66C2', path: <><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></>, url: 'https://linkedin.com/company/ech-info' },
-                    { name: 'Instagram', color: '#E4405F', path: <><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></>, url: 'https://instagram.com/ech.info' },
+                    { name: 'Facebook', color: '#1877F2', username: '@ech.info', path: <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>, url: 'https://facebook.com/ech.info' },
+                    { name: 'TikTok', color: '#000000', username: '@ech.info', path: <><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/><path d="M20 9v5a5 5 0 0 1-9 0"/></>, url: 'https://tiktok.com/@ech.info' },
+                    { name: 'Instagram', color: '#E4405F', username: '@ech.info', path: <><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></>, url: 'https://instagram.com/ech.info' },
                   ].map((s, i) => (
-                    <button key={i} title={s.name} onClick={() => window.open(s.url, '_blank')} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${border}`, background: isDark ? '#111827' : '#F8FAFC', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isDark ? '#94A3B8' : '#64748B', transition: 'all 0.2s' }}
+                    <button key={i} onClick={() => window.open(s.url, '_blank')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 12, border: `1px solid ${border}`, background: isDark ? '#111827' : '#F8FAFC', cursor: 'pointer', color: isDark ? '#94A3B8' : '#64748B', transition: 'all 0.2s', width: '100%', justifyContent: 'flex-start' }}
                       onMouseEnter={e => { e.currentTarget.style.background = s.color; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = s.color; }}
                       onMouseLeave={e => { e.currentTarget.style.background = isDark ? '#111827' : '#F8FAFC'; e.currentTarget.style.color = isDark ? '#94A3B8' : '#64748B'; e.currentTarget.style.borderColor = border; }}
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{s.path}</svg>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: `${s.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: s.color, flexShrink: 0 }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{s.path}</svg>
+                      </div>
+                      <div style={{ textAlign: 'left', flex: 1 }}>
+                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, fontWeight: 600, marginBottom: 2 }}>{s.name}</div>
+                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, opacity: 0.8 }}>{s.username}</div>
+                      </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     </button>
                   ))}
                 </div>

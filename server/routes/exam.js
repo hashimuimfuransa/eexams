@@ -254,7 +254,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam.passingScore = passingScore || 70;
         exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
         exam.sections = sectionsArray;
-        await exam.save();
+        // Don't save here - will save after creating questions
 
         // Delete existing questions for this exam
         await Question.deleteMany({ exam: exam._id });
@@ -282,7 +282,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam.passingScore = passingScore || 70;
         exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
         exam.sections = sectionsArray;
-        await exam.save();
+        // Don't save here - will save after creating questions
 
         // Delete existing questions for this exam
         await Question.deleteMany({ exam: exam._id });

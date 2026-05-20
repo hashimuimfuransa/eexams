@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
-import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon } from '@mui/icons-material';
+import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails, Collapse } from '@mui/material';
+import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
@@ -19,6 +19,12 @@ const Marketplace = () => {
   const [approvedExamIds, setApprovedExamIds] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  
+  // Level filtering
+  const [levels, setLevels] = useState([]);
+  const [levelFilter, setLevelFilter] = useState('all');
+  const [subLevelFilter, setSubLevelFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
   const { mode, toggleMode } = useThemeMode();
@@ -32,11 +38,28 @@ const Marketplace = () => {
 
   useEffect(() => {
     fetchMarketplaceExams();
+    fetchLevels();
     if (isStudent) {
       fetchExamCompletionStatus();
       fetchRecommendations();
     }
   }, [isAuthenticated, user]);
+
+  const fetchLevels = async () => {
+    try {
+      const response = await api.get('/marketplace/levels');
+      setLevels(response.data || []);
+    } catch (err) {
+      console.error('Error fetching levels:', err);
+    }
+  };
+
+  // Get available sub-levels for selected level
+  const getAvailableSubLevels = () => {
+    if (levelFilter === 'all') return [];
+    const selectedLevel = levels.find(l => l._id === levelFilter);
+    return selectedLevel?.subLevels?.filter(s => s.isActive) || [];
+  };
 
   const fetchMarketplaceExams = async () => {
     try {
@@ -146,7 +169,18 @@ const Marketplace = () => {
       exam.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       exam.publicDescription?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    // Target audience filter
+    // Level filter (new hierarchical filtering)
+    const matchesLevel = 
+      levelFilter === 'all' || 
+      (exam.level?._id === levelFilter) ||
+      (exam.level?.name === targetAudienceFilter);
+    
+    // Sub-level filter
+    const matchesSubLevel = 
+      subLevelFilter === 'all' || 
+      exam.subLevel === subLevelFilter;
+    
+    // Target audience filter (fallback for backward compatibility)
     const matchesAudience = 
       targetAudienceFilter === 'all' || 
       exam.targetAudience === targetAudienceFilter;
@@ -157,7 +191,7 @@ const Marketplace = () => {
       (priceFilter === 'free' && exam.publicPrice === 0) ||
       (priceFilter === 'paid' && exam.publicPrice > 0);
     
-    return matchesSearch && matchesAudience && matchesPrice;
+    return matchesSearch && matchesLevel && matchesSubLevel && matchesPrice;
   }).sort((a, b) => {
     // Sort logic
     switch (sortBy) {
@@ -185,8 +219,16 @@ const Marketplace = () => {
   const clearFilters = () => {
     setSearchTerm('');
     setTargetAudienceFilter('all');
+    setLevelFilter('all');
+    setSubLevelFilter('all');
     setPriceFilter('all');
     setSortBy('newest');
+  };
+
+  // Handle level change with reset of sub-level
+  const handleLevelChange = (newLevelId) => {
+    setLevelFilter(newLevelId);
+    setSubLevelFilter('all');
   };
 
   // Format relative time (e.g., "2 days ago", "Just now")
@@ -235,7 +277,7 @@ const Marketplace = () => {
             Browse and request access to publicly available exams
           </Typography>
 
-          {/* Filters Section */}
+          {/* Compact Filters Section */}
           <Box 
             sx={{ 
               maxWidth: 900, 
@@ -247,111 +289,155 @@ const Marketplace = () => {
               mb: 3
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            {/* Header with Toggle */}
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                cursor: 'pointer'
+              }}
+              onClick={() => setShowFilters(!showFilters)}
+            >
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <FilterList sx={{ mr: 1, color: '#0D406C', fontSize: 20 }} />
                 <Typography fontWeight={700} sx={{ color: '#0F172A', fontSize: 15 }}>
-                  Filters
+                  Filter Exams
                 </Typography>
-                {(searchTerm || targetAudienceFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
+                {(searchTerm || levelFilter !== 'all' || subLevelFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
                   <Chip 
-                    label={`${[searchTerm, targetAudienceFilter !== 'all' && targetAudienceFilter, priceFilter !== 'all' && priceFilter, sortBy !== 'newest' && 'sort'].filter(Boolean).length} active`}
+                    label={`${[searchTerm, levelFilter !== 'all' && levels.find(l => l._id === levelFilter)?.name, subLevelFilter !== 'all' && subLevelFilter, priceFilter !== 'all' && priceFilter, sortBy !== 'newest' && 'sort'].filter(Boolean).length} active`}
                     size="small"
                     sx={{ ml: 2, bgcolor: '#0CBD73', color: 'white', fontWeight: 600, height: 22, fontSize: 11 }}
                   />
                 )}
               </Box>
-              {(searchTerm || targetAudienceFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
-                <Button
-                  onClick={clearFilters}
-                  size="small"
-                  variant="text"
-                  sx={{ borderRadius: 1.5, textTransform: 'none', fontWeight: 600, fontSize: 13, color: '#64748B', minWidth: 'auto', px: 1.5 }}
-                >
-                  Clear
-                </Button>
-              )}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {(searchTerm || levelFilter !== 'all' || subLevelFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
+                  <Button
+                    onClick={(e) => { e.stopPropagation(); clearFilters(); }}
+                    size="small"
+                    variant="text"
+                    sx={{ borderRadius: 1.5, textTransform: 'none', fontWeight: 600, fontSize: 13, color: '#64748B', minWidth: 'auto', px: 1.5 }}
+                  >
+                    Clear
+                  </Button>
+                )}
+                {showFilters ? <KeyboardArrowUp sx={{ color: '#64748B' }} /> : <KeyboardArrowDown sx={{ color: '#64748B' }} />}
+              </Box>
             </Box>
             
-            <Grid container spacing={{ xs: 1.5, sm: 2 }} alignItems="center">
-              {/* Search */}
-              <Grid item xs={12} sm={6} lg={5}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  placeholder="Search exams..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    startAdornment: <Search sx={{ color: '#94A3B8', mr: 0.5, fontSize: 18 }} />,
-                    sx: { borderRadius: 1.5, fontSize: 14 }
-                  }}
-                  sx={{
-                    '& .MuiOutlinedInput-root': { borderRadius: 1.5 }
-                  }}
-                />
-              </Grid>
+            {/* Collapsible Filter Content */}
+            <Collapse in={showFilters} timeout={300}>
+              <Grid container spacing={{ xs: 1.5, sm: 2 }} alignItems="center" sx={{ mt: 2 }}>
+                {/* Search */}
+                <Grid item xs={12} sm={6} md={4}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="Search exams..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    InputProps={{
+                      startAdornment: <Search sx={{ color: '#94A3B8', mr: 0.5, fontSize: 18 }} />,
+                      sx: { borderRadius: 1.5, fontSize: 14 }
+                    }}
+                    sx={{
+                      '& .MuiOutlinedInput-root': { borderRadius: 1.5 }
+                    }}
+                  />
+                </Grid>
 
-              {/* Target Audience Filter */}
-              <Grid item xs={6} sm={3} lg={3.5}>
-                <FormControl fullWidth size="small">
-                  <InputLabel sx={{ fontSize: 13 }}>Level</InputLabel>
-                  <Select
-                    value={targetAudienceFilter}
-                    onChange={(e) => setTargetAudienceFilter(e.target.value)}
-                    label="Level"
-                    sx={{ borderRadius: 1.5, fontSize: 14 }}
-                  >
-                    <MenuItem value="all">All</MenuItem>
-                    {uniqueAudiences.map(audience => (
-                      <MenuItem key={audience} value={audience}>{audience}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
+                {/* Level Filter - Primary */}
+                <Grid item xs={6} sm={3} md={2}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel sx={{ fontSize: 13 }}>Level</InputLabel>
+                    <Select
+                      value={levelFilter}
+                      onChange={(e) => handleLevelChange(e.target.value)}
+                      label="Level"
+                      sx={{ borderRadius: 1.5, fontSize: 14 }}
+                    >
+                      <MenuItem value="all">All</MenuItem>
+                      {levels.map(level => (
+                        <MenuItem key={level._id} value={level._id}>
+                          {level.name}
+                          {level.subLevels?.filter(s => s.isActive).length > 0 && (
+                            <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73', fontSize: 10 }}>
+                              ({level.subLevels.filter(s => s.isActive).length} sub)
+                            </Typography>
+                          )}
+                        </MenuItem>
+                      ))}
+                      {levels.length === 0 && uniqueAudiences.length > 0 && (
+                        uniqueAudiences.map(audience => (
+                          <MenuItem key={audience} value={audience}>{audience}</MenuItem>
+                        ))
+                      )}
+                    </Select>
+                  </FormControl>
+                </Grid>
 
-              {/* Price Filter */}
-              <Grid item xs={6} sm={3} lg={3.5}>
-                <FormControl fullWidth size="small">
-                  <InputLabel sx={{ fontSize: 13 }}>Price</InputLabel>
-                  <Select
-                    value={priceFilter}
-                    onChange={(e) => setPriceFilter(e.target.value)}
-                    label="Price"
-                    sx={{ borderRadius: 1.5, fontSize: 14 }}
-                  >
-                    <MenuItem value="all">All</MenuItem>
-                    <MenuItem value="free">Free</MenuItem>
-                    <MenuItem value="paid">Paid</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
+                {/* Sub-Level Filter - Secondary (only shown if level has sub-levels) */}
+                <Grid item xs={6} sm={3} md={2}>
+                  <FormControl fullWidth size="small" disabled={getAvailableSubLevels().length === 0}>
+                    <InputLabel sx={{ fontSize: 13 }}>Sub-Level</InputLabel>
+                    <Select
+                      value={subLevelFilter}
+                      onChange={(e) => setSubLevelFilter(e.target.value)}
+                      label="Sub-Level"
+                      sx={{ borderRadius: 1.5, fontSize: 14 }}
+                    >
+                      <MenuItem value="all">
+                        {getAvailableSubLevels().length === 0 ? 'No sub-levels' : 'All'}
+                      </MenuItem>
+                      {getAvailableSubLevels().map(subLevel => (
+                        <MenuItem key={subLevel._id} value={subLevel.name}>
+                          {subLevel.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
 
-              {/* Sort By */}
-              <Grid item xs={12} sm={6} lg={12}>
-                <FormControl fullWidth size="small">
-                  <InputLabel sx={{ fontSize: 13 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Sort sx={{ fontSize: 16 }} />
-                      Sort By
-                    </Box>
-                  </InputLabel>
-                  <Select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    label="Sort By"
-                    sx={{ borderRadius: 1.5, fontSize: 14 }}
-                  >
-                    <MenuItem value="newest">Newest First</MenuItem>
-                    <MenuItem value="oldest">Oldest First</MenuItem>
-                    <MenuItem value="price-low">Price: Low to High</MenuItem>
-                    <MenuItem value="price-high">Price: High to Low</MenuItem>
-                    <MenuItem value="title-asc">Title: A to Z</MenuItem>
-                    <MenuItem value="title-desc">Title: Z to A</MenuItem>
-                  </Select>
-                </FormControl>
+                {/* Price Filter */}
+                <Grid item xs={6} sm={3} md={2}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel sx={{ fontSize: 13 }}>Price</InputLabel>
+                    <Select
+                      value={priceFilter}
+                      onChange={(e) => setPriceFilter(e.target.value)}
+                      label="Price"
+                      sx={{ borderRadius: 1.5, fontSize: 14 }}
+                    >
+                      <MenuItem value="all">All</MenuItem>
+                      <MenuItem value="free">Free</MenuItem>
+                      <MenuItem value="paid">Paid</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Sort By */}
+                <Grid item xs={6} sm={3} md={2}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel sx={{ fontSize: 13 }}>Sort</InputLabel>
+                    <Select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      label="Sort"
+                      sx={{ borderRadius: 1.5, fontSize: 14 }}
+                    >
+                      <MenuItem value="newest">Newest</MenuItem>
+                      <MenuItem value="oldest">Oldest</MenuItem>
+                      <MenuItem value="price-low">Price: Low</MenuItem>
+                      <MenuItem value="price-high">Price: High</MenuItem>
+                      <MenuItem value="title-asc">A-Z</MenuItem>
+                      <MenuItem value="title-desc">Z-A</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
               </Grid>
-            </Grid>
+            </Collapse>
           </Box>
         </Box>
 

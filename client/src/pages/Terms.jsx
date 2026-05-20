@@ -1,5 +1,5 @@
-import React from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
   Typography,
@@ -7,14 +7,40 @@ import {
   Paper,
   Divider
 } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
+import Nav from '../components/Nav';
 
 const Terms = () => {
   const { mode } = useThemeMode();
+  const { isAuthenticated, user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [scrolled, setScrolled] = useState(0);
   const isDark = mode === 'dark';
 
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
   return (
-    <Container maxWidth="md" sx={{ py: 8 }}>
+    <>
+      <Nav
+        scrolled={scrolled > 20}
+        mode={mode}
+        toggleMode={() => {}}
+        isAuthenticated={isAuthenticated}
+        user={user}
+        handleLogout={handleLogout}
+        currentRoute="/terms"
+      />
+      <Container maxWidth="md" sx={{ py: 12, pt: 20 }}>
       <Paper
         elevation={0}
         sx={{
@@ -118,6 +144,7 @@ const Terms = () => {
         </Typography>
       </Paper>
     </Container>
+    </>
   );
 };
 

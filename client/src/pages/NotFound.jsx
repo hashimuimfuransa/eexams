@@ -1,19 +1,49 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, Button, Container, Paper } from '@mui/material';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { SentimentVeryDissatisfied as SadIcon } from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
+import { useThemeMode } from '../context/ThemeContext';
+import Nav from '../components/Nav';
 
 const NotFound = () => {
+  const { mode } = useThemeMode();
+  const { isAuthenticated, user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [scrolled, setScrolled] = useState(0);
+  const isDark = mode === 'dark';
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: '100vh',
-        bgcolor: 'background.default',
-        pt: 8,
-      }}
-    >
+    <>
+      <Nav
+        scrolled={scrolled > 20}
+        mode={mode}
+        toggleMode={() => {}}
+        isAuthenticated={isAuthenticated}
+        user={user}
+        handleLogout={handleLogout}
+        currentRoute="*"
+      />
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          bgcolor: 'background.default',
+          pt: 20,
+        }}
+      >
       <Container maxWidth="md" sx={{ flex: 1, display: 'flex', alignItems: 'center' }}>
         <Paper
           elevation={3}
@@ -65,6 +95,7 @@ const NotFound = () => {
         </Paper>
       </Container>
     </Box>
+    </>
   );
 };
 

@@ -3,6 +3,7 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { useThemeMode } from './context/ThemeContext';
 import Nav from './components/Nav';
+import api from './services/api';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const tokens = {
@@ -416,9 +417,8 @@ function MarketplaceShowcase({ mode }) {
 
   const fetchMarketplaceExams = async () => {
     try {
-      const response = await fetch('/api/marketplace/exams');
-      const data = await response.json();
-      setExams(data.slice(0, 6)); // Show only first 6 exams
+      const response = await api.get('/marketplace/exams');
+      setExams(response.data.slice(0, 6)); // Show only first 6 exams
     } catch (err) {
       console.error('Error fetching marketplace exams:', err);
     } finally {

@@ -6323,4 +6323,3 @@ function TemplatesSection({ exams, setExams }) {
     </Box>
   );
 }
-}

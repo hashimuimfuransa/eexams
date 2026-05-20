@@ -188,7 +188,12 @@ const MarketplaceManager = ({ exam }) => {
       // Find selected level name for creating new level if needed
       const selectedLevel = levels.find(l => l._id === settings.levelId);
       const payload = {
-        ...settings,
+        isPubliclyListed: settings.isPubliclyListed,
+        publicPrice: settings.publicPrice,
+        publicDescription: settings.publicDescription,
+        targetAudience: settings.targetAudience,
+        levelId: settings.levelId,
+        subLevel: settings.subLevel || null,
         newLevelName: selectedLevel ? undefined : settings.targetAudience
       };
       await api.put(`/marketplace/exams/${exam._id}/settings`, payload);
@@ -385,7 +390,13 @@ const MarketplaceManager = ({ exam }) => {
             {/* Sub-Level Selection */}
             <Grid item xs={12} md={6}>
               <FormControl fullWidth disabled={!settings.levelId}>
-                <InputLabel id="sublevel-select-label">Sub-Level (Optional)</InputLabel>
+                <InputLabel id="sublevel-select-label">
+                  {!settings.levelId 
+                    ? 'Select a level first' 
+                    : getAvailableSubLevels().length === 0 
+                      ? 'No sub-levels yet - create one' 
+                      : 'Sub-Level (Optional)'}
+                </InputLabel>
                 <Select
                   labelId="sublevel-select-label"
                   value={settings.subLevel || ''}
@@ -404,11 +415,21 @@ const MarketplaceManager = ({ exam }) => {
                       }
                     }
                   }}
-                  label="Sub-Level (Optional)"
+                  label={!settings.levelId 
+                    ? 'Select a level first' 
+                    : getAvailableSubLevels().length === 0 
+                      ? 'No sub-levels yet - create one' 
+                      : 'Sub-Level (Optional)'}
                   sx={{ borderRadius: 2 }}
                 >
                   <MenuItem value="">
-                    <em>{settings.levelId ? 'Select sub-level (optional)' : 'Select a level first'}</em>
+                    <em>
+                      {!settings.levelId 
+                        ? 'Select a level first' 
+                        : getAvailableSubLevels().length === 0 
+                          ? 'No sub-levels - create one below' 
+                          : 'Select sub-level (optional)'}
+                    </em>
                   </MenuItem>
                   {getAvailableSubLevels().map((subLevel) => (
                     <MenuItem key={subLevel._id} value={subLevel.name}>

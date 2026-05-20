@@ -730,6 +730,7 @@ const getStudentExamRequests = async (req, res) => {
 const getAllLevels = async (req, res) => {
   try {
     const levels = await Level.find({ isActive: true })
+      .select('name description displayOrder isActive subLevels usageCount createdAt')
       .sort({ displayOrder: 1, name: 1 });
     res.json(levels);
   } catch (error) {

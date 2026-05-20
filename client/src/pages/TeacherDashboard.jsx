@@ -149,7 +149,7 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
           </FormControl>
         )}
         <Box sx={{ flexGrow: 1, minWidth: 0, maxWidth: isMobile ? 'calc(100% - 80px)' : 'auto' }}>
-          <Typography variant="body2" sx={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 500, fontSize: isMobile ? 12 : 14 }} noWrap={!expanded}>
+          <Typography variant="body2" sx={{ fontFamily: "DM Sans,sans-serif", fontWeight: 500, fontSize: isMobile ? 12 : 14 }} noWrap={!expanded}>
             {localQ.text || 'Untitled Question'}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: isMobile ? 0.5 : 1, mt: 0.25, flexWrap: 'wrap' }}>
@@ -737,8 +737,8 @@ function DonutChart({ data, total }) {
         {segs.map((s, i) => <circle key={i} cx={size/2} cy={size/2} r={r} fill="none" stroke={s.color} strokeWidth={stroke} strokeDasharray={s.dash} strokeDashoffset={-s.off} strokeLinecap="round" />)}
       </svg>
       <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography fontWeight={800} sx={{ fontSize: 20, color: tokens.textPrimary, lineHeight: 1, fontFamily: "'DM Sans',sans-serif" }}>{total}</Typography>
-        <Typography sx={{ fontSize: 10, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>Total</Typography>
+        <Typography fontWeight={800} sx={{ fontSize: 20, color: tokens.textPrimary, lineHeight: 1, fontFamily: "DM Sans,sans-serif" }}>{total}</Typography>
+        <Typography sx={{ fontSize: 10, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>Total</Typography>
       </Box>
     </Box>
   );
@@ -1329,9 +1329,9 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
                 <Box sx={{ display: { xs: 'none', sm: 'block' } }}><Sparkline color={s.subColor} values={s.spark} /></Box>
               </Box>
               {statsLoading ? <CircularProgress size={20} sx={{ color: tokens.accent }} /> :
-                <Typography fontWeight={800} sx={{ color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", lineHeight: 1, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '2.125rem' } }}>{s.value}</Typography>}
-              <Typography sx={{ fontSize: { xs: 11, sm: 12.5 }, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mt: 0.25 }} noWrap>{s.label}</Typography>
-              <Typography sx={{ fontSize: { xs: 10.5, sm: 11.5 }, color: s.subColor, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", mt: 0.35 }} noWrap>{s.sub}</Typography>
+                <Typography fontWeight={800} sx={{ color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '2.125rem' } }}>{s.value}</Typography>}
+              <Typography sx={{ fontSize: { xs: 11, sm: 12.5 }, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", mt: 0.25 }} noWrap>{s.label}</Typography>
+              <Typography sx={{ fontSize: { xs: 10.5, sm: 11.5 }, color: s.subColor, fontWeight: 600, fontFamily: "DM Sans,sans-serif", mt: 0.35 }} noWrap>{s.sub}</Typography>
             </Paper>
           </Grid>
         ))}
@@ -1339,24 +1339,24 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
       {/* AI Creator */}
       <Paper elevation={0} sx={{ borderRadius: 3, overflow: 'hidden', mb: 2.5, border: `1px solid ${tokens.surfaceBorder}` }}>
-        <Box sx={{ px: 3, py: 2.25, background: gradients.brand, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{ width: 42, height: 42, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <AutoAwesome sx={{ color: 'white', fontSize: 22 }} />
+        <Box sx={{ px: isXs ? 2 : 3, py: isXs ? 2 : 2.25, background: gradients.brand, display: 'flex', alignItems: isXs ? 'stretch' : 'center', justifyContent: 'space-between', flexDirection: isXs ? 'column' : 'row', gap: isXs ? 1.5 : 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: isXs ? 1.5 : 2, width: isXs ? '100%' : 'auto' }}>
+            <Box sx={{ width: isXs ? 36 : 42, height: isXs ? 36 : 42, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <AutoAwesome sx={{ color: 'white', fontSize: isXs ? 18 : 22 }} />
             </Box>
-            <Box>
-              <Typography fontWeight={700} color="white" sx={{ fontSize: 16, fontFamily: "'DM Sans',sans-serif" }}>AI Exam Creator</Typography>
-              <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif" }}>Describe your exam or upload a document — AI builds it for you</Typography>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography fontWeight={700} color="white" sx={{ fontSize: isXs ? 14 : 16, fontFamily: "DM Sans,sans-serif" }}>Exam Creator</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: isXs ? 11 : 12.5, fontFamily: "DM Sans,sans-serif", lineHeight: 1.4 }}>{isXs ? 'Create exams quickly • Reuse from Question Bank' : 'Describe your exam or upload a document to create it quickly • Reuse questions from Question Bank'}</Typography>
             </Box>
           </Box>
-          <Button variant="outlined" onClick={() => setActiveSection('templates')} sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.55)', borderRadius: 2.5, fontWeight: 700, fontSize: 13, textTransform: 'none', px: 2.5, fontFamily: "'DM Sans',sans-serif", '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
-            View Templates
+          <Button variant="contained" onClick={() => setActiveSection('templates')} sx={{ bgcolor: 'white', color: tokens.primary, borderRadius: 2.5, fontWeight: 700, fontSize: isXs ? 11 : 13, textTransform: 'none', px: isXs ? 2 : 3, py: isXs ? 1 : 1.25, fontFamily: "DM Sans,sans-serif", width: isXs ? '100%' : 'auto', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}>
+            {isXs ? '📋 Templates & Bank' : '📋 Use Templates & Question Bank'}
           </Button>
         </Box>
 
         <Box sx={{ display: 'flex', bgcolor: 'white', borderBottom: `1px solid ${tokens.surfaceBorder}`, flexWrap: isXs ? 'wrap' : 'nowrap' }}>
-          {[...(isCustomEnterprise ? [{ key: 'describe', label: isXs ? '✏ Describe' : '✏  AI Describe' }] : []), { key: 'upload', label: isXs ? '☁ Upload' : '☁  Upload Doc' }, { key: 'manual', label: isXs ? '✍ Manual' : '✍  Manual Build' }].map(tab => (
-            <Button key={tab.key} onClick={() => setAiMode(tab.key)} sx={{ flex: isXs ? '1 1 33%' : 1, py: isXs ? 1 : 1.5, fontWeight: 600, fontSize: { xs: 10, sm: 13 }, textTransform: 'none', borderRadius: 0, fontFamily: "'DM Sans',sans-serif", borderBottom: aiMode === tab.key ? `2.5px solid ${tokens.primary}` : '2.5px solid transparent', color: aiMode === tab.key ? tokens.primary : tokens.textMuted, minWidth: isXs ? 0 : 'auto' }}>
+          {[...(isCustomEnterprise ? [{ key: 'describe', label: isXs ? '✏ Describe' : '✏  Describe' }] : []), { key: 'upload', label: isXs ? '☁ Upload' : '☁  Upload Doc' }, { key: 'manual', label: isXs ? '✍ Manual' : '✍  Manual Build' }].map(tab => (
+            <Button key={tab.key} onClick={() => setAiMode(tab.key)} sx={{ flex: isXs ? '1 1 33%' : 1, py: isXs ? 1 : 1.5, fontWeight: 600, fontSize: { xs: 10, sm: 13 }, textTransform: 'none', borderRadius: 0, fontFamily: "DM Sans,sans-serif", borderBottom: aiMode === tab.key ? `2.5px solid ${tokens.primary}` : '2.5px solid transparent', color: aiMode === tab.key ? tokens.primary : tokens.textMuted, minWidth: isXs ? 0 : 'auto' }}>
               {tab.label}
             </Button>
           ))}
@@ -1377,14 +1377,14 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           ) : aiMode === 'describe' ? (
             <>
               {/* Plan badge */}
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, flexDirection: isXs ? 'column' : 'row', gap: isXs ? 1 : 0, alignItems: isXs ? 'stretch' : 'center' }}>
                 <Chip
                   label={`${effectivePlan.charAt(0).toUpperCase() + effectivePlan.slice(1)} Plan · max ${planLimits.maxQuestions || 0} questions`}
                   size="small"
-                  sx={{ bgcolor: canUseAI ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.08)', color: canUseAI ? tokens.accentDark : '#EF4444', fontWeight: 700, fontSize: 11 }}
+                  sx={{ bgcolor: canUseAI ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.08)', color: canUseAI ? tokens.accentDark : '#EF4444', fontWeight: 700, fontSize: isXs ? 10 : 11, width: isXs ? '100%' : 'auto' }}
                 />
                 <Button size="small" onClick={() => setChatOpen(v => !v)}
-                  sx={{ borderRadius: 2, color: tokens.primary, bgcolor: 'rgba(13,64,108,0.07)', fontFamily: "'DM Sans',sans-serif", fontSize: 12, textTransform: 'none', px: 1.5, fontWeight: 600, '&:hover': { bgcolor: 'rgba(13,64,108,0.13)' } }}>
+                  sx={{ borderRadius: 2, color: tokens.primary, bgcolor: 'rgba(13,64,108,0.07)', fontFamily: "DM Sans,sans-serif", fontSize: isXs ? 11 : 12, textTransform: 'none', px: isXs ? 1.5 : 2, py: isXs ? 0.75 : 1, fontWeight: 600, width: isXs ? '100%' : 'auto', '&:hover': { bgcolor: 'rgba(13,64,108,0.13)' } }}>
                   💬 AI Assistant
                 </Button>
               </Box>
@@ -1392,26 +1392,26 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
               {/* AI Chat panel - Enhanced */}
               {chatOpen && (
                 <Paper elevation={0} sx={{ mb: 2, border: `1px solid ${tokens.surfaceBorder}`, borderRadius: 2.5, overflow: 'hidden' }}>
-                  <Box sx={{ px: 2, py: 1.25, bgcolor: tokens.primary, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box sx={{ px: isXs ? 1.5 : 2, py: isXs ? 1 : 1.25, bgcolor: tokens.primary, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography fontWeight={700} sx={{ color: 'white', fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>AI Teaching Assistant</Typography>
-                      <Box sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.2)', fontSize: 10, color: 'white', fontWeight: 600 }}>Smart Guide</Box>
+                      <Typography fontWeight={700} sx={{ color: 'white', fontSize: isXs ? 12 : 13, fontFamily: "DM Sans,sans-serif" }}>AI Teaching Assistant</Typography>
+                      <Box sx={{ px: isXs ? 0.5 : 0.75, py: isXs ? 0.15 : 0.25, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.2)', fontSize: isXs ? 9 : 10, color: 'white', fontWeight: 600 }}>Smart Guide</Box>
                     </Box>
-                    <IconButton size="small" onClick={() => setChatOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)', p: 0.5 }}><Close sx={{ fontSize: 16 }} /></IconButton>
+                    <IconButton size="small" onClick={() => setChatOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)', p: isXs ? 0.25 : 0.5 }}><Close sx={{ fontSize: isXs ? 14 : 16 }} /></IconButton>
                   </Box>
-                  <Box sx={{ maxHeight: 320, overflowY: 'auto', p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5, bgcolor: '#F8FAFC' }}>
+                  <Box sx={{ maxHeight: isXs ? 250 : 320, overflowY: 'auto', p: isXs ? 1 : 1.5, display: 'flex', flexDirection: 'column', gap: 1.5, bgcolor: '#F8FAFC' }}>
                     {chatMessages.map((m, i) => (
                       <Box key={i}>
                         <Box sx={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
                           <Box sx={{ 
-                            maxWidth: '85%', 
-                            px: 1.5, 
-                            py: 1, 
+                            maxWidth: isXs ? '90%' : '85%', 
+                            px: isXs ? 1 : 1.5, 
+                            py: isXs ? 0.75 : 1, 
                             borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', 
                             bgcolor: m.role === 'user' ? tokens.primary : m.type === 'guidance' ? '#FEF3C7' : 'white', 
                             color: m.role === 'user' ? 'white' : tokens.textPrimary, 
-                            fontSize: 13, 
-                            fontFamily: "'DM Sans',sans-serif", 
+                            fontSize: isXs ? 12 : 13, 
+                            fontFamily: "DM Sans,sans-serif", 
                             border: m.role !== 'user' ? `1px solid ${m.type === 'guidance' ? '#FCD34D' : tokens.surfaceBorder}` : 'none', 
                             lineHeight: 1.6, 
                             whiteSpace: 'pre-wrap',
@@ -1516,25 +1516,18 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
                   <TextField 
                     fullWidth 
                     multiline 
-                    minRows={3} 
-                    maxRows={6} 
-                    placeholder="Describe your exam in detail for best results:
-• Subject: What topic or subject area?
-• Grade/Level: What grade or class level?
-• Topics: What specific content to cover?
-• Question count: How many questions? (e.g., 10 MCQ, 5 open-ended)
-• Duration: How long should the exam be?
-
-Example: 'Biology exam for Grade 10 covering cell division and photosynthesis with 15 multiple-choice questions and 3 open-ended questions, 60 minutes duration'"
+                    minRows={isXs ? 4 : 3} 
+                    maxRows={isXs ? 8 : 6} 
+                    placeholder={isXs ? "Describe your exam:\n• Subject & topic\n• Grade level\n• Number of questions\n• Duration" : "Describe your exam in detail for best results:\n• Subject: What topic or subject area?\n• Grade/Level: What grade or class level?\n• Topics: What specific content to cover?\n• Question count: How many questions? (e.g., 10 MCQ, 5 open-ended)\n• Duration: How long should the exam be?\n\nExample: 'Biology exam for Grade 10 covering cell division and photosynthesis with 15 multiple-choice questions and 3 open-ended questions, 60 minutes duration'"}
                     value={prompt} 
                     onChange={e => setPrompt(e.target.value)}
                     disabled={!canUseAI}
                     sx={{ 
                       '& .MuiOutlinedInput-root': { 
                         borderRadius: 2, 
-                        fontFamily: "'DM Sans',sans-serif", 
+                        fontFamily: "DM Sans,sans-serif", 
                         bgcolor: '#FAFBFC', 
-                        fontSize: 14, 
+                        fontSize: isXs ? 13 : 14, 
                         lineHeight: 1.6,
                         paddingRight: isRecording ? '60px' : '48px'
                       } 
@@ -1542,7 +1535,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                   />
                   {/* Voice recording button */}
                   {hasSpeechSupport && canUseAI && (
-                    <Box sx={{ position: 'absolute', right: 8, top: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
+                    <Box sx={{ position: 'absolute', right: isXs ? 6 : 8, top: isXs ? 6 : 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
                       <Tooltip title={isRecording ? "Stop recording" : "Use voice command to describe your exam"}>
                         <IconButton
                           onClick={isRecording ? stopRecording : startRecording}
@@ -1550,8 +1543,8 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                           sx={{
                             bgcolor: isRecording ? '#EF4444' : tokens.primary,
                             color: 'white',
-                            width: 40,
-                            height: 40,
+                            width: isXs ? 36 : 40,
+                            height: isXs ? 36 : 40,
                             '&:hover': { bgcolor: isRecording ? '#DC2626' : tokens.primaryDark },
                             animation: isRecording ? 'pulse 1.5s infinite' : 'none',
                             '@keyframes pulse': {
@@ -1561,7 +1554,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                             }
                           }}
                         >
-                          {isRecording ? <Stop sx={{ fontSize: 20 }} /> : <Mic sx={{ fontSize: 20 }} />}
+                          {isRecording ? <Stop sx={{ fontSize: isXs ? 18 : 20 }} /> : <Mic sx={{ fontSize: isXs ? 18 : 20 }} />}
                         </IconButton>
                       </Tooltip>
                       {isRecording && (
@@ -1612,7 +1605,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                   <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <CheckCircle sx={{ fontSize: 14, color: tokens.accent }} />
                     <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
-                      Good! The AI has enough context to create a quality exam.
+                      Good! Ready to create a quality exam.
                     </Typography>
                   </Box>
                 )}
@@ -1622,12 +1615,9 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
               <Box sx={{ mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                   <Button size="small" onClick={() => setShowQTypePanel(v => !v)}
-                    sx={{ borderRadius: 2, color: tokens.textSecondary, bgcolor: '#F1F5F9', fontFamily: "'DM Sans',sans-serif", fontSize: 12, textTransform: 'none', px: 1.5, fontWeight: 600, '&:hover': { bgcolor: '#E2E8F0' } }}>
+                    sx={{ borderRadius: 2, color: tokens.textSecondary, bgcolor: '#F1F5F9', fontFamily: "DM Sans,sans-serif", fontSize: 12, textTransform: 'none', px: 1.5, fontWeight: 600, '&:hover': { bgcolor: '#E2E8F0' } }}>
                     ≡ Question Types {showQTypePanel ? '▲' : '▼'}
                   </Button>
-                  <Typography sx={{ fontSize: 11.5, color: totalQSelected > planLimits.maxQuestions ? '#EF4444' : tokens.textMuted, fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>
-                    {totalQSelected} / {planLimits.maxQuestions} questions
-                  </Typography>
                 </Box>
 
                 {/* Selected types row (always visible) */}
@@ -1636,7 +1626,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                     const meta = QUESTION_TYPES_META.find(m => m.type === qt.type);
                     return (
                       <Box key={qt.type} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1.25, py: 0.5, borderRadius: 2, border: `1.5px solid ${meta?.color || tokens.accent}`, bgcolor: `${meta?.color || tokens.accent}12` }}>
-                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: meta?.color || tokens.accent, fontFamily: "'DM Sans',sans-serif" }}>{meta?.icon} {qt.label}</Typography>
+                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: meta?.color || tokens.accent, fontFamily: "DM Sans,sans-serif" }}>{meta?.icon} {qt.label}</Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, ml: 0.5 }}>
                           <Box onClick={() => updateQTypeCount(qt.type, -1)} sx={{ width: 18, height: 18, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: tokens.textSecondary, '&:hover': { bgcolor: 'rgba(0,0,0,0.15)' } }}>−</Box>
                           <Typography sx={{ fontSize: 12, fontWeight: 800, color: tokens.textPrimary, minWidth: 18, textAlign: 'center' }}>{qt.count}</Typography>
@@ -1660,7 +1650,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                           <Box key={meta.type} onClick={() => !already && !atMax && addQType(meta)}
                             sx={{ px: 1.5, py: 0.75, borderRadius: 2, border: `1.5px solid ${already ? meta.color : tokens.surfaceBorder}`, bgcolor: already ? `${meta.color}18` : 'white', cursor: (already || atMax) ? 'default' : 'pointer', opacity: atMax && !already ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 0.75, transition: 'all 0.15s', '&:hover': { borderColor: (already || atMax) ? undefined : meta.color } }}>
                             <Typography sx={{ fontSize: 13 }}>{meta.icon}</Typography>
-                            <Typography sx={{ fontSize: 12, fontWeight: 600, color: already ? meta.color : tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>{meta.label}</Typography>
+                            <Typography sx={{ fontSize: 12, fontWeight: 600, color: already ? meta.color : tokens.textSecondary, fontFamily: "DM Sans,sans-serif" }}>{meta.label}</Typography>
                             {already && <Chip label="added" size="small" sx={{ height: 16, fontSize: 9, fontWeight: 700, bgcolor: `${meta.color}22`, color: meta.color, ml: 0.5, '& .MuiChip-label': { px: 0.75 } }} />}
                           </Box>
                         );
@@ -1668,26 +1658,26 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                     </Box>
                     {!canUseAI && (
                       <Box sx={{ mt: 1.5, p: 1, borderRadius: 1.5, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: 12, fontWeight: 600 }}>
-                        AI exam generation requires Basic plan or higher.
+                        Exam creation requires Basic plan or higher.
                       </Box>
                     )}
                   </Box>
                 )}
               </Box>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', flexDirection: isXs ? 'column' : 'row' }}>
                 <Box sx={{ flexGrow: 1 }} />
                 <Button variant="contained" startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesome />}
                   onClick={handleGenerate} disabled={aiLoading || !prompt.trim() || !canUseAI}
-                  sx={{ borderRadius: 2.5, fontWeight: 700, px: 3, textTransform: 'none', background: canUseAI ? gradients.brand : '#CBD5E1', boxShadow: 'none', fontFamily: "'DM Sans',sans-serif", '&:hover': { boxShadow: canUseAI ? '0 4px 14px rgba(12,189,115,0.35)' : 'none' } }}>
+                  sx={{ borderRadius: 2.5, fontWeight: 700, px: isXs ? 2.5 : 3, py: isXs ? 1.25 : 1.5, textTransform: 'none', background: canUseAI ? gradients.brand : '#CBD5E1', boxShadow: 'none', fontFamily: "DM Sans,sans-serif", fontSize: isXs ? 13 : 14, width: isXs ? '100%' : 'auto', '&:hover': { boxShadow: canUseAI ? '0 4px 14px rgba(12,189,115,0.35)' : 'none' } }}>
                   {aiLoading ? 'Generating…' : '✦ Generate Exam'}
                 </Button>
               </Box>
-              {aiError && <Box sx={{ mt: 2, p: 1.5, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: 13 }}>{aiError}</Box>}
+              {aiError && <Box sx={{ mt: 2, p: isXs ? 1 : 1.5, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: isXs ? 12 : 13 }}>{aiError}</Box>}
             </>
           ) : (
             <>
-              <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid container spacing={isXs ? 1.5 : 2} sx={{ mb: isXs ? 1.5 : 2 }}>
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
@@ -1696,7 +1686,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                     placeholder="Enter exam title"
                     value={examTitle}
                     onChange={(e) => setExamTitle(e.target.value)}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: isXs ? 13 : 14 } }}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -1709,25 +1699,25 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                     inputProps={{ min: 1 }}
                     value={examTimeLimit}
                     onChange={(e) => setExamTimeLimit(e.target.value)}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: isXs ? 13 : 14 } }}
                   />
                 </Grid>
               </Grid>
-              <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid container spacing={isXs ? 1.5 : 2} sx={{ mb: isXs ? 1.5 : 2 }}>
                 {[{ ref: fileRef, file: uploadFile, set: setUploadFile, label: 'Upload Exam Document', sub: 'PDF, Word or TXT' },
                   { ref: ansRef, file: uploadAnswer, set: setUploadAnswer, label: 'Upload Answer Sheet', sub: 'Optional' }].map((item, i) => (
                   <Grid item xs={12} md={6} key={i}>
-                    <Paper onClick={() => item.ref.current.click()} elevation={0} sx={{ p: 3, borderRadius: 3, textAlign: 'center', cursor: 'pointer', border: `2px dashed ${item.file ? tokens.accent : tokens.surfaceBorder}`, bgcolor: item.file ? 'rgba(12,189,115,0.03)' : '#FAFBFC', '&:hover': { borderColor: tokens.accent } }}>
+                    <Paper onClick={() => item.ref.current.click()} elevation={0} sx={{ p: isXs ? 2 : 3, borderRadius: 3, textAlign: 'center', cursor: 'pointer', border: `2px dashed ${item.file ? tokens.accent : tokens.surfaceBorder}`, bgcolor: item.file ? 'rgba(12,189,115,0.03)' : '#FAFBFC', '&:hover': { borderColor: tokens.accent } }}>
                       <input ref={item.ref} type="file" hidden accept=".pdf,.doc,.docx,.txt" onChange={e => item.set(e.target.files[0])} />
-                      {item.file ? <><CheckCircle sx={{ color: tokens.accent, fontSize: 32, mb: 0.5 }} /><Typography variant="body2" fontWeight={600}>{item.file.name}</Typography></> :
-                        <><FileUpload sx={{ color: tokens.textMuted, fontSize: 32, mb: 0.5 }} /><Typography variant="body2" fontWeight={600} sx={{ color: tokens.textPrimary }}>{item.label}</Typography><Typography variant="caption" sx={{ color: tokens.textMuted }}>{item.sub}</Typography></>}
+                      {item.file ? <><CheckCircle sx={{ color: tokens.accent, fontSize: isXs ? 28 : 32, mb: 0.5 }} /><Typography variant="body2" fontWeight={600} fontSize={isXs ? 12 : 14}>{item.file.name}</Typography></> :
+                        <><FileUpload sx={{ color: tokens.textMuted, fontSize: isXs ? 28 : 32, mb: 0.5 }} /><Typography variant="body2" fontWeight={600} sx={{ color: tokens.textPrimary, fontSize: isXs ? 12 : 14 }}>{item.label}</Typography><Typography variant="caption" sx={{ color: tokens.textMuted, fontSize: isXs ? 11 : 12 }}>{item.sub}</Typography></>}
                     </Paper>
                   </Grid>
                 ))}
               </Grid>
-              {aiError && <Box sx={{ mb: 2, p: 1.5, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: 13 }}>{aiError}</Box>}
+              {aiError && <Box sx={{ mb: 2, p: isXs ? 1 : 1.5, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: isXs ? 12 : 13 }}>{aiError}</Box>}
               <Button variant="contained" startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <CloudUpload />} onClick={handleUpload} disabled={aiLoading || !uploadFile}
-                sx={{ borderRadius: 2.5, fontWeight: 700, px: 3, textTransform: 'none', background: gradients.brand, boxShadow: 'none', fontFamily: "'DM Sans',sans-serif" }}>
+                sx={{ borderRadius: 2.5, fontWeight: 700, px: isXs ? 2.5 : 3, py: isXs ? 1.25 : 1.5, textTransform: 'none', background: gradients.brand, boxShadow: 'none', fontFamily: "DM Sans,sans-serif", fontSize: isXs ? 13 : 14, width: isXs ? '100%' : 'auto' }}>
                 {aiLoading ? 'Processing…' : 'Process & Generate'}
               </Button>
             </>
@@ -1743,8 +1733,8 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <CheckCircle sx={{ color: 'white', fontSize: isXs ? 24 : 28 }} />
               <Box>
-                <Typography fontWeight={700} color="white" sx={{ fontFamily: "'DM Sans',sans-serif", fontSize: isXs ? 14 : 16 }}>Exam Generated!</Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)', fontFamily: "'DM Sans',sans-serif", fontSize: isXs ? 10 : 12 }}>
+                <Typography fontWeight={700} color="white" sx={{ fontFamily: "DM Sans,sans-serif", fontSize: isXs ? 14 : 16 }}>Exam Generated!</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)', fontFamily: "DM Sans,sans-serif", fontSize: isXs ? 10 : 12 }}>
                   {generated?.questions?.length || 0} questions ready for review
                 </Typography>
               </Box>
@@ -1808,7 +1798,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
 
             {/* Section Management */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2, mb: 1.5 }}>
-              <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>
+              <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif" }}>
                 Exam Sections
               </Typography>
               <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -1844,7 +1834,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
 
             {/* Questions Editor */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-              <Typography fontWeight={700} sx={{ fontSize: 14, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>
+              <Typography fontWeight={700} sx={{ fontSize: 14, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif" }}>
                 Questions Preview & Editor
               </Typography>
               <Button
@@ -1906,31 +1896,6 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
 
       {/* 3-col bottom row */}
       <Grid container spacing={2.5}>
-        {/* Donut / Question types */}
-        <Grid item xs={12} sm={6} md={4}>
-          <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
-            <SectionTitle>Question Types &amp; Counts</SectionTitle>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5 }}>
-              <DonutChart data={qDist} total={qTotal} />
-              <Box sx={{ flexGrow: 1 }}>
-                {qDist.map((q, i) => (
-                  <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: q.color, flexShrink: 0 }} />
-                      <Typography sx={{ fontSize: 12, color: tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>{q.label}</Typography>
-                    </Box>
-                    <Typography fontWeight={700} sx={{ fontSize: 12, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>{q.count}</Typography>
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('exams')}
-              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
-              Manage Question Types
-            </Button>
-          </Paper>
-        </Grid>
-
         {/* Recent Exams */}
         <Grid item xs={12} sm={6} md={4}>
           <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
@@ -1949,7 +1914,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                         <Assignment sx={{ fontSize: 18, color: tokens.accent }} />
                       </Box>
                       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap sx={{ fontFamily: "'DM Sans',sans-serif" }}>{e.title}</Typography>
+                        <Typography variant="body2" fontWeight={600} noWrap sx={{ fontFamily: "DM Sans,sans-serif" }}>{e.title}</Typography>
                         <Typography variant="caption" sx={{ color: tokens.textMuted }}>{totalQuestions} Questions</Typography>
                       </Box>
                       <Chip label={e.status || 'draft'} size="small" sx={{ bgcolor: `${sc}14`, color: sc, fontWeight: 600, fontSize: 11, textTransform: 'capitalize' }} />
@@ -1957,7 +1922,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                   );
                 })}
             <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('exams')}
-              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
+              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "DM Sans,sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
               View All Exams
             </Button>
           </Paper>
@@ -1974,7 +1939,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
               <Chip label={`${avgPerf}% Average Score`} sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, fontSize: 12 }} />
             </Box>
             <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('results')}
-              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
+              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "DM Sans,sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
               View Analytics
             </Button>
           </Paper>
@@ -1983,7 +1948,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
 
       {/* Quick Actions */}
       <Paper elevation={0} sx={{ mt: 2.5, p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
-        <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary, mb: 2 }}>Quick Actions</Typography>
+        <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "DM Sans,sans-serif", color: tokens.textPrimary, mb: 2 }}>Quick Actions</Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
           {[
             { label: 'Create Exam',      icon: <Add sx={{ fontSize: 18 }} />,         color: tokens.accent,  bg: 'rgba(12,189,115,0.09)',  section: 'exams' },
@@ -1993,7 +1958,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
           ].map((a, i) => (
             <Box key={i} onClick={() => setActiveSection(a.section)} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderRadius: 2.5, bgcolor: a.bg, cursor: 'pointer', flex: '1 1 130px', minWidth: { xs: 0, sm: 130 }, border: `1px solid ${a.color}18`, transition: 'opacity 0.15s', '&:hover': { opacity: 0.82 } }}>
               <Box sx={{ color: a.color }}>{a.icon}</Box>
-              <Typography fontWeight={700} sx={{ color: a.color, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>{a.label}</Typography>
+              <Typography fontWeight={700} sx={{ color: a.color, fontSize: 13.5, fontFamily: "DM Sans,sans-serif" }}>{a.label}</Typography>
             </Box>
           ))}
         </Box>
@@ -2044,7 +2009,7 @@ function ExamPreviewPanel({ exam }) {
       <Box sx={{ bgcolor: '#1E293B', px: 3, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Chip label="PREVIEW MODE" size="small" sx={{ bgcolor: tokens.warning, color: 'white', fontWeight: 800, fontSize: 10, letterSpacing: 0.5 }} />
-          <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: "'DM Sans',sans-serif" }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: "DM Sans,sans-serif" }}>
             This is how students will see the exam — answers are not submitted
           </Typography>
         </Box>
@@ -2065,7 +2030,7 @@ function ExamPreviewPanel({ exam }) {
             <Typography sx={{ fontWeight: 700, fontSize: 12, color: tokens.textMuted, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Sections</Typography>
             {sections.map(sec => (
               <Box key={sec.name} onClick={() => { setActiveSection(sec.name); setActiveQIdx(0); }}
-                sx={{ p: 1.5, mb: 0.75, borderRadius: 2, cursor: 'pointer', bgcolor: activeSection === sec.name ? tokens.primary : '#F8FAFC', color: activeSection === sec.name ? 'white' : tokens.textPrimary, fontWeight: 700, fontSize: 13, fontFamily: "'DM Sans',sans-serif", border: `1px solid ${activeSection === sec.name ? tokens.primary : tokens.surfaceBorder}` }}>
+                sx={{ p: 1.5, mb: 0.75, borderRadius: 2, cursor: 'pointer', bgcolor: activeSection === sec.name ? tokens.primary : '#F8FAFC', color: activeSection === sec.name ? 'white' : tokens.textPrimary, fontWeight: 700, fontSize: 13, fontFamily: "DM Sans,sans-serif", border: `1px solid ${activeSection === sec.name ? tokens.primary : tokens.surfaceBorder}` }}>
                 Section {sec.name}
                 <Typography component="span" sx={{ fontSize: 11, fontWeight: 400, ml: 0.75, opacity: 0.8 }}>({sec.questions.length} q)</Typography>
               </Box>
@@ -2100,7 +2065,7 @@ function ExamPreviewPanel({ exam }) {
                 </Box>
 
                 <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
-                  <Typography sx={{ fontSize: 15, fontWeight: 600, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.6 }}>{q.text}</Typography>
+                  <Typography sx={{ fontSize: 15, fontWeight: 600, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6 }}>{q.text}</Typography>
                 </Paper>
 
                 {/* Multiple choice */}
@@ -2115,7 +2080,7 @@ function ExamPreviewPanel({ exam }) {
                           <Box sx={{ width: 28, height: 28, borderRadius: '50%', border: `2px solid ${selected ? tokens.accent : tokens.surfaceBorder}`, bgcolor: selected ? tokens.accent : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             {selected ? <CheckCircle sx={{ fontSize: 16, color: 'white' }} /> : <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary }}>{letter}</Typography>}
                           </Box>
-                          <Typography sx={{ fontSize: 14, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>{opt.text}</Typography>
+                          <Typography sx={{ fontSize: 14, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif" }}>{opt.text}</Typography>
                         </Box>
                       );
                     })}
@@ -2682,10 +2647,10 @@ function PublishDialog({ examId, onClose }) {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Publish sx={{ color: 'white', fontSize: 24 }} />
           <Box>
-            <Typography fontWeight={700} color="white" sx={{ fontSize: 17, fontFamily: "'DM Sans',sans-serif" }}>
+            <Typography fontWeight={700} color="white" sx={{ fontSize: 17, fontFamily: "DM Sans,sans-serif" }}>
               {loadingPreview ? 'Loading…' : exam?.title || 'Publish Exam'}
             </Typography>
-            <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontFamily: "'DM Sans',sans-serif" }}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontFamily: "DM Sans,sans-serif" }}>
               Preview · Share · Invite Students
             </Typography>
           </Box>
@@ -2717,7 +2682,7 @@ function PublishDialog({ examId, onClose }) {
 
       {/* Tabs */}
       <Box sx={{ borderBottom: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 44, '& .MuiTab-root': { fontWeight: 700, fontSize: 13, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", minHeight: 44 }, '& .MuiTabs-indicator': { backgroundColor: tokens.primary } }}>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 44, '& .MuiTab-root': { fontWeight: 700, fontSize: 13, textTransform: 'none', fontFamily: "DM Sans,sans-serif", minHeight: 44 }, '& .MuiTabs-indicator': { backgroundColor: tokens.primary } }}>
           <Tab label="👁 Preview" />
           <Tab label="✏️ Edit Questions" />
           <Tab label="🔗 Public Link" />
@@ -2745,7 +2710,7 @@ function PublishDialog({ examId, onClose }) {
                   <Paper key={si} elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                       <Box>
-                        <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
+                        <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "DM Sans,sans-serif" }}>Section {sec.name}</Typography>
                         <Typography sx={{ fontSize: 12, color: tokens.textMuted }}>{sec.description}</Typography>
                       </Box>
                       <Chip label={`${sec.questions?.length || 0} questions`} sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent, fontWeight: 700 }} />
@@ -2760,7 +2725,7 @@ function PublishDialog({ examId, onClose }) {
                                 <Chip label={q.type?.replace(/-/g, ' ')} size="small" sx={{ bgcolor: '#F1F5F9', color: tokens.textSecondary, fontSize: 11, textTransform: 'capitalize' }} />
                                 <Chip label={`${q.points}pt`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning, fontWeight: 700, fontSize: 11 }} />
                               </Box>
-                              <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.5 }}>{q.text}</Typography>
+                              <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.5 }}>{q.text}</Typography>
                               {q.imageUrl && (
                                 <Box
                                   component="img"
@@ -2810,7 +2775,7 @@ function PublishDialog({ examId, onClose }) {
         {tab === 2 && (
           <Box sx={{ p: 3 }}>
             <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2 }}>
-              <Typography fontWeight={700} sx={{ fontSize: 14, mb: 2, fontFamily: "'DM Sans',sans-serif" }}>Share Settings</Typography>
+              <Typography fontWeight={700} sx={{ fontSize: 14, mb: 2, fontFamily: "DM Sans,sans-serif" }}>Share Settings</Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth size="small">
@@ -2867,7 +2832,7 @@ function PublishDialog({ examId, onClose }) {
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {isShareExpired() ? <ErrorOutline sx={{ color: '#EF4444' }} /> : <CheckCircle sx={{ color: tokens.accent }} />}
-                    <Typography fontWeight={700} sx={{ color: isShareExpired() ? '#EF4444' : tokens.accentDark, fontFamily: "'DM Sans',sans-serif" }}>
+                    <Typography fontWeight={700} sx={{ color: isShareExpired() ? '#EF4444' : tokens.accentDark, fontFamily: "DM Sans,sans-serif" }}>
                       {isShareExpired() ? 'Link expired!' : 'Public link created!'}
                     </Typography>
                   </Box>
@@ -2885,13 +2850,13 @@ function PublishDialog({ examId, onClose }) {
                   )}
                 </Box>
                 {(shareResult.expiresAt || shareResult.settings?.expiresAt) && (
-                  <Typography sx={{ fontSize: 11.5, color: isShareExpired() ? '#EF4444' : tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mb: 2 }}>
+                  <Typography sx={{ fontSize: 11.5, color: isShareExpired() ? '#EF4444' : tokens.textMuted, fontFamily: "DM Sans,sans-serif", mb: 2 }}>
                     Expires: {new Date(shareResult.expiresAt || shareResult.settings?.expiresAt).toLocaleString()}
                   </Typography>
                 )}
                 {[{ label: 'Public Link', value: shareResult.publicLink }].map(l => (
                   <Box key={l.label} sx={{ mb: 1.5 }}>
-                    <Typography sx={{ fontSize: 12, color: tokens.textMuted, mb: 0.5, fontFamily: "'DM Sans',sans-serif" }}>{l.label}</Typography>
+                    <Typography sx={{ fontSize: 12, color: tokens.textMuted, mb: 0.5, fontFamily: "DM Sans,sans-serif" }}>{l.label}</Typography>
                     <Box sx={{ display: 'flex', gap: 1 }}>
                       <TextField fullWidth size="small" value={l.value} InputProps={{ readOnly: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }} />
                       <Button variant="contained" onClick={() => copyLink(l.value, l.label)}
@@ -2901,7 +2866,7 @@ function PublishDialog({ examId, onClose }) {
                     </Box>
                   </Box>
                 ))}
-                <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>
+                <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>
                   Anyone with this link can access the exam. Share it via WhatsApp, email, or any platform.
                 </Typography>
               </Paper>
@@ -2917,7 +2882,7 @@ function PublishDialog({ examId, onClose }) {
             {shareResult && shareResult.shareId && (
               <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mt: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>
+                  <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "DM Sans,sans-serif" }}>
                     Students Who Joined via Link
                   </Typography>
                   <Button size="small" onClick={() => fetchShareStats(shareResult.shareId)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.primary }}>
@@ -2983,7 +2948,7 @@ function PublishDialog({ examId, onClose }) {
           <Box sx={{ p: 3 }}>
             <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>Create Student Accounts</Typography>
+                <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "DM Sans,sans-serif" }}>Create Student Accounts</Typography>
                 {studentSelectionMode === 'manual' && (
                   <Button size="small" startIcon={<Add />} onClick={addRow}
                     sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', fontSize: 12 }}>
@@ -3098,7 +3063,7 @@ function PublishDialog({ examId, onClose }) {
                   </Table>
                 </Box>
               )}
-              <Typography sx={{ fontSize: 11, color: tokens.textMuted, mt: 1, fontFamily: "'DM Sans',sans-serif" }}>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted, mt: 1, fontFamily: "DM Sans,sans-serif" }}>
                 Default password: <b>Exam@2024</b> — students should change it after first login.
               </Typography>
             </Paper>
@@ -3107,7 +3072,7 @@ function PublishDialog({ examId, onClose }) {
               <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1.5px solid ${tokens.accent}`, bgcolor: 'rgba(12,189,115,0.03)', mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <CheckCircle sx={{ color: tokens.accent }} />
-                  <Typography fontWeight={700} sx={{ color: tokens.accentDark, fontFamily: "'DM Sans',sans-serif" }}>
+                  <Typography fontWeight={700} sx={{ color: tokens.accentDark, fontFamily: "DM Sans,sans-serif" }}>
                     {createResult.created.length} account{createResult.created.length !== 1 ? 's' : ''} created, {createResult.skipped.length} skipped
                   </Typography>
                 </Box>
@@ -3172,7 +3137,7 @@ function PublishDialog({ examId, onClose }) {
             {assignedStudents.length > 0 && (
               <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mt: 2.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                  <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>Assigned Students ({assignedStudents.length})</Typography>
+                  <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "DM Sans,sans-serif" }}>Assigned Students ({assignedStudents.length})</Typography>
                   {!shareResult && (
                     <Button size="small" onClick={() => handleShare('email')} disabled={sharing}
                       sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', fontSize: 12 }}>
@@ -3941,7 +3906,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
 
       {/* Question builder */}
       <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#FAFBFC', mb: 2 }}>
-        <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", mb: 1.5 }}>
+        <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", mb: 1.5 }}>
           Add Question to Section {exam.sections[sectionIdx]?.name}
         </Typography>
 
@@ -4000,7 +3965,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
               </Grid>
             ))}
             <Grid item xs={12}>
-              <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>Click the circle to mark the correct answer</Typography>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>Click the circle to mark the correct answer</Typography>
             </Grid>
           </Grid>
         )}
@@ -4010,7 +3975,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           <Box sx={{ display: 'flex', gap: 1.5, mb: 1.5 }}>
             {['True', 'False'].map(val => (
               <Paper key={val} onClick={() => setQuestion(p => ({ ...p, correctAnswer: val, options: [{ text: 'True', isCorrect: val === 'True', letter: 'A' }, { text: 'False', isCorrect: val === 'False', letter: 'B' }] }))}
-                elevation={0} sx={{ px: 3, py: 1.25, borderRadius: 2.5, cursor: 'pointer', border: `2px solid ${question.correctAnswer === val ? tokens.accent : tokens.surfaceBorder}`, bgcolor: question.correctAnswer === val ? 'rgba(12,189,115,0.07)' : 'white', fontWeight: 700, fontSize: 14, color: question.correctAnswer === val ? tokens.accentDark : tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>
+                elevation={0} sx={{ px: 3, py: 1.25, borderRadius: 2.5, cursor: 'pointer', border: `2px solid ${question.correctAnswer === val ? tokens.accent : tokens.surfaceBorder}`, bgcolor: question.correctAnswer === val ? 'rgba(12,189,115,0.07)' : 'white', fontWeight: 700, fontSize: 14, color: question.correctAnswer === val ? tokens.accentDark : tokens.textSecondary, fontFamily: "DM Sans,sans-serif" }}>
                 {val}
               </Paper>
             ))}
@@ -4272,14 +4237,14 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
       {/* Questions list by section */}
       {exam.sections.map((sec, si) => sec.questions?.length > 0 && (
         <Box key={si} sx={{ mb: 1.5 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: 12, color: tokens.textMuted, mb: 0.75, fontFamily: "'DM Sans',sans-serif", textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: 12, color: tokens.textMuted, mb: 0.75, fontFamily: "DM Sans,sans-serif", textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Section {sec.name}
           </Typography>
           {sec.questions.map((q, qi) => (
             <Paper key={qi} elevation={0} sx={{ p: 1.5, mb: 0.75, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, borderLeft: `3px solid ${tokens.accent}`, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Chip label={`Q${qi + 1}`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, minWidth: 36 }} />
               <Chip label={Q_TYPES.find(t => t.value === q.type)?.label || q.type} size="small" sx={{ bgcolor: '#F1F5F9', color: tokens.textSecondary, fontSize: 11 }} />
-              <Typography variant="body2" sx={{ flexGrow: 1, fontFamily: "'DM Sans',sans-serif", fontSize: 13 }} noWrap>{q.text}</Typography>
+              <Typography variant="body2" sx={{ flexGrow: 1, fontFamily: "DM Sans,sans-serif", fontSize: 13 }} noWrap>{q.text}</Typography>
               <Chip label={`${q.points}pt`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning, fontWeight: 700, fontSize: 11 }} />
               <FormControl size="small" sx={{ minWidth: 100 }}>
                 <Select
@@ -4436,7 +4401,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
           variant="contained"
           startIcon={<Add />}
           onClick={() => setActiveSection('home')}
-          sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, fontFamily: "'DM Sans',sans-serif", '&:hover': { boxShadow: '0 4px 14px rgba(12,189,115,0.3)' } }}
+          sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, fontFamily: "DM Sans,sans-serif", '&:hover': { boxShadow: '0 4px 14px rgba(12,189,115,0.3)' } }}
         >
           Create Exam
         </Button>
@@ -4493,7 +4458,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                   const pendingCount = pendingApprovals[e._id] || 0;
                   return (
                   <TableRow key={e._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
-                    <TableCell><Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{e.title}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={600} sx={{ fontFamily: "DM Sans,sans-serif" }}>{e.title}</Typography></TableCell>
                     <TableCell><Chip label={e.status || 'draft'} size="small" sx={{ bgcolor: `${sc}14`, color: sc, fontWeight: 600, textTransform: 'capitalize' }} /></TableCell>
                     <TableCell><Chip label={totalQuestions} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} /></TableCell>
                     <TableCell><Typography variant="body2" sx={{ color: tokens.textMuted }}>{e.timeLimit} min</Typography></TableCell>
@@ -4527,7 +4492,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
       {/* Edit Dialog */}
       {editExam && (
         <Dialog open onClose={() => setEditExam(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-          <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 1 }}>Edit Exam</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", pb: 1 }}>Edit Exam</DialogTitle>
           <DialogContent sx={{ pt: 2, maxHeight: '70vh', overflowY: 'auto' }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
               {/* Basic Info */}
@@ -4552,7 +4517,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                       <Paper key={si} elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                           <Box>
-                            <Typography fontWeight={700} sx={{ fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
+                            <Typography fontWeight={700} sx={{ fontSize: 13, fontFamily: "DM Sans,sans-serif" }}>Section {sec.name}</Typography>
                             <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>{sec.description}</Typography>
                           </Box>
                           <Chip label={`${sec.questions?.length || 0} Q`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent, fontWeight: 700 }} />
@@ -4584,7 +4549,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
 
       {/* Delete Confirm Dialog */}
       <Dialog open={!!deleteId} onClose={() => setDeleteId(null)} PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Delete Exam?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif" }}>Delete Exam?</DialogTitle>
         <DialogContent><Typography sx={{ color: tokens.textSecondary }}>This will permanently delete the exam and all its questions. This cannot be undone.</Typography></DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setDeleteId(null)} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
@@ -4745,7 +4710,7 @@ function StudentsSection() {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5, flexWrap: 'wrap', gap: 1.5 }}>
         <SectionTitle>Students</SectionTitle>
         <Button variant="contained" startIcon={<Add />} onClick={() => { setForm(emptyForm); setFormError(''); setCreateDialog(true); }}
-          sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, fontFamily: "'DM Sans',sans-serif", '&:hover': { boxShadow: '0 4px 14px rgba(12,189,115,0.3)' } }}>
+          sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, fontFamily: "DM Sans,sans-serif", '&:hover': { boxShadow: '0 4px 14px rgba(12,189,115,0.3)' } }}>
           Add Student
         </Button>
       </Box>
@@ -4762,9 +4727,9 @@ function StudentsSection() {
             <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Box sx={{ width: 38, height: 38, borderRadius: 2, bgcolor: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c.icon}</Box>
-                <Typography fontWeight={800} sx={{ fontSize: 22, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>{c.value}</Typography>
+                <Typography fontWeight={800} sx={{ fontSize: 22, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif" }}>{c.value}</Typography>
               </Box>
-              <Typography sx={{ fontSize: 12.5, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>{c.label}</Typography>
+              <Typography sx={{ fontSize: 12.5, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", fontWeight: 600 }}>{c.label}</Typography>
             </Paper>
           </Grid>
         ))}
@@ -4833,7 +4798,7 @@ function StudentsSection() {
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                           <Box sx={{ width: 34, height: 34, borderRadius: '50%', bgcolor: av.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: av.color, fontSize: 13, flexShrink: 0 }}>{av.letter}</Box>
                           <Box>
-                            <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif", lineHeight: 1.3 }}>{s.firstName} {s.lastName}</Typography>
+                            <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "DM Sans,sans-serif", lineHeight: 1.3 }}>{s.firstName} {s.lastName}</Typography>
                             {s.createdAt && <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>Joined {new Date(s.createdAt).toLocaleDateString()}</Typography>}
                           </Box>
                         </Box>
@@ -4878,7 +4843,7 @@ function StudentsSection() {
 
       {/* Create Dialog */}
       <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 0 }}>Add New Student</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", pb: 0 }}>Add New Student</DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields /></DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setCreateDialog(false)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
@@ -4891,7 +4856,7 @@ function StudentsSection() {
 
       {/* Edit Dialog */}
       <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 0 }}>Edit Student</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", pb: 0 }}>Edit Student</DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields /></DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setEditDialog(false)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
@@ -4910,7 +4875,7 @@ function StudentsSection() {
               {selectedStudent.firstName?.charAt(0)?.toUpperCase()}
             </Box>
             <Box>
-              <Typography fontWeight={700} color="white" sx={{ fontSize: 16, fontFamily: "'DM Sans',sans-serif" }}>{selectedStudent.firstName} {selectedStudent.lastName}</Typography>
+              <Typography fontWeight={700} color="white" sx={{ fontSize: 16, fontFamily: "DM Sans,sans-serif" }}>{selectedStudent.firstName} {selectedStudent.lastName}</Typography>
               <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 12.5 }}>{selectedStudent.email}</Typography>
             </Box>
           </Box>
@@ -4937,7 +4902,7 @@ function StudentsSection() {
 
       {/* Delete Confirm */}
       <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)} PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Delete Student?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif" }}>Delete Student?</DialogTitle>
         <DialogContent>
           <Typography sx={{ color: tokens.textSecondary }}>
             Permanently delete <strong>{deleteDialog?.firstName} {deleteDialog?.lastName}</strong>? This cannot be undone.
@@ -4954,7 +4919,7 @@ function StudentsSection() {
 
       {/* Reset Password Dialog */}
       <Dialog open={!!resetPasswordDialog} onClose={() => setResetPasswordDialog(null)} PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Reset Student Password?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif" }}>Reset Student Password?</DialogTitle>
         <DialogContent>
           <Typography sx={{ color: tokens.textSecondary }}>
             Reset password for <strong>{resetPasswordDialog?.firstName} {resetPasswordDialog?.lastName}</strong>? A new password will be generated and sent to their email.
@@ -5457,7 +5422,7 @@ function SettingsSection({ user }) {
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, height: '100%' }}>
-            <Typography fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", mb: 2 }}>Profile Information</Typography>
+            <Typography fontWeight={700} sx={{ fontFamily: "DM Sans,sans-serif", mb: 2 }}>Profile Information</Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" value={profile.firstName} onChange={e => setProfile(p => ({ ...p, firstName: e.target.value }))} {...tf} /></Grid>
               <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" value={profile.lastName} onChange={e => setProfile(p => ({ ...p, lastName: e.target.value }))} {...tf} /></Grid>
@@ -5484,7 +5449,7 @@ function SettingsSection({ user }) {
 
         <Grid item xs={12} md={6}>
           <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, height: '100%' }}>
-            <Typography fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", mb: 2 }}>Change Password</Typography>
+            <Typography fontWeight={700} sx={{ fontFamily: "DM Sans,sans-serif", mb: 2 }}>Change Password</Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <TextField fullWidth label="Current Password" type={showPwd ? 'text' : 'password'} value={pwd.current} onChange={e => setPwd(p => ({ ...p, current: e.target.value }))} {...tf}
@@ -5511,7 +5476,7 @@ function SettingsSection({ user }) {
 
         <Grid item xs={12}>
           <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }}>
-            <Typography fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", mb: 1.5 }}>Account Info</Typography>
+            <Typography fontWeight={700} sx={{ fontFamily: "DM Sans,sans-serif", mb: 1.5 }}>Account Info</Typography>
             <Grid container spacing={1.5}>
               {[
                 { label: 'Role', value: user?.role },
@@ -5598,8 +5563,8 @@ function QuestionsSection() {
         ].map((s, i) => (
           <Grid item xs={6} sm={3} key={i}>
             <Paper elevation={0} sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }}>
-              <Typography fontWeight={800} sx={{ fontSize: { xs: '1.3rem', sm: '1.7rem' }, color: s.color, fontFamily: "'DM Sans',sans-serif" }}>{loading ? '…' : s.value}</Typography>
-              <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }} noWrap>{s.label}</Typography>
+              <Typography fontWeight={800} sx={{ fontSize: { xs: '1.3rem', sm: '1.7rem' }, color: s.color, fontFamily: "DM Sans,sans-serif" }}>{loading ? '…' : s.value}</Typography>
+              <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }} noWrap>{s.label}</Typography>
             </Paper>
           </Grid>
         ))}
@@ -5650,7 +5615,7 @@ function QuestionsSection() {
                 ) : filtered.map(q => (
                   <TableRow key={q._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
                     <TableCell sx={{ maxWidth: 280 }}>
-                      <Typography variant="body2" sx={{ fontFamily: "'DM Sans',sans-serif", display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{q.text}</Typography>
+                      <Typography variant="body2" sx={{ fontFamily: "DM Sans,sans-serif", display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{q.text}</Typography>
                     </TableCell>
                     <TableCell>
                       <Chip label={q.type} size="small" sx={{ bgcolor: `${typeColor[q.type] || tokens.primary}18`, color: typeColor[q.type] || tokens.primary, fontWeight: 600, fontSize: 11, textTransform: 'capitalize' }} />
@@ -5679,7 +5644,7 @@ function QuestionsSection() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editQ} onClose={() => setEditQ(null)} maxWidth="sm" fullWidth fullScreen={isXs} PaperProps={{ sx: { borderRadius: isXs ? 0 : 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 1 }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", display: 'flex', alignItems: 'center', gap: 1 }}>
           <Edit sx={{ color: tokens.primary }} /> Edit Question
         </DialogTitle>
         <DialogContent sx={{ pt: '12px !important' }}>
@@ -5772,8 +5737,8 @@ function ReportsSection() {
             <Paper elevation={0} sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.icon}</Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography fontWeight={800} sx={{ fontSize: { xs: '1.1rem', sm: '1.35rem' }, color: s.color, fontFamily: "'DM Sans',sans-serif", lineHeight: 1 }}>{s.value}</Typography>
-                <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }} noWrap>{s.label}</Typography>
+                <Typography fontWeight={800} sx={{ fontSize: { xs: '1.1rem', sm: '1.35rem' }, color: s.color, fontFamily: "DM Sans,sans-serif", lineHeight: 1 }}>{s.value}</Typography>
+                <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }} noWrap>{s.label}</Typography>
               </Box>
             </Paper>
           </Grid>
@@ -5782,7 +5747,7 @@ function ReportsSection() {
 
       {/* Tabs */}
       <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: `1px solid ${tokens.surfaceBorder}`, px: 2, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontFamily: "'DM Sans',sans-serif", fontSize: 13 }, '& .MuiTabs-indicator': { bgcolor: tokens.accent } }}>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: `1px solid ${tokens.surfaceBorder}`, px: 2, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontFamily: "DM Sans,sans-serif", fontSize: 13 }, '& .MuiTabs-indicator': { bgcolor: tokens.accent } }}>
           <Tab label={`By Exam (${examStats.length})`} />
           <Tab label={`By Student (${studentStats.length})`} />
         </Tabs>
@@ -5804,7 +5769,7 @@ function ReportsSection() {
                   const sc = e.status === 'active' ? tokens.accent : e.status === 'completed' ? '#6366F1' : tokens.warning;
                   return (
                     <TableRow key={e._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
-                      <TableCell><Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{e.title}</Typography></TableCell>
+                      <TableCell><Typography variant="body2" fontWeight={600} sx={{ fontFamily: "DM Sans,sans-serif" }}>{e.title}</Typography></TableCell>
                       <TableCell><Chip label={e.status} size="small" sx={{ bgcolor: `${sc}18`, color: sc, fontWeight: 600, textTransform: 'capitalize' }} /></TableCell>
                       <TableCell><Typography variant="body2" fontWeight={700} sx={{ color: tokens.primary }}>{e.submissions}</Typography></TableCell>
                       <TableCell>
@@ -5847,7 +5812,7 @@ function ReportsSection() {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         <Avatar sx={{ width: 30, height: 30, fontSize: 12, fontWeight: 700, bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark }}>{s.firstName?.charAt(0)}</Avatar>
                         <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }} noWrap>{s.firstName} {s.lastName}</Typography>
+                          <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "DM Sans,sans-serif" }} noWrap>{s.firstName} {s.lastName}</Typography>
                           <Typography variant="caption" sx={{ color: tokens.textMuted }} noWrap>{s.email}</Typography>
                         </Box>
                       </Box>
@@ -5898,7 +5863,7 @@ function TemplatesSection({ exams, setExams }) {
   const [saveDialog, setSaveDialog] = useState(false);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [snack, setSnack] = useState('');
-  const [tab, setTab] = useState('templates'); // 'templates' or 'question-bank'
+  const [tab, setTab] = useState('question-bank'); // 'templates' or 'question-bank'
   const [searchTerm, setSearchTerm] = useState('');
   const [audienceFilter, setAudienceFilter] = useState('all');
   const [previewDialog, setPreviewDialog] = useState(false);
@@ -6023,21 +5988,6 @@ function TemplatesSection({ exams, setExams }) {
       <Box sx={{ mb: 2.5, display: 'flex', gap: 1, borderBottom: `1px solid ${tokens.surfaceBorder}`, pb: 2 }}>
         <Button
           size="small"
-          onClick={() => setTab('templates')}
-          sx={{
-            color: tab === 'templates' ? tokens.primary : tokens.textMuted,
-            fontWeight: 700,
-            textTransform: 'none',
-            borderBottom: tab === 'templates' ? `2px solid ${tokens.primary}` : 'none',
-            borderRadius: 0,
-            pb: 2,
-            fontSize: 13
-          }}
-        >
-          My Templates
-        </Button>
-        <Button
-          size="small"
           onClick={() => setTab('question-bank')}
           sx={{
             color: tab === 'question-bank' ? tokens.primary : tokens.textMuted,
@@ -6051,16 +6001,31 @@ function TemplatesSection({ exams, setExams }) {
         >
           Question Bank
         </Button>
+        <Button
+          size="small"
+          onClick={() => setTab('templates')}
+          sx={{
+            color: tab === 'templates' ? tokens.primary : tokens.textMuted,
+            fontWeight: 700,
+            textTransform: 'none',
+            borderBottom: tab === 'templates' ? `2px solid ${tokens.primary}` : 'none',
+            borderRadius: 0,
+            pb: 2,
+            fontSize: 13
+          }}
+        >
+          My Templates
+        </Button>
       </Box>
 
       {/* Info banner */}
       <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 3, bgcolor: 'rgba(13,64,108,0.04)', border: `1px solid rgba(13,64,108,0.1)`, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
         <Description sx={{ color: tokens.primary, mt: 0.25, flexShrink: 0 }} />
         <Box>
-          <Typography fontWeight={700} sx={{ fontSize: 13.5, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>
+          <Typography fontWeight={700} sx={{ fontSize: 13.5, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif" }}>
             {tab === 'templates' ? 'What are templates?' : 'What is the Question Bank?'}
           </Typography>
-          <Typography sx={{ fontSize: 12.5, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mt: 0.25 }}>
+          <Typography sx={{ fontSize: 12.5, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", mt: 0.25 }}>
             {tab === 'templates'
               ? 'Save any of your exams as a reusable template. Use a template to instantly create a new draft exam with the same structure, questions, and settings — then customise it as needed.'
               : 'Browse and reuse publicly available exams from the question bank. When you reuse an exam, a copy is created for you to edit and customise as your own. The original exam remains unchanged.'}
@@ -6077,8 +6042,8 @@ function TemplatesSection({ exams, setExams }) {
               <Box sx={{ width: 64, height: 64, borderRadius: 3, bgcolor: 'rgba(13,64,108,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
                 <Description sx={{ fontSize: 32, color: tokens.primary }} />
               </Box>
-              <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary }}>No templates yet</Typography>
-              <Typography sx={{ color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mb: 2.5, mt: 0.5 }}>Save one of your exams as a template to get started.</Typography>
+              <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "DM Sans,sans-serif", color: tokens.textPrimary }}>No templates yet</Typography>
+              <Typography sx={{ color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", mb: 2.5, mt: 0.5 }}>Save one of your exams as a template to get started.</Typography>
               <Button variant="contained" startIcon={<Add />} onClick={() => setSaveDialog(true)} sx={{ background: gradients.brand, borderRadius: 2.5, textTransform: 'none', fontWeight: 700 }}>
                 Save Exam as Template
               </Button>
@@ -6102,10 +6067,10 @@ function TemplatesSection({ exams, setExams }) {
                       </Box>
                     </Box>
 
-                    <Typography fontWeight={700} sx={{ fontSize: 14.5, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif", mb: 0.5, flexGrow: 1 }}>
+                    <Typography fontWeight={700} sx={{ fontSize: 14.5, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", mb: 0.5, flexGrow: 1 }}>
                       {t.title.replace('[Template] ', '')}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: tokens.textMuted, mb: 1.5, display: 'block', fontFamily: "'DM Sans',sans-serif" }} noWrap>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, mb: 1.5, display: 'block', fontFamily: "DM Sans,sans-serif" }} noWrap>
                       {t.description}
                     </Typography>
 
@@ -6119,8 +6084,8 @@ function TemplatesSection({ exams, setExams }) {
 
                     {t.sections?.map((sec, si) => (
                       <Box key={si} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                        <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
-                        <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>{sec.questions?.length || 0} questions</Typography>
+                        <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>Section {sec.name}</Typography>
+                        <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary, fontFamily: "DM Sans,sans-serif" }}>{sec.questions?.length || 0} questions</Typography>
                       </Box>
                     ))}
 
@@ -6176,10 +6141,10 @@ function TemplatesSection({ exams, setExams }) {
               <Box sx={{ width: 64, height: 64, borderRadius: 3, bgcolor: 'rgba(13,64,108,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
                 <Quiz sx={{ fontSize: 32, color: tokens.primary }} />
               </Box>
-              <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary }}>
+              <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "DM Sans,sans-serif", color: tokens.textPrimary }}>
                 {searchTerm || audienceFilter !== 'all' ? 'No matching exams found' : 'No exams in question bank'}
               </Typography>
-              <Typography sx={{ color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", mb: 2.5, mt: 0.5 }}>
+              <Typography sx={{ color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", mb: 2.5, mt: 0.5 }}>
                 {searchTerm || audienceFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'There are no publicly available exams to reuse at the moment.'}
               </Typography>
             </Paper>
@@ -6227,8 +6192,8 @@ function TemplatesSection({ exams, setExams }) {
 
                     {exam.sections?.map((sec, si) => (
                       <Box key={si} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                        <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>Section {sec.name}</Typography>
-                        <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>{sec.questions?.length || 0} questions</Typography>
+                        <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>Section {sec.name}</Typography>
+                        <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary, fontFamily: "DM Sans,sans-serif" }}>{sec.questions?.length || 0} questions</Typography>
                       </Box>
                     ))}
 
@@ -6250,11 +6215,11 @@ function TemplatesSection({ exams, setExams }) {
 
       {/* Save as template dialog */}
       <Dialog open={saveDialog} onClose={() => setSaveDialog(false)} maxWidth="xs" fullWidth fullScreen={isXs} PaperProps={{ sx: { borderRadius: isXs ? 0 : 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 1 }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", display: 'flex', alignItems: 'center', gap: 1 }}>
           <Description sx={{ color: tokens.primary }} /> Save Exam as Template
         </DialogTitle>
         <DialogContent sx={{ pt: '12px !important' }}>
-          <Typography sx={{ color: tokens.textMuted, mb: 2, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>
+          <Typography sx={{ color: tokens.textMuted, mb: 2, fontSize: 13.5, fontFamily: "DM Sans,sans-serif" }}>
             Select an exam to save as a reusable template. The original exam will not be changed.
           </Typography>
           <FormControl fullWidth size="small">

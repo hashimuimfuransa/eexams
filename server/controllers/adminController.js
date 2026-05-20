@@ -4261,7 +4261,8 @@ const getExamPreview = async (req, res) => {
       query.createdBy = req.orgAdminId || req.user._id;
     }
     const exam = await Exam.findOne(query)
-      .populate({ path: 'sections.questions', model: 'Question' });
+      .populate({ path: 'sections.questions', model: 'Question' })
+      .populate('level', 'name description subLevels');
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
 
     const share = await SharedExam.findOne({ exam: examId, sharedBy: req.orgAdminId, isActive: true });

@@ -77,6 +77,8 @@ const Marketplace = () => {
   };
 
   const fetchExamCompletionStatus = async () => {
+    // Extra guard: only fetch for authenticated students
+    if (!isAuthenticated || user?.role !== 'student') return;
     try {
       const response = await api.get('/marketplace/exam-completion-status');
       setCompletedExamIds(response.data.completedExamIds || []);
@@ -87,6 +89,8 @@ const Marketplace = () => {
   };
 
   const fetchRecommendations = async () => {
+    // Extra guard: only fetch for authenticated students
+    if (!isAuthenticated || user?.role !== 'student') return;
     try {
       setLoadingRecommendations(true);
       const response = await api.get('/marketplace/recommendations');

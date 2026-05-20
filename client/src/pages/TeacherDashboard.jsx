@@ -18,7 +18,7 @@ import {
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
-  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff
+  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -669,17 +669,25 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
   );
 };
 
-const nav = [
-  { id: 'home',      label: 'Dashboard',  icon: <DashboardCustomize sx={{ fontSize: 20 }} /> },
-  { id: 'exams',     label: 'My Exams',   icon: <Assignment sx={{ fontSize: 20 }} /> },
-  { id: 'students',  label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
-  { id: 'questions', label: 'Questions',  icon: <Quiz sx={{ fontSize: 20 }} /> },
-  { id: 'results',   label: 'Results',    icon: <ListAlt sx={{ fontSize: 20 }} /> },
-  { id: 'reports',   label: 'Reports',    icon: <NoteAlt sx={{ fontSize: 20 }} /> },
-  { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> },
-  { id: 'analytics', label: 'Analytics',  icon: <BarChart sx={{ fontSize: 20 }} /> },
-  { id: 'settings',  label: 'Settings',   icon: <Settings sx={{ fontSize: 20 }} /> },
-];
+// Function to get navigation items based on subscription plan
+const getNavigationItems = (user) => {
+  const baseNav = [
+    { id: 'home',      label: 'Dashboard',  icon: <DashboardCustomize sx={{ fontSize: 20 }} /> },
+    { id: 'exams',     label: 'My Exams',   icon: <Assignment sx={{ fontSize: 20 }} /> },
+    { id: 'students',  label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
+    { id: 'results',   label: 'Results',    icon: <ListAlt sx={{ fontSize: 20 }} /> },
+    { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> },
+    { id: 'settings',  label: 'Settings',   icon: <Settings sx={{ fontSize: 20 }} /> },
+  ];
+
+  // Check if user or organization has custom enterprise plan
+  const isCustomEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
+                            (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
+
+  // If not custom enterprise, remove AI-related features from home section
+  // (The AI tab is part of the home section, not a separate nav item)
+  return baseNav;
+};
 
 /* ── Sparkline ── */
 function Sparkline({ color = tokens.accent, values = [40,55,45,65,60,75,70] }) {
@@ -781,9 +789,11 @@ export default function TeacherDashboard() {
       });
   }, [user]);
 
-  // Auto-refresh pending approvals every 30 seconds
+  // Auto-refresh pending approvals every 30 seconds (enterprise only)
+  const isEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
+                       (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isEnterprise) return;
 
     const fetchPendingApprovals = async () => {
       try {
@@ -795,11 +805,11 @@ export default function TeacherDashboard() {
       }
     };
 
-    fetchPendingApprovals(); // Initial fetch
-    const interval = setInterval(fetchPendingApprovals, 30000); // Refresh every 30 seconds
+    fetchPendingApprovals();
+    const interval = setInterval(fetchPendingApprovals, 30000);
 
-    return () => clearInterval(interval); // Cleanup on unmount
-  }, [user]);
+    return () => clearInterval(interval);
+  }, [user, isEnterprise]);
 
   const filteredExams = exams.filter(exam =>
     !searchQuery || 
@@ -807,19 +817,20 @@ export default function TeacherDashboard() {
     exam.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Get navigation items based on subscription plan
+  const nav = getNavigationItems(user);
+
   return (
     <DashboardShell
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Teacher Portal" />}
       topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Teacher')} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
-      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} />}
-      {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} />}
-      {activeSection === 'students'  && <StudentManagement />}
-      {activeSection === 'questions' && <QuestionsSection />}
+      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} user={user} />}
+      {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
+      {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'results'   && <ResultsSection results={results} />}
-      {activeSection === 'reports'   && <ReportsSection />}
       {activeSection === 'templates' && <TemplatesSection exams={filteredExams} setExams={setExams} />}
-      {activeSection === 'analytics' && <AnalyticsSection results={results} exams={filteredExams} />}
+      {activeSection === 'reports'   && <ReportsSection />}
       {activeSection === 'settings'  && <SettingsSection user={user} />}
     </DashboardShell>
   );
@@ -844,10 +855,11 @@ const QUESTION_TYPES_META = [
 ];
 
 /* ── HOME ── */
-function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals }) {
+function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const { user } = useAuth();
-  const [aiMode, setAiMode] = useState('describe');
+  const isCustomEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
+                             (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
+  const [aiMode, setAiMode] = useState(isCustomEnterprise ? 'describe' : 'upload');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, sections: [{ name: 'A', description: 'Section A', questions: [] }] });
   const [manualSection, setManualSection] = useState(0);
   const [manualQ, setManualQ] = useState({ text: '', type: 'multiple-choice', points: 2, difficulty: 'medium', options: [{ text: '', isCorrect: false, letter: 'A' }, { text: '', isCorrect: false, letter: 'B' }, { text: '', isCorrect: false, letter: 'C' }, { text: '', isCorrect: false, letter: 'D' }], correctAnswer: '' });
@@ -1302,7 +1314,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     { label: 'Total Students', value: stats?.totalStudents ?? 0,    sub: '+18 this week', subColor: '#6366F1',       iconBg: 'rgba(99,102,241,0.1)',  icon: <People sx={{ color: '#6366F1', fontSize: { xs: 20, sm: 24 } }} />,           spark: [200,220,230,240,244,246,248] },
     { label: 'Average Score',  value: `${Math.round(stats?.averageScore ?? 0)}%`, sub: '+6% this week', subColor: tokens.warning, iconBg: 'rgba(245,158,11,0.1)', icon: <BarChart sx={{ color: tokens.warning, fontSize: { xs: 20, sm: 24 } }} />, spark: [65,70,68,75,72,78,75] },
     { label: 'Pass Rate',      value: `${stats?.passRate ?? 0}%`,     sub: '+4% this week', subColor: '#EC4899',       iconBg: 'rgba(236,72,153,0.1)',  icon: <CheckCircle sx={{ color: '#EC4899', fontSize: { xs: 20, sm: 24 } }} />,        spark: [70,72,74,76,75,78,77] },
-    { label: 'Pending Approvals', value: pendingApprovals ?? 0, sub: 'Auto-refreshing', subColor: '#F59E0B', iconBg: 'rgba(245,158,11,0.1)', icon: <HourglassEmpty sx={{ color: '#F59E0B', fontSize: { xs: 20, sm: 24 } }} />, spark: [2,3,1,4,2,5,3] },
+    ...(isCustomEnterprise ? [{ label: 'Pending Approvals', value: pendingApprovals ?? 0, sub: 'Auto-refreshing', subColor: '#F59E0B', iconBg: 'rgba(245,158,11,0.1)', icon: <HourglassEmpty sx={{ color: '#F59E0B', fontSize: { xs: 20, sm: 24 } }} />, spark: [2,3,1,4,2,5,3] }] : []),
   ];
 
   return (
@@ -1337,13 +1349,13 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
               <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif" }}>Describe your exam or upload a document — AI builds it for you</Typography>
             </Box>
           </Box>
-          <Button variant="outlined" sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.55)', borderRadius: 2.5, fontWeight: 700, fontSize: 13, textTransform: 'none', px: 2.5, fontFamily: "'DM Sans',sans-serif", '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
+          <Button variant="outlined" onClick={() => setActiveSection('templates')} sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.55)', borderRadius: 2.5, fontWeight: 700, fontSize: 13, textTransform: 'none', px: 2.5, fontFamily: "'DM Sans',sans-serif", '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
             View Templates
           </Button>
         </Box>
 
         <Box sx={{ display: 'flex', bgcolor: 'white', borderBottom: `1px solid ${tokens.surfaceBorder}`, flexWrap: isXs ? 'wrap' : 'nowrap' }}>
-          {[{ key: 'describe', label: isXs ? '✏ Describe' : '✏  AI Describe' }, { key: 'upload', label: isXs ? '☁ Upload' : '☁  Upload Doc' }, { key: 'manual', label: isXs ? '✍ Manual' : '✍  Manual Build' }].map(tab => (
+          {[...(isCustomEnterprise ? [{ key: 'describe', label: isXs ? '✏ Describe' : '✏  AI Describe' }] : []), { key: 'upload', label: isXs ? '☁ Upload' : '☁  Upload Doc' }, { key: 'manual', label: isXs ? '✍ Manual' : '✍  Manual Build' }].map(tab => (
             <Button key={tab.key} onClick={() => setAiMode(tab.key)} sx={{ flex: isXs ? '1 1 33%' : 1, py: isXs ? 1 : 1.5, fontWeight: 600, fontSize: { xs: 10, sm: 13 }, textTransform: 'none', borderRadius: 0, fontFamily: "'DM Sans',sans-serif", borderBottom: aiMode === tab.key ? `2.5px solid ${tokens.primary}` : '2.5px solid transparent', color: aiMode === tab.key ? tokens.primary : tokens.textMuted, minWidth: isXs ? 0 : 'auto' }}>
               {tab.label}
             </Button>
@@ -1912,7 +1924,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
                 ))}
               </Box>
             </Box>
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('questions')}
+            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('exams')}
               sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
               Manage Question Types
             </Button>
@@ -1961,7 +1973,7 @@ Example: 'Biology exam for Grade 10 covering cell division and photosynthesis wi
             <Box sx={{ textAlign: 'center', mt: 0.5 }}>
               <Chip label={`${avgPerf}% Average Score`} sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, fontSize: 12 }} />
             </Box>
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('analytics')}
+            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('results')}
               sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "'DM Sans',sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
               View Analytics
             </Button>
@@ -2167,6 +2179,8 @@ function ExamPreviewPanel({ exam }) {
 /* ── PUBLISH DIALOG ── */
 function PublishDialog({ examId, onClose }) {
   const { user } = useAuth();
+  const isCustomEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
+                             (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
   const isXs = useMediaQuery('(max-width:600px)');
   const [tab, setTab] = useState(0);
   const [preview, setPreview] = useState(null);
@@ -2677,24 +2691,26 @@ function PublishDialog({ examId, onClose }) {
           </Box>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={handleAddToQuestionBank}
-            disabled={addingToBank}
-            sx={{
-              borderRadius: 2,
-              textTransform: 'none',
-              fontWeight: 700,
-              borderColor: 'rgba(255,255,255,0.5)',
-              color: 'white',
-              fontSize: 12,
-              px: 2,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
-            }}
-          >
-            {addingToBank ? 'Adding...' : 'Add to Exam Bank'}
-          </Button>
+          {isCustomEnterprise && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleAddToQuestionBank}
+              disabled={addingToBank}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 700,
+                borderColor: 'rgba(255,255,255,0.5)',
+                color: 'white',
+                fontSize: 12,
+                px: 2,
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
+              }}
+            >
+              {addingToBank ? 'Adding...' : 'Add to Exam Bank'}
+            </Button>
+          )}
           <IconButton onClick={onClose} sx={{ color: 'white' }}><Close /></IconButton>
         </Box>
       </Box>
@@ -2706,7 +2722,7 @@ function PublishDialog({ examId, onClose }) {
           <Tab label="✏️ Edit Questions" />
           <Tab label="🔗 Public Link" />
           <Tab label="🔒 Private / Invite" />
-          <Tab label="🌐 Public Marketplace" />
+          {isCustomEnterprise && <Tab label="🌐 Public Marketplace" />}
         </Tabs>
       </Box>
 
@@ -3249,8 +3265,8 @@ function PublishDialog({ examId, onClose }) {
           </Box>
         )}
 
-        {/* TAB 4 — PUBLIC MARKETPLACE */}
-        {tab === 4 && (
+        {/* TAB 4 — PUBLIC MARKETPLACE (enterprise only) */}
+        {isCustomEnterprise && tab === 4 && (
           <Box sx={{ p: 3 }}>
             <MarketplaceManager exam={exam} />
           </Box>
@@ -4307,15 +4323,22 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
   );
 }
 
-function ExamsSection({ exams, setExams }) {
+function ExamsSection({ exams, setExams, setActiveSection, user }) {
+  const isCustomEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
+                             (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
   const [publishExamId, setPublishExamId] = useState(null);
   const [editExam, setEditExam] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState({});
+  const [snack, setSnack] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
 
-  // Fetch pending approvals for each exam with auto-refresh
+  // Fetch pending approvals for each exam with auto-refresh (enterprise only)
   useEffect(() => {
+    if (!isCustomEnterprise) return;
     const fetchPendingApprovals = async () => {
       const approvals = {};
       await Promise.all(
@@ -4335,10 +4358,10 @@ function ExamsSection({ exams, setExams }) {
     };
 
     fetchPendingApprovals();
-    const interval = setInterval(fetchPendingApprovals, 30000); // Refresh every 30 seconds
+    const interval = setInterval(fetchPendingApprovals, 30000);
 
     return () => clearInterval(interval);
-  }, [exams]);
+  }, [exams, isCustomEnterprise]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -4386,17 +4409,84 @@ function ExamsSection({ exams, setExams }) {
     }
   };
 
+  const filteredExams = exams
+    .filter(e => {
+      const matchSearch = !search || e.title?.toLowerCase().includes(search.toLowerCase());
+      const matchStatus = statusFilter === 'all' || (e.status || 'draft') === statusFilter;
+      return matchSearch && matchStatus;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'newest') return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortBy === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+      if (sortBy === 'title') return a.title?.localeCompare(b.title);
+      if (sortBy === 'questions') {
+        const qa = a.sections?.reduce((s, sec) => s + (sec.questions?.length || 0), 0) || 0;
+        const qb = b.sections?.reduce((s, sec) => s + (sec.questions?.length || 0), 0) || 0;
+        return qb - qa;
+      }
+      return 0;
+    });
+
   return (
     <Box>
-      <SectionTitle>My Exams</SectionTitle>
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+        <SectionTitle>My Exams</SectionTitle>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={() => setActiveSection('home')}
+          sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, fontFamily: "'DM Sans',sans-serif", '&:hover': { boxShadow: '0 4px 14px rgba(12,189,115,0.3)' } }}
+        >
+          Create Exam
+        </Button>
+      </Box>
+
+      {/* Filters */}
+      <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+        <TextField
+          size="small"
+          placeholder="Search exams…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 16, color: tokens.textMuted }} /></InputAdornment> }}
+          sx={{ flex: '1 1 200px', '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }}
+        />
+        <FormControl size="small" sx={{ minWidth: 130 }}>
+          <InputLabel sx={{ fontSize: 13 }}>Status</InputLabel>
+          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} label="Status" sx={{ borderRadius: 2, fontSize: 13 }}>
+            <MenuItem value="all">All Statuses</MenuItem>
+            <MenuItem value="active">Active</MenuItem>
+            <MenuItem value="draft">Draft</MenuItem>
+            <MenuItem value="inactive">Inactive</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel sx={{ fontSize: 13 }}>Sort By</InputLabel>
+          <Select value={sortBy} onChange={e => setSortBy(e.target.value)} label="Sort By" sx={{ borderRadius: 2, fontSize: 13 }}>
+            <MenuItem value="newest">Newest First</MenuItem>
+            <MenuItem value="oldest">Oldest First</MenuItem>
+            <MenuItem value="title">Title A–Z</MenuItem>
+            <MenuItem value="questions">Most Questions</MenuItem>
+          </Select>
+        </FormControl>
+        {(search || statusFilter !== 'all') && (
+          <Chip
+            label={`${filteredExams.length} of ${exams.length}`}
+            size="small"
+            onDelete={() => { setSearch(''); setStatusFilter('all'); }}
+            sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600 }}
+          />
+        )}
+      </Paper>
+
       <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden', overflowX: 'auto' }}>
           <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 650 }}>
-            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>{['Title', 'Status', 'Questions', 'Time', 'Created', 'Pending Approvals', 'Actions'].map(h => <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 1.5, py: 1 }}>{h}</TableCell>)}</TableRow></TableHead>
+            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>{['Title', 'Status', 'Questions', 'Time', 'Created', ...(isCustomEnterprise ? ['Pending Approvals'] : []), 'Actions'].map(h => <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 1.5, py: 1 }}>{h}</TableCell>)}</TableRow></TableHead>
             <TableBody>
-              {exams.length === 0 ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>No exams yet.</TableCell></TableRow> :
-                exams.map(e => {
+              {filteredExams.length === 0 ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>{exams.length === 0 ? 'No exams yet.' : 'No exams match your filters.'}</TableCell></TableRow> :
+                filteredExams.map(e => {
                   const sc = e.status === 'active' ? tokens.accent : e.status === 'draft' ? tokens.warning : '#6366F1';
-                  // Calculate total questions from all sections
                   const totalQuestions = e.sections?.reduce((total, section) =>
                     total + (section.questions?.length || 0), 0
                   ) || e.questions?.length || 0;
@@ -4408,13 +4498,15 @@ function ExamsSection({ exams, setExams }) {
                     <TableCell><Chip label={totalQuestions} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} /></TableCell>
                     <TableCell><Typography variant="body2" sx={{ color: tokens.textMuted }}>{e.timeLimit} min</Typography></TableCell>
                     <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted }}>{new Date(e.createdAt).toLocaleDateString()}</Typography></TableCell>
-                    <TableCell>
-                      {pendingCount > 0 ? (
-                        <Chip label={pendingCount} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: '#F59E0B', fontWeight: 700 }} />
-                      ) : (
-                        <Typography variant="body2" sx={{ color: tokens.textMuted }}>-</Typography>
-                      )}
-                    </TableCell>
+                    {isCustomEnterprise && (
+                      <TableCell>
+                        {pendingCount > 0 ? (
+                          <Chip label={pendingCount} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: '#F59E0B', fontWeight: 700 }} />
+                        ) : (
+                          <Typography variant="body2" sx={{ color: tokens.textMuted }}>-</Typography>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
                         {e.status === 'draft' && (
@@ -4504,34 +4596,380 @@ function ExamsSection({ exams, setExams }) {
       </Dialog>
 
       {publishExamId && <PublishDialog examId={publishExamId} onClose={() => setPublishExamId(null)} />}
+      <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')} message={snack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 }
 
 function StudentsSection() {
+  const isXs = useMediaQuery('(max-width:600px)');
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(()=>{api.get('/admin/students').then(r=>setStudents(r.data||[])).catch(()=>{}).finally(()=>setLoading(false));},[]);
-  return(
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [classFilter, setClassFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('name');
+  const [snack, setSnack] = useState('');
+  const [createDialog, setCreateDialog] = useState(false);
+  const [viewDialog, setViewDialog] = useState(false);
+  const [editDialog, setEditDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(null);
+  const [resetPasswordDialog, setResetPasswordDialog] = useState(null);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const emptyForm = { firstName: '', lastName: '', email: '', phone: '', class: '', gender: '' };
+  const [form, setForm] = useState(emptyForm);
+  const [formError, setFormError] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get('/admin/students').then(r => setStudents(r.data || [])).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const uniqueClasses = [...new Set(students.map(s => s.class).filter(Boolean))].sort();
+
+  const filtered = students
+    .filter(s => {
+      const name = `${s.firstName} ${s.lastName}`.toLowerCase();
+      const matchSearch = !search || name.includes(search.toLowerCase()) || s.email?.toLowerCase().includes(search.toLowerCase()) || s.class?.toLowerCase().includes(search.toLowerCase());
+      const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? !s.isBlocked : s.isBlocked);
+      const matchClass = classFilter === 'all' || s.class === classFilter;
+      return matchSearch && matchStatus && matchClass;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'name') return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+      if (sortBy === 'email') return a.email?.localeCompare(b.email);
+      if (sortBy === 'class') return (a.class || '').localeCompare(b.class || '');
+      if (sortBy === 'newest') return new Date(b.createdAt) - new Date(a.createdAt);
+      return 0;
+    });
+
+  const totalActive = students.filter(s => !s.isBlocked).length;
+  const totalBlocked = students.filter(s => s.isBlocked).length;
+  const totalClasses = uniqueClasses.length;
+
+  const handleCreate = async () => {
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) { setFormError('First name, last name and email are required.'); return; }
+    setSaving(true); setFormError('');
+    try {
+      await api.post('/admin/students', form);
+      setSnack('✓ Student created successfully');
+      setCreateDialog(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) { setFormError(err.response?.data?.message || 'Failed to create student'); }
+    finally { setSaving(false); }
+  };
+
+  const handleEdit = async () => {
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) { setFormError('First name, last name and email are required.'); return; }
+    setSaving(true); setFormError('');
+    try {
+      await api.put(`/admin/students/${selectedStudent._id}`, form);
+      setSnack('✓ Student updated successfully');
+      setEditDialog(false);
+      setForm(emptyForm);
+      setSelectedStudent(null);
+      load();
+    } catch (err) { setFormError(err.response?.data?.message || 'Failed to update student'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/admin/students/${deleteDialog._id}`);
+      setSnack('✓ Student deleted');
+      setDeleteDialog(null);
+      load();
+    } catch (err) { setSnack(err.response?.data?.message || 'Failed to delete student'); setDeleteDialog(null); }
+    finally { setDeleting(false); }
+  };
+
+  const handleToggleBlock = async (s) => {
+    try {
+      await api.put(`/admin/students/${s._id}`, { isBlocked: !s.isBlocked });
+      setSnack(`✓ Student ${s.isBlocked ? 'unblocked' : 'blocked'}`);
+      load();
+    } catch { setSnack('Failed to update student status'); }
+  };
+
+  const handleResetPassword = async () => {
+    setResettingPassword(true);
+    try {
+      await api.post(`/admin/students/${resetPasswordDialog._id}/reset-password`);
+      setSnack('✓ Password reset successfully. Student will receive an email with the new password.');
+      setResetPasswordDialog(null);
+    } catch { setSnack('Failed to reset password'); }
+    finally { setResettingPassword(false); }
+  };
+
+  const openEdit = (s) => { setSelectedStudent(s); setForm({ firstName: s.firstName || '', lastName: s.lastName || '', email: s.email || '', phone: s.phone || '', class: s.class || '', gender: s.gender || '' }); setFormError(''); setEditDialog(true); };
+  const openView = (s) => { setSelectedStudent(s); setViewDialog(true); };
+
+  const StudentFormFields = () => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+      {formError && <Alert severity="error" sx={{ borderRadius: 2 }}>{formError}</Alert>}
+      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <TextField label="First Name *" value={form.firstName} onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <TextField label="Last Name *" value={form.lastName} onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+      </Box>
+      <TextField label="Email *" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <TextField label="Phone" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <TextField label="Class / Grade" value={form.class} onChange={e => setForm(p => ({ ...p, class: e.target.value }))} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+      </Box>
+      <FormControl sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+        <InputLabel>Gender</InputLabel>
+        <Select value={form.gender} onChange={e => setForm(p => ({ ...p, gender: e.target.value }))} label="Gender">
+          <MenuItem value="">Not specified</MenuItem>
+          <MenuItem value="male">Male</MenuItem>
+          <MenuItem value="female">Female</MenuItem>
+          <MenuItem value="other">Other</MenuItem>
+        </Select>
+      </FormControl>
+    </Box>
+  );
+
+  const avatarBg = ['rgba(12,189,115,0.12)', 'rgba(13,64,108,0.1)', 'rgba(99,102,241,0.12)', 'rgba(245,158,11,0.12)', 'rgba(236,72,153,0.12)'];
+  const avatarColor = [tokens.accentDark, tokens.primary, '#6366F1', '#D97706', '#DB2777'];
+  const getAvatar = (name, idx) => ({ bg: avatarBg[idx % 5], color: avatarColor[idx % 5], letter: name?.charAt(0)?.toUpperCase() || '?' });
+
+  return (
     <Box>
-      <SectionTitle>Students</SectionTitle>
-      {loading?<Box sx={{display:'flex',justifyContent:'center',mt:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>:(
-        <Paper elevation={0} sx={{borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',overflow:'hidden'}}>
-          <TableContainer sx={{overflowX:'auto'}}><Table sx={{minWidth:480}}>
-            <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Student','Email','Class','Status'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
-            <TableBody>
-              {students.length===0?<TableRow><TableCell colSpan={4} align="center" sx={{py:5,color:tokens.textMuted}}>No students.</TableCell></TableRow>:
-              students.map(s=>(
-                <TableRow key={s._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
-                  <TableCell><Box sx={{display:'flex',alignItems:'center',gap:1.5}}><Box sx={{width:32,height:32,borderRadius:'50%',bgcolor:'rgba(12,189,115,0.1)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,color:tokens.accent,fontSize:13}}>{s.firstName?.charAt(0)}</Box><Typography variant="body2" fontWeight={600} sx={{fontFamily:"'DM Sans',sans-serif"}}>{s.firstName} {s.lastName}</Typography></Box></TableCell>
-                  <TableCell><Typography variant="body2" sx={{color:tokens.textMuted}}>{s.email}</Typography></TableCell>
-                  <TableCell><Chip label={s.class||'N/A'} size="small" sx={{bgcolor:'rgba(13,64,108,0.07)',color:tokens.primary}}/></TableCell>
-                  <TableCell><Chip label={s.isBlocked?'Blocked':'Active'} size="small" sx={{bgcolor:s.isBlocked?'rgba(239,68,68,0.08)':'rgba(12,189,115,0.1)',color:s.isBlocked?'#EF4444':tokens.accentDark,fontWeight:600}}/></TableCell>
-                </TableRow>))}
-            </TableBody>
-          </Table></TableContainer>
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5, flexWrap: 'wrap', gap: 1.5 }}>
+        <SectionTitle>Students</SectionTitle>
+        <Button variant="contained" startIcon={<Add />} onClick={() => { setForm(emptyForm); setFormError(''); setCreateDialog(true); }}
+          sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, fontFamily: "'DM Sans',sans-serif", '&:hover': { boxShadow: '0 4px 14px rgba(12,189,115,0.3)' } }}>
+          Add Student
+        </Button>
+      </Box>
+
+      {/* Stat Cards */}
+      <Grid container spacing={2} sx={{ mb: 2.5 }}>
+        {[
+          { label: 'Total Students', value: students.length, color: tokens.primary, bg: 'rgba(13,64,108,0.07)', icon: <People sx={{ fontSize: 22, color: tokens.primary }} /> },
+          { label: 'Active',         value: totalActive,     color: tokens.accentDark, bg: 'rgba(12,189,115,0.09)', icon: <CheckCircle sx={{ fontSize: 22, color: tokens.accentDark }} /> },
+          { label: 'Blocked',        value: totalBlocked,    color: '#EF4444', bg: 'rgba(239,68,68,0.07)', icon: <ErrorOutline sx={{ fontSize: 22, color: '#EF4444' }} /> },
+          { label: 'Classes',        value: totalClasses,    color: '#6366F1', bg: 'rgba(99,102,241,0.09)', icon: <Assignment sx={{ fontSize: 22, color: '#6366F1' }} /> },
+        ].map((c, i) => (
+          <Grid item xs={6} sm={3} key={i}>
+            <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Box sx={{ width: 38, height: 38, borderRadius: 2, bgcolor: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c.icon}</Box>
+                <Typography fontWeight={800} sx={{ fontSize: 22, color: tokens.textPrimary, fontFamily: "'DM Sans',sans-serif" }}>{c.value}</Typography>
+              </Box>
+              <Typography sx={{ fontSize: 12.5, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>{c.label}</Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Filters */}
+      <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+        <TextField size="small" placeholder="Search by name, email, class…" value={search} onChange={e => setSearch(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 16, color: tokens.textMuted }} /></InputAdornment> }}
+          sx={{ flex: '1 1 200px', '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }} />
+        <FormControl size="small" sx={{ minWidth: 130 }}>
+          <InputLabel sx={{ fontSize: 13 }}>Status</InputLabel>
+          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} label="Status" sx={{ borderRadius: 2, fontSize: 13 }}>
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="active">Active</MenuItem>
+            <MenuItem value="blocked">Blocked</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 130 }}>
+          <InputLabel sx={{ fontSize: 13 }}>Class</InputLabel>
+          <Select value={classFilter} onChange={e => setClassFilter(e.target.value)} label="Class" sx={{ borderRadius: 2, fontSize: 13 }}>
+            <MenuItem value="all">All Classes</MenuItem>
+            {uniqueClasses.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel sx={{ fontSize: 13 }}>Sort By</InputLabel>
+          <Select value={sortBy} onChange={e => setSortBy(e.target.value)} label="Sort By" sx={{ borderRadius: 2, fontSize: 13 }}>
+            <MenuItem value="name">Name A–Z</MenuItem>
+            <MenuItem value="email">Email A–Z</MenuItem>
+            <MenuItem value="class">Class A–Z</MenuItem>
+            <MenuItem value="newest">Newest First</MenuItem>
+          </Select>
+        </FormControl>
+        {(search || statusFilter !== 'all' || classFilter !== 'all') && (
+          <Chip label={`${filtered.length} of ${students.length}`} size="small"
+            onDelete={() => { setSearch(''); setStatusFilter('all'); setClassFilter('all'); }}
+            sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600 }} />
+        )}
+      </Paper>
+
+      {/* Table */}
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress sx={{ color: tokens.accent }} /></Box>
+      ) : (
+        <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table sx={{ minWidth: 600 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                  {['Student', 'Email', 'Phone', 'Class', 'Gender', 'Status', 'Actions'].map(h => (
+                    <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 2, py: 1.25 }}>{h}</TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: tokens.textMuted }}>
+                    {students.length === 0 ? 'No students yet. Add your first student.' : 'No students match your filters.'}
+                  </TableCell></TableRow>
+                ) : filtered.map((s, i) => {
+                  const av = getAvatar(`${s.firstName} ${s.lastName}`, i);
+                  return (
+                    <TableRow key={s._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                      <TableCell sx={{ px: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          <Box sx={{ width: 34, height: 34, borderRadius: '50%', bgcolor: av.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: av.color, fontSize: 13, flexShrink: 0 }}>{av.letter}</Box>
+                          <Box>
+                            <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif", lineHeight: 1.3 }}>{s.firstName} {s.lastName}</Typography>
+                            {s.createdAt && <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>Joined {new Date(s.createdAt).toLocaleDateString()}</Typography>}
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell sx={{ px: 2 }}><Typography variant="body2" sx={{ color: tokens.textSecondary }}>{s.email}</Typography></TableCell>
+                      <TableCell sx={{ px: 2 }}><Typography variant="body2" sx={{ color: tokens.textMuted }}>{s.phone || '—'}</Typography></TableCell>
+                      <TableCell sx={{ px: 2 }}><Chip label={s.class || 'N/A'} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600, fontSize: 11 }} /></TableCell>
+                      <TableCell sx={{ px: 2 }}><Typography variant="body2" sx={{ color: tokens.textMuted, textTransform: 'capitalize' }}>{s.gender || '—'}</Typography></TableCell>
+                      <TableCell sx={{ px: 2 }}>
+                        <Chip label={s.isBlocked ? 'Blocked' : 'Active'} size="small"
+                          sx={{ bgcolor: s.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: s.isBlocked ? '#EF4444' : tokens.accentDark, fontWeight: 700, fontSize: 11 }} />
+                      </TableCell>
+                      <TableCell sx={{ px: 2 }}>
+                        <Box sx={{ display: 'flex', gap: 0.25 }}>
+                          <Tooltip title="View Details">
+                            <IconButton size="small" onClick={() => openView(s)} sx={{ color: tokens.primary }}><Visibility sx={{ fontSize: 16 }} /></IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit">
+                            <IconButton size="small" onClick={() => openEdit(s)} sx={{ color: tokens.accent }}><Edit sx={{ fontSize: 16 }} /></IconButton>
+                          </Tooltip>
+                          <Tooltip title={s.isBlocked ? 'Unblock' : 'Block'}>
+                            <IconButton size="small" onClick={() => handleToggleBlock(s)} sx={{ color: s.isBlocked ? tokens.accentDark : '#F59E0B' }}>
+                              {s.isBlocked ? <CheckCircleOutline sx={{ fontSize: 16 }} /> : <ErrorOutline sx={{ fontSize: 16 }} />}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Reset Password">
+                            <IconButton size="small" onClick={() => setResetPasswordDialog(s)} sx={{ color: '#6366F1' }}><LockReset sx={{ fontSize: 16 }} /></IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete">
+                            <IconButton size="small" onClick={() => setDeleteDialog(s)} sx={{ color: '#EF4444' }}><Delete sx={{ fontSize: 16 }} /></IconButton>
+                          </Tooltip>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
       )}
+
+      {/* Create Dialog */}
+      <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 0 }}>Add New Student</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields /></DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setCreateDialog(false)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={saving}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>
+            {saving ? <CircularProgress size={16} color="inherit" /> : 'Create Student'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 0 }}>Edit Student</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields /></DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setEditDialog(false)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
+          <Button variant="contained" onClick={handleEdit} disabled={saving}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>
+            {saving ? <CircularProgress size={16} color="inherit" /> : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Dialog */}
+      {selectedStudent && viewDialog && (
+        <Dialog open onClose={() => setViewDialog(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+          <Box sx={{ px: 3, py: 2.5, background: gradients.brand, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: 'white', fontSize: 20 }}>
+              {selectedStudent.firstName?.charAt(0)?.toUpperCase()}
+            </Box>
+            <Box>
+              <Typography fontWeight={700} color="white" sx={{ fontSize: 16, fontFamily: "'DM Sans',sans-serif" }}>{selectedStudent.firstName} {selectedStudent.lastName}</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 12.5 }}>{selectedStudent.email}</Typography>
+            </Box>
+          </Box>
+          <DialogContent sx={{ pt: 2.5 }}>
+            {[
+              { label: 'Phone',   value: selectedStudent.phone  || '—' },
+              { label: 'Class',   value: selectedStudent.class  || '—' },
+              { label: 'Gender',  value: selectedStudent.gender || '—', capitalize: true },
+              { label: 'Status',  value: selectedStudent.isBlocked ? 'Blocked' : 'Active' },
+              { label: 'Joined',  value: selectedStudent.createdAt ? new Date(selectedStudent.createdAt).toLocaleDateString() : '—' },
+            ].map(row => (
+              <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
+                <Typography sx={{ fontSize: 13, color: tokens.textMuted, fontWeight: 600 }}>{row.label}</Typography>
+                <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontWeight: 600, textTransform: row.capitalize ? 'capitalize' : 'none' }}>{row.value}</Typography>
+              </Box>
+            ))}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+            <Button onClick={() => setViewDialog(false)} sx={{ borderRadius: 2, textTransform: 'none' }}>Close</Button>
+            <Button variant="outlined" onClick={() => { setViewDialog(false); openEdit(selectedStudent); }} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>Edit</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Delete Confirm */}
+      <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)} PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Delete Student?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: tokens.textSecondary }}>
+            Permanently delete <strong>{deleteDialog?.firstName} {deleteDialog?.lastName}</strong>? This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setDeleteDialog(null)} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleDelete} disabled={deleting}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' }, boxShadow: 'none' }}>
+            {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!resetPasswordDialog} onClose={() => setResetPasswordDialog(null)} PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Reset Student Password?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: tokens.textSecondary }}>
+            Reset password for <strong>{resetPasswordDialog?.firstName} {resetPasswordDialog?.lastName}</strong>? A new password will be generated and sent to their email.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setResetPasswordDialog(null)} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleResetPassword} disabled={resettingPassword}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>
+            {resettingPassword ? 'Resetting…' : 'Reset Password'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')} message={snack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 }

@@ -74,7 +74,9 @@ const TeacherList = () => {
     email: '',
     password: '',
     phone: '',
-    class: ''
+    class: '',
+    subjects: '',
+    classes: ''
   });
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [teacherToDelete, setTeacherToDelete] = useState(null);
@@ -134,7 +136,9 @@ const TeacherList = () => {
       email: '',
       password: '',
       phone: '',
-      class: ''
+      class: '',
+      subjects: '',
+      classes: ''
     });
     setOpenDialog(true);
   };
@@ -150,7 +154,9 @@ const TeacherList = () => {
         email: teacher.email || '',
         password: '', // Don't show password
         phone: teacher.phone || '',
-        class: teacher.class || ''
+        class: teacher.class || '',
+        subjects: Array.isArray(teacher.subjects) ? teacher.subjects.join(', ') : '',
+        classes: Array.isArray(teacher.classes) ? teacher.classes.join(', ') : ''
       });
       setOpenDialog(true);
     }
@@ -166,7 +172,9 @@ const TeacherList = () => {
       email: '',
       password: '',
       phone: '',
-      class: ''
+      class: '',
+      subjects: '',
+      classes: ''
     });
   };
 
@@ -183,15 +191,22 @@ const TeacherList = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Convert comma-separated strings to arrays
+      const submitData = {
+        ...formData,
+        subjects: formData.subjects ? formData.subjects.split(',').map(s => s.trim()).filter(s => s) : [],
+        classes: formData.classes ? formData.classes.split(',').map(c => c.trim()).filter(c => c) : []
+      };
+      
       if (dialogMode === 'create') {
-        await createTeacher(formData);
+        await createTeacher(submitData);
         setSnackbar({
           open: true,
           message: 'Teacher created successfully!',
           severity: 'success'
         });
       } else {
-        await updateTeacher(selectedTeacherId, formData);
+        await updateTeacher(selectedTeacherId, submitData);
         setSnackbar({
           open: true,
           message: 'Teacher updated successfully!',
@@ -418,9 +433,26 @@ const TeacherList = () => {
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <SchoolIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-                        <Typography variant="body2">{teacher.class || '-'}</Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        {teacher.subjects && teacher.subjects.length > 0 && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>Subjects:</Typography>
+                            {teacher.subjects.map((subject, idx) => (
+                              <Chip key={`subject-${idx}`} label={subject} size="small" sx={{ fontSize: 11, height: 20 }} />
+                            ))}
+                          </Box>
+                        )}
+                        {teacher.classes && teacher.classes.length > 0 && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>Classes:</Typography>
+                            {teacher.classes.map((cls, idx) => (
+                              <Chip key={`class-${idx}`} label={cls} size="small" sx={{ fontSize: 11, height: 20 }} />
+                            ))}
+                          </Box>
+                        )}
+                        {(!teacher.subjects || teacher.subjects.length === 0) && (!teacher.classes || teacher.classes.length === 0) && (
+                          <Typography variant="body2" sx={{ color: 'text.secondary' }}>{teacher.class || '-'}</Typography>
+                        )}
                       </Box>
                     </TableCell>
                     <TableCell>
@@ -575,6 +607,30 @@ const TeacherList = () => {
                   onChange={handleInputChange}
                   fullWidth
                   placeholder="e.g., Science, Math, Grade 10"
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  name="subjects"
+                  label="Subjects"
+                  value={formData.subjects}
+                  onChange={handleInputChange}
+                  fullWidth
+                  placeholder="e.g., Mathematics, Physics, Chemistry (comma-separated)"
+                  helperText="Enter multiple subjects separated by commas"
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  name="classes"
+                  label="Classes"
+                  value={formData.classes}
+                  onChange={handleInputChange}
+                  fullWidth
+                  placeholder="e.g., Grade 10, Grade 11, Grade 12 (comma-separated)"
+                  helperText="Enter multiple classes separated by commas"
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                 />
               </Grid>

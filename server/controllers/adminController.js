@@ -125,30 +125,37 @@ setInterval(() => {
 const registerStudent = async (req, res) => {
   try {
     console.log('Register student request body:', req.body);
-    const { firstName, lastName, email, password, class: studentClass, organization } = req.body;
+    const { firstName, lastName, email, class: studentClass, organization, phone, gender } = req.body;
 
     // Validate required fields
-    if (!firstName || !lastName || !email || !password) {
-      return res.status(400).json({ message: 'Please provide all required fields' });
+    if (!firstName || !lastName || !email) {
+      return res.status(400).json({ message: 'Please provide first name, last name and email' });
     }
 
     // Check if student already exists
     const studentExists = await User.findOne({ email });
-
     if (studentExists) {
       return res.status(400).json({ message: 'Student with this email already exists' });
     }
+
+    // Auto-generate a default password: first name + 4-digit random number
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const defaultPassword = `${firstName.charAt(0).toUpperCase()}${firstName.slice(1).toLowerCase()}${randomSuffix}`;
 
     // Create student
     const student = await User.create({
       firstName,
       lastName,
       email,
-      password,
+      password: defaultPassword,
       role: 'student',
       class: studentClass || '',
       organization: organization || '',
-      createdBy: req.orgAdminId, // Set the org admin who owns this student (works for both admin and teacher)
+      phone: phone || '',
+      gender: gender || '',
+      subscriptionPlan: 'free',
+      subscriptionStatus: 'active',
+      createdBy: req.orgAdminId,
     });
 
     console.log('Student created successfully:', student._id);
@@ -166,6 +173,12 @@ const registerStudent = async (req, res) => {
         }
       });
 
+      // Send welcome email with credentials
+      const emailService = require('../utils/emailService');
+      emailService.sendStudentWelcomeEmail(student, defaultPassword).catch(err => {
+        console.error('[registerStudent] Failed to send welcome email:', err);
+      });
+
       res.status(201).json({
         _id: student._id,
         firstName: student.firstName,
@@ -173,6 +186,8 @@ const registerStudent = async (req, res) => {
         email: student.email,
         role: student.role,
         class: student.class,
+        phone: student.phone,
+        gender: student.gender,
         organization: student.organization
       });
     } else {
@@ -180,19 +195,13 @@ const registerStudent = async (req, res) => {
     }
   } catch (error) {
     console.error('Register student error:', error);
-    console.error('Error details:', error.message);
-
-    // Handle duplicate key error (MongoDB error code 11000)
     if (error.code === 11000) {
       return res.status(400).json({ message: 'Student with this email already exists' });
     }
-
-    // Handle validation errors
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(val => val.message);
       return res.status(400).json({ message: messages.join(', ') });
     }
-
     res.status(500).json({ message: 'Server error. Please try again.' });
   }
 };
@@ -355,7 +364,7 @@ const getStudentById = async (req, res) => {
 // @access  Private/Admin
 const updateStudent = async (req, res) => {
   try {
-    const { firstName, lastName, email, class: studentClass, organization, isBlocked } = req.body;
+    const { firstName, lastName, email, class: studentClass, organization, isBlocked, phone, gender } = req.body;
 
     const student = await User.findById(req.params.id);
 
@@ -387,13 +396,25 @@ const updateStudent = async (req, res) => {
     }
 
     if (isAuthorized) {
+      // Track changes for email notification
+      const changes = {};
+      if (firstName && firstName !== student.firstName) changes.firstName = `${student.firstName} → ${firstName}`;
+      if (lastName && lastName !== student.lastName) changes.lastName = `${student.lastName} → ${lastName}`;
+      if (email && email !== student.email) changes.email = `${student.email} → ${email}`;
+      if (studentClass !== undefined && studentClass !== student.class) changes.class = studentClass || 'none';
+      if (isBlocked !== undefined && isBlocked !== student.isBlocked) changes.status = isBlocked ? 'Blocked' : 'Active';
+      if (phone !== undefined && phone !== student.phone) changes.phone = phone || 'none';
+      if (gender !== undefined && gender !== student.gender) changes.gender = gender || 'none';
+
       // Update student fields
       if (firstName) student.firstName = firstName;
       if (lastName) student.lastName = lastName;
       if (email) student.email = email;
-      if (studentClass) student.class = studentClass;
+      if (studentClass !== undefined) student.class = studentClass;
       if (organization) student.organization = organization;
       if (isBlocked !== undefined) student.isBlocked = isBlocked;
+      if (phone !== undefined) student.phone = phone;
+      if (gender !== undefined) student.gender = gender;
 
       const updatedStudent = await student.save();
 
@@ -408,6 +429,14 @@ const updateStudent = async (req, res) => {
         }
       });
 
+      // Send update email to student if there are changes
+      if (Object.keys(changes).length > 0) {
+        const emailService = require('../utils/emailService');
+        emailService.sendStudentUpdateEmail(updatedStudent, changes).catch(err => {
+          console.error('[updateStudent] Failed to send update email:', err);
+        });
+      }
+
       res.json({
         _id: updatedStudent._id,
         firstName: updatedStudent.firstName,
@@ -416,6 +445,8 @@ const updateStudent = async (req, res) => {
         role: updatedStudent.role,
         class: updatedStudent.class,
         organization: updatedStudent.organization,
+        phone: updatedStudent.phone,
+        gender: updatedStudent.gender,
         isBlocked: updatedStudent.isBlocked
       });
     } else {
@@ -482,6 +513,73 @@ const deleteStudent = async (req, res) => {
     }
   } catch (error) {
     console.error('Delete student error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Reset student password
+// @route   POST /api/admin/students/:id/reset-password
+// @access  Private/Admin
+const resetStudentPassword = async (req, res) => {
+  try {
+    const student = await User.findById(req.params.id);
+
+    if (!student || student.role !== 'student') {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Check if student belongs to this organization
+    let isAuthorized = false;
+    if (req.user.role === 'admin') {
+      const teachers = await User.find({
+        role: 'teacher',
+        parentAdmin: req.orgAdminId
+      }).select('_id').lean();
+
+      const teacherIds = teachers.map(t => t._id);
+      isAuthorized = student.createdBy && (
+        student.createdBy.toString() === req.orgAdminId.toString() ||
+        teacherIds.some(tid => tid.toString() === student.createdBy.toString())
+      );
+    } else {
+      isAuthorized = student.createdBy && (
+        student.createdBy.toString() === req.orgAdminId.toString() ||
+        student.createdBy.toString() === req.user._id.toString()
+      );
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ message: 'Not authorized to reset this student\'s password' });
+    }
+
+    // Generate new password
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const newPassword = `${student.firstName.charAt(0).toUpperCase()}${student.firstName.slice(1).toLowerCase()}${randomSuffix}`;
+
+    // Update student password
+    student.password = newPassword;
+    await student.save();
+
+    // Log the activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'reset_student_password',
+      details: {
+        studentId: student._id,
+        studentName: `${student.firstName} ${student.lastName}`,
+        resetByRole: req.user.role
+      }
+    });
+
+    // Send password reset email
+    const emailService = require('../utils/emailService');
+    emailService.sendStudentPasswordResetEmail(student, newPassword).catch(err => {
+      console.error('[resetStudentPassword] Failed to send password reset email:', err);
+    });
+
+    res.json({ message: 'Password reset successfully. Student will receive an email with the new password.' });
+  } catch (error) {
+    console.error('Reset student password error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -3607,6 +3705,12 @@ const registerTeacher = async (req, res) => {
       }
     });
 
+    // Send welcome email to teacher
+    const emailService = require('../utils/emailService');
+    emailService.sendTeacherWelcomeEmail(teacher, password, admin.organization).catch(err => {
+      console.error('[registerTeacher] Failed to send welcome email:', err);
+    });
+
     res.status(201).json({
       _id: teacher._id,
       firstName: teacher.firstName,
@@ -3697,6 +3801,22 @@ const updateTeacher = async (req, res) => {
     // Check if teacher exists, is a teacher, and was created by this admin
     if (teacher && teacher.role === 'teacher' &&
         (teacher.parentAdmin && teacher.parentAdmin.toString() === req.user._id.toString())) {
+      // Track changes for email notification
+      const changes = {};
+      if (firstName && firstName !== teacher.firstName) changes.firstName = `${teacher.firstName} → ${firstName}`;
+      if (lastName && lastName !== teacher.lastName) changes.lastName = `${teacher.lastName} → ${lastName}`;
+      if (email && email !== teacher.email) changes.email = `${teacher.email} → ${email}`;
+      if (phone !== undefined && phone !== teacher.phone) changes.phone = teacher.phone || 'none';
+      if (teacherClass !== undefined && teacherClass !== teacher.class) changes.class = teacherClass || 'none';
+      if (isBlocked !== undefined && isBlocked !== teacher.isBlocked) changes.status = isBlocked ? 'Blocked' : 'Active';
+      if (gender !== undefined && gender !== teacher.gender) changes.gender = gender || 'none';
+      if (Array.isArray(subjects) && JSON.stringify(subjects) !== JSON.stringify(teacher.subjects)) {
+        changes.subjects = subjects.join(', ');
+      }
+      if (Array.isArray(classes) && JSON.stringify(classes) !== JSON.stringify(teacher.classes)) {
+        changes.classes = classes.join(', ');
+      }
+
       // Update teacher fields
       if (firstName) teacher.firstName = firstName;
       if (lastName) teacher.lastName = lastName;
@@ -3719,6 +3839,15 @@ const updateTeacher = async (req, res) => {
           teacherName: `${updatedTeacher.firstName} ${updatedTeacher.lastName}`
         }
       });
+
+      // Send update email to teacher if there are changes
+      if (Object.keys(changes).length > 0) {
+        const emailService = require('../utils/emailService');
+        const admin = await User.findById(req.user._id);
+        emailService.sendTeacherUpdateEmail(updatedTeacher, changes, admin.organization).catch(err => {
+          console.error('[updateTeacher] Failed to send update email:', err);
+        });
+      }
 
       res.json({
         _id: updatedTeacher._id,
@@ -4279,6 +4408,7 @@ module.exports = {
   getStudentById,
   updateStudent,
   deleteStudent,
+  resetStudentPassword,
   toggleSystemLock,
   getSystemLockStatus,
   getExamResults,

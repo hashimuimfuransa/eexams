@@ -6,6 +6,7 @@ const {
   getStudentById,
   updateStudent,
   deleteStudent,
+  resetStudentPassword,
   toggleSystemLock,
   getSystemLockStatus,
   getExamResults,
@@ -74,6 +75,7 @@ router.get('/recent-students', getRecentStudents);
 router.get('/students/:id', getStudentById);
 router.put('/students/:id', updateStudent);
 router.delete('/students/:id', deleteStudent);
+router.post('/students/:id/reset-password', resetStudentPassword);
 
 // Teacher management routes (admin only)
 router.post('/teachers', isAdmin, checkTeacherLimit, registerTeacher);

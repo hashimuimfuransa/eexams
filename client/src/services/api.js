@@ -47,10 +47,14 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // Handle 401 Unauthorized errors (token expired or invalid)
-    // But skip for public share endpoints
+    // But skip for public share endpoints and marketplace student endpoints
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
-      // Don't redirect for public share endpoints
-      if (originalRequest.url && originalRequest.url.includes('/share/')) {
+      // Don't redirect for public share endpoints or marketplace endpoints
+      // (marketplace is public, and student-specific endpoints should fail gracefully)
+      if (originalRequest.url && (
+        originalRequest.url.includes('/share/') ||
+        originalRequest.url.includes('/marketplace/')
+      )) {
         return Promise.reject(error);
       }
 

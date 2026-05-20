@@ -134,6 +134,9 @@ const Login = () => {
   const [lockoutEndTime, setLockoutEndTime] = useState(null);
   const [remainingTime, setRemainingTime] = useState(0);
   const [returningUser, setReturningUser] = useState(null); // For auto-detected Google user
+  const [fedcmLocked, setFedcmLocked] = useState(false); // FedCM lockout status
+  const [fedcmLockType, setFedcmLockType] = useState(null); // 'temporary' or 'permanent'
+  const [googleClickCount, setGoogleClickCount] = useState(0); // Track failed Google attempts
 
   // Google OAuth refs
   const googleInitialized = useRef(false);
@@ -196,6 +199,52 @@ const Login = () => {
     }
     return () => { if (interval) clearInterval(interval); };
   }, [isLockedOut, remainingTime]);
+
+  // Listen for FedCM console errors and network errors
+  useEffect(() => {
+    const handleConsoleError = (event) => {
+      const message = event.message || '';
+      console.log('[FedCM] Console error detected:', message);
+      
+      if (message.includes('FedCM') && message.includes('aborted')) {
+        console.log('[FedCM] Detected abort error in console:', message);
+        setFedcmLocked(true);
+        setFedcmLockType('temporary');
+      }
+      if (message.includes('FedCM was disabled')) {
+        console.log('[FedCM] Detected disabled error in console:', message);
+        setFedcmLocked(true);
+        setFedcmLockType('permanent');
+      }
+      if (message.includes('FedCM') || message.includes('third-party sign-in')) {
+        console.log('[FedCM] Detected FedCM-related error:', message);
+        setFedcmLocked(true);
+        setFedcmLockType('temporary');
+      }
+    };
+
+    const handleNetworkError = (event) => {
+      const url = event.target?.url || '';
+      if (url.includes('accounts.google.com/gsi/status') && event.target?.status === 403) {
+        console.log('[FedCM] Detected 403 error on Google status endpoint - FedCM likely blocked');
+        setFedcmLocked(true);
+        setFedcmLockType('permanent');
+      }
+    };
+
+    window.addEventListener('error', handleConsoleError);
+    window.addEventListener('error', handleNetworkError, true); // Capture phase for network errors
+    
+    return () => {
+      window.removeEventListener('error', handleConsoleError);
+      window.removeEventListener('error', handleNetworkError, true);
+    };
+  }, []);
+
+  // Log when fedcmLocked changes
+  useEffect(() => {
+    console.log('[FedCM] fedcmLocked changed to:', fedcmLocked, 'Type:', fedcmLockType);
+  }, [fedcmLocked, fedcmLockType]);
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
@@ -384,8 +433,45 @@ const Login = () => {
           // Check for returning Google user (one-tap prompt)
           window.google.accounts.id.prompt((notification) => {
             if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-              // User dismissed or not shown, continue normally
-              console.log('[GoogleAuth] One-tap not shown:', notification.getNotDisplayedReason() || notification.getSkippedReason());
+              const reason = notification.getNotDisplayedReason() || notification.getSkippedReason();
+              console.log('[GoogleAuth] One-tap not shown:', reason);
+              
+              // Detect FedCM lockout - expanded list of reasons
+              const lockoutReasons = [
+                'FEDERATED_LOGIN_DISABLED',
+                'USER_CANCELLED',
+                'TOO_MANY_ATTEMPTS',
+                'UNKNOWN_REASON',
+                'ABORT_ERROR',
+                'SIGNAL_ABORTED',
+                'FEDCM_DISABLED',
+                'THIRD_PARTY_COOKIES_DISABLED'
+                // Note: TAP_OUTSIDE is not a lockout - it's just user dismissal
+              ];
+              
+              if (lockoutReasons.includes(reason) || 
+                  reason?.includes('abort') || 
+                  reason?.includes('disabled') ||
+                  reason?.includes('FEDCM')) {
+                setFedcmLocked(true);
+                setFedcmLockType(reason === 'FEDERATED_LOGIN_DISABLED' ? 'permanent' : 'temporary');
+                console.log('[GoogleAuth] FedCM locked:', reason);
+              }
+              
+              // If prompt not shown for any reason, increment click counter
+              if (notification.isNotDisplayed()) {
+                setGoogleClickCount(prev => {
+                  const newCount = prev + 1;
+                  console.log('[GoogleAuth] Failed attempt count:', newCount);
+                  // Show warning banner immediately on first failed attempt
+                  if (newCount >= 1 && !fedcmLocked) {
+                    setFedcmLocked(true);
+                    setFedcmLockType('temporary');
+                    console.log('[GoogleAuth] Showing warning banner after', newCount, 'failed attempt(s)');
+                  }
+                  return newCount;
+                });
+              }
             }
           });
         }
@@ -594,6 +680,80 @@ const Login = () => {
             <div style={{ flex: 1, height: 1, background: isDark ? tokens.dark.border : tokens.surfaceBorder }} />
           </div>
 
+          {/* FedCM Lockout Warning */}
+          {fedcmLocked && (
+            <div style={{
+              padding: '14px 16px',
+              borderRadius: 12,
+              marginBottom: 18,
+              background: isDark ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.08)',
+              border: `1px solid ${isDark ? 'rgba(245,158,11,0.35)' : 'rgba(245,158,11,0.25)'}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ flexShrink: 0, marginTop: 1, color: tokens.warning }}>
+                  <Icon.Alert s={18} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: tokens.warning, marginBottom: 4 }}>
+                    Google Sign-In Blocked
+                  </div>
+                  <div style={{ fontSize: 12.5, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5, marginBottom: 8 }}>
+                    {fedcmLockType === 'permanent' 
+                      ? 'Google sign-in has been disabled in your browser settings. To continue with Google, you must re-enable third-party sign-in.'
+                      : 'Google sign-in is temporarily blocked. This happens when you dismiss the sign-in prompt multiple times.'}
+                  </div>
+                  <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.6, marginBottom: 8 }}>
+                    <strong style={{ color: tokens.textPrimary }}>To fix this:</strong>
+                    <ul style={{ margin: '6px 0 0 16px', paddingLeft: 16, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
+                      <li style={{ marginBottom: 4 }}>Click the lock icon 🔒 or info icon ⓘ to the left of the URL bar</li>
+                      <li style={{ marginBottom: 4 }}>Find "Third-party sign-in" or "Federated login"</li>
+                      <li style={{ marginBottom: 4 }}>Click "Reset" or "Allow" to re-enable Google sign-in</li>
+                      <li>Refresh this page and try again</li>
+                    </ul>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFedcmLocked(false);
+                      setFedcmLockType(null);
+                      setSnackbar({ open: true, message: 'After fixing the browser settings, click "Continue with Google" to try again.', severity: 'info' });
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: `1px solid ${tokens.warning}`,
+                      color: tokens.warning,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    I've fixed it - Dismiss
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFedcmLocked(false);
+                    setFedcmLockType(null);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+                    padding: 4,
+                    display: 'flex',
+                  }}
+                >
+                  <Icon.X s={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Google Sign In — custom responsive button */}
           <button
             type="button"
@@ -608,7 +768,37 @@ const Login = () => {
                   // Reset the flag when prompt closes (regardless of outcome)
                   googlePromptInProgress.current = false;
                   if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                    console.log('[GoogleAuth] Prompt not displayed:', notification.getNotDisplayedReason() || notification.getSkippedReason());
+                    const reason = notification.getNotDisplayedReason() || notification.getSkippedReason();
+                    console.log('[GoogleAuth] Prompt not displayed:', reason);
+                    
+                    // Detect FedCM lockout - expanded list of reasons
+                    const lockoutReasons = [
+                      'FEDERATED_LOGIN_DISABLED',
+                      'USER_CANCELLED',
+                      'TOO_MANY_ATTEMPTS',
+                      'UNKNOWN_REASON',
+                      'ABORT_ERROR',
+                      'SIGNAL_ABORTED',
+                      'FEDCM_DISABLED',
+                      'THIRD_PARTY_COOKIES_DISABLED'
+                      // Note: TAP_OUTSIDE is not a lockout - it's just user dismissal
+                    ];
+                    
+                    if (lockoutReasons.includes(reason) || 
+                        reason?.includes('abort') || 
+                        reason?.includes('disabled') ||
+                        reason?.includes('FEDCM')) {
+                      setFedcmLocked(true);
+                      setFedcmLockType(reason === 'FEDERATED_LOGIN_DISABLED' ? 'permanent' : 'temporary');
+                      console.log('[GoogleAuth] FedCM locked:', reason);
+                    }
+                    
+                    // If prompt not shown for any reason, show banner immediately
+                    if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                      console.log('[GoogleAuth] Prompt failed - showing banner immediately');
+                      setFedcmLocked(true);
+                      setFedcmLockType('temporary');
+                    }
                   }
                 });
               } else {

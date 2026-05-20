@@ -54,62 +54,105 @@ const wrapEmail = (content, subject) => {
       background-color: #F5FBF8;
       line-height: 1.6;
       color: ${BRAND.textPrimary};
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     
     .email-wrapper {
       max-width: 600px;
       margin: 0 auto;
-      padding: 40px 20px;
+      padding: 20px;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .email-wrapper {
+        padding: 10px;
+      }
     }
     
     .email-container {
       background: #FFFFFF;
-      border-radius: 20px;
+      border-radius: 16px;
       overflow: hidden;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
     }
     
     .email-header {
       background: linear-gradient(135deg, ${BRAND.primary} 0%, ${BRAND.accent} 100%);
-      padding: 40px 30px;
+      padding: 32px 24px;
       text-align: center;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .email-header {
+        padding: 24px 16px;
+      }
+    }
+    
+    .email-header .logo {
+      max-width: 80px;
+      height: auto;
+      margin-bottom: 16px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 8px;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .email-header .logo {
+        max-width: 60px;
+        padding: 6px;
+      }
     }
     
     .email-header h1 {
       color: #FFFFFF;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 700;
       margin: 0;
       letter-spacing: -0.02em;
     }
     
-    .email-header .logo {
-      margin-bottom: 16px;
-    }
-    
-    .email-header .logo-text {
-      color: #FFFFFF;
-      font-size: 32px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
+    @media only screen and (max-width: 620px) {
+      .email-header h1 {
+        font-size: 18px;
+      }
     }
     
     .email-body {
-      padding: 40px 30px;
+      padding: 32px 24px;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .email-body {
+        padding: 24px 16px;
+      }
     }
     
     .greeting {
       font-size: 18px;
       font-weight: 600;
       color: ${BRAND.textPrimary};
-      margin-bottom: 16px;
+      margin-bottom: 12px;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .greeting {
+        font-size: 16px;
+      }
     }
     
     .message {
       font-size: 15px;
       color: ${BRAND.textSecondary};
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       line-height: 1.7;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .message {
+        font-size: 14px;
+      }
     }
     
     .cta-button {
@@ -117,40 +160,68 @@ const wrapEmail = (content, subject) => {
       background: linear-gradient(135deg, ${BRAND.primary} 0%, ${BRAND.accent} 100%);
       color: #FFFFFF !important;
       text-decoration: none;
-      padding: 16px 32px;
-      border-radius: 12px;
+      padding: 14px 28px;
+      border-radius: 10px;
       font-weight: 700;
       font-size: 15px;
-      box-shadow: 0 8px 24px rgba(12, 189, 115, 0.35);
-      margin: 16px 0;
+      box-shadow: 0 4px 16px rgba(12, 189, 115, 0.3);
+      margin: 12px 0;
     }
     
     .cta-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 32px rgba(12, 189, 115, 0.45);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(12, 189, 115, 0.4);
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .cta-button {
+        display: block;
+        width: 100%;
+        text-align: center;
+        padding: 12px 20px;
+        font-size: 14px;
+      }
     }
     
     .info-box {
       background: ${BRAND.surfaceAlt};
       border: 1px solid ${BRAND.surfaceBorder};
       border-radius: 12px;
-      padding: 20px;
-      margin: 24px 0;
+      padding: 18px;
+      margin: 20px 0;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .info-box {
+        padding: 14px;
+      }
     }
     
     .info-box-title {
       font-size: 14px;
       font-weight: 700;
       color: ${BRAND.textPrimary};
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       display: flex;
       align-items: center;
       gap: 8px;
     }
     
+    @media only screen and (max-width: 620px) {
+      .info-box-title {
+        font-size: 13px;
+      }
+    }
+    
     .info-box-content {
       font-size: 14px;
       color: ${BRAND.textSecondary};
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .info-box-content {
+        font-size: 13px;
+      }
     }
     
     .status-badge {
@@ -183,19 +254,31 @@ const wrapEmail = (content, subject) => {
     .divider {
       height: 1px;
       background: ${BRAND.surfaceBorder};
-      margin: 24px 0;
+      margin: 20px 0;
     }
     
     .footer {
-      padding: 30px;
+      padding: 24px;
       text-align: center;
       background: ${BRAND.surfaceAlt};
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .footer {
+        padding: 16px;
+      }
     }
     
     .footer-text {
       font-size: 13px;
       color: ${BRAND.textSecondary};
       margin-bottom: 8px;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .footer-text {
+        font-size: 12px;
+      }
     }
     
     .footer-links {
@@ -211,15 +294,22 @@ const wrapEmail = (content, subject) => {
     
     .details-list {
       list-style: none;
-      margin: 16px 0;
+      margin: 12px 0;
     }
     
     .details-list li {
       display: flex;
       justify-content: space-between;
-      padding: 12px 0;
+      padding: 10px 0;
       border-bottom: 1px solid ${BRAND.surfaceBorder};
       font-size: 14px;
+    }
+    
+    @media only screen and (max-width: 620px) {
+      .details-list li {
+        font-size: 13px;
+        padding: 8px 0;
+      }
     }
     
     .details-list li:last-child {
@@ -227,27 +317,13 @@ const wrapEmail = (content, subject) => {
     }
     
     .details-list .label {
+      font-weight: 600;
       color: ${BRAND.textSecondary};
-      font-weight: 500;
     }
     
     .details-list .value {
-      color: ${BRAND.textPrimary};
       font-weight: 600;
-    }
-    
-    @media (max-width: 480px) {
-      .email-wrapper {
-        padding: 20px 16px;
-      }
-      
-      .email-body {
-        padding: 30px 20px;
-      }
-      
-      .email-header {
-        padding: 30px 20px;
-      }
+      color: ${BRAND.textPrimary};
     }
   </style>
 </head>
@@ -255,7 +331,7 @@ const wrapEmail = (content, subject) => {
   <div class="email-wrapper">
     <div class="email-container">
       <div class="email-header">
-        <div class="logo-text">eexams</div>
+        <img src="https://testfyrwanda.com/logo.png" alt="eexams Logo" class="logo" onerror="this.style.display='none'">
         <h1>${subject}</h1>
       </div>
       <div class="email-body">
@@ -785,6 +861,369 @@ const sendPasswordResetConfirmationEmail = async (user) => {
   }
 };
 
+/**
+ * Send welcome email to newly created student with their credentials
+ */
+const sendStudentWelcomeEmail = async (student, password) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, student welcome email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const content = `
+      <p class="greeting">Hello ${student.firstName || 'there'},</p>
+      
+      <p class="message">
+        Your teacher has created an account for you on eexams. You can now log in and take exams assigned to you.
+      </p>
+      
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: rgba(12, 189, 115, 0.05);">
+        <div class="info-box-title" style="color: ${BRAND.accent};">
+          <span style="font-size: 18px;">🔐</span> Your Login Credentials
+        </div>
+        <ul class="details-list">
+          <li>
+            <span class="label">Email</span>
+            <span class="value">${student.email}</span>
+          </li>
+          <li>
+            <span class="label">Default Password</span>
+            <span class="value" style="color: ${BRAND.accent}; font-family: monospace; font-size: 16px;">${password}</span>
+          </li>
+        </ul>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">⚠️</span> Important
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0; line-height: 1.6;">
+            Please log in and change your password as soon as possible for security.
+          </p>
+        </div>
+      </div>
+      
+      <div style="text-align: center;">
+        <a href="${CLIENT_URL}/login" class="cta-button">
+          Log In Now →
+        </a>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="message" style="font-size: 13px; text-align: center;">
+        If you have any trouble logging in, contact your teacher or email 
+        <a href="mailto:support@eexams.com" style="color: ${BRAND.accent}; font-weight: 600;">support@eexams.com</a>
+      </p>
+    `;
+
+    const email = wrapEmail(content, 'Your eexams Account Has Been Created');
+    email.to = student.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Student welcome email sent to ${student.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send student welcome email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send welcome email to teacher when their account is created
+ */
+const sendTeacherWelcomeEmail = async (teacher, password, organization) => {
+  try {
+    console.log('[EmailService] Attempting to send teacher welcome email to:', teacher.email);
+    console.log('[EmailService] SENDGRID_API_KEY configured:', !!process.env.SENDGRID_API_KEY);
+    console.log('[EmailService] FROM_EMAIL:', process.env.SENDGRID_FROM_EMAIL);
+    
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, teacher welcome email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const content = `
+      <p class="greeting">Hello ${teacher.firstName || 'there'},</p>
+      
+      <p class="message">
+        You have been added as a teacher to ${organization || 'eexams'}. Your account has been created and you can now log in to start creating exams and managing students.
+      </p>
+      
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: rgba(12, 189, 115, 0.05);">
+        <div class="info-box-title" style="color: ${BRAND.accent};">
+          <span style="font-size: 18px;">🔐</span> Your Login Credentials
+        </div>
+        <ul class="details-list">
+          <li>
+            <span class="label">Email</span>
+            <span class="value">${teacher.email}</span>
+          </li>
+          <li>
+            <span class="label">Password</span>
+            <span class="value" style="color: ${BRAND.accent}; font-family: monospace; font-size: 16px;">${password}</span>
+          </li>
+        </ul>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">📚</span> What You Can Do
+        </div>
+        <div class="info-box-content">
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+            <li>Create and manage exams</li>
+            <li>Add and manage students</li>
+            <li>View exam results and analytics</li>
+            <li>Share exams with other teachers</li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">⚠️</span> Important
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0; line-height: 1.6;">
+            Please log in and change your password as soon as possible for security.
+          </p>
+        </div>
+      </div>
+      
+      <div style="text-align: center;">
+        <a href="${CLIENT_URL}/login" class="cta-button">
+          Log In Now →
+        </a>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="footer-text">
+        If you have any trouble logging in, please contact your organization administrator.
+      </p>
+    `;
+
+    const email = wrapEmail(content, `Welcome to ${organization || 'eexams'} - Your Teacher Account`);
+    email.to = teacher.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Teacher welcome email sent to ${teacher.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Teacher welcome email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send update notification to teacher when their account is updated
+ */
+const sendTeacherUpdateEmail = async (teacher, changes, organization) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, teacher update email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const changesList = Object.entries(changes)
+      .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
+      .join('');
+
+    const content = `
+      <p class="greeting">Hello ${teacher.firstName || 'there'},</p>
+      
+      <p class="message">
+        Your teacher account at ${organization || 'eexams'} has been updated.
+      </p>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">📝</span> Changes Made
+        </div>
+        <div class="info-box-content">
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+            ${changesList}
+          </ul>
+        </div>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">ℹ️</span> Information
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0; line-height: 1.6;">
+            If you did not request these changes or have any questions, please contact your organization administrator.
+          </p>
+        </div>
+      </div>
+      
+      <div style="text-align: center;">
+        <a href="${CLIENT_URL}/login" class="cta-button">
+          Log In to Your Account →
+        </a>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="footer-text">
+        If you have any questions, please contact your organization administrator.
+      </p>
+    `;
+
+    const email = wrapEmail(content, `Your Teacher Account at ${organization || 'eexams'} Has Been Updated`);
+    email.to = teacher.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Teacher update email sent to ${teacher.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Teacher update email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send update notification to student when their account is updated
+ */
+const sendStudentUpdateEmail = async (student, changes) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, student update email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const changesList = Object.entries(changes)
+      .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
+      .join('');
+
+    const content = `
+      <p class="greeting">Hello ${student.firstName || 'there'},</p>
+      
+      <p class="message">
+        Your eexams account has been updated.
+      </p>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">📝</span> Changes Made
+        </div>
+        <div class="info-box-content">
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+            ${changesList}
+          </ul>
+        </div>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">ℹ️</span> Information
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0; line-height: 1.6;">
+            If you did not request these changes or have any questions, please contact your teacher or organization administrator.
+          </p>
+        </div>
+      </div>
+      
+      <div style="text-align: center;">
+        <a href="${CLIENT_URL}/login" class="cta-button">
+          Log In to Your Account →
+        </a>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="footer-text">
+        If you have any questions, please contact your teacher or organization administrator.
+      </p>
+    `;
+
+    const email = wrapEmail(content, 'Your eexams Account Has Been Updated');
+    email.to = student.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Student update email sent to ${student.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Student update email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send password reset notification to student when teacher resets their password
+ */
+const sendStudentPasswordResetEmail = async (student, newPassword) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, student password reset email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const content = `
+      <p class="greeting">Hello ${student.firstName || 'there'},</p>
+      
+      <p class="message">
+        Your teacher has reset your eexams password. You can log in with your new password below.
+      </p>
+      
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: rgba(12, 189, 115, 0.05);">
+        <div class="info-box-title" style="color: ${BRAND.accent};">
+          <span style="font-size: 18px;">🔐</span> Your New Password
+        </div>
+        <ul class="details-list">
+          <li>
+            <span class="label">Email</span>
+            <span class="value">${student.email}</span>
+          </li>
+          <li>
+            <span class="label">New Password</span>
+            <span class="value" style="color: ${BRAND.accent}; font-family: monospace; font-size: 16px;">${newPassword}</span>
+          </li>
+        </ul>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">⚠️</span> Important
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0; line-height: 1.6;">
+            Please log in and change your password as soon as possible for security.
+          </p>
+        </div>
+      </div>
+      
+      <div style="text-align: center;">
+        <a href="${CLIENT_URL}/login" class="cta-button">
+          Log In Now →
+        </a>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="message" style="font-size: 13px; text-align: center;">
+        If you did not request this password reset, please contact your teacher or email 
+        <a href="mailto:support@eexams.com" style="color: ${BRAND.accent}; font-weight: 600;">support@eexams.com</a>
+      </p>
+    `;
+
+    const email = wrapEmail(content, 'Your Password Has Been Reset');
+    email.to = student.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Student password reset email sent to ${student.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send student password reset email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendWelcomeEmail,
   sendPendingApprovalEmail,
@@ -793,6 +1232,11 @@ module.exports = {
   sendExamApprovedEmail,
   sendExamPendingApprovalEmail,
   sendPasswordResetConfirmationEmail,
+  sendStudentWelcomeEmail,
+  sendStudentPasswordResetEmail,
+  sendStudentUpdateEmail,
+  sendTeacherWelcomeEmail,
+  sendTeacherUpdateEmail,
   FROM_EMAIL,
   CLIENT_URL,
 };

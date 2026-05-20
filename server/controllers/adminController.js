@@ -1760,8 +1760,18 @@ const toggleExamLock = async (req, res) => {
 // @access  Private/Admin
 const getActivityLogs = async (req, res) => {
   try {
-    const logs = await ActivityLog.find({})
-      .populate('user', 'firstName lastName email')
+    let userFilter = {};
+
+    if (req.user.role === 'admin') {
+      // Find teachers under this admin
+      const teachers = await User.find({ role: 'teacher', parentAdmin: req.user._id }).select('_id');
+      const teacherIds = teachers.map(t => t._id);
+      // Include admin's own actions + teacher actions
+      userFilter = { user: { $in: [req.user._id, ...teacherIds] } };
+    }
+
+    const logs = await ActivityLog.find(userFilter)
+      .populate('user', 'firstName lastName email role')
       .sort({ timestamp: -1 })
       .limit(50);
 

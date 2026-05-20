@@ -217,6 +217,32 @@ function TagInput({ label, value, onChange }) {
   );
 }
 
+const ACTION_LABELS = {
+  add_teacher: { label: 'Added teacher', color: '#0CBD73', bg: 'rgba(12,189,115,0.1)' },
+  edit_teacher: { label: 'Edited teacher', color: '#6366F1', bg: 'rgba(99,102,241,0.1)' },
+  delete_teacher: { label: 'Deleted teacher', color: '#EF4444', bg: 'rgba(239,68,68,0.08)' },
+  create_exam: { label: 'Created exam', color: '#0D406C', bg: 'rgba(13,64,108,0.08)' },
+  edit_exam: { label: 'Edited exam', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' },
+  schedule_exam: { label: 'Scheduled exam', color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' },
+  lock_exam: { label: 'Locked exam', color: '#EF4444', bg: 'rgba(239,68,68,0.08)' },
+  unlock_exam: { label: 'Unlocked exam', color: '#0CBD73', bg: 'rgba(12,189,115,0.1)' },
+  add_student: { label: 'Added student', color: '#0D406C', bg: 'rgba(13,64,108,0.08)' },
+  edit_student: { label: 'Edited student', color: '#6366F1', bg: 'rgba(99,102,241,0.1)' },
+  delete_student: { label: 'Deleted student', color: '#EF4444', bg: 'rgba(239,68,68,0.08)' },
+  grade_exam: { label: 'Graded exam', color: '#0CBD73', bg: 'rgba(12,189,115,0.1)' },
+  login: { label: 'Logged in', color: '#6366F1', bg: 'rgba(99,102,241,0.1)' },
+};
+
+function timeAgo(ts) {
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 function TeachersSection({ teachers, setTeachers }) {
   const isXs = useMediaQuery('(max-width:600px)');
   const [addOpen, setAddOpen] = useState(false);
@@ -231,6 +257,12 @@ function TeachersSection({ teachers, setTeachers }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [genderFilter, setGenderFilter] = useState('');
   const [addError, setAddError] = useState('');
+  const [activities, setActivities] = useState([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/admin/activity-logs').then(r => setActivities(r.data || [])).catch(() => {}).finally(() => setActivitiesLoading(false));
+  }, []);
 
   const handleAdd = async () => {
     setSaving(true);
@@ -463,6 +495,39 @@ function TeachersSection({ teachers, setTeachers }) {
         </DialogActions>
       </Dialog>
 
+      {/* Recent Teacher Activities */}
+      <Box sx={{ mt: 3 }}>
+        <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "'DM Sans',sans-serif", mb: 1.5 }}>Recent Activities</Typography>
+        <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', p: 2 }}>
+          {activitiesLoading
+            ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} sx={{ color: tokens.accent }} /></Box>
+            : activities.length === 0
+              ? <Typography sx={{ color: tokens.textMuted, fontSize: 13, textAlign: 'center', py: 3 }}>No recent activity.</Typography>
+              : activities.slice(0, 15).map((a, i) => {
+                  const meta = ACTION_LABELS[a.action] || { label: a.action, color: tokens.textSecondary, bg: '#F8FAFC' };
+                  const name = a.user ? `${a.user.firstName || ''} ${a.user.lastName || ''}`.trim() : 'Unknown';
+                  const role = a.user?.role;
+                  const detail = a.details?.teacherName || a.details?.examTitle || a.details?.studentName || '';
+                  return (
+                    <Box key={a._id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, py: 1.25, borderBottom: i < 14 ? `1px solid ${tokens.surfaceBorder}` : 'none' }}>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: meta.bg, color: meta.color, fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                        {name.charAt(0)}
+                      </Avatar>
+                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                          <Typography variant="body2" fontWeight={700} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{name}</Typography>
+                          {role && <Chip label={role} size="small" sx={{ fontSize: 10, height: 18, bgcolor: role === 'teacher' ? 'rgba(99,102,241,0.1)' : 'rgba(13,64,108,0.08)', color: role === 'teacher' ? '#4F46E5' : tokens.primary, fontWeight: 600 }} />}
+                          <Chip label={meta.label} size="small" sx={{ fontSize: 10, height: 18, bgcolor: meta.bg, color: meta.color, fontWeight: 600 }} />
+                          {detail && <Typography variant="caption" sx={{ color: tokens.textMuted, fontStyle: 'italic' }}>— {detail}</Typography>}
+                        </Box>
+                      </Box>
+                      <Typography variant="caption" sx={{ color: tokens.textMuted, whiteSpace: 'nowrap', flexShrink: 0 }}>{timeAgo(a.timestamp)}</Typography>
+                    </Box>
+                  );
+                })}
+        </Paper>
+      </Box>
+
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700 }}>Delete Teacher</DialogTitle>
@@ -492,30 +557,224 @@ function TeachersSection({ teachers, setTeachers }) {
   );
 }
 
+function getPerfTier(avg) {
+  if (avg === null) return { label: 'No Data', color: '#94A3B8', bg: '#F1F5F9' };
+  if (avg >= 80) return { label: 'Excellent', color: '#0CBD73', bg: 'rgba(12,189,115,0.1)' };
+  if (avg >= 60) return { label: 'Good', color: '#6366F1', bg: 'rgba(99,102,241,0.1)' };
+  if (avg >= 40) return { label: 'Average', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' };
+  return { label: 'Needs Help', color: '#EF4444', bg: 'rgba(239,68,68,0.08)' };
+}
+
+function getPerfFeedback(avg, examsCount) {
+  if (avg === null || examsCount === 0) return 'No exams taken yet.';
+  if (avg >= 80) return 'Outstanding performance — keep it up!';
+  if (avg >= 60) return 'Good results with room to improve.';
+  if (avg >= 40) return 'Performing at average — needs more practice.';
+  return 'Struggling — consider extra support sessions.';
+}
+
 function StudentsSection() {
-  const [students,setStudents]=useState([]);
-  const [loading,setLoading]=useState(true);
-  useEffect(()=>{api.get('/admin/students').then(r=>setStudents(r.data||[])).finally(()=>setLoading(false));},[]);
-  return(
+  const [students, setStudents] = useState([]);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [perfFilter, setPerfFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [detailStudent, setDetailStudent] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/admin/students'),
+      api.get('/admin/results')
+    ]).then(([sr, rr]) => {
+      setStudents(sr.data || []);
+      const raw = rr.data;
+      setResults(Array.isArray(raw) ? raw : (raw?.results || []));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const studentStats = students.map(s => {
+    const sResults = results.filter(r => r.student?._id === s._id || r.student === s._id);
+    const examsCount = sResults.length;
+    const avg = examsCount > 0
+      ? Math.round(sResults.reduce((acc, r) => acc + (r.percentage ?? 0), 0) / examsCount)
+      : null;
+    const best = examsCount > 0 ? Math.max(...sResults.map(r => r.percentage ?? 0)) : null;
+    const tier = getPerfTier(avg);
+    return { ...s, examsCount, avg, best, tier };
+  });
+
+  const filtered = studentStats.filter(s => {
+    const matchSearch = `${s.firstName} ${s.lastName} ${s.email}`.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === '' ? true : statusFilter === 'blocked' ? s.isBlocked : !s.isBlocked;
+    const matchPerf = perfFilter === '' ? true : s.tier.label === perfFilter;
+    return matchSearch && matchStatus && matchPerf;
+  }).sort((a, b) => {
+    if (sortBy === 'score') return (b.avg ?? -1) - (a.avg ?? -1);
+    if (sortBy === 'exams') return b.examsCount - a.examsCount;
+    return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+  });
+
+  const totalExcellent = studentStats.filter(s => s.tier.label === 'Excellent').length;
+  const totalNeedsHelp = studentStats.filter(s => s.tier.label === 'Needs Help').length;
+  const overallAvg = studentStats.filter(s => s.avg !== null).length > 0
+    ? Math.round(studentStats.filter(s => s.avg !== null).reduce((a, s) => a + s.avg, 0) / studentStats.filter(s => s.avg !== null).length)
+    : null;
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress sx={{ color: tokens.accent }} /></Box>;
+
+  return (
     <Box>
-      <SectionTitle>Students</SectionTitle>
-      {loading?<Box sx={{display:'flex',justifyContent:'center',mt:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>:(
-        <Paper elevation={0} sx={{borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',overflow:'hidden'}}>
-          <TableContainer sx={{overflowX:'auto'}}><Table sx={{minWidth:480}}>
-            <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Student','Email','Class','Status'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
-            <TableBody>
-              {students.length===0?<TableRow><TableCell colSpan={4} align="center" sx={{py:5,color:tokens.textMuted}}>No students.</TableCell></TableRow>:
-              students.map(s=>(
-                <TableRow key={s._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
-                  <TableCell><Box sx={{display:'flex',alignItems:'center',gap:1.5}}><Avatar sx={{width:32,height:32,bgcolor:'rgba(12,189,115,0.1)',color:tokens.accent,fontWeight:700,fontSize:13}}>{s.firstName?.charAt(0)}</Avatar><Typography variant="body2" fontWeight={600}>{s.firstName} {s.lastName}</Typography></Box></TableCell>
-                  <TableCell><Typography variant="body2" sx={{color:tokens.textMuted}}>{s.email}</Typography></TableCell>
-                  <TableCell><Chip label={s.class||'N/A'} size="small" sx={{bgcolor:'rgba(13,64,108,0.07)',color:tokens.primary}}/></TableCell>
-                  <TableCell><Chip label={s.isBlocked?'Blocked':'Active'} size="small" sx={{bgcolor:s.isBlocked?'rgba(239,68,68,0.08)':'rgba(12,189,115,0.1)',color:s.isBlocked?'#EF4444':tokens.accentDark,fontWeight:600}}/></TableCell>
-                </TableRow>))}
-            </TableBody>
-          </Table></TableContainer>
-        </Paper>
-      )}
+      <SectionTitle>Students ({students.length})</SectionTitle>
+
+      {/* Performance Summary Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {[
+          { label: 'Total Students', value: students.length, color: tokens.primary, bg: 'rgba(13,64,108,0.08)' },
+          { label: 'Class Average', value: overallAvg !== null ? `${overallAvg}%` : '—', color: '#6366F1', bg: 'rgba(99,102,241,0.09)' },
+          { label: 'Excellent (≥80%)', value: totalExcellent, color: tokens.accentDark, bg: 'rgba(12,189,115,0.09)' },
+          { label: 'Needs Help (<40%)', value: totalNeedsHelp, color: '#EF4444', bg: 'rgba(239,68,68,0.07)' },
+        ].map((card, i) => (
+          <Grid item xs={6} sm={3} key={i}>
+            <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+              <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: card.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
+                <Typography fontWeight={800} sx={{ color: card.color, fontSize: 14 }}>{card.value}</Typography>
+              </Box>
+              <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>{card.label}</Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Filters Row */}
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <TextField size="small" placeholder="Search students…" value={search} onChange={e => setSearch(e.target.value)}
+          sx={{ width: 180, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <Select size="small" value={perfFilter} onChange={e => setPerfFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 130, fontSize: 13 }}>
+          <MenuItem value="">All Performance</MenuItem>
+          <MenuItem value="Excellent">Excellent (≥80%)</MenuItem>
+          <MenuItem value="Good">Good (60–79%)</MenuItem>
+          <MenuItem value="Average">Average (40–59%)</MenuItem>
+          <MenuItem value="Needs Help">Needs Help (&lt;40%)</MenuItem>
+          <MenuItem value="No Data">No Exams Yet</MenuItem>
+        </Select>
+        <Select size="small" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 110, fontSize: 13 }}>
+          <MenuItem value="">All Status</MenuItem>
+          <MenuItem value="active">Active</MenuItem>
+          <MenuItem value="blocked">Blocked</MenuItem>
+        </Select>
+        <Select size="small" value={sortBy} onChange={e => setSortBy(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 120, fontSize: 13 }}>
+          <MenuItem value="name">Sort: Name</MenuItem>
+          <MenuItem value="score">Sort: Score ↓</MenuItem>
+          <MenuItem value="exams">Sort: Exams ↓</MenuItem>
+        </Select>
+      </Box>
+
+      <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
+        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 620 }}>
+          <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+            {['Student', 'Email / Class', 'Exams Taken', 'Avg Score', 'Performance', 'Feedback', 'Status'].map(h =>
+              <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, whiteSpace: 'nowrap' }}>{h}</TableCell>)}
+          </TableRow></TableHead>
+          <TableBody>
+            {filtered.length === 0
+              ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>No students match your filters.</TableCell></TableRow>
+              : filtered.map(s => (
+                <TableRow key={s._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' }, cursor: 'pointer' }} onClick={() => setDetailStudent(s)}>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, fontSize: 13 }}>{s.firstName?.charAt(0)}</Avatar>
+                      <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{s.firstName} {s.lastName}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted }}>{s.email}</Typography>
+                    {s.class && <Chip label={s.class} size="small" sx={{ mt: 0.25, fontSize: 10, height: 18, bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} />}
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={700} sx={{ color: tokens.textPrimary }}>{s.examsCount}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    {s.avg !== null
+                      ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <Typography variant="body2" fontWeight={700} sx={{ color: s.tier.color }}>{s.avg}%</Typography>
+                          <LinearProgress variant="determinate" value={s.avg} sx={{ width: 50, height: 5, borderRadius: 3, bgcolor: s.tier.bg, '& .MuiLinearProgress-bar': { bgcolor: s.tier.color } }} />
+                        </Box>
+                      : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={s.tier.label} size="small" sx={{ bgcolor: s.tier.bg, color: s.tier.color, fontWeight: 700, fontSize: 11 }} />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted, fontStyle: 'italic', maxWidth: 160, display: 'block' }}>
+                      {getPerfFeedback(s.avg, s.examsCount)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={s.isBlocked ? 'Blocked' : 'Active'} size="small" sx={{ bgcolor: s.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: s.isBlocked ? '#EF4444' : tokens.accentDark, fontWeight: 600 }} />
+                  </TableCell>
+                </TableRow>
+              ))}
+          </TableBody>
+        </Table></TableContainer>
+      </Paper>
+
+      {/* Student Detail Dialog */}
+      <Dialog open={!!detailStudent} onClose={() => setDetailStudent(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {detailStudent && (() => {
+          const sResults = results.filter(r => r.student?._id === detailStudent._id || r.student === detailStudent._id);
+          return (
+            <>
+              <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                {detailStudent.firstName} {detailStudent.lastName}
+                <IconButton size="small" onClick={() => setDetailStudent(null)}><Close fontSize="small" /></IconButton>
+              </DialogTitle>
+              <DialogContent>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                  <Chip label={detailStudent.tier.label} sx={{ bgcolor: detailStudent.tier.bg, color: detailStudent.tier.color, fontWeight: 700 }} />
+                  {detailStudent.class && <Chip label={`Class: ${detailStudent.class}`} sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} />}
+                  <Chip label={detailStudent.isBlocked ? 'Blocked' : 'Active'} sx={{ bgcolor: detailStudent.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: detailStudent.isBlocked ? '#EF4444' : tokens.accentDark }} />
+                </Box>
+                <Typography variant="body2" sx={{ color: tokens.textMuted, mb: 0.5 }}>{detailStudent.email}</Typography>
+                <Box sx={{ p: 1.5, bgcolor: detailStudent.tier.bg, borderRadius: 2, mb: 2 }}>
+                  <Typography variant="body2" fontWeight={600} sx={{ color: detailStudent.tier.color }}>
+                    💬 {getPerfFeedback(detailStudent.avg, detailStudent.examsCount)}
+                  </Typography>
+                </Box>
+                <Grid container spacing={1.5} sx={{ mb: 2 }}>
+                  {[
+                    { label: 'Exams Taken', value: detailStudent.examsCount },
+                    { label: 'Avg Score', value: detailStudent.avg !== null ? `${detailStudent.avg}%` : '—' },
+                    { label: 'Best Score', value: detailStudent.best !== null ? `${Math.round(detailStudent.best)}%` : '—' },
+                  ].map((m, i) => (
+                    <Grid item xs={4} key={i}>
+                      <Paper elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, textAlign: 'center' }}>
+                        <Typography fontWeight={800} sx={{ color: tokens.textPrimary, fontSize: 18 }}>{m.value}</Typography>
+                        <Typography sx={{ fontSize: 10.5, color: tokens.textMuted }}>{m.label}</Typography>
+                      </Paper>
+                    </Grid>
+                  ))}
+                </Grid>
+                {sResults.length > 0 && (
+                  <>
+                    <Typography fontWeight={700} sx={{ fontSize: 13, mb: 1 }}>Exam History</Typography>
+                    {sResults.slice(0, 6).map((r, i) => (
+                      <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.75, borderBottom: i < sResults.length - 1 ? `1px solid ${tokens.surfaceBorder}` : 'none' }}>
+                        <Typography variant="body2" sx={{ color: tokens.textPrimary, maxWidth: 160 }} noWrap>{r.exam?.title || 'Exam'}</Typography>
+                        <Chip label={`${Math.round(r.percentage ?? 0)}%`} size="small" sx={{ bgcolor: getPerfTier(r.percentage).bg, color: getPerfTier(r.percentage).color, fontWeight: 700, fontSize: 11 }} />
+                      </Box>
+                    ))}
+                  </>
+                )}
+              </DialogContent>
+              <DialogActions sx={{ px: 3, pb: 2 }}>
+                <Button onClick={() => setDetailStudent(null)} sx={{ borderRadius: 2, textTransform: 'none' }}>Close</Button>
+              </DialogActions>
+            </>
+          );
+        })()}
+      </Dialog>
     </Box>
   );
 }

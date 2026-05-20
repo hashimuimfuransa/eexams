@@ -15,6 +15,7 @@ const PLANS = {
     prioritySupport: false,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     examPerMonth: 5,
     storageLimit: 100, // MB
     features: [
@@ -39,6 +40,7 @@ const PLANS = {
     prioritySupport: false,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     examPerMonth: 30,
     storageLimit: 500, // MB
     features: [
@@ -62,6 +64,7 @@ const PLANS = {
     prioritySupport: true,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     examPerMonth: Infinity,
     storageLimit: 2000, // MB
     features: [
@@ -87,6 +90,7 @@ const PLANS = {
     prioritySupport: true,
     customBranding: true,
     apiAccess: true,
+    marketplaceAccess: true,
     examPerMonth: Infinity,
     storageLimit: 10000, // MB
     features: [
@@ -99,7 +103,8 @@ const PLANS = {
       'SLA guarantee',
       'On-premise deployment option',
       'Bulk student import',
-      'Multi-school management'
+      'Multi-school management',
+      'Marketplace access - list and sell exams'
     ]
   }
 };
@@ -145,6 +150,7 @@ const ORG_PLANS = {
     prioritySupport: false,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     storageLimit: 100,
     features: [
       '1 teacher account',
@@ -167,6 +173,7 @@ const ORG_PLANS = {
     prioritySupport: false,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     storageLimit: 1000,
     features: [
       'Up to 5 teacher accounts',
@@ -190,6 +197,7 @@ const ORG_PLANS = {
     prioritySupport: true,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     storageLimit: 5000,
     features: [
       'Up to 20 teacher accounts',
@@ -214,6 +222,7 @@ const ORG_PLANS = {
     prioritySupport: true,
     customBranding: true,
     apiAccess: true,
+    marketplaceAccess: true,
     storageLimit: 20000,
     features: [
       'Unlimited teacher accounts',
@@ -225,7 +234,8 @@ const ORG_PLANS = {
       'SLA guarantee',
       'On-premise option',
       'Bulk import',
-      'Multi-school management'
+      'Multi-school management',
+      'Marketplace access - list and sell exams'
     ]
   }
 };

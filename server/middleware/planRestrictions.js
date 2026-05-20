@@ -208,6 +208,23 @@ const requireCustomBranding = async (req, res, next) => {
   next();
 };
 
+// Middleware to check if user has marketplace access
+const requireMarketplaceAccess = async (req, res, next) => {
+  const user = req.user;
+  const { plan } = await resolveEffectivePlan(user);
+  
+  if (!hasFeature(plan, 'marketplaceAccess')) {
+    return res.status(403).json({
+      message: 'Marketplace access requires Enterprise plan. Please upgrade your subscription to list and sell exams on the marketplace.',
+      code: 'FEATURE_NOT_AVAILABLE',
+      upgradeRequired: true,
+      requiredPlan: 'enterprise'
+    });
+  }
+  
+  next();
+};
+
 // Get current plan usage stats
 const getPlanUsage = async (userId) => {
   try {
@@ -246,7 +263,8 @@ const getPlanUsage = async (userId) => {
         analytics: planConfig.analytics,
         prioritySupport: planConfig.prioritySupport,
         customBranding: planConfig.customBranding,
-        apiAccess: planConfig.apiAccess
+        apiAccess: planConfig.apiAccess,
+        marketplaceAccess: planConfig.marketplaceAccess
       }
     };
   } catch (error) {
@@ -265,5 +283,6 @@ module.exports = {
   requireAnalytics,
   requireAPIAccess,
   requireCustomBranding,
+  requireMarketplaceAccess,
   getPlanUsage
 };

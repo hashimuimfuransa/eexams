@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const { isAdminOrTeacher } = require('../middleware/role');
+const { requireMarketplaceAccess } = require('../middleware/planRestrictions');
 const {
   getMarketplaceExams,
   getMarketplaceExamById,
@@ -52,16 +53,16 @@ router.put('/exam-requests/:requestId/reset', isAdminOrTeacher, resetAccessLink)
 router.delete('/exam-requests/:requestId', isAdminOrTeacher, deleteExamRequest);
 
 // Teacher routes for managing marketplace exam settings
-router.put('/exams/:id/settings', isAdminOrTeacher, updateMarketplaceExamSettings);
+router.put('/exams/:id/settings', isAdminOrTeacher, requireMarketplaceAccess, updateMarketplaceExamSettings);
 
-// Level management routes (Teacher only)
-router.post('/levels', isAdminOrTeacher, createLevel);
-router.put('/levels/:id', isAdminOrTeacher, updateLevel);
-router.delete('/levels/:id', isAdminOrTeacher, deleteLevel);
+// Level management routes (Teacher only - requires marketplace access)
+router.post('/levels', isAdminOrTeacher, requireMarketplaceAccess, createLevel);
+router.put('/levels/:id', isAdminOrTeacher, requireMarketplaceAccess, updateLevel);
+router.delete('/levels/:id', isAdminOrTeacher, requireMarketplaceAccess, deleteLevel);
 
-// Sub-level management routes (Teacher only)
-router.post('/levels/:id/sublevels', isAdminOrTeacher, addSubLevel);
-router.put('/levels/:id/sublevels/:subLevelId', isAdminOrTeacher, updateSubLevel);
-router.delete('/levels/:id/sublevels/:subLevelId', isAdminOrTeacher, deleteSubLevel);
+// Sub-level management routes (Teacher only - requires marketplace access)
+router.post('/levels/:id/sublevels', isAdminOrTeacher, requireMarketplaceAccess, addSubLevel);
+router.put('/levels/:id/sublevels/:subLevelId', isAdminOrTeacher, requireMarketplaceAccess, updateSubLevel);
+router.delete('/levels/:id/sublevels/:subLevelId', isAdminOrTeacher, requireMarketplaceAccess, deleteSubLevel);
 
 module.exports = router;

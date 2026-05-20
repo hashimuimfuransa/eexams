@@ -13,6 +13,7 @@ export const PLANS = {
     prioritySupport: false,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     examPerMonth: 5,
     storageLimit: 100,
     color: '#94A3B8',
@@ -37,6 +38,7 @@ export const PLANS = {
     prioritySupport: false,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     examPerMonth: 30,
     storageLimit: 500,
     color: '#3B82F6',
@@ -61,6 +63,7 @@ export const PLANS = {
     prioritySupport: true,
     customBranding: false,
     apiAccess: false,
+    marketplaceAccess: false,
     examPerMonth: Infinity,
     storageLimit: 2000,
     color: '#8B5CF6',
@@ -87,6 +90,7 @@ export const PLANS = {
     prioritySupport: true,
     customBranding: true,
     apiAccess: true,
+    marketplaceAccess: true,
     examPerMonth: Infinity,
     storageLimit: 10000,
     color: '#F59E0B',
@@ -100,7 +104,8 @@ export const PLANS = {
       'SLA guarantee',
       'On-premise deployment option',
       'Bulk student import',
-      'Multi-school management'
+      'Multi-school management',
+      'Marketplace access - list and sell exams'
     ]
   }
 };
@@ -141,6 +146,7 @@ export const getUpgradeMessage = (feature) => {
     analytics: 'Analytics dashboard requires Basic plan or higher',
     customBranding: 'Custom branding requires Enterprise plan',
     apiAccess: 'API access requires Enterprise plan',
+    marketplaceAccess: 'Marketplace access requires Enterprise plan. Upgrade to list and sell exams on the marketplace.',
     maxExams: 'You\'ve reached your exam limit. Upgrade to create more exams.',
     maxStudents: 'You\'ve reached your student limit. Upgrade to add more students.',
     maxTeachers: 'You\'ve reached your teacher limit. Upgrade to add more teachers.'

@@ -26,6 +26,7 @@ import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } from './DashboardShell';
 import StudentManagement from '../components/teacher/StudentManagement';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
+import usePlan from '../hooks/usePlan';
 
 // Question Editor Component for Generated Exams
 const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, sections, onSectionChange }) => {
@@ -2144,8 +2145,7 @@ function ExamPreviewPanel({ exam }) {
 /* ── PUBLISH DIALOG ── */
 function PublishDialog({ examId, onClose }) {
   const { user } = useAuth();
-  const isCustomEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
-                             (user?.organization?.subscriptionPlan === 'enterprise' && user?.organization?.subscriptionType === 'custom');
+  const { hasMarketplaceAccess } = usePlan();
   const isXs = useMediaQuery('(max-width:600px)');
   const [tab, setTab] = useState(0);
   const [preview, setPreview] = useState(null);
@@ -3231,7 +3231,7 @@ function PublishDialog({ examId, onClose }) {
         )}
 
         {/* TAB 4 — PUBLIC MARKETPLACE (enterprise only) */}
-        {isCustomEnterprise && tab === 4 && (
+        {hasMarketplaceAccess && tab === 4 && (
           <Box sx={{ p: 3 }}>
             <MarketplaceManager exam={exam} />
           </Box>

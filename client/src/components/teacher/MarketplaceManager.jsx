@@ -32,10 +32,12 @@ import {
   InputAdornment,
   Tooltip
 } from '@mui/material';
-import { Check, X, Phone, Email, Person, Refresh, ContentCopy, Delete, Add, Edit, Visibility } from '@mui/icons-material';
+import { Check, X, Phone, Email, Person, Refresh, ContentCopy, Delete, Add, Edit, Visibility, Upgrade } from '@mui/icons-material';
 import api from '../../services/api';
+import usePlan from '../../hooks/usePlan';
 
 const MarketplaceManager = ({ exam }) => {
+  const { hasMarketplaceAccess, planName } = usePlan();
   const [settings, setSettings] = useState({
     isPubliclyListed: exam?.isPubliclyListed || false,
     publicPrice: exam?.publicPrice || 0,
@@ -309,6 +311,43 @@ const MarketplaceManager = ({ exam }) => {
       default: return 'default';
     }
   };
+
+  // Show upgrade prompt if user doesn't have marketplace access
+  if (!hasMarketplaceAccess) {
+    return (
+      <Box>
+        <Typography variant="h6" fontWeight={700} sx={{ mb: 3 }}>
+          🌐 Marketplace Settings
+        </Typography>
+        <Card elevation={0} sx={{ borderRadius: 3, border: '1px solid #e2e8f0', bgcolor: '#FFF8F0' }}>
+          <CardContent sx={{ textAlign: 'center', py: 6 }}>
+            <Upgrade sx={{ fontSize: 64, color: '#F59E0B', mb: 2 }} />
+            <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
+              Enterprise Feature
+            </Typography>
+            <Typography variant="body1" sx={{ color: '#64748b', mb: 3, maxWidth: 400, mx: 'auto' }}>
+              Marketplace access allows you to list and sell your exams on the public marketplace. 
+              Upgrade to Enterprise plan to unlock this feature.
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<Upgrade />}
+              sx={{ 
+                borderRadius: 2, 
+                textTransform: 'none', 
+                fontWeight: 700,
+                bgcolor: '#F59E0B',
+                '&:hover': { bgcolor: '#D97706' }
+              }}
+              onClick={() => window.location.href = '/pricing'}
+            >
+              Upgrade to Enterprise
+            </Button>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
 
   return (
     <Box>

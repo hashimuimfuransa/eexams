@@ -20,6 +20,7 @@ export default function usePlan() {
     hasPrioritySupport: hasFeature(plan, 'prioritySupport'),
     hasCustomBranding: hasFeature(plan, 'customBranding'),
     hasAPIAccess: hasFeature(plan, 'apiAccess'),
+    hasMarketplaceAccess: hasFeature(plan, 'marketplaceAccess'),
     
     // Limit checks (need to pass current count)
     checkExamLimit: (count) => checkLimit(plan, 'maxExams', count),

@@ -21,14 +21,10 @@ const createSuperAdmin = async (req, res) => {
       return res.status(400).json({ message: 'User with this email already exists' });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create super admin
+    // Create super admin (password will be hashed by User model pre-save hook)
     const superAdmin = await User.create({
       email: email.toLowerCase(),
-      password: hashedPassword,
+      password,
       firstName,
       lastName,
       phone: phone || '',
@@ -755,7 +751,7 @@ const getUserById = async (req, res) => {
 // @access  Private/SuperAdmin
 const updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, phone, role, organization, isBlocked, subscriptionPlan, subscriptionStatus } = req.body;
+    const { firstName, lastName, email, phone, role, organization, isBlocked, subscriptionPlan, subscriptionStatus, password, currentPassword } = req.body;
 
     const user = await User.findById(req.params.id);
 
@@ -768,16 +764,33 @@ const updateUser = async (req, res) => {
       return res.status(403).json({ message: 'Cannot demote a super admin' });
     }
 
+    // Handle email change for super admins - require current password
+    if (email && email !== user.email && user.role === 'superadmin') {
+      if (!currentPassword) {
+        return res.status(400).json({ message: 'Current password is required to change email' });
+      }
+      const isMatch = await user.comparePassword(currentPassword);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Current password is incorrect' });
+      }
+      user.email = email.toLowerCase();
+    }
+
     // Update fields
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
-    if (email) user.email = email;
+    if (email && user.role !== 'superadmin') user.email = email;
     if (phone) user.phone = phone;
     if (role) user.role = role;
     if (organization !== undefined) user.organization = organization;
     if (isBlocked !== undefined) user.isBlocked = isBlocked;
     if (subscriptionPlan) user.subscriptionPlan = subscriptionPlan;
     if (subscriptionStatus) user.subscriptionStatus = subscriptionStatus;
+
+    // Handle password change (will be hashed by User model pre-save hook)
+    if (password) {
+      user.password = password;
+    }
 
     await user.save();
 
@@ -832,11 +845,6 @@ const deleteUser = async (req, res) => {
     // Prevent deleting yourself
     if (user._id.toString() === req.user._id.toString()) {
       return res.status(403).json({ message: 'Cannot delete your own account' });
-    }
-
-    // Prevent deleting the main super admin
-    if (user.role === 'superadmin') {
-      return res.status(403).json({ message: 'Cannot delete a super admin account' });
     }
 
     const userEmail = user.email;

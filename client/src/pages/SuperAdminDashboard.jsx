@@ -593,6 +593,9 @@ function AllUsersSection() {
   const [createDialog, setCreateDialog] = useState(false);
   const [newSuperAdmin, setNewSuperAdmin] = useState({ firstName: '', lastName: '', email: '', password: '', phone: '', organization: '' });
   const [showPassword, setShowPassword] = useState(false);
+  const [editUserDialog, setEditUserDialog] = useState(null);
+  const [editUserData, setEditUserData] = useState({ firstName: '', lastName: '', email: '', phone: '', organization: '', password: '', currentPassword: '' });
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
   const fetchUsers=()=>{
@@ -659,6 +662,56 @@ function AllUsersSection() {
     }
   };
 
+  const handleEditUser = (user) => {
+    setEditUserDialog(user);
+    setEditUserData({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone || '',
+      organization: user.organization || '',
+      password: '',
+      currentPassword: ''
+    });
+  };
+
+  const handleSaveUserEdit = async () => {
+    if (!editUserData.firstName || !editUserData.lastName || !editUserData.email) {
+      setSnack({ open: true, msg: 'First name, last name, and email are required', severity: 'error' });
+      return;
+    }
+    setProcessing(true);
+    try {
+      const payload = {
+        firstName: editUserData.firstName,
+        lastName: editUserData.lastName,
+        email: editUserData.email,
+        phone: editUserData.phone,
+        organization: editUserData.organization
+      };
+      
+      // Only include password if it's not empty
+      if (editUserData.password) {
+        payload.password = editUserData.password;
+      }
+      
+      // Include current password if email is changing for super admin
+      if (editUserData.email !== editUserDialog.email && editUserDialog.role === 'superadmin') {
+        payload.currentPassword = editUserData.currentPassword;
+      }
+      
+      await api.put(`/superadmin/users/${editUserDialog._id}`, payload);
+      setSnack({ open: true, msg: 'User updated successfully', severity: 'success' });
+      setEditUserDialog(null);
+      setEditUserData({ firstName: '', lastName: '', email: '', phone: '', organization: '', password: '', currentPassword: '' });
+      fetchUsers();
+    } catch (err) {
+      setSnack({ open: true, msg: err.response?.data?.message || 'Failed to update user', severity: 'error' });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const filtered=users.filter(u=>`${u.firstName} ${u.lastName} ${u.email} ${u.organization||''}`.toLowerCase().includes(search.toLowerCase()));
 
   return(
@@ -707,6 +760,11 @@ function AllUsersSection() {
                   <TableCell><Chip label={u.isBlocked?'Blocked':u.subscriptionStatus==='pending'?'Pending':'Active'} size="small" sx={{bgcolor:u.isBlocked?'rgba(239,68,68,0.08)':u.subscriptionStatus==='pending'?'rgba(245,158,11,0.1)':'rgba(12,189,115,0.1)',color:u.isBlocked?'#EF4444':u.subscriptionStatus==='pending'?'#B45309':tokens.accentDark,fontWeight:600}}/></TableCell>
                   <TableCell>
                     <Box sx={{display:'flex',gap:0.5}}>
+                      <Tooltip title="Edit User">
+                        <IconButton size="small" onClick={()=>handleEditUser(u)} sx={{color:tokens.primary,bgcolor:`${tokens.primary}10`,'&:hover':{bgcolor:`${tokens.primary}20`}}}>
+                          <Edit fontSize="small"/>
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="View Details">
                         <IconButton size="small" onClick={()=>setViewUser(u)} sx={{color:tokens.primary,bgcolor:`${tokens.primary}10`,'&:hover':{bgcolor:`${tokens.primary}20`}}}>
                           <InfoOutlined fontSize="small"/>
@@ -913,6 +971,115 @@ function AllUsersSection() {
             startIcon={processing ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <Add fontSize="small" />}
           >
             {processing ? 'Creating...' : 'Create Super Admin'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={!!editUserDialog} onClose={() => setEditUserDialog(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans', sans-serif", pb: 1 }}>
+          Edit User
+          <IconButton size="small" onClick={() => setEditUserDialog(null)} sx={{ position: 'absolute', right: 16, top: 16, color: tokens.textMuted }}><Close fontSize="small" /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: '8px !important' }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="First Name"
+                size="small"
+                value={editUserData.firstName}
+                onChange={e => setEditUserData({ ...editUserData, firstName: e.target.value })}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Last Name"
+                size="small"
+                value={editUserData.lastName}
+                onChange={e => setEditUserData({ ...editUserData, lastName: e.target.value })}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Email"
+                size="small"
+                type="email"
+                value={editUserData.email}
+                onChange={e => setEditUserData({ ...editUserData, email: e.target.value })}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            {editUserDialog?.role === 'superadmin' && editUserData.email !== editUserDialog.email && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Current Password (required to change email)"
+                  size="small"
+                  type="password"
+                  value={editUserData.currentPassword}
+                  onChange={e => setEditUserData({ ...editUserData, currentPassword: e.target.value })}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
+            )}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="New Password (leave blank to keep current)"
+                size="small"
+                type={showEditPassword ? 'text' : 'password'}
+                value={editUserData.password}
+                onChange={e => setEditUserData({ ...editUserData, password: e.target.value })}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton size="small" onClick={() => setShowEditPassword(!showEditPassword)} edge="end">
+                        {showEditPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Phone"
+                size="small"
+                value={editUserData.phone}
+                onChange={e => setEditUserData({ ...editUserData, phone: e.target.value })}
+                placeholder="+250 7XX XXX XXX"
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Organization"
+                size="small"
+                value={editUserData.organization}
+                onChange={e => setEditUserData({ ...editUserData, organization: e.target.value })}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setEditUserDialog(null)} disabled={processing} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveUserEdit}
+            disabled={processing}
+            sx={{ borderRadius: 2, background: gradients.brand, textTransform: 'none', fontWeight: 700, px: 3 }}
+            startIcon={processing ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <Edit fontSize="small" />}
+          >
+            {processing ? 'Saving...' : 'Save Changes'}
           </Button>
         </DialogActions>
       </Dialog>

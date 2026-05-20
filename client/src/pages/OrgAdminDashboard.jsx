@@ -4,12 +4,12 @@ import {
   CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
   useMediaQuery, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, LinearProgress, IconButton, Tooltip, Avatar,
-  Select, MenuItem
+  Select, MenuItem, InputAdornment, FormControl, InputLabel, OutlinedInput
 } from '@mui/material';
 import {
   Dashboard as DashIcon, People, Assignment, BarChart, Settings,
   SupervisorAccount, TrendingUp, PersonAdd, CheckCircle,
-  Delete, Edit, Close, Add, ArrowForward
+  Delete, Edit, Close, Add, ArrowForward, Visibility, VisibilityOff, Male, Female
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -189,16 +189,47 @@ function OverviewSection({ stats, statsLoading, teachers, exams, results }) {
 }
 
 /* ── TEACHERS ── */
+function TagInput({ label, value, onChange }) {
+  const [input, setInput] = useState('');
+  const handleKey = (e) => {
+    if ((e.key === 'Enter' || e.key === ',') && input.trim()) {
+      e.preventDefault();
+      const tag = input.trim().replace(/,$/, '');
+      if (tag && !value.includes(tag)) onChange([...value, tag]);
+      setInput('');
+    } else if (e.key === 'Backspace' && !input && value.length) {
+      onChange(value.slice(0, -1));
+    }
+  };
+  return (
+    <Box sx={{ border: '1px solid rgba(0,0,0,0.23)', borderRadius: 2, px: 1.5, pt: 1, pb: 0.5, '&:hover': { borderColor: 'rgba(0,0,0,0.87)' }, minHeight: 40 }}>
+      <Typography variant="caption" sx={{ color: 'rgba(0,0,0,0.6)', fontSize: 11, display: 'block', mb: 0.25 }}>{label} — press Enter or comma to add</Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
+        {value.map((v, i) => (
+          <Chip key={i} label={v} size="small" onDelete={() => onChange(value.filter((_, idx) => idx !== i))}
+            sx={{ fontSize: 12, height: 24, bgcolor: 'rgba(13,64,108,0.09)', color: tokens.primary }} />
+        ))}
+      </Box>
+      <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
+        placeholder={value.length ? '' : `Add ${label.toLowerCase()}…`}
+        style={{ border: 'none', outline: 'none', fontSize: 13, width: '100%', padding: '2px 0', fontFamily: 'inherit', background: 'transparent' }} />
+    </Box>
+  );
+}
+
 function TeachersSection({ teachers, setTeachers }) {
   const isXs = useMediaQuery('(max-width:600px)');
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' });
-  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '' });
+  const emptyForm = { firstName: '', lastName: '', email: '', password: '', phone: '', gender: '', subjects: [], classes: [] };
+  const [form, setForm] = useState(emptyForm);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', gender: '', subjects: [], classes: [] });
+  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [genderFilter, setGenderFilter] = useState('');
   const [addError, setAddError] = useState('');
 
   const handleAdd = async () => {
@@ -208,7 +239,8 @@ function TeachersSection({ teachers, setTeachers }) {
       const r = await api.post('/admin/teachers', form);
       setTeachers(p => [...p, r.data]);
       setAddOpen(false);
-      setForm({ firstName: '', lastName: '', email: '', password: '' });
+      setForm(emptyForm);
+      setShowPassword(false);
     } catch (err) {
       setAddError(err.response?.data?.message || 'Failed to add teacher.');
     } finally { setSaving(false); }
@@ -235,14 +267,20 @@ function TeachersSection({ teachers, setTeachers }) {
   };
 
   const openEdit = (t) => {
-    setEditForm({ firstName: t.firstName || '', lastName: t.lastName || '', email: t.email || '' });
+    setEditForm({
+      firstName: t.firstName || '', lastName: t.lastName || '', email: t.email || '',
+      phone: t.phone || '', gender: t.gender || '',
+      subjects: Array.isArray(t.subjects) ? t.subjects : [],
+      classes: Array.isArray(t.classes) ? t.classes : []
+    });
     setEditTarget(t);
   };
 
   const filtered = teachers.filter(t => {
     const matchSearch = `${t.firstName} ${t.lastName} ${t.email}`.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === '' ? true : statusFilter === 'blocked' ? t.isBlocked : !t.isBlocked;
-    return matchSearch && matchStatus;
+    const matchGender = genderFilter === '' ? true : t.gender === genderFilter;
+    return matchSearch && matchStatus && matchGender;
   });
 
   return (
@@ -250,12 +288,18 @@ function TeachersSection({ teachers, setTeachers }) {
       <SectionTitle action={
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField size="small" placeholder="Search teachers…" value={search} onChange={e => setSearch(e.target.value)}
-            sx={{ width: 180, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            sx={{ width: 160, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
           <Select size="small" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} displayEmpty
             sx={{ borderRadius: 2, minWidth: 110, fontSize: 13 }}>
             <MenuItem value="">All Status</MenuItem>
             <MenuItem value="active">Active</MenuItem>
             <MenuItem value="blocked">Blocked</MenuItem>
+          </Select>
+          <Select size="small" value={genderFilter} onChange={e => setGenderFilter(e.target.value)} displayEmpty
+            sx={{ borderRadius: 2, minWidth: 110, fontSize: 13 }}>
+            <MenuItem value="">All Genders</MenuItem>
+            <MenuItem value="male">Male</MenuItem>
+            <MenuItem value="female">Female</MenuItem>
           </Select>
           <Button variant="contained" size="small" startIcon={<Add />} onClick={() => setAddOpen(true)}
             sx={{ borderRadius: 2.5, background: gradients.brand, textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -265,26 +309,43 @@ function TeachersSection({ teachers, setTeachers }) {
       }>Teachers ({teachers.length})</SectionTitle>
 
       <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
-        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 520 }}>
+        <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 620 }}>
           <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
-            {['Teacher', 'Email', 'Status', 'Joined', 'Actions'].map(h =>
+            {['Teacher', 'Email', 'Classes & Subjects', 'Status', 'Joined', 'Actions'].map(h =>
               <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, whiteSpace: 'nowrap' }}>{h}</TableCell>)}
           </TableRow></TableHead>
           <TableBody>
             {filtered.length === 0
-              ? <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: tokens.textMuted }}>No teachers found.</TableCell></TableRow>
+              ? <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: tokens.textMuted }}>No teachers found.</TableCell></TableRow>
               : filtered.map(t => (
                 <TableRow key={t._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(13,64,108,0.1)', color: tokens.primary, fontWeight: 700, fontSize: 14 }}>{t.firstName?.charAt(0)}</Avatar>
+                      <Avatar sx={{ width: 34, height: 34, bgcolor: t.gender === 'female' ? 'rgba(236,72,153,0.12)' : 'rgba(13,64,108,0.1)', color: t.gender === 'female' ? '#DB2777' : tokens.primary, fontWeight: 700, fontSize: 14 }}>
+                        {t.firstName?.charAt(0)}
+                      </Avatar>
                       <Box>
-                        <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{t.firstName} {t.lastName}</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'DM Sans',sans-serif" }}>{t.firstName} {t.lastName}</Typography>
+                          {t.gender === 'male' && <Male sx={{ fontSize: 14, color: tokens.primary, opacity: 0.7 }} />}
+                          {t.gender === 'female' && <Female sx={{ fontSize: 14, color: '#DB2777', opacity: 0.7 }} />}
+                        </Box>
                         {t.phone && <Typography variant="caption" sx={{ color: tokens.textMuted }}>📞 {t.phone}</Typography>}
                       </Box>
                     </Box>
                   </TableCell>
                   <TableCell><Typography variant="body2" sx={{ color: tokens.textMuted }}>{t.email}</Typography></TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4, maxWidth: 220 }}>
+                      {(Array.isArray(t.classes) ? t.classes : []).map((c, i) => (
+                        <Chip key={`c${i}`} label={c} size="small" sx={{ fontSize: 10, height: 20, bgcolor: 'rgba(99,102,241,0.09)', color: '#4F46E5', fontWeight: 600 }} />
+                      ))}
+                      {(Array.isArray(t.subjects) ? t.subjects : []).map((s, i) => (
+                        <Chip key={`s${i}`} label={s} size="small" sx={{ fontSize: 10, height: 20, bgcolor: 'rgba(12,189,115,0.09)', color: tokens.accentDark, fontWeight: 600 }} />
+                      ))}
+                      {!t.classes?.length && !t.subjects?.length && <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
+                    </Box>
+                  </TableCell>
                   <TableCell><Chip label={t.isBlocked ? 'Blocked' : 'Active'} size="small" sx={{ bgcolor: t.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: t.isBlocked ? '#EF4444' : tokens.accentDark, fontWeight: 600 }} /></TableCell>
                   <TableCell><Typography variant="caption" sx={{ color: tokens.textMuted }}>{t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</Typography></TableCell>
                   <TableCell>
@@ -304,7 +365,7 @@ function TeachersSection({ teachers, setTeachers }) {
       </Paper>
 
       {/* Add Teacher Dialog */}
-      <Dialog open={addOpen} onClose={() => { setAddOpen(false); setAddError(''); }} maxWidth="xs" fullWidth fullScreen={isXs} PaperProps={{ sx: { borderRadius: isXs ? 0 : 3 } }}>
+      <Dialog open={addOpen} onClose={() => { setAddOpen(false); setAddError(''); setForm(emptyForm); setShowPassword(false); }} maxWidth="sm" fullWidth fullScreen={isXs} PaperProps={{ sx: { borderRadius: isXs ? 0 : 3 } }}>
         <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Add Teacher</DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}>
           {addError && (
@@ -313,29 +374,87 @@ function TeachersSection({ teachers, setTeachers }) {
             </Box>
           )}
           <Grid container spacing={2}>
-            {[['First Name', 'firstName'], ['Last Name', 'lastName'], ['Email', 'email'], ['Password', 'password']].map(([label, key]) => (
-              <Grid item xs={12} key={key}>
-                <TextField fullWidth label={label} size="small" type={key === 'password' ? 'password' : 'text'} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-              </Grid>
-            ))}
+            <Grid item xs={6}>
+              <TextField fullWidth label="First Name" size="small" value={form.firstName} onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField fullWidth label="Last Name" size="small" value={form.lastName} onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Email" size="small" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Phone (optional)" size="small" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+                <InputLabel>Password</InputLabel>
+                <OutlinedInput
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                  endAdornment={
+                    <InputAdornment position="end">
+                      <IconButton size="small" onClick={() => setShowPassword(v => !v)} edge="end">
+                        {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  }
+                />
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <Select fullWidth size="small" value={form.gender} onChange={e => setForm(p => ({ ...p, gender: e.target.value }))} displayEmpty sx={{ borderRadius: 2 }}>
+                <MenuItem value="">Gender (optional)</MenuItem>
+                <MenuItem value="male">Male</MenuItem>
+                <MenuItem value="female">Female</MenuItem>
+              </Select>
+            </Grid>
+            <Grid item xs={12}>
+              <TagInput label="Classes" value={form.classes} onChange={v => setForm(p => ({ ...p, classes: v }))} />
+            </Grid>
+            <Grid item xs={12}>
+              <TagInput label="Subjects" value={form.subjects} onChange={v => setForm(p => ({ ...p, subjects: v }))} />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={() => { setAddOpen(false); setAddError(''); }} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
+          <Button onClick={() => { setAddOpen(false); setAddError(''); setForm(emptyForm); setShowPassword(false); }} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
           <Button variant="contained" onClick={handleAdd} disabled={saving} sx={{ borderRadius: 2, background: gradients.brand, textTransform: 'none', fontWeight: 700 }}>{saving ? 'Adding…' : 'Add Teacher'}</Button>
         </DialogActions>
       </Dialog>
 
       {/* Edit Teacher Dialog */}
-      <Dialog open={!!editTarget} onClose={() => setEditTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <Dialog open={!!editTarget} onClose={() => setEditTarget(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Edit Teacher</DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}>
           <Grid container spacing={2}>
-            {[['First Name', 'firstName'], ['Last Name', 'lastName'], ['Email', 'email']].map(([label, key]) => (
-              <Grid item xs={12} key={key}>
-                <TextField fullWidth label={label} size="small" value={editForm[key]} onChange={e => setEditForm(p => ({ ...p, [key]: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-              </Grid>
-            ))}
+            <Grid item xs={6}>
+              <TextField fullWidth label="First Name" size="small" value={editForm.firstName} onChange={e => setEditForm(p => ({ ...p, firstName: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField fullWidth label="Last Name" size="small" value={editForm.lastName} onChange={e => setEditForm(p => ({ ...p, lastName: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Email" size="small" value={editForm.email} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Phone (optional)" size="small" value={editForm.phone} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <Select fullWidth size="small" value={editForm.gender} onChange={e => setEditForm(p => ({ ...p, gender: e.target.value }))} displayEmpty sx={{ borderRadius: 2 }}>
+                <MenuItem value="">Gender (optional)</MenuItem>
+                <MenuItem value="male">Male</MenuItem>
+                <MenuItem value="female">Female</MenuItem>
+              </Select>
+            </Grid>
+            <Grid item xs={12}>
+              <TagInput label="Classes" value={editForm.classes} onChange={v => setEditForm(p => ({ ...p, classes: v }))} />
+            </Grid>
+            <Grid item xs={12}>
+              <TagInput label="Subjects" value={editForm.subjects} onChange={v => setEditForm(p => ({ ...p, subjects: v }))} />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>

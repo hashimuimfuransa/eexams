@@ -62,6 +62,19 @@ const UserSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  gender: {
+    type: String,
+    enum: ['male', 'female', ''],
+    default: ''
+  },
+  subjects: {
+    type: [String],
+    default: []
+  },
+  classes: {
+    type: [String],
+    default: []
+  },
   organization: {
     type: String,
     trim: true,

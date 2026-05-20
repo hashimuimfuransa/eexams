@@ -3414,7 +3414,7 @@ const registerTeacher = async (req, res) => {
       return res.status(403).json({ message: 'Only organization admins can create teachers' });
     }
 
-    const { firstName, lastName, email, password, phone, class: teacherClass } = req.body;
+    const { firstName, lastName, email, password, phone, class: teacherClass, gender, subjects, classes } = req.body;
 
     // Validate required fields
     if (!firstName || !lastName || !email || !password) {
@@ -3453,6 +3453,9 @@ const registerTeacher = async (req, res) => {
       userType: 'organization',   // org teacher, NOT individual
       phone,
       class: teacherClass || '',
+      gender: gender || '',
+      subjects: Array.isArray(subjects) ? subjects : [],
+      classes: Array.isArray(classes) ? classes : [],
       organization: admin.organization,
       parentAdmin: req.user._id,
       createdBy: req.user._id,
@@ -3480,6 +3483,9 @@ const registerTeacher = async (req, res) => {
       role: teacher.role,
       phone: teacher.phone,
       class: teacher.class,
+      gender: teacher.gender,
+      subjects: teacher.subjects,
+      classes: teacher.classes,
       organization: teacher.organization
     });
   } catch (error) {
@@ -3552,7 +3558,7 @@ const updateTeacher = async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const { firstName, lastName, email, phone, class: teacherClass, isBlocked } = req.body;
+    const { firstName, lastName, email, phone, class: teacherClass, isBlocked, gender, subjects, classes } = req.body;
 
     const teacher = await User.findById(req.params.id);
 
@@ -3563,9 +3569,12 @@ const updateTeacher = async (req, res) => {
       if (firstName) teacher.firstName = firstName;
       if (lastName) teacher.lastName = lastName;
       if (email) teacher.email = email;
-      if (phone) teacher.phone = phone;
-      if (teacherClass) teacher.class = teacherClass;
+      if (phone !== undefined) teacher.phone = phone;
+      if (teacherClass !== undefined) teacher.class = teacherClass;
       if (isBlocked !== undefined) teacher.isBlocked = isBlocked;
+      if (gender !== undefined) teacher.gender = gender;
+      if (Array.isArray(subjects)) teacher.subjects = subjects;
+      if (Array.isArray(classes)) teacher.classes = classes;
 
       const updatedTeacher = await teacher.save();
 
@@ -3587,6 +3596,9 @@ const updateTeacher = async (req, res) => {
         role: updatedTeacher.role,
         phone: updatedTeacher.phone,
         class: updatedTeacher.class,
+        gender: updatedTeacher.gender,
+        subjects: updatedTeacher.subjects,
+        classes: updatedTeacher.classes,
         isBlocked: updatedTeacher.isBlocked
       });
     } else {

@@ -219,6 +219,8 @@ const Dashboard = () => {
     );
   }
 
+  const hasAvailableExams = availableExams.length > 0;
+
   return (
     <StudentLayout>
       <Container maxWidth="xl" sx={{ mt: { xs: 2, sm: 3, md: 4 }, mb: { xs: 2, sm: 3, md: 4 } }}>
@@ -235,75 +237,77 @@ const Dashboard = () => {
           Welcome, {user?.firstName || 'Student'}! Here are your available exams and results.
         </Typography>
 
-        {/* App Download Recommendation */}
-        <Card
-          elevation={3}
-          sx={{
-            mb: 4,
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white'
-          }}
-        >
-          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: { xs: 2, sm: 3 } }}>
-              <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
-                <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                  <Psychology fontSize={isMobile ? 'small' : 'medium'} />
-                  Boost Your Learning with Excellence Coaching Hub
-                </Typography>
-                <Typography variant={isMobile ? 'caption' : 'body2'} sx={{ opacity: 0.9, lineHeight: 1.4 }}>
-                  Download our mobile app to access detailed explanations, practice questions, and personalized learning paths to help you master topics you're struggling with.
-                </Typography>
+        {/* App Download Recommendation - Only show when no available exams */}
+        {!hasAvailableExams && (
+          <Card
+            elevation={3}
+            sx={{
+              mb: 4,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white'
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: { xs: 2, sm: 3 } }}>
+                <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
+                  <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                    <Psychology fontSize={isMobile ? 'small' : 'medium'} />
+                    Boost Your Learning with Excellence Coaching Hub
+                  </Typography>
+                  <Typography variant={isMobile ? 'caption' : 'body2'} sx={{ opacity: 0.9, lineHeight: 1.4 }}>
+                    Download our mobile app to access detailed explanations, practice questions, and personalized learning paths to help you master topics you're struggling with.
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>
+                  <Button
+                    variant="contained"
+                    href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    startIcon={<GooglePlayIcon />}
+                    sx={{
+                      bgcolor: 'white',
+                      color: '#667eea',
+                      fontWeight: 'bold',
+                      textTransform: 'none',
+                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                      padding: { xs: '6px 12px', sm: '8px 16px' },
+                      minWidth: { xs: '100%', sm: 'auto' },
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.9)',
+                        color: '#764ba2'
+                      }
+                    }}
+                  >
+                    Google Play
+                  </Button>
+                  <Button
+                    variant="contained"
+                    href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    startIcon={<MicrosoftStoreIcon />}
+                    sx={{
+                      bgcolor: 'white',
+                      color: '#667eea',
+                      fontWeight: 'bold',
+                      textTransform: 'none',
+                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                      padding: { xs: '6px 12px', sm: '8px 16px' },
+                      minWidth: { xs: '100%', sm: 'auto' },
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.9)',
+                        color: '#764ba2'
+                      }
+                    }}
+                  >
+                    Microsoft Store
+                  </Button>
+                </Box>
               </Box>
-              <Box sx={{ display: 'flex', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>
-                <Button
-                  variant="contained"
-                  href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  startIcon={<GooglePlayIcon />}
-                  sx={{
-                    bgcolor: 'white',
-                    color: '#667eea',
-                    fontWeight: 'bold',
-                    textTransform: 'none',
-                    fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                    padding: { xs: '6px 12px', sm: '8px 16px' },
-                    minWidth: { xs: '100%', sm: 'auto' },
-                    '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.9)',
-                      color: '#764ba2'
-                    }
-                  }}
-                >
-                  Google Play
-                </Button>
-                <Button
-                  variant="contained"
-                  href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  startIcon={<MicrosoftStoreIcon />}
-                  sx={{
-                    bgcolor: 'white',
-                    color: '#667eea',
-                    fontWeight: 'bold',
-                    textTransform: 'none',
-                    fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                    padding: { xs: '6px 12px', sm: '8px 16px' },
-                    minWidth: { xs: '100%', sm: 'auto' },
-                    '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.9)',
-                      color: '#764ba2'
-                    }
-                  }}
-                >
-                  Microsoft Store
-                </Button>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Pending Exam Requests Section - Moved to top */}
         {pendingRequests.filter(r => r.status === 'pending').length > 0 && (
@@ -506,8 +510,8 @@ const Dashboard = () => {
           )}
         </Box>
 
-        {/* Approved Exam Requests Section */}
-        {pendingRequests.filter(r => r.status === 'approved').length > 0 && (
+        {/* Approved Exam Requests Section - Only show when no available exams */}
+        {!hasAvailableExams && pendingRequests.filter(r => r.status === 'approved').length > 0 && (
           <Box sx={{ mt: 4 }}>
             <Typography variant="h5" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CheckCircle color="success" />
@@ -555,188 +559,190 @@ const Dashboard = () => {
           </Box>
         )}
 
-        {/* Marketplace Exams Section */}
-        <Box sx={{ mt: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <School color="primary" />
-              Exam Bank
-            </Typography>
-            <Button
-              variant="contained"
-              component={RouterLink}
-              to="/marketplace"
-              size="small"
-              endIcon={<ArrowForward />}
-              sx={{
-                fontWeight: 'bold',
-                textTransform: 'none',
-                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
-                '&:hover': {
-                  boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
-                }
-              }}
-            >
-              View All Exams
-            </Button>
-          </Box>
-
-          {marketplaceExams.length === 0 ? (
-            <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', mb: 4, bgcolor: 'grey.50' }}>
-              <School sx={{ fontSize: { xs: 48, sm: 64 }, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" fontWeight="bold">
-                No Exams Available
+        {/* Marketplace Exams Section - Only show when no available exams */}
+        {!hasAvailableExams && (
+          <Box sx={{ mt: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <School color="primary" />
+                Exam Bank
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Check back later for new exams in the exam bank.
-              </Typography>
-            </Paper>
-          ) : (
-            <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
-              {marketplaceExams
-                .filter(exam => !availableExams.some(e => e._id === exam._id))
-                .slice(0, 3)
-                .map((exam) => {
-                const totalQuestions = exam.sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
-                const isRequested = pendingRequests.some(r => r.exam?._id === exam._id);
-                const isApproved = pendingRequests.some(r => r.exam?._id === exam._id && r.status === 'approved');
-                const isCompleted = results.some(r => r.exam?._id === exam._id || r.exam === exam._id);
+              <Button
+                variant="contained"
+                component={RouterLink}
+                to="/marketplace"
+                size="small"
+                endIcon={<ArrowForward />}
+                sx={{
+                  fontWeight: 'bold',
+                  textTransform: 'none',
+                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                  boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
+                  '&:hover': {
+                    boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
+                  }
+                }}
+              >
+                View All Exams
+              </Button>
+            </Box>
 
-                return (
-                  <Card
-                    key={exam._id}
-                    elevation={2}
-                    sx={{
-                      mb: 0,
-                      bgcolor: 'background.paper',
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      transition: 'all 0.2s ease-in-out',
-                      '&:hover': {
-                        transform: 'translateY(-2px)',
-                        boxShadow: 4
-                      }
-                    }}
-                  >
-                    <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-                        <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
-                          <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" sx={{ mb: 1 }}>
-                            {exam.title || 'Exam'}
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{
-                              mb: 1.5,
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden'
-                            }}
-                          >
-                            {exam.publicDescription || exam.description}
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-                            <Chip
-                              icon={<School fontSize="small" />}
-                              label={`${totalQuestions} Questions`}
-                              size="small"
-                              variant="outlined"
-                            />
-                            {exam.timeLimit && (
+            {marketplaceExams.length === 0 ? (
+              <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', mb: 4, bgcolor: 'grey.50' }}>
+                <School sx={{ fontSize: { xs: 48, sm: 64 }, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" fontWeight="bold">
+                  No Exams Available
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Check back later for new exams in the exam bank.
+                </Typography>
+              </Paper>
+            ) : (
+              <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
+                {marketplaceExams
+                  .filter(exam => !availableExams.some(e => e._id === exam._id))
+                  .slice(0, 3)
+                  .map((exam) => {
+                  const totalQuestions = exam.sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
+                  const isRequested = pendingRequests.some(r => r.exam?._id === exam._id);
+                  const isApproved = pendingRequests.some(r => r.exam?._id === exam._id && r.status === 'approved');
+                  const isCompleted = results.some(r => r.exam?._id === exam._id || r.exam === exam._id);
+
+                  return (
+                    <Card
+                      key={exam._id}
+                      elevation={2}
+                      sx={{
+                        mb: 0,
+                        bgcolor: 'background.paper',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        transition: 'all 0.2s ease-in-out',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: 4
+                        }
+                      }}
+                    >
+                      <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                          <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
+                            <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" sx={{ mb: 1 }}>
+                              {exam.title || 'Exam'}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                mb: 1.5,
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden'
+                              }}
+                            >
+                              {exam.publicDescription || exam.description}
+                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                               <Chip
-                                icon={<AccessTime fontSize="small" />}
-                                label={`${exam.timeLimit} minutes`}
+                                icon={<School fontSize="small" />}
+                                label={`${totalQuestions} Questions`}
                                 size="small"
                                 variant="outlined"
                               />
-                            )}
-                            {exam.publicPrice > 0 && (
-                              <Chip
-                                label={`RWF ${exam.publicPrice.toLocaleString()}`}
+                              {exam.timeLimit && (
+                                <Chip
+                                  icon={<AccessTime fontSize="small" />}
+                                  label={`${exam.timeLimit} minutes`}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              )}
+                              {exam.publicPrice > 0 && (
+                                <Chip
+                                  label={`RWF ${exam.publicPrice.toLocaleString()}`}
+                                  size="small"
+                                  color="warning"
+                                  variant="outlined"
+                                />
+                              )}
+                            </Box>
+                          </Box>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: { xs: '100%', sm: 140 }, width: { xs: '100%', sm: 'auto' } }}>
+                            {isCompleted ? (
+                              <Button
+                                variant="contained"
                                 size="small"
-                                color="warning"
+                                onClick={() => handleDirectRequest(exam._id, exam.title)}
+                                startIcon={requestingExam === exam._id ? <CircularProgress size={16} color="inherit" /> : <AddCircle />}
+                                disabled={requestingExam === exam._id}
+                                fullWidth={isMobile}
+                                sx={{
+                                  fontWeight: 'bold',
+                                  textTransform: 'none',
+                                  background: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
+                                  boxShadow: '0 2px 8px rgba(139,92,246,0.3)'
+                                }}
+                              >
+                                {requestingExam === exam._id ? 'Requesting...' : 'Retake'}
+                              </Button>
+                            ) : isApproved ? (
+                              <Button
                                 variant="outlined"
-                              />
+                                disabled
+                                size="small"
+                                fullWidth={isMobile}
+                                sx={{
+                                  fontWeight: 'bold',
+                                  textTransform: 'none'
+                                }}
+                              >
+                                Approved
+                              </Button>
+                            ) : isRequested ? (
+                              <Button
+                                variant="outlined"
+                                disabled
+                                size="small"
+                                fullWidth={isMobile}
+                                sx={{
+                                  fontWeight: 'bold',
+                                  textTransform: 'none'
+                                }}
+                              >
+                                Requested
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() => handleDirectRequest(exam._id, exam.title)}
+                                startIcon={requestingExam === exam._id ? <CircularProgress size={16} color="inherit" /> : <AddCircle />}
+                                disabled={requestingExam === exam._id}
+                                fullWidth={isMobile}
+                                sx={{
+                                  fontWeight: 'bold',
+                                  textTransform: 'none',
+                                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                                  boxShadow: '0 2px 8px rgba(12,189,115,0.3)'
+                                }}
+                              >
+                                {requestingExam === exam._id ? 'Requesting...' : 'Request'}
+                              </Button>
                             )}
                           </Box>
                         </Box>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: { xs: '100%', sm: 140 }, width: { xs: '100%', sm: 'auto' } }}>
-                          {isCompleted ? (
-                            <Button
-                              variant="contained"
-                              size="small"
-                              onClick={() => handleDirectRequest(exam._id, exam.title)}
-                              startIcon={requestingExam === exam._id ? <CircularProgress size={16} color="inherit" /> : <AddCircle />}
-                              disabled={requestingExam === exam._id}
-                              fullWidth={isMobile}
-                              sx={{
-                                fontWeight: 'bold',
-                                textTransform: 'none',
-                                background: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
-                                boxShadow: '0 2px 8px rgba(139,92,246,0.3)'
-                              }}
-                            >
-                              {requestingExam === exam._id ? 'Requesting...' : 'Retake'}
-                            </Button>
-                          ) : isApproved ? (
-                            <Button
-                              variant="outlined"
-                              disabled
-                              size="small"
-                              fullWidth={isMobile}
-                              sx={{
-                                fontWeight: 'bold',
-                                textTransform: 'none'
-                              }}
-                            >
-                              Approved
-                            </Button>
-                          ) : isRequested ? (
-                            <Button
-                              variant="outlined"
-                              disabled
-                              size="small"
-                              fullWidth={isMobile}
-                              sx={{
-                                fontWeight: 'bold',
-                                textTransform: 'none'
-                              }}
-                            >
-                              Requested
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="contained"
-                              size="small"
-                              onClick={() => handleDirectRequest(exam._id, exam.title)}
-                              startIcon={requestingExam === exam._id ? <CircularProgress size={16} color="inherit" /> : <AddCircle />}
-                              disabled={requestingExam === exam._id}
-                              fullWidth={isMobile}
-                              sx={{
-                                fontWeight: 'bold',
-                                textTransform: 'none',
-                                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                                boxShadow: '0 2px 8px rgba(12,189,115,0.3)'
-                              }}
-                            >
-                              {requestingExam === exam._id ? 'Requesting...' : 'Request'}
-                            </Button>
-                          )}
-                        </Box>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </Box>
-          )}
-        </Box>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </Box>
+            )}
+          </Box>
+        )}
 
-        {/* Scheduled Exams Section */}
-        {scheduledExams.length > 0 && (
+        {/* Scheduled Exams Section - Only show when no available exams */}
+        {!hasAvailableExams && scheduledExams.length > 0 && (
           <Box sx={{ mt: 4 }}>
             <Typography variant="h5" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Schedule color="primary" />
@@ -769,68 +775,72 @@ const Dashboard = () => {
           </Box>
         )}
 
-        {/* Completed Exams Section */}
-        <Divider sx={{ my: 4 }} />
-        <Typography variant="h5" fontWeight="bold" gutterBottom>
-          Completed Exams
-        </Typography>
-
-        {results.length === 0 ? (
-          <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mt: 4 }}>
-            <Assessment sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary">
-              No results yet
+        {/* Completed Exams Section - Only show when no available exams */}
+        {!hasAvailableExams && (
+          <>
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h5" fontWeight="bold" gutterBottom>
+              Completed Exams
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Complete an exam to see your results here.
-            </Typography>
-          </Paper>
-        ) : (
-          <Box sx={{ mt: 2 }}>
-            {results.map((result) => {
-              const percentage = calculatePercentage(result.totalScore, result.maxPossibleScore);
-              const isPassed = percentage >= 70;
 
-              return (
-                <Card key={result._id} elevation={2} sx={{ mb: 3 }}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-                      <Box sx={{ flex: 1, minWidth: 200 }}>
-                        <Typography variant="h6" fontWeight="bold" gutterBottom>
-                          {result.examTitle || result.exam?.title || 'Exam'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Completed: {formatDate(result.endTime)}
-                        </Typography>
-                      </Box>
-                      
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Chip
-                          icon={isPassed ? <CheckCircle /> : <Cancel />}
-                          label={`${percentage}%`}
-                          color={isPassed ? 'success' : 'error'}
-                          size="medium"
-                          sx={{ fontWeight: 'bold' }}
-                        />
-                        <Typography variant="body2" color="text.secondary">
-                          {result.totalScore} / {result.maxPossibleScore} points
-                        </Typography>
-                      </Box>
-                    </Box>
+            {results.length === 0 ? (
+              <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mt: 4 }}>
+                <Assessment sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary">
+                  No results yet
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Complete an exam to see your results here.
+                </Typography>
+              </Paper>
+            ) : (
+              <Box sx={{ mt: 2 }}>
+                {results.map((result) => {
+                  const percentage = calculatePercentage(result.totalScore, result.maxPossibleScore);
+                  const isPassed = percentage >= 70;
 
-                    <Button
-                      variant="outlined"
-                      component={RouterLink}
-                      to={`/student/results/${result._id}`}
-                      sx={{ mt: 2 }}
-                    >
-                      View Details
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </Box>
+                  return (
+                    <Card key={result._id} elevation={2} sx={{ mb: 3 }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                          <Box sx={{ flex: 1, minWidth: 200 }}>
+                            <Typography variant="h6" fontWeight="bold" gutterBottom>
+                              {result.examTitle || result.exam?.title || 'Exam'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Completed: {formatDate(result.endTime)}
+                            </Typography>
+                          </Box>
+
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Chip
+                              icon={isPassed ? <CheckCircle /> : <Cancel />}
+                              label={`${percentage}%`}
+                              color={isPassed ? 'success' : 'error'}
+                              size="medium"
+                              sx={{ fontWeight: 'bold' }}
+                            />
+                            <Typography variant="body2" color="text.secondary">
+                              {result.totalScore} / {result.maxPossibleScore} points
+                            </Typography>
+                          </Box>
+                        </Box>
+
+                        <Button
+                          variant="outlined"
+                          component={RouterLink}
+                          to={`/student/results/${result._id}`}
+                          sx={{ mt: 2 }}
+                        >
+                          View Details
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </Box>
+            )}
+          </>
         )}
       </Container>
     </StudentLayout>

@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
+import SubscriptionWarning from '../components/SubscriptionWarning';
 
 const nav = [
   { id: 'home',     label: 'Overview',   icon: <DashIcon sx={{ fontSize: 20 }} /> },
@@ -89,6 +90,7 @@ export default function OrgAdminDashboard() {
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="School Admin" />}
       topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub={user?.organization ? `${user.organization} · School Admin` : "Here's what's happening today."} user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="School Admin" onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
+      <SubscriptionWarning user={user} onLogout={logout} />
       {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={filteredTeachers} exams={filteredExams} results={results} setActiveSection={setActiveSection} />}
       {activeSection === 'teachers'  && <TeachersSection teachers={filteredTeachers} setTeachers={setTeachers} />}
       {activeSection === 'students'  && <StudentsSection />}

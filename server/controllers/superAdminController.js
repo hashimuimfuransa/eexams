@@ -1560,6 +1560,13 @@ const updateUser = async (req, res) => {
       return res.status(403).json({ message: 'Cannot demote a super admin' });
     }
 
+    // Prevent free plan renewal for expired free users
+    if (subscriptionPlan === 'free' && user.subscriptionStatus === 'expired' && user.subscriptionPlan === 'free') {
+      return res.status(400).json({ 
+        message: 'Free plan users cannot renew with free plan after expiration. Please upgrade to a paid plan (Basic, Premium, or Enterprise).' 
+      });
+    }
+
     // Handle email change for super admins - require current password
     if (email && email !== user.email && user.role === 'superadmin') {
       if (!currentPassword) {
@@ -1581,7 +1588,18 @@ const updateUser = async (req, res) => {
     if (organization !== undefined) user.organization = organization;
     if (isBlocked !== undefined) user.isBlocked = isBlocked;
     if (subscriptionPlan) user.subscriptionPlan = subscriptionPlan;
-    if (subscriptionStatus) user.subscriptionStatus = subscriptionStatus;
+    if (subscriptionStatus) {
+      user.subscriptionStatus = subscriptionStatus;
+      // Set expiration date when activating subscription (enterprise doesn't expire)
+      if (subscriptionStatus === 'active') {
+        const planToUse = subscriptionPlan || user.subscriptionPlan;
+        const expiresAt = planToUse === 'enterprise' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        user.subscriptionExpiresAt = expiresAt;
+        user.subscriptionEndDate = expiresAt;
+        user.subscriptionStartDate = new Date();
+        user.lastPaymentDate = new Date();
+      }
+    }
 
     // Handle password change (will be hashed by User model pre-save hook)
     if (password) {
@@ -1594,7 +1612,17 @@ const updateUser = async (req, res) => {
     if (user.role === 'admin' && (subscriptionPlan || subscriptionStatus)) {
       const teacherUpdate = {};
       if (subscriptionPlan) teacherUpdate.subscriptionPlan = subscriptionPlan;
-      if (subscriptionStatus) teacherUpdate.subscriptionStatus = subscriptionStatus;
+      if (subscriptionStatus) {
+        teacherUpdate.subscriptionStatus = subscriptionStatus;
+        // Set expiration date for teachers when activating
+        if (subscriptionStatus === 'active') {
+          const planToUse = subscriptionPlan || user.subscriptionPlan;
+          const expiresAt = planToUse === 'enterprise' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          teacherUpdate.subscriptionExpiresAt = expiresAt;
+          teacherUpdate.subscriptionEndDate = expiresAt;
+          teacherUpdate.subscriptionStartDate = new Date();
+        }
+      }
       await User.updateMany({ parentAdmin: user._id, role: 'teacher' }, teacherUpdate);
     }
 
@@ -1855,7 +1883,7 @@ const approveSubscriptionRequest = async (req, res) => {
     }
 
     const request = await SubscriptionRequest.findById(req.params.id)
-      .populate('user', 'firstName lastName email');
+      .populate('user', 'firstName lastName email subscriptionStatus subscriptionPlan');
 
     if (!request) {
       return res.status(404).json({ message: 'Subscription request not found' });
@@ -1865,12 +1893,23 @@ const approveSubscriptionRequest = async (req, res) => {
       return res.status(400).json({ message: 'Request has already been processed' });
     }
 
+    // Prevent free plan renewal for expired free users
+    if (request.requestedPlan === 'free' && request.user.subscriptionStatus === 'expired' && request.user.subscriptionPlan === 'free') {
+      return res.status(400).json({ 
+        message: 'Free plan users cannot renew with free plan after expiration. Please upgrade to a paid plan (Basic, Premium, or Enterprise).' 
+      });
+    }
+
+    // Calculate expiration date (enterprise doesn't expire)
+    const expiresAt = request.requestedPlan === 'enterprise' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days for non-enterprise
+
     // Update user subscription
     await User.findByIdAndUpdate(request.user._id, {
       subscriptionPlan: request.requestedPlan,
       subscriptionStatus: 'active',
       subscriptionStartDate: new Date(),
-      subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      subscriptionEndDate: expiresAt,
+      subscriptionExpiresAt: expiresAt,
       lastPaymentDate: new Date()
     });
 
@@ -1881,7 +1920,8 @@ const approveSubscriptionRequest = async (req, res) => {
         subscriptionPlan: request.requestedPlan,
         subscriptionStatus: 'active',
         subscriptionStartDate: new Date(),
-        subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        subscriptionEndDate: expiresAt,
+        subscriptionExpiresAt: expiresAt
       }
     );
 
@@ -1975,29 +2015,59 @@ const rejectSubscriptionRequest = async (req, res) => {
 // @access  Private/SuperAdmin
 const getAllSubscriptions = async (req, res) => {
   try {
-    // Find users with paid subscriptions (not free)
+    // Find all users with subscriptions (including free plans)
     const subscriptions = await User.find({
-      subscriptionPlan: { $ne: 'free' }
+      subscriptionPlan: { $in: ['free', 'basic', 'premium', 'enterprise'] }
     })
-    .select('firstName lastName email organization subscriptionPlan subscriptionStatus subscriptionStartDate subscriptionEndDate lastPaymentDate')
-    .sort({ subscriptionStartDate: -1 });
+    .select('firstName lastName email organization subscriptionPlan subscriptionStatus subscriptionStartDate subscriptionEndDate subscriptionExpiresAt lastPaymentDate createdAt userType role')
+    .sort({ createdAt: -1 });
 
-    // Format response
-    const formattedSubs = subscriptions.map(user => ({
-      _id: user._id,
-      user: {
+    console.log('[getAllSubscriptions] Found subscriptions:', subscriptions.length);
+
+    // Format response with backfill for null dates
+    const formattedSubs = subscriptions.map(user => {
+      let startDate = user.subscriptionStartDate;
+      let endDate = user.subscriptionExpiresAt || user.subscriptionEndDate;
+      const lastPayment = user.lastPaymentDate;
+
+      // Backfill: if startDate is null, use createdAt as fallback
+      if (!startDate && user.createdAt) {
+        startDate = user.createdAt;
+      }
+
+      // Backfill: if endDate is null and user is not enterprise, set to 30 days from startDate
+      // Free accounts also expire in 30 days
+      if (!endDate && user.subscriptionPlan !== 'enterprise' && startDate) {
+        endDate = new Date(new Date(startDate).getTime() + 30 * 24 * 60 * 60 * 1000);
+      }
+
+      // Determine user type label
+      let userTypeLabel = 'Individual';
+      if (user.userType === 'organization') {
+        userTypeLabel = 'Organization';
+      } else if (user.role === 'admin' || user.role === 'superadmin') {
+        userTypeLabel = 'Organization';
+      }
+
+      console.log('[getAllSubscriptions] User:', user.email, 'Plan:', user.subscriptionPlan, 'Status:', user.subscriptionStatus, 'StartDate:', startDate, 'EndDate:', endDate, 'UserType:', userTypeLabel);
+
+      return {
         _id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        organization: user.organization
-      },
-      plan: user.subscriptionPlan,
-      status: user.subscriptionStatus,
-      startDate: user.subscriptionStartDate,
-      endDate: user.subscriptionEndDate,
-      lastPayment: user.lastPaymentDate
-    }));
+        user: {
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          organization: user.organization
+        },
+        plan: user.subscriptionPlan,
+        status: user.subscriptionStatus,
+        startDate: startDate,
+        endDate: endDate,
+        lastPaymentDate: lastPayment,
+        userType: userTypeLabel
+      };
+    });
 
     res.json({
       subscriptions: formattedSubs,

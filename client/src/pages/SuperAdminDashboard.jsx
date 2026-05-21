@@ -1092,16 +1092,19 @@ function AllUsersSection() {
 }
 
 function SubscriptionsSection({ stats }) {
-  const [activeTab, setActiveTab] = useState('pending_users'); // 'plans', 'requests', 'all', 'pending_users'
+  const [activeTab, setActiveTab] = useState('pending_users'); // 'plans', 'all', 'pending_users', 'expired'
   const [requests, setRequests] = useState([]);
   const [allSubs, setAllSubs] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
+  const [expiredUsers, setExpiredUsers] = useState([]);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [approvalNote, setApprovalNote] = useState('');
   const [processing, setProcessing] = useState(false);
-  const [actionUser, setActionUser] = useState(null); // {user, action: 'approve'|'reject'|'delete'}
+  const [actionUser, setActionUser] = useState(null); // {user, action: 'approve'|'reject'|'delete'|'renew'}
+  const [renewPlan, setRenewPlan] = useState('basic'); // For renewing expired subscriptions
+  const [subFilter, setSubFilter] = useState({ plan: '', status: '', expiring: '' }); // Filters for subscriptions
 
   const plans=[
     {name:'Free',price:'0 RWF/mo',key:'free',features:['5 exams/month','Basic AI','5 students max','1 teacher']},
@@ -1119,12 +1122,12 @@ function SubscriptionsSection({ stats }) {
   };
 
   useEffect(() => {
-    if (activeTab === 'requests') {
-      fetchRequests();
-    } else if (activeTab === 'all') {
+    if (activeTab === 'all') {
       fetchAllSubscriptions();
     } else if (activeTab === 'pending_users') {
       fetchPendingUsers();
+    } else if (activeTab === 'expired') {
+      fetchExpiredUsers();
     }
   }, [activeTab]);
 
@@ -1140,14 +1143,37 @@ function SubscriptionsSection({ stats }) {
     }
   };
 
+  const fetchExpiredUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/superadmin/users?subscriptionStatus=expired&limit=200');
+      setExpiredUsers(res.data?.users || []);
+    } catch (err) {
+      console.error('Failed to fetch expired users:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleApproveUser = async () => {
     if (!actionUser) return;
     setProcessing(true);
     try {
-      await api.put(`/superadmin/users/${actionUser.user._id}`, { subscriptionStatus: 'active' });
+      const planToUse = actionUser.user.subscriptionPlan || 'free';
+      const expiresAt = planToUse === 'enterprise' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await api.put(`/superadmin/users/${actionUser.user._id}`, { 
+        subscriptionStatus: 'active', 
+        subscriptionExpiresAt: expiresAt,
+        subscriptionStartDate: new Date()
+      });
       setPendingUsers(prev => prev.filter(u => u._id !== actionUser.user._id));
       setActionUser(null);
-    } catch (err) { console.error('Approve failed:', err); }
+    } catch (err) {
+      console.error('Approve failed:', err);
+      if (err.response?.data?.message) {
+        alert(err.response.data.message);
+      }
+    }
     finally { setProcessing(false); }
   };
 
@@ -1162,12 +1188,32 @@ function SubscriptionsSection({ stats }) {
     finally { setProcessing(false); }
   };
 
+  const handleRenewUser = async () => {
+    if (!actionUser) return;
+    setProcessing(true);
+    try {
+      const planToUse = renewPlan;
+      const expiresAt = planToUse === 'enterprise' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await api.put(`/superadmin/users/${actionUser.user._id}`, { subscriptionStatus: 'active', subscriptionPlan: planToUse, subscriptionExpiresAt: expiresAt });
+      setExpiredUsers(prev => prev.filter(u => u._id !== actionUser.user._id));
+      setActionUser(null);
+      setRenewPlan('basic'); // Reset to default
+    } catch (err) {
+      console.error('Renew failed:', err);
+      if (err.response?.data?.message) {
+        alert(err.response.data.message);
+      }
+    }
+    finally { setProcessing(false); }
+  };
+
   const handleDeleteUser = async () => {
     if (!actionUser) return;
     setProcessing(true);
     try {
       await api.delete(`/superadmin/users/${actionUser.user._id}`);
       setPendingUsers(prev => prev.filter(u => u._id !== actionUser.user._id));
+      setExpiredUsers(prev => prev.filter(u => u._id !== actionUser.user._id));
       setActionUser(null);
     } catch (err) { console.error('Delete failed:', err); }
     finally { setProcessing(false); }
@@ -1196,6 +1242,22 @@ function SubscriptionsSection({ stats }) {
       setLoading(false);
     }
   };
+
+  // Filter subscriptions based on filters
+  const filteredSubs = allSubs.filter(sub => {
+    if (subFilter.plan && sub.plan !== subFilter.plan) return false;
+    if (subFilter.status && sub.status !== subFilter.status) return false;
+    if (subFilter.expiring) {
+      const now = new Date();
+      const endDate = sub.endDate ? new Date(sub.endDate) : null;
+      if (!endDate) return false;
+      const daysRemaining = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+      if (subFilter.expiring === '7days' && daysRemaining > 7) return false;
+      if (subFilter.expiring === '30days' && daysRemaining > 30) return false;
+      if (subFilter.expiring === 'expired' && daysRemaining > 0) return false;
+    }
+    return true;
+  });
 
   const handleApprove = async (requestId) => {
     setProcessing(true);
@@ -1227,6 +1289,7 @@ function SubscriptionsSection({ stats }) {
 
   const pendingCount = requests.length;
   const pendingUsersCount = pendingUsers.length;
+  const expiredUsersCount = expiredUsers.length;
 
   return(
     <Box>
@@ -1234,8 +1297,8 @@ function SubscriptionsSection({ stats }) {
       <Box sx={{display:'flex',gap:1,mb:3}}>
         {[
           {id:'pending_users',label:'Pending Approvals',icon:'🕐',badge:pendingUsersCount},
+          {id:'expired',label:'Expired Subscriptions',icon:'⚠️',badge:expiredUsersCount},
           {id:'plans',label:'Plans Overview',icon:'📊'},
-          {id:'requests',label:'Payment Requests',icon:'⏳',badge:pendingCount},
           {id:'all',label:'All Subscriptions',icon:'📋'},
         ].map(tab => (
           <Button
@@ -1368,7 +1431,12 @@ function SubscriptionsSection({ stats }) {
                         <Typography variant="body1" fontWeight={700} noWrap>{u.firstName} {u.lastName}</Typography>
                         <Typography variant="caption" sx={{color:tokens.textMuted}} noWrap>{u.email}</Typography>
                       </Box>
-                      <Chip label="Pending" size="small" sx={{bgcolor:'rgba(245,158,11,0.1)',color:'#B45309',fontWeight:700,fontSize:11}}/>
+                      <Box sx={{display:'flex',flexDirection:'column',gap:0.5,alignItems:'flex-end'}}>
+                        <Chip label="Pending" size="small" sx={{bgcolor:'rgba(245,158,11,0.1)',color:'#B45309',fontWeight:700,fontSize:11}}/>
+                        {u.subscriptionPlan === 'free' && u.subscriptionStatus === 'expired' && (
+                          <Chip label="⚠️ Upgrade Required" size="small" sx={{bgcolor:'rgba(220,38,38,0.1)',color:'#DC2626',fontWeight:700,fontSize:10}}/>
+                        )}
+                      </Box>
                     </Box>
 
                     <Box sx={{display:'flex',flexWrap:'wrap',gap:1,mb:2}}>
@@ -1412,20 +1480,97 @@ function SubscriptionsSection({ stats }) {
             </Grid>
           )}
 
+      {/* EXPIRED SUBSCRIPTIONS TAB */}
+      {activeTab === 'expired' && (
+        <Box>
+          <SectionTitle action={
+            <Button onClick={fetchExpiredUsers} size="small" sx={{color:tokens.accent,textTransform:'none',fontWeight:600}}>🔄 Refresh</Button>
+          }>Expired Subscriptions ({expiredUsersCount})</SectionTitle>
+
+          {loading ? (
+            <Box sx={{display:'flex',justifyContent:'center',mt:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>
+          ) : expiredUsers.length === 0 ? (
+            <Paper elevation={0} sx={{p:4,borderRadius:3,border:`1px dashed ${tokens.surfaceBorder}`,bgcolor:'#FAFBFC',textAlign:'center'}}>
+              <Typography variant="h6" sx={{color:tokens.textMuted,mb:1}}>No expired subscriptions</Typography>
+              <Typography variant="body2" sx={{color:tokens.textMuted}}>All active subscriptions are current.</Typography>
+            </Paper>
+          ) : (
+            <Grid container spacing={2}>
+              {expiredUsers.map(u => (
+                <Grid item xs={12} md={6} key={u._id}>
+                  <Paper elevation={0} sx={{p:2.5,borderRadius:3,border:`2px solid rgba(239,68,68,0.3)`,bgcolor:'white','&:hover':{boxShadow:'0 4px 20px rgba(0,0,0,0.08)'}}}>
+                    <Box sx={{display:'flex',alignItems:'center',gap:1.5,mb:2}}>
+                      <Avatar sx={{width:44,height:44,bgcolor:`${tokens.primary}15`,color:tokens.primary,fontWeight:700,fontSize:16}}>
+                        {u.firstName?.charAt(0)}{u.lastName?.charAt(0)}
+                      </Avatar>
+                      <Box sx={{flex:1,minWidth:0}}>
+                        <Typography variant="body1" fontWeight={700} noWrap>{u.firstName} {u.lastName}</Typography>
+                        <Typography variant="caption" sx={{color:tokens.textMuted}} noWrap>{u.email}</Typography>
+                      </Box>
+                      <Chip label="Expired" size="small" sx={{bgcolor:'rgba(239,68,68,0.1)',color:'#DC2626',fontWeight:700,fontSize:11}}/>
+                    </Box>
+
+                    <Box sx={{display:'flex',flexWrap:'wrap',gap:1,mb:2}}>
+                      <Chip label={u.subscriptionPlan||'free'} size="small" sx={{bgcolor:`${PLAN_COLORS[u.subscriptionPlan]||PLAN_COLORS.free}15`,color:PLAN_COLORS[u.subscriptionPlan]||PLAN_COLORS.free,fontWeight:600,textTransform:'capitalize'}}/>
+                      <Chip label={u.userType||'individual'} size="small" sx={{bgcolor:'#F3F4F6',color:tokens.textSecondary,fontWeight:600,textTransform:'capitalize'}}/>
+                      <Chip label={u.role||'—'} size="small" sx={{bgcolor:'#EFF6FF',color:tokens.primary,fontWeight:600}}/>
+                      {u.organization && <Chip label={u.organization} size="small" sx={{bgcolor:'#F5F3FF',color:'#7C3AED',fontWeight:600}}/>}
+                    </Box>
+
+                    <Box sx={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:1,mb:2}}>
+                      {[
+                        {icon:'📞', label:'Phone',    value: u.phone || '—'},
+                        {icon:'📧', label:'Email',    value: u.email},
+                        {icon:'📅', label:'Registered', value: u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'},
+                        {icon:'⏰', label:'Expired On', value: u.subscriptionExpiresAt ? new Date(u.subscriptionExpiresAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'},
+                      ].map(({icon,label,value})=>(
+                        <Box key={label} sx={{p:1,bgcolor:'#F8FAFC',borderRadius:1.5,border:'1px solid #E5E7EB'}}>
+                          <Typography variant="caption" sx={{color:tokens.textMuted,display:'block'}}>{icon} {label}</Typography>
+                          <Typography variant="caption" fontWeight={600} sx={{wordBreak:'break-all'}}>{value}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+
+                    <Box sx={{display:'flex',gap:1,pt:1.5,borderTop:`1px solid ${tokens.surfaceBorder}`}}>
+                      <Button size="small" variant="outlined"
+                        onClick={() => { setActionUser({user:u, action:'renew'}); setRenewPlan(u.subscriptionPlan === 'free' ? 'basic' : u.subscriptionPlan); }}
+                        sx={{flex:1,borderRadius:2,textTransform:'none',fontWeight:600,fontSize:12,borderColor:tokens.accent,color:tokens.accent,'&:hover':{bgcolor:'rgba(12,189,115,0.05)'}}}
+                      >🔄 Renew</Button>
+                      <Button size="small" variant="outlined"
+                        onClick={() => setActionUser({user:u, action:'delete'})}
+                        sx={{borderRadius:2,textTransform:'none',fontWeight:600,fontSize:12,px:1.5,borderColor:'#EF4444',color:'#EF4444','&:hover':{bgcolor:'rgba(239,68,68,0.05)'}}}
+                      >Delete</Button>
+                    </Box>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Box>
+      )}
+
           {/* Action confirmation dialog */}
-          <Dialog open={Boolean(actionUser)} onClose={() => setActionUser(null)} maxWidth="xs" fullWidth PaperProps={{sx:{borderRadius:3}}}>
+          <Dialog open={Boolean(actionUser)} onClose={() => setActionUser(null)} maxWidth="sm" fullWidth PaperProps={{sx:{borderRadius:3}}}>
             <DialogTitle sx={{fontWeight:700,fontFamily:"'DM Sans',sans-serif",pb:1}}>
               {actionUser?.action === 'approve' && '✅ Approve Account'}
               {actionUser?.action === 'reject'  && '❌ Reject Account'}
               {actionUser?.action === 'delete'  && '🗑️ Delete Account'}
+              {actionUser?.action === 'renew'   && '🔄 Renew Subscription'}
               <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mt:0.5}}>
                 {actionUser?.user?.firstName} {actionUser?.user?.lastName} — {actionUser?.user?.subscriptionPlan} plan
               </Typography>
             </DialogTitle>
             <DialogContent sx={{pt:'16px !important'}}>
               {actionUser?.action === 'approve' && (
-                <Box sx={{p:2,bgcolor:'#F0FDF4',borderRadius:2,border:'1px solid #86EFAC'}}>
-                  <Typography variant="body2" sx={{color:'#166534'}}>This will set the account to <b>active</b> and grant the user access to their dashboard.</Typography>
+                <Box>
+                  <Box sx={{p:2,bgcolor:'#F0FDF4',borderRadius:2,border:'1px solid #86EFAC',mb:2}}>
+                    <Typography variant="body2" sx={{color:'#166534'}}>This will set the account to <b>active</b> and grant the user access to their dashboard.</Typography>
+                  </Box>
+                  {actionUser?.user?.subscriptionPlan === 'free' && actionUser?.user?.subscriptionStatus === 'expired' && (
+                    <Box sx={{p:2,bgcolor:'#FEF2F2',borderRadius:2,border:'1px solid #FECACA'}}>
+                      <Typography variant="body2" sx={{color:'#991B1B'}}>⚠️ This user was on a free plan that expired. They must upgrade to a paid plan (Basic, Premium, or Enterprise) to renew. Please change their plan before approving.</Typography>
+                    </Box>
+                  )}
                 </Box>
               )}
               {actionUser?.action === 'reject' && (
@@ -1438,18 +1583,59 @@ function SubscriptionsSection({ stats }) {
                   <Typography variant="body2" sx={{color:'#991B1B'}}>This will <b>permanently delete</b> the user account and all associated data. This cannot be undone.</Typography>
                 </Box>
               )}
+              {actionUser?.action === 'renew' && (
+                <Box>
+                  <Box sx={{p:2,bgcolor:'#F0FDF4',borderRadius:2,border:'1px solid #86EFAC',mb:2}}>
+                    <Typography variant="body2" sx={{color:'#166534',mb:1}}>This will renew the subscription and extend it by 30 days. Enterprise plans do not expire.</Typography>
+                    {actionUser?.user?.subscriptionPlan === 'free' && (
+                      <Typography variant="caption" sx={{color:'#DC2626',fontWeight:600,display:'block',mt:1}}>⚠️ Free plan users must upgrade to a paid plan after expiration.</Typography>
+                    )}
+                  </Box>
+                  
+                  <Typography variant="subtitle2" fontWeight={700} sx={{mb:1}}>Select Plan:</Typography>
+                  <Box sx={{display:'flex',flexDirection:'column',gap:1}}>
+                    {['basic','premium','enterprise'].map(plan => (
+                      <Paper 
+                        key={plan}
+                        onClick={() => setRenewPlan(plan)}
+                        sx={{
+                          p:2,
+                          borderRadius:2,
+                          border: `2px solid ${renewPlan === plan ? tokens.accent : '#E5E7EB'}`,
+                          bgcolor: renewPlan === plan ? '#F0FDF4' : 'white',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          '&:hover': { bgcolor: '#F8FAFC' }
+                        }}
+                      >
+                        <Box sx={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                          <Box>
+                            <Typography variant="body2" fontWeight={700} sx={{textTransform:'capitalize'}}>{plan}</Typography>
+                            <Typography variant="caption" sx={{color:tokens.textMuted}}>
+                              {plan === 'basic' && '100,000 RWF/mo'}
+                              {plan === 'premium' && '200,000 RWF/mo'}
+                              {plan === 'enterprise' && 'Perpetual access'}
+                            </Typography>
+                          </Box>
+                          {renewPlan === plan && <CheckCircle sx={{color:tokens.accent,fontSize:20}} />}
+                        </Box>
+                      </Paper>
+                    ))}
+                  </Box>
+                </Box>
+              )}
             </DialogContent>
             <DialogActions sx={{px:3,pb:2.5,gap:1}}>
               <Button onClick={() => setActionUser(null)} sx={{borderRadius:2,textTransform:'none',fontWeight:600}}>Cancel</Button>
               <Button variant="contained" disabled={processing}
-                onClick={actionUser?.action === 'approve' ? handleApproveUser : actionUser?.action === 'reject' ? handleRejectUser : handleDeleteUser}
+                onClick={actionUser?.action === 'approve' ? handleApproveUser : actionUser?.action === 'reject' ? handleRejectUser : actionUser?.action === 'renew' ? handleRenewUser : handleDeleteUser}
                 sx={{
                   borderRadius:2,textTransform:'none',fontWeight:700,px:3,
-                  bgcolor: actionUser?.action === 'approve' ? tokens.accent : actionUser?.action === 'reject' ? '#F59E0B' : '#EF4444',
-                  '&:hover':{ bgcolor: actionUser?.action === 'approve' ? '#0AAE5E' : actionUser?.action === 'reject' ? '#D97706' : '#DC2626' }
+                  bgcolor: actionUser?.action === 'approve' ? tokens.accent : actionUser?.action === 'reject' ? '#F59E0B' : actionUser?.action === 'renew' ? tokens.accent : '#EF4444',
+                  '&:hover':{ bgcolor: actionUser?.action === 'approve' ? '#0AAE5E' : actionUser?.action === 'reject' ? '#D97706' : actionUser?.action === 'renew' ? '#0AAE5E' : '#DC2626' }
                 }}
               >
-                {processing ? 'Processing...' : `Confirm ${actionUser?.action === 'approve' ? 'Approval' : actionUser?.action === 'reject' ? 'Rejection' : 'Delete'}`}
+                {processing ? 'Processing...' : `Confirm ${actionUser?.action === 'approve' ? 'Approval' : actionUser?.action === 'reject' ? 'Rejection' : actionUser?.action === 'renew' ? 'Renewal' : 'Delete'}`}
               </Button>
             </DialogActions>
           </Dialog>
@@ -1585,6 +1771,51 @@ function SubscriptionsSection({ stats }) {
       {activeTab === 'all' && (
         <Box>
           <SectionTitle>All Active Subscriptions</SectionTitle>
+          
+          {/* Filters */}
+          <Paper elevation={0} sx={{p:2,mb:2,borderRadius:2,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white'}}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} sm={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Plan</InputLabel>
+                  <Select label="Plan" value={subFilter.plan} onChange={(e) => setSubFilter({...subFilter, plan: e.target.value})} sx={{borderRadius:2}}>
+                    <MuiMenuItem value="">All Plans</MuiMenuItem>
+                    <MuiMenuItem value="free">Free</MuiMenuItem>
+                    <MuiMenuItem value="basic">Basic</MuiMenuItem>
+                    <MuiMenuItem value="premium">Premium</MuiMenuItem>
+                    <MuiMenuItem value="enterprise">Enterprise</MuiMenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select label="Status" value={subFilter.status} onChange={(e) => setSubFilter({...subFilter, status: e.target.value})} sx={{borderRadius:2}}>
+                    <MuiMenuItem value="">All Status</MuiMenuItem>
+                    <MuiMenuItem value="active">Active</MuiMenuItem>
+                    <MuiMenuItem value="pending">Pending</MuiMenuItem>
+                    <MuiMenuItem value="expired">Expired</MuiMenuItem>
+                    <MuiMenuItem value="cancelled">Cancelled</MuiMenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Expiration</InputLabel>
+                  <Select label="Expiration" value={subFilter.expiring} onChange={(e) => setSubFilter({...subFilter, expiring: e.target.value})} sx={{borderRadius:2}}>
+                    <MuiMenuItem value="">All</MuiMenuItem>
+                    <MuiMenuItem value="7days">Expiring in 7 days</MuiMenuItem>
+                    <MuiMenuItem value="30days">Expiring in 30 days</MuiMenuItem>
+                    <MuiMenuItem value="expired">Expired</MuiMenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Button size="small" onClick={() => setSubFilter({ plan: '', status: '', expiring: '' })} sx={{borderRadius:2}}>Clear Filters</Button>
+              </Grid>
+            </Grid>
+          </Paper>
+
           {loading ? (
             <Box sx={{display:'flex',justifyContent:'center',mt:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>
           ) : (
@@ -1594,61 +1825,109 @@ function SubscriptionsSection({ stats }) {
                   <TableHead>
                     <TableRow sx={{bgcolor:'#F8FAFC'}}>
                       <TableCell sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>User/Organization</TableCell>
+                      <TableCell sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>Type</TableCell>
                       <TableCell sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>Plan</TableCell>
                       <TableCell sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>Status</TableCell>
                       <TableCell sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>Started</TableCell>
                       <TableCell sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>Expires</TableCell>
+                      <TableCell sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>Days Remaining</TableCell>
+                      <TableCell sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>Last Payment</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {allSubs.length === 0 ? (
+                    {filteredSubs.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} align="center" sx={{py:5,color:tokens.textMuted}}>No active subscriptions found.</TableCell>
+                        <TableCell colSpan={8} align="center" sx={{py:5,color:tokens.textMuted}}>No subscriptions found matching your filters.</TableCell>
                       </TableRow>
                     ) : (
-                      allSubs.map(sub => (
-                        <TableRow key={sub._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
-                          <TableCell>
-                            <Box sx={{display:'flex',alignItems:'center',gap:1.5}}>
-                              <Avatar sx={{width:32,height:32,bgcolor:`${tokens.primary}15`,color:tokens.primary,fontSize:12,fontWeight:700}}>
-                                {sub.user?.firstName?.charAt(0)}
-                              </Avatar>
-                              <Box>
-                                <Typography variant="body2" fontWeight={600}>{sub.user?.firstName} {sub.user?.lastName}</Typography>
-                                <Typography variant="caption" sx={{color:tokens.textMuted}}>{sub.user?.organization || sub.user?.email}</Typography>
+                      filteredSubs.map(sub => {
+                        const now = new Date();
+                        const endDate = sub.endDate ? new Date(sub.endDate) : null;
+                        const daysRemaining = endDate ? Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)) : null;
+                        const isExpiringSoon = daysRemaining !== null && daysRemaining <= 7 && daysRemaining > 0;
+                        const isExpired = daysRemaining !== null && daysRemaining <= 0;
+                        const isEnterprise = sub.plan === 'enterprise';
+                        
+                        return (
+                          <TableRow key={sub._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
+                            <TableCell>
+                              <Box sx={{display:'flex',alignItems:'center',gap:1.5}}>
+                                <Avatar sx={{width:32,height:32,bgcolor:`${tokens.primary}15`,color:tokens.primary,fontSize:12,fontWeight:700}}>
+                                  {sub.user?.firstName?.charAt(0)}
+                                </Avatar>
+                                <Box>
+                                  <Typography variant="body2" fontWeight={600}>{sub.user?.firstName} {sub.user?.lastName}</Typography>
+                                  <Typography variant="caption" sx={{color:tokens.textMuted}}>{sub.user?.organization || sub.user?.email}</Typography>
+                                </Box>
                               </Box>
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={sub.plan} 
-                              size="small"
-                              sx={{bgcolor:`${PLAN_COLORS[sub.plan]}15`,color:PLAN_COLORS[sub.plan],fontWeight:600,textTransform:'capitalize'}}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={sub.status} 
-                              size="small"
-                              sx={{
-                                bgcolor:sub.status==='active'?'rgba(12,189,115,0.1)':'rgba(245,158,11,0.1)',
-                                color:sub.status==='active'?tokens.accentDark:tokens.warning,
-                                fontWeight:600
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{color:tokens.textMuted}}>
-                              {new Date(sub.startDate).toLocaleDateString()}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{color:tokens.textMuted}}>
-                              {sub.endDate ? new Date(sub.endDate).toLocaleDateString() : '—'}
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={sub.userType || 'Individual'} 
+                                size="small"
+                                sx={{bgcolor:'#F3F4F6',color:tokens.textSecondary,fontWeight:600,textTransform:'capitalize'}}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{display:'flex',alignItems:'center',gap:1}}>
+                                <Chip 
+                                  label={sub.plan} 
+                                  size="small"
+                                  sx={{bgcolor:`${PLAN_COLORS[sub.plan]}15`,color:PLAN_COLORS[sub.plan],fontWeight:600,textTransform:'capitalize'}}
+                                />
+                                {isEnterprise && <Typography variant="caption" sx={{color:tokens.accent,fontWeight:600}}>∞</Typography>}
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={sub.status} 
+                                size="small"
+                                sx={{
+                                  bgcolor:sub.status==='active'?'rgba(12,189,115,0.1)':sub.status==='expired'?'rgba(239,68,68,0.1)':'rgba(245,158,11,0.1)',
+                                  color:sub.status==='active'?tokens.accentDark:sub.status==='expired'?'#DC2626':tokens.warning,
+                                  fontWeight:600
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" sx={{color:tokens.textMuted}}>
+                                {sub.startDate ? new Date(sub.startDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" sx={{color:tokens.textMuted}}>
+                                {endDate ? new Date(endDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{display:'flex',alignItems:'center',gap:1}}>
+                                {isEnterprise ? (
+                                  <Typography variant="body2" sx={{color:tokens.accent,fontWeight:600}}>Never</Typography>
+                                ) : isExpired ? (
+                                  <Chip label="Expired" size="small" sx={{bgcolor:'rgba(239,68,68,0.1)',color:'#DC2626',fontWeight:600}}/>
+                                ) : daysRemaining !== null ? (
+                                  <Chip 
+                                    label={`${daysRemaining}d`} 
+                                    size="small"
+                                    sx={{
+                                      bgcolor:isExpiringSoon?'rgba(245,158,11,0.1)':'rgba(12,189,115,0.1)',
+                                      color:isExpiringSoon?'#B45309':tokens.accentDark,
+                                      fontWeight:600
+                                    }}
+                                  />
+                                ) : (
+                                  <Typography variant="body2" sx={{color:tokens.textMuted}}>—</Typography>
+                                )}
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" sx={{color:tokens.textMuted}}>
+                                {sub.lastPaymentDate ? new Date(sub.lastPaymentDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>

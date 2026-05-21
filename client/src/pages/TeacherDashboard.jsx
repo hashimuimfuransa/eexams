@@ -27,6 +27,7 @@ import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } 
 import StudentManagement from '../components/teacher/StudentManagement';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
 import usePlan from '../hooks/usePlan';
+import SubscriptionWarning from '../components/SubscriptionWarning';
 
 // Memoized StudentRow component to prevent unnecessary re-renders
 const StudentRow = memo(({ row, index, fields, onUpdate, onRemove, disabled, canRemove }) => {
@@ -858,6 +859,7 @@ export default function TeacherDashboard() {
       sidebarEl={<Sidebar user={user} logout={logout} activeSection={activeSection} setActiveSection={setActiveSection} onClose={() => setSidebarOpen(false)} isMobile={isMobile} nav={nav} portalLabel="Teacher Portal" />}
       topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Teacher')} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
+      <SubscriptionWarning user={user} onLogout={logout} />
       {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} user={user} />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
       {activeSection === 'students'  && <StudentsSection />}

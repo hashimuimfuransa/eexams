@@ -123,16 +123,19 @@ const questionBankRoutes = require('./routes/questionBank');
 const contactRoutes = require('./routes/contact');
 const seoController = require('./controllers/seoController');
 
+// Import subscription expiration middleware
+const { blockExpiredUsers } = require('./middleware/subscriptionExpiration');
+
 // Use routes
 app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/student', studentRoutes);
-app.use('/api/exam', examRoutes);
-app.use('/api/profile', profileRoutes);
+app.use('/api/admin', blockExpiredUsers, adminRoutes);
+app.use('/api/student', blockExpiredUsers, studentRoutes);
+app.use('/api/exam', blockExpiredUsers, examRoutes);
+app.use('/api/profile', blockExpiredUsers, profileRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/share', shareRoutes);
-app.use('/api/results', resultsRoutes);
-app.use('/api/student-lists', studentListRoutes);
+app.use('/api/results', blockExpiredUsers, resultsRoutes);
+app.use('/api/student-lists', blockExpiredUsers, studentListRoutes);
 app.use('/api/public', publicExamRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/question-bank', questionBankRoutes);

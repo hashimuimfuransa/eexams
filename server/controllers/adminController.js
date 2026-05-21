@@ -4205,7 +4205,7 @@ const reuseQuestionBankExam = async (req, res) => {
       isPubliclyListed: true,
       isLocked: false,
       status: { $ne: 'template' }
-    }).populate({ path: 'sections.questions', select: 'text type options points correctAnswer section' });
+    }).populate({ path: 'sections.questions', select: 'text type options points correctAnswer section difficulty matchingPairs itemsToOrder' });
 
     if (!sourceExam) {
       return res.status(404).json({ message: 'Exam not found in question bank' });
@@ -4252,10 +4252,14 @@ const reuseQuestionBankExam = async (req, res) => {
             exam: newExam._id,
             section: originalQuestion.section,
             difficulty: originalQuestion.difficulty,
-            // Set to empty objects if undefined to avoid Mongoose cast errors
-            matchingPairs: originalQuestion.matchingPairs || { leftColumn: [], rightColumn: [], correctPairs: [] },
-            itemsToOrder: originalQuestion.itemsToOrder || { items: [], correctOrder: [] },
           };
+          // Only add matchingPairs and itemsToOrder if they exist
+          if (originalQuestion.matchingPairs && Object.keys(originalQuestion.matchingPairs).length > 0) {
+            newQuestionData.matchingPairs = originalQuestion.matchingPairs;
+          }
+          if (originalQuestion.itemsToOrder && Object.keys(originalQuestion.itemsToOrder).length > 0) {
+            newQuestionData.itemsToOrder = originalQuestion.itemsToOrder;
+          }
           const newQuestion = new Question(newQuestionData);
           await newQuestion.save();
           questionMap.set((question._id || question).toString(), newQuestion._id);

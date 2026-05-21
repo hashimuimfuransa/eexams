@@ -1996,7 +1996,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
         </Box>
       </Paper>
 
-      {publishExamId && <PublishDialog examId={publishExamId} onClose={() => setPublishExamId(null)} />}
+      {publishExamId && <PublishDialog examId={publishExamId} onClose={() => setPublishExamId(null)} setActiveSection={setActiveSection} />}
     </Box>
   );
 }
@@ -2174,7 +2174,7 @@ function ExamPreviewPanel({ exam }) {
 }
 
 /* ── PUBLISH DIALOG ── */
-function PublishDialog({ examId, onClose }) {
+function PublishDialog({ examId, onClose, setActiveSection }) {
   console.log('PublishDialog render');
   const { user } = useAuth();
   const { hasMarketplaceAccess } = usePlan();
@@ -2214,12 +2214,20 @@ function PublishDialog({ examId, onClose }) {
     imageUrl: ''
   });
   
-  const [studentSelectionMode, setStudentSelectionMode] = useState('manual'); // 'manual' or 'select'
+  const [studentSelectionMode, setStudentSelectionMode] = useState('select'); // 'manual' or 'select'
   const [existingStudents, setExistingStudents] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const [studentSortBy, setStudentSortBy] = useState('name');
+  const [createStudentDialog, setCreateStudentDialog] = useState(false);
+  const [newStudentForm, setNewStudentForm] = useState({ firstName: '', lastName: '', email: '', phone: '', class: '', gender: '' });
+  const [newStudentFormError, setNewStudentFormError] = useState('');
+  const [creatingStudent, setCreatingStudent] = useState(false);
   const [assignedStudents, setAssignedStudents] = useState([]);
   const [loadingAssigned, setLoadingAssigned] = useState(false);
+  const [examResults, setExamResults] = useState([]);
+  const [loadingResults, setLoadingResults] = useState(false);
   const [resettingExpiration, setResettingExpiration] = useState(false);
   const [shareStats, setShareStats] = useState(null);
   const [addingToBank, setAddingToBank] = useState(false);
@@ -2240,6 +2248,13 @@ function PublishDialog({ examId, onClose }) {
   }, [studentSelectionMode]);
 
   useEffect(() => {
+    if (tab === 2) {
+      fetchExistingStudents();
+      fetchExamResults();
+    }
+  }, [tab]);
+
+  useEffect(() => {
     if (shareResult?.shareId) {
       fetchShareStats(shareResult.shareId);
     }
@@ -2258,6 +2273,28 @@ function PublishDialog({ examId, onClose }) {
     }
   };
 
+  const handleCreateNewStudent = async () => {
+    if (!newStudentForm.firstName.trim() || !newStudentForm.lastName.trim() || !newStudentForm.email.trim()) {
+      setNewStudentFormError('First name, last name and email are required.');
+      return;
+    }
+    setCreatingStudent(true);
+    setNewStudentFormError('');
+    try {
+      const res = await api.post('/admin/students', newStudentForm);
+      const newStudent = res.data;
+      setExistingStudents(prev => [...prev, newStudent]);
+      setSelectedStudentIds(prev => [...prev, newStudent._id.toString()]);
+      setSnack('✓ Student created successfully');
+      setCreateStudentDialog(false);
+      setNewStudentForm({ firstName: '', lastName: '', email: '', phone: '', class: '', gender: '' });
+    } catch (err) {
+      setNewStudentFormError(err.response?.data?.message || 'Failed to create student');
+    } finally {
+      setCreatingStudent(false);
+    }
+  };
+
   const fetchAssignedStudents = async (studentIds) => {
     setLoadingAssigned(true);
     try {
@@ -2269,6 +2306,18 @@ function PublishDialog({ examId, onClose }) {
       console.error('Error fetching assigned students:', err);
     } finally {
       setLoadingAssigned(false);
+    }
+  };
+
+  const fetchExamResults = async () => {
+    setLoadingResults(true);
+    try {
+      const res = await api.get(`/admin/exams/${examId}/results`);
+      setExamResults(res.data || []);
+    } catch (err) {
+      console.error('Error fetching exam results:', err);
+    } finally {
+      setLoadingResults(false);
     }
   };
 
@@ -2374,34 +2423,20 @@ function PublishDialog({ examId, onClose }) {
     setStudentRows(p => p.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
   }, []);
 
-  const handleStudentSelection = (event) => {
-    const selectedIds = event.target.value;
-    setSelectedStudentIds(selectedIds);
-    
-    const selectedStudents = existingStudents.filter(s => selectedIds.includes(s._id.toString()));
-    const newRows = selectedStudents.map(s => ({
-      firstName: s.firstName || '',
-      lastName: s.lastName || '',
-      email: s.email || '',
-      class: s.class || ''
-    }));
-    
-    setStudentRows(newRows);
-  };
-
   const handleCreateAccounts = async () => {
-    const valid = studentRows.filter(s => s.email && s.firstName && s.lastName);
-    if (!valid.length) { setSnack('Fill in at least one student with name and email.'); return; }
+    if (selectedStudentIds.length === 0) { setSnack('Please select at least one student to assign.'); return; }
     setCreating(true);
     try {
-      const r = await api.post(`/admin/exams/${examId}/students`, { students: valid });
+      // Assign existing students to exam
+      const studentsToAssign = existingStudents.filter(s => selectedStudentIds.includes(s._id.toString()));
+      const r = await api.post(`/admin/exams/${examId}/students`, { students: studentsToAssign.map(s => ({ firstName: s.firstName, lastName: s.lastName, email: s.email, class: s.class })) });
       setCreateResult(r.data);
       if (!shareResult) handleShare('email');
       // Refresh assigned students list
       fetchAssignedStudents(preview?.exam?.assignedTo || []);
-      // Refresh existing students list to include newly created accounts
-      fetchExistingStudents();
-    } catch (err) { setSnack(err.response?.data?.message || 'Failed to create accounts'); }
+      // Clear selection
+      setSelectedStudentIds([]);
+    } catch (err) { setSnack(err.response?.data?.message || 'Failed to assign students'); }
     finally { setCreating(false); }
   };
 
@@ -2808,110 +2843,160 @@ function PublishDialog({ examId, onClose }) {
         {tab === 2 && (
           <Box sx={{ p: 3 }}>
             <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "DM Sans,sans-serif" }}>Create Student Accounts</Typography>
-                {studentSelectionMode === 'manual' && (
-                  <Button size="small" startIcon={<Add />} onClick={addRow}
-                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', fontSize: 12 }}>
-                    Add Row
+              <Box sx={{ mb: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "DM Sans,sans-serif", mb: 1 }}>Assign Students to Exam</Typography>
+                  <Button
+                    size="small"
+                    startIcon={<Add />}
+                    onClick={() => setCreateStudentDialog(true)}
+                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 11, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)' }}
+                  >
+                    Create New Student
                   </Button>
-                )}
-              </Box>
-              
-              {/* Toggle between Manual Entry and Select from Existing */}
-              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                <Button
-                  size="small"
-                  variant={studentSelectionMode === 'manual' ? 'contained' : 'outlined'}
-                  onClick={() => {
-                    setStudentSelectionMode('manual');
-                    setSelectedStudentIds([]);
-                    setStudentRows([{ firstName: '', lastName: '', email: '', class: '' }]);
-                  }}
-                  sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, fontWeight: 600 }}
-                >
-                  Manual Entry
-                </Button>
-                <Button
-                  size="small"
-                  variant={studentSelectionMode === 'select' ? 'contained' : 'outlined'}
-                  onClick={() => {
-                    setStudentSelectionMode('select');
-                    setStudentRows([]);
-                  }}
-                  sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, fontWeight: 600 }}
-                >
-                  Select from Existing Students
-                </Button>
+                </Box>
+                <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>Select existing students to assign to this exam</Typography>
               </Box>
 
               {/* Student Selection Dropdown */}
-              {studentSelectionMode === 'select' && (
-                <Box sx={{ mb: 2 }}>
-                  {loadingStudents ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}>
-                      <CircularProgress size={20} />
-                      <Typography sx={{ fontSize: 12, color: tokens.textMuted }}>Loading students...</Typography>
-                    </Box>
-                  ) : existingStudents.length === 0 ? (
-                    <Alert severity="info" sx={{ fontSize: 12 }}>No existing students found. Switch to Manual Entry to create new accounts.</Alert>
-                  ) : (
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Select Students</InputLabel>
-                      <Select
-                        multiple
-                        value={selectedStudentIds}
-                        onChange={handleStudentSelection}
-                        label="Select Students"
-                        renderValue={(selected) => {
-                          const selectedStudents = existingStudents.filter(s => selected.includes(s._id.toString()));
-                          return selectedStudents.map(s => `${s.firstName} ${s.lastName}`).join(', ');
+              <Box sx={{ mb: 2 }}>
+                {loadingStudents ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}>
+                    <CircularProgress size={20} />
+                    <Typography sx={{ fontSize: 12, color: tokens.textMuted }}>Loading students...</Typography>
+                  </Box>
+                ) : existingStudents.length === 0 ? (
+                  <Box sx={{ py: 3, textAlign: 'center' }}>
+                    <Typography sx={{ fontSize: 13, color: tokens.textMuted, mb: 2, fontFamily: "DM Sans,sans-serif" }}>
+                      No students found. Go to Student Management to add students first.
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<People />}
+                      onClick={() => { onClose(); setActiveSection('students'); }}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 12 }}
+                    >
+                      Go to Student Management
+                    </Button>
+                  </Box>
+                ) : (
+                  <Box>
+                    {/* Search and Sort Controls */}
+                    <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                      <TextField
+                        size="small"
+                        placeholder="Search students..."
+                        value={studentSearchTerm}
+                        onChange={(e) => setStudentSearchTerm(e.target.value)}
+                        InputProps={{
+                          startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 16, color: tokens.textMuted }} /></InputAdornment>
                         }}
-                        sx={{ borderRadius: 2 }}
-                      >
-                        {existingStudents.map((student) => (
-                          <MenuItem key={student._id} value={student._id.toString()}>
-                            <Checkbox checked={selectedStudentIds.indexOf(student._id.toString()) > -1} />
-                            <ListItemText primary={`${student.firstName} ${student.lastName}`} secondary={student.email} />
-                          </MenuItem>
+                        sx={{ flex: '1 1 200px', '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }}
+                      />
+                      <FormControl size="small" sx={{ minWidth: 140 }}>
+                        <InputLabel sx={{ fontSize: 13 }}>Sort By</InputLabel>
+                        <Select value={studentSortBy} onChange={(e) => setStudentSortBy(e.target.value)} label="Sort By" sx={{ borderRadius: 2, fontSize: 13 }}>
+                          <MenuItem value="name">Name A–Z</MenuItem>
+                          <MenuItem value="email">Email A–Z</MenuItem>
+                          <MenuItem value="class">Class A–Z</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+
+                    {/* Select All Checkbox */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <Checkbox
+                        checked={selectedStudentIds.length > 0 && selectedStudentIds.length === existingStudents.length}
+                        indeterminate={selectedStudentIds.length > 0 && selectedStudentIds.length < existingStudents.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedStudentIds(existingStudents.map(s => s._id.toString()));
+                          } else {
+                            setSelectedStudentIds([]);
+                          }
+                        }}
+                        sx={{ '& .MuiSvgIcon-root': { fontSize: 18 } }}
+                      />
+                      <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>
+                        Select All ({selectedStudentIds.length}/{existingStudents.length})
+                      </Typography>
+                    </Box>
+
+                    {/* Student List */}
+                    <Box sx={{ maxHeight: 300, overflowY: 'auto', border: `1px solid ${tokens.surfaceBorder}`, borderRadius: 2, bgcolor: 'white' }}>
+                      {existingStudents
+                        .filter(s => {
+                          const searchLower = studentSearchTerm.toLowerCase();
+                          return (
+                            s.firstName?.toLowerCase().includes(searchLower) ||
+                            s.lastName?.toLowerCase().includes(searchLower) ||
+                            s.email?.toLowerCase().includes(searchLower) ||
+                            s.class?.toLowerCase().includes(searchLower)
+                          );
+                        })
+                        .sort((a, b) => {
+                          if (studentSortBy === 'name') {
+                            return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+                          }
+                          if (studentSortBy === 'email') {
+                            return (a.email || '').localeCompare(b.email || '');
+                          }
+                          if (studentSortBy === 'class') {
+                            return (a.class || '').localeCompare(b.class || '');
+                          }
+                          return 0;
+                        })
+                        .map((student) => (
+                          <Box
+                            key={student._id}
+                            onClick={() => {
+                              const isSelected = selectedStudentIds.includes(student._id.toString());
+                              if (isSelected) {
+                                setSelectedStudentIds(prev => prev.filter(id => id !== student._id.toString()));
+                              } else {
+                                setSelectedStudentIds(prev => [...prev, student._id.toString()]);
+                              }
+                            }}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1,
+                              py: 1,
+                              px: 1.5,
+                              borderBottom: `1px solid ${tokens.surfaceBorder}`,
+                              cursor: 'pointer',
+                              '&:hover': { bgcolor: '#F8FAFC' },
+                              '&:last-child': { borderBottom: 'none' }
+                            }}
+                          >
+                            <Checkbox
+                              checked={selectedStudentIds.includes(student._id.toString())}
+                              sx={{ '& .MuiSvgIcon-root': { fontSize: 18 } }}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedStudentIds(prev => [...prev, student._id.toString()]);
+                                } else {
+                                  setSelectedStudentIds(prev => prev.filter(id => id !== student._id.toString()));
+                                }
+                              }}
+                            />
+                            <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: tokens.primary }}>{student.firstName[0]}</Avatar>
+                            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                              <Typography sx={{ fontSize: 13, fontWeight: 600, fontFamily: "DM Sans,sans-serif" }}>
+                                {student.firstName} {student.lastName}
+                              </Typography>
+                              <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>{student.email}</Typography>
+                            </Box>
+                            {student.class && (
+                              <Chip label={student.class} size="small" sx={{ fontSize: 10, bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent }} />
+                            )}
+                          </Box>
                         ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                </Box>
-              )}
-              
-              {/* Show table only in manual mode or when students are selected */}
-              {(studentSelectionMode === 'manual' || (studentSelectionMode === 'select' && studentRows.length > 0)) && (
-                <Box sx={{ overflowX: 'auto' }}>
-                  <Table size="small" sx={{ minWidth: 480 }}>
-                    <TableHead>
-                      <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-                        {['First Name', 'Last Name', 'Email', 'Class', ''].map(h => (
-                          <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11, py: 0.75 }}>{h}</TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {studentRows.map((row, i) => (
-                        <StudentRow 
-                          key={row.id || i}
-                          row={row}
-                          index={i}
-                          fields={['firstName', 'lastName', 'email', 'class']}
-                          onUpdate={updateRow}
-                          onRemove={removeRow}
-                          disabled={studentSelectionMode === 'select'}
-                          canRemove={studentRows.length > 1}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </Box>
-              )}
-              <Typography sx={{ fontSize: 11, color: tokens.textMuted, mt: 1, fontFamily: "DM Sans,sans-serif" }}>
-                Default password: <b>Exam@2024</b> — students should change it after first login.
-              </Typography>
+                    </Box>
+                  </Box>
+                )}
+              </Box>
             </Paper>
 
             {createResult ? (
@@ -2919,7 +3004,7 @@ function PublishDialog({ examId, onClose }) {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <CheckCircle sx={{ color: tokens.accent }} />
                   <Typography fontWeight={700} sx={{ color: tokens.accentDark, fontFamily: "DM Sans,sans-serif" }}>
-                    {createResult.created.length} account{createResult.created.length !== 1 ? 's' : ''} created, {createResult.skipped.length} skipped
+                    {createResult.created.length} student{createResult.created.length !== 1 ? 's' : ''} assigned, {createResult.skipped.length} skipped
                   </Typography>
                 </Box>
                 {shareResult && (
@@ -2936,12 +3021,11 @@ function PublishDialog({ examId, onClose }) {
                 )}
                 {createResult.created.length > 0 && (
                   <Box sx={{ maxHeight: 160, overflowY: 'auto' }}>
-                    <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, mb: 0.5 }}>Created Accounts:</Typography>
+                    <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, mb: 0.5 }}>Assigned Students:</Typography>
                     {createResult.created.map((s, i) => (
                       <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5, borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
                         <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: tokens.accent }}>{s.firstName[0]}</Avatar>
                         <Typography sx={{ fontSize: 12, flexGrow: 1 }}>{s.firstName} {s.lastName} — <b>{s.email}</b></Typography>
-                        <Chip label={`pw: ${s.tempPassword}`} size="small" sx={{ fontSize: 10, bgcolor: '#F1F5F9', color: tokens.textSecondary }} />
                       </Box>
                     ))}
                   </Box>
@@ -2962,20 +3046,18 @@ function PublishDialog({ examId, onClose }) {
                   size="small"
                   onClick={() => {
                     setCreateResult(null);
-                    setStudentRows([{ firstName: '', lastName: '', email: '', class: '' }]);
                     setSelectedStudentIds([]);
-                    setStudentSelectionMode('manual');
                   }}
-                  sx={{ borderRadius: 2, fontWeight: 600, textTransform: 'none', mt: 1.5 }}
+                  sx={{ borderRadius: 2, textTransform: 'none', mt: 1.5 }}
                 >
                   + Add More Students
                 </Button>
               </Paper>
             ) : (
               <Button fullWidth variant="contained" size="large" startIcon={creating ? <CircularProgress size={18} color="inherit" /> : <People />}
-                onClick={handleCreateAccounts} disabled={creating}
+                onClick={handleCreateAccounts} disabled={creating || selectedStudentIds.length === 0}
                 sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', py: 1.5, fontSize: 15 }}>
-                {creating ? 'Creating Accounts…' : 'Create Accounts & Share'}
+                {creating ? 'Assigning Students…' : 'Assign Students & Share'}
               </Button>
             )}
 
@@ -3038,36 +3120,48 @@ function PublishDialog({ examId, onClose }) {
                   </Box>
                 )}
                 
-                <Box sx={{ maxHeight: 200, overflowY: 'auto' }}>
+                <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ bgcolor: '#F8FAFC' }}>
                         <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Name</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Email</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Class</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Status</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {assignedStudents.map((student) => (
-                        <TableRow key={student._id}>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: tokens.primary }}>{student.firstName[0]}</Avatar>
-                              {student.firstName} {student.lastName}
-                            </Box>
-                          </TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{student.email}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{student.class || '-'}</TableCell>
-                          <TableCell>
-                            <Tooltip title="Remove from exam">
-                              <IconButton size="small" onClick={() => handleRemoveStudent(student._id)} sx={{ color: '#EF4444' }}>
-                                <Delete fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {assignedStudents.map((student) => {
+                        const studentResult = examResults.find(r => r.student?._id === student._id);
+                        const hasCompleted = !!studentResult;
+                        return (
+                          <TableRow key={student._id}>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: tokens.primary }}>{student.firstName[0]}</Avatar>
+                                {student.firstName} {student.lastName}
+                              </Box>
+                            </TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{student.email}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{student.class || '-'}</TableCell>
+                            <TableCell>
+                              {hasCompleted ? (
+                                <Chip label="Completed" size="small" sx={{ fontSize: 10, bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent, fontWeight: 700 }} />
+                              ) : (
+                                <Chip label="Not Started" size="small" sx={{ fontSize: 10, bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning, fontWeight: 700 }} />
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="Remove from exam">
+                                <IconButton size="small" onClick={() => handleRemoveStudent(student._id)} sx={{ color: '#EF4444' }}>
+                                  <Delete fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </Box>
@@ -3091,6 +3185,75 @@ function PublishDialog({ examId, onClose }) {
       </DialogActions>
 
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')} message={snack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+
+    {/* Create Student Dialog */}
+    <Dialog open={createStudentDialog} onClose={() => setCreateStudentDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif" }}>Create New Student</DialogTitle>
+      <DialogContent sx={{ pt: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {newStudentFormError && <Alert severity="error" sx={{ borderRadius: 2 }}>{newStudentFormError}</Alert>}
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              label="First Name *"
+              value={newStudentForm.firstName}
+              onChange={e => setNewStudentForm(p => ({ ...p, firstName: e.target.value }))}
+              sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+            <TextField
+              label="Last Name *"
+              value={newStudentForm.lastName}
+              onChange={e => setNewStudentForm(p => ({ ...p, lastName: e.target.value }))}
+              sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          </Box>
+          <TextField
+            label="Email *"
+            type="email"
+            value={newStudentForm.email}
+            onChange={e => setNewStudentForm(p => ({ ...p, email: e.target.value }))}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              label="Phone"
+              value={newStudentForm.phone}
+              onChange={e => setNewStudentForm(p => ({ ...p, phone: e.target.value }))}
+              sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+            <TextField
+              label="Class / Grade"
+              value={newStudentForm.class}
+              onChange={e => setNewStudentForm(p => ({ ...p, class: e.target.value }))}
+              sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          </Box>
+          <FormControl sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+            <InputLabel>Gender</InputLabel>
+            <Select
+              value={newStudentForm.gender}
+              onChange={e => setNewStudentForm(p => ({ ...p, gender: e.target.value }))}
+              label="Gender"
+            >
+              <MenuItem value="">Not specified</MenuItem>
+              <MenuItem value="male">Male</MenuItem>
+              <MenuItem value="female">Female</MenuItem>
+              <MenuItem value="other">Other</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+        <Button onClick={() => setCreateStudentDialog(false)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={handleCreateNewStudent}
+          disabled={creatingStudent}
+          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}
+        >
+          {creatingStudent ? 'Creating...' : 'Create & Assign'}
+        </Button>
+      </DialogActions>
+    </Dialog>
     </Dialog>
 
     {/* Edit Question Dialog - Separate from main dialog */}
@@ -4405,7 +4568,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
         </DialogActions>
       </Dialog>
 
-      {publishExamId && <PublishDialog examId={publishExamId} onClose={() => setPublishExamId(null)} />}
+      {publishExamId && <PublishDialog examId={publishExamId} onClose={() => setPublishExamId(null)} setActiveSection={(section) => setActiveSection(section)} />}
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')} message={snack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );

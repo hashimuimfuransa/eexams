@@ -366,6 +366,38 @@ const ForgotPassword = () => {
               </button>
 
               <button
+                onClick={handleSubmit}
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  borderRadius: 12,
+                  border: `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                  background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                  color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
+                  cursor: loading ? 'wait' : 'pointer',
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: 15,
+                  fontWeight: 600,
+                  marginBottom: 12,
+                  transition: 'all 0.2s',
+                  opacity: loading ? 0.7 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.borderColor = tokens.accent;
+                    e.currentTarget.style.background = tokens.accentGlow;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = isDark ? tokens.dark.border : tokens.surfaceBorder;
+                  e.currentTarget.style.background = isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt;
+                }}
+              >
+                {loading ? 'Resending...' : "Didn't receive it? Resend"}
+              </button>
+
+              <button
                 onClick={() => navigate('/login')}
                 style={{
                   width: '100%',

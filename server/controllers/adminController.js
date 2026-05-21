@@ -266,12 +266,16 @@ const getStudents = async (req, res) => {
       return res.json(students);
     }
 
-    // For teachers: show ALL students in the same organization
+    // For teachers: show ALL students in the same organization OR created by the teacher
     const teacher = await User.findById(req.user._id).select('organization');
     
     let query = User.find({
       role: 'student',
-      organization: teacher.organization
+      $or: [
+        { organization: teacher.organization },
+        { createdBy: req.user._id },
+        { parentAdmin: req.user._id }
+      ]
     });
     
     // Apply class filter if provided

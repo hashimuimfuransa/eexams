@@ -310,7 +310,11 @@ const Login = () => {
 
       if (err.response) {
         switch (err.response.status) {
-          case 401: errorMessage = 'Invalid email or password.'; snackbarMessage = 'Invalid credentials'; shouldTrackFailure = true; break;
+          case 401:
+            errorMessage = err.response.data?.message || 'Invalid email or password.';
+            snackbarMessage = err.response.data?.message || 'Invalid credentials';
+            shouldTrackFailure = true;
+            break;
           case 403: errorMessage = 'Your account has been disabled.'; snackbarMessage = 'Account disabled'; break;
           case 404: errorMessage = 'Account not found.'; snackbarMessage = 'Account not found'; shouldTrackFailure = true; break;
           case 429: errorMessage = 'Too many login attempts.'; snackbarMessage = 'Too many attempts'; break;

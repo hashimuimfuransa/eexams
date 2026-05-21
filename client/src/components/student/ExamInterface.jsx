@@ -2985,18 +2985,18 @@ const ExamInterface = () => {
             : '0 4px 20px rgba(0,0,0,0.1)'
         }}
       >
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={7}>
-            <Typography variant="h5" component="h1" fontWeight="bold">
+        <Grid container spacing={{ xs: 1, sm: 2 }} alignItems="center">
+          <Grid item xs={12} sm={7} md={7}>
+            <Typography variant={{ xs: 'h6', sm: 'h5' }} component="h1" fontWeight="bold">
               {exam.title}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {exam.description?.substring(0, 100)}
-              {exam.description?.length > 100 ? '...' : ''}
+            <Typography variant={{ xs: 'caption', sm: 'body2' }} color="text.secondary">
+              {exam.description?.substring(0, { xs: 50, sm: 100 })}
+              {exam.description?.length > { xs: 50, sm: 100 } ? '...' : ''}
             </Typography>
           </Grid>
 
-          <Grid item xs={12} md={5} sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' }, alignItems: 'center', gap: 2 }}>
+          <Grid item xs={12} sm={5} md={5} sx={{ display: 'flex', justifyContent: { xs: 'flex-start', sm: 'flex-end' }, alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
             {/* Security indicator */}
             {warningCount > 0 && (
               <Tooltip title={`${warningCount} security warnings detected`}>
@@ -3015,9 +3015,9 @@ const ExamInterface = () => {
             )}
 
             {/* Timer */}
-            <TimerDisplay warning={timerWarning}>
-              <Timer sx={{ mr: 1 }} />
-              {formatTime(timeRemaining)}
+            <TimerDisplay warning={timerWarning} sx={{ p: { xs: 0.5, sm: 1, md: 2 } }}>
+              <Timer sx={{ mr: { xs: 0.5, sm: 1 }, fontSize: { xs: '1rem', sm: '1.25rem' } }} />
+              <Typography sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>{formatTime(timeRemaining)}</Typography>
             </TimerDisplay>
 
             {/* Fullscreen toggle */}
@@ -3043,78 +3043,47 @@ const ExamInterface = () => {
                   setConfirmSubmit(true);
                 }
               }}
-              startIcon={<Send />}
+              startIcon={<Send sx={{ display: { xs: 'none', sm: 'block' } }} />}
               disabled={submitting || examCompleted}
-              sx={{ borderRadius: 0 }} // Remove rounded corners
+              sx={{
+                borderRadius: 0,
+                px: { xs: 1.5, sm: 2 },
+                py: { xs: 0.75, sm: 1 },
+                fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                minWidth: { xs: 'auto', sm: 'auto' }
+              }}
             >
-              {submitting ? 'Submitting...' : 'Submit Exam'}
+              {submitting ? 'Submitting...' : 'Submit'}
             </Button>
           </Grid>
         </Grid>
 
         {/* Progress bar */}
-        <Box sx={{ mt: 3 }}>
+        <Box sx={{ mt: { xs: 2, sm: 3 } }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant={{ xs: 'caption', sm: 'body2' }} color="text.secondary">
               Progress
             </Typography>
-            <Typography variant="body2" fontWeight="bold">
+            <Typography variant={{ xs: 'caption', sm: 'body2' }} fontWeight="bold">
               {Math.round(progress)}%
             </Typography>
           </Box>
           <LinearProgress
             variant="determinate"
             value={progress}
-            sx={{ height: 8, borderRadius: 4 }}
+            sx={{ height: { xs: 6, sm: 8 }, borderRadius: 4 }}
           />
         </Box>
       </Paper>
 
-      {/* Mobile Submit Button - Visible only on mobile devices */}
-      <Box
-        sx={{
-          display: { xs: 'block', md: 'none' },
-          mb: 3,
-          position: 'sticky',
-          top: 0,
-          zIndex: 1000,
-          bgcolor: mode === 'dark' ? 'background.default' : 'background.paper',
-          p: 2,
-          borderRadius: 2,
-          boxShadow: mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : '0 2px 12px rgba(0,0,0,0.1)',
-          border: mode === 'dark' ? `1px solid ${alpha(theme.palette.divider, 0.2)}` : 'none'
-        }}
-      >
-        <Button
-          variant="contained"
-          color="primary"
-          fullWidth
-          onClick={() => {
-            if (!submitting && !examCompleted) {
-              setConfirmSubmit(true);
-            }
-          }}
-          startIcon={<Send />}
-          disabled={submitting || examCompleted}
-          sx={{
-            py: 1.5,
-            fontSize: '1rem',
-            fontWeight: 'bold',
-            borderRadius: 2
-          }}
-        >
-          {submitting ? 'Submitting...' : 'Submit Exam'}
-        </Button>
-      </Box>
-
       {/* Exam Content */}
-      <Grid container spacing={4}>
+      <Grid container spacing={{ xs: 2, sm: 3, md: 4 }}>
         {/* Sidebar */}
         <Grid item xs={12} md={3}>
           <Paper
             elevation={mode === 'dark' ? 6 : 2}
             sx={{
-              p: 2,
+              p: { xs: 1.5, sm: 2 },
               borderRadius: 2,
               bgcolor: mode === 'dark'
                 ? alpha(theme.palette.background.paper, 0.9)
@@ -3127,7 +3096,7 @@ const ExamInterface = () => {
                 : '0 2px 12px rgba(0,0,0,0.08)'
             }}
           >
-            <Typography variant="h6" fontWeight="bold" gutterBottom>
+            <Typography variant={{ xs: 'subtitle1', sm: 'h6' }} fontWeight="bold" gutterBottom>
               Sections
             </Typography>
             <Divider sx={{ mb: 2 }} />
@@ -3147,20 +3116,21 @@ const ExamInterface = () => {
                       <SectionChip
                         label={
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                            <Typography component="span">
+                            <Typography component="span" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                               Section {section.name}
                             </Typography>
                             <Chip
                               size="small"
                               label={section.questions?.length || 0}
                               color={activeSection === section.name ? "secondary" : "default"}
-                              sx={{ ml: 1, height: 20, minWidth: 28 }}
+                              sx={{ ml: 1, height: { xs: 18, sm: 20 }, minWidth: { xs: 24, sm: 28 }, fontSize: { xs: '0.65rem', sm: '0.75rem' } }}
                             />
                           </Box>
                         }
                         onClick={() => handleSectionChange(section.name)}
                         active={activeSection === section.name}
                         clickable
+                        sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
                       />
                       {activeSection === section.name && (
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 1 }}>
@@ -3295,12 +3265,12 @@ const ExamInterface = () => {
               elevation={3}
               answered={currentQuestion && answers[currentQuestion._id]?.answered}
             >
-              <CardContent sx={{ p: 4 }}>
+              <CardContent sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
                 {/* Section description */}
                 <Box
                   sx={{
-                    mb: 3,
-                    p: 2,
+                    mb: { xs: 2, sm: 3 },
+                    p: { xs: 1.5, sm: 2 },
                     bgcolor: mode === 'dark'
                       ? alpha(theme.palette.primary.main, 0.1)
                       : alpha(theme.palette.primary.main, 0.05),

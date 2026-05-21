@@ -191,14 +191,14 @@ function Hero({ mode, isAuthenticated, user }) {
                     Browse Exam Bank
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 3h18v18H3zM9 9h6M9 12h6M9 15h6"/></svg>
                   </RouterLink>
-                  <RouterLink to="/register" style={{
+                  <RouterLink to="/login" style={{
                     padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
                     background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
                     color: 'white', textDecoration: 'none',
                     boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
                   }}>
-                    Start for free
+                    Login
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </RouterLink>
                 </>

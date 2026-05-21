@@ -154,7 +154,7 @@ const login = async (req, res) => {
 
     // Fast fail for non-existent users
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'No account found with this email address' });
     }
 
     // Fast fail for blocked users
@@ -166,7 +166,7 @@ const login = async (req, res) => {
     const isMatch = await user.comparePassword(password);
 
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Incorrect password' });
     }
 
     // Generate token immediately after successful authentication

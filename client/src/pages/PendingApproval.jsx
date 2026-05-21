@@ -328,7 +328,7 @@ export default function PendingApproval() {
                       </li>
                       <li>
                         <strong style={{ color: textPrimary }}>Email: </strong>
-                        <a href="mailto:support@eexams.com" style={{ color: tokens.accentBlue, textDecoration: 'none', fontWeight: 600 }}>support@eexams.com</a>
+                        <a href="mailto:info@excellencecoachinghub.com" style={{ color: tokens.accentBlue, textDecoration: 'none', fontWeight: 600 }}>info@excellencecoachinghub.com</a>
                       </li>
                     </ul>
                     <p style={{ fontSize: 12, color: textSecondary, marginTop: 8, fontStyle: 'italic' }}>
@@ -352,7 +352,7 @@ export default function PendingApproval() {
             <p style={{ fontSize: 14, color: textSecondary, lineHeight: 1.6 }}>
               For <strong style={{ color: textPrimary }}>Enterprise</strong> pricing, our team will contact you directly to discuss a custom package.
               You can also reach us at{' '}
-              <a href="mailto:support@eexams.com" style={{ color: tokens.accentBlue, fontWeight: 600, textDecoration: 'none' }}>support@eexams.com</a>
+              <a href="mailto:info@excellencecoachinghub.com" style={{ color: tokens.accentBlue, fontWeight: 600, textDecoration: 'none' }}>info@excellencecoachinghub.com</a>
               {' '}or call{' '}
               <a href="tel:+250781671517" style={{ color: tokens.accentBlue, fontWeight: 600, textDecoration: 'none' }}>+250 781 671 517</a>
               {' '}·{' '}
@@ -383,7 +383,7 @@ export default function PendingApproval() {
           </button>
           <p style={{ fontSize: 13, color: textSecondary }}>
             Need help?{' '}
-            <a href="mailto:support@eexams.com" style={{ color: tokens.accentBlue, textDecoration: 'none', fontWeight: 600 }}>support@eexams.com</a>
+            <a href="mailto:info@excellencecoachinghub.com" style={{ color: tokens.accentBlue, textDecoration: 'none', fontWeight: 600 }}>info@excellencecoachinghub.com</a>
             {' '}·{' '}
             <a href="tel:+250781671517" style={{ color: tokens.accentBlue, textDecoration: 'none', fontWeight: 600 }}>+250 781 671 517</a>
             {' '}·{' '}

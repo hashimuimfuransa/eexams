@@ -1334,7 +1334,7 @@ const StudentLayout = ({ children }) => {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
               <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Email fontSize="small" color="primary" />
-                support@eexams.com
+                info@excellencecoachinghub.com
               </Typography>
               <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Phone fontSize="small" color="primary" />

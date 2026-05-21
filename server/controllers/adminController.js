@@ -4240,7 +4240,8 @@ const reuseQuestionBankExam = async (req, res) => {
       const newQuestionIds = [];
 
       for (const question of sourceSection.questions) {
-        const originalQuestion = await Question.findById(question._id || question);
+        // Use the already populated question data instead of fetching again
+        const originalQuestion = question;
         if (originalQuestion) {
           const newQuestion = new Question({
             text: originalQuestion.text,

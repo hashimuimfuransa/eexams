@@ -6257,19 +6257,19 @@ function TemplatesSection({ exams, setExams }) {
               <Divider sx={{ my: 2 }} />
 
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 2 }}>
-                Sample Questions (First 5):
+                All Questions ({totalQs(previewExam)}):
               </Typography>
 
               {previewExam.sections && previewExam.sections.length > 0 ? (
                 <Box>
-                  {previewExam.sections.slice(0, 2).map((section, si) => (
+                  {previewExam.sections.map((section, si) => (
                     <Box key={si} sx={{ mb: 2 }}>
                       <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
                         Section {section.name}: {section.description || ''}
                       </Typography>
                       {section.questions && section.questions.length > 0 ? (
                         <Box>
-                          {section.questions.slice(0, 3).map((question, qi) => (
+                          {section.questions.map((question, qi) => (
                             <Paper key={qi} elevation={0} sx={{ p: 1.5, mb: 1, border: `1px solid ${tokens.surfaceBorder}`, borderRadius: 2 }}>
                               <Typography variant="caption" fontWeight={600} sx={{ color: tokens.primary }}>
                                 Q{qi + 1}:

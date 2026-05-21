@@ -5942,8 +5942,8 @@ function TemplatesSection({ exams, setExams }) {
       const r = await api.post(`/question-bank/${examId}/reuse`, {}, { timeout: 30000 });
       console.log('Reuse response:', r.data);
       setExams(p => [r.data, ...p]);
-      setSnack('✓ Exam copied from question bank successfully! Opening editor...');
-      navigate(`/admin/exams/${r.data._id}/edit`);
+      setSnack('✓ Exam copied from question bank successfully!');
+      setActiveSection('exams');
     } catch (error) {
       console.error('Error reusing exam:', error);
       setSnack('✗ Error copying exam from question bank.');

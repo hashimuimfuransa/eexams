@@ -61,6 +61,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [requestingExam, setRequestingExam] = useState(null);
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -149,6 +150,7 @@ const Dashboard = () => {
 
   const handleDirectRequest = async (examId, examTitle) => {
     try {
+      setRequestingExam(examId);
       const response = await api.post(`/marketplace/exams/${examId}/request`);
       // Refresh the data to update the pending requests list
       await fetchData(true);
@@ -161,6 +163,8 @@ const Dashboard = () => {
       } else {
         alert('Failed to submit request. Please try again.');
       }
+    } finally {
+      setRequestingExam(null);
     }
   };
 
@@ -240,18 +244,18 @@ const Dashboard = () => {
             color: 'white'
           }}
         >
-          <CardContent sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-              <Box sx={{ flex: 1, minWidth: 250 }}>
-                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Psychology />
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: { xs: 2, sm: 3 } }}>
+              <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
+                <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                  <Psychology fontSize={isMobile ? 'small' : 'medium'} />
                   Boost Your Learning with Excellence Coaching Hub
                 </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                <Typography variant={isMobile ? 'caption' : 'body2'} sx={{ opacity: 0.9, lineHeight: 1.4 }}>
                   Download our mobile app to access detailed explanations, practice questions, and personalized learning paths to help you master topics you're struggling with.
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>
                 <Button
                   variant="contained"
                   href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
@@ -263,6 +267,9 @@ const Dashboard = () => {
                     color: '#667eea',
                     fontWeight: 'bold',
                     textTransform: 'none',
+                    fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                    padding: { xs: '6px 12px', sm: '8px 16px' },
+                    minWidth: { xs: '100%', sm: 'auto' },
                     '&:hover': {
                       bgcolor: 'rgba(255,255,255,0.9)',
                       color: '#764ba2'
@@ -282,6 +289,9 @@ const Dashboard = () => {
                     color: '#667eea',
                     fontWeight: 'bold',
                     textTransform: 'none',
+                    fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                    padding: { xs: '6px 12px', sm: '8px 16px' },
+                    minWidth: { xs: '100%', sm: 'auto' },
                     '&:hover': {
                       bgcolor: 'rgba(255,255,255,0.9)',
                       color: '#764ba2'
@@ -659,7 +669,8 @@ const Dashboard = () => {
                               variant="contained"
                               size="small"
                               onClick={() => handleDirectRequest(exam._id, exam.title)}
-                              startIcon={<AddCircle />}
+                              startIcon={requestingExam === exam._id ? <CircularProgress size={16} color="inherit" /> : <AddCircle />}
+                              disabled={requestingExam === exam._id}
                               fullWidth={isMobile}
                               sx={{
                                 fontWeight: 'bold',
@@ -668,7 +679,7 @@ const Dashboard = () => {
                                 boxShadow: '0 2px 8px rgba(139,92,246,0.3)'
                               }}
                             >
-                              Retake
+                              {requestingExam === exam._id ? 'Requesting...' : 'Retake'}
                             </Button>
                           ) : isApproved ? (
                             <Button
@@ -701,7 +712,8 @@ const Dashboard = () => {
                               variant="contained"
                               size="small"
                               onClick={() => handleDirectRequest(exam._id, exam.title)}
-                              startIcon={<AddCircle />}
+                              startIcon={requestingExam === exam._id ? <CircularProgress size={16} color="inherit" /> : <AddCircle />}
+                              disabled={requestingExam === exam._id}
                               fullWidth={isMobile}
                               sx={{
                                 fontWeight: 'bold',
@@ -710,7 +722,7 @@ const Dashboard = () => {
                                 boxShadow: '0 2px 8px rgba(12,189,115,0.3)'
                               }}
                             >
-                              Request
+                              {requestingExam === exam._id ? 'Requesting...' : 'Request'}
                             </Button>
                           )}
                         </Box>

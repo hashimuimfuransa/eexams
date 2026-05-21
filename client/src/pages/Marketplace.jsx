@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails, Collapse } from '@mui/material';
-import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp, ArrowBack } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
@@ -282,9 +282,25 @@ const Marketplace = () => {
         <Box sx={{ maxWidth: 1200, margin: '0 auto', px: 3 }}>
         {/* Header */}
         <Box sx={{ mb: 4, textAlign: 'center' }}>
-          <Typography variant="h2" fontWeight={800} sx={{ mb: 2, color: '#0D406C' }}>
-            Exam Bank
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2, gap: 2 }}>
+            <Button
+              onClick={() => navigate(-1)}
+              startIcon={<ArrowBack />}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 600,
+                color: '#0D406C',
+                '&:hover': {
+                  bgcolor: 'rgba(13,64,108,0.05)'
+                }
+              }}
+            >
+              Back
+            </Button>
+            <Typography variant="h2" fontWeight={800} sx={{ color: '#0D406C' }}>
+              Exam Bank
+            </Typography>
+          </Box>
           <Typography sx={{ color: '#64748B', maxWidth: 600, mx: 'auto', mb: 4, fontSize: 16 }}>
             Browse and request access to publicly available exams
           </Typography>

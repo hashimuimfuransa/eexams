@@ -64,7 +64,7 @@ const ProtectedRoute = ({ children, requiredRole, allowedRoles, allowIncomplete 
 };
 
 const AppRoutes = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   return (
     <Routes>

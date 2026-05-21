@@ -10,6 +10,9 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState(null);
   const [initialized, setInitialized] = useState(false);
 
+  // Derived value for authentication status
+  const isAuthenticated = !!user;
+
   // Session timeout duration: 1 day in milliseconds
   const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -355,9 +358,6 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('lastActivity');
     setUser(null);
   };
-
-  // Computed property to check if user is authenticated
-  const isAuthenticated = !!user;
 
   // Function to update user profile data
   const updateUserProfile = (userData) => {

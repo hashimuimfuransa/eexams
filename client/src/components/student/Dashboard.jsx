@@ -26,7 +26,10 @@ import {
   AccessTime,
   Refresh,
   ArrowForward,
-  AddCircle
+  AddCircle,
+  PhoneAndroid,
+  Laptop,
+  Psychology
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -224,6 +227,70 @@ const Dashboard = memo(() => {
         <Typography variant="body1" color="text.secondary" paragraph>
           Welcome, {user?.firstName || 'Student'}! Here are your available exams and results.
         </Typography>
+
+        {/* App Download Recommendation */}
+        <Card 
+          elevation={3} 
+          sx={{ 
+            mb: 4,
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white'
+          }}
+        >
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+              <Box sx={{ flex: 1, minWidth: 250 }}>
+                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Psychology />
+                  Boost Your Learning with Excellence Coaching Hub
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  Download our mobile app to access detailed explanations, practice questions, and personalized learning paths to help you master topics you're struggling with.
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Button
+                  variant="contained"
+                  href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  startIcon={<PhoneAndroid />}
+                  sx={{
+                    bgcolor: 'white',
+                    color: '#667eea',
+                    fontWeight: 'bold',
+                    textTransform: 'none',
+                    '&:hover': {
+                      bgcolor: 'rgba(255,255,255,0.9)',
+                      color: '#764ba2'
+                    }
+                  }}
+                >
+                  Google Play
+                </Button>
+                <Button
+                  variant="contained"
+                  href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  startIcon={<Laptop />}
+                  sx={{
+                    bgcolor: 'white',
+                    color: '#667eea',
+                    fontWeight: 'bold',
+                    textTransform: 'none',
+                    '&:hover': {
+                      bgcolor: 'rgba(255,255,255,0.9)',
+                      color: '#764ba2'
+                    }
+                  }}
+                >
+                  Microsoft Store
+                </Button>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
 
         {/* Available Exams Section */}
         <Box sx={{ mt: 4 }}>

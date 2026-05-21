@@ -42,7 +42,9 @@ import {
   Autorenew,
   Error,
   HourglassEmpty,
-  InfoOutlined
+  InfoOutlined,
+  PhoneAndroid,
+  Laptop
 } from '@mui/icons-material';
 import api from '../../utils/api';
 import { formatDate } from '../../utils/formatters';
@@ -301,6 +303,72 @@ const ExamResult = () => {
         </Grid>
       </Paper>
 
+      {/* App Download Recommendation for Failed Questions */}
+      {scorePercentage < 70 && (
+        <Paper
+          elevation={3}
+          sx={{
+            p: 3,
+            mb: 4,
+            borderRadius: 0,
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white'
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ flex: 1, minWidth: 250 }}>
+              <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Psychology />
+                Improve Your Scores with Excellence Coaching Hub
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                Download our mobile app to access detailed explanations, practice questions, and personalized learning paths to help you master topics you're struggling with.
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
+                target="_blank"
+                rel="noopener noreferrer"
+                startIcon={<PhoneAndroid />}
+                sx={{
+                  bgcolor: 'white',
+                  color: '#667eea',
+                  fontWeight: 'bold',
+                  textTransform: 'none',
+                  '&:hover': {
+                    bgcolor: 'rgba(255,255,255,0.9)',
+                    color: '#764ba2'
+                  }
+                }}
+              >
+                Google Play
+              </Button>
+              <Button
+                variant="contained"
+                href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare"
+                target="_blank"
+                rel="noopener noreferrer"
+                startIcon={<Laptop />}
+                sx={{
+                  bgcolor: 'white',
+                  color: '#667eea',
+                  fontWeight: 'bold',
+                  textTransform: 'none',
+                  '&:hover': {
+                    bgcolor: 'rgba(255,255,255,0.9)',
+                    color: '#764ba2'
+                  }
+                }}
+              >
+                Microsoft Store
+              </Button>
+            </Box>
+          </Box>
+        </Paper>
+      )}
+
       {/* Detailed Results */}
       <Typography variant="h5" component="h2" fontWeight="bold" gutterBottom>
         Detailed Results
@@ -467,6 +535,60 @@ const ExamResult = () => {
                               {answer.feedback}
                             </Typography>
                           </Alert>
+                        )}
+
+                        {/* App Recommendation for Failed Questions */}
+                        {!isCorrect && (
+                          <Box
+                            sx={{
+                              mt: 2,
+                              p: 2,
+                              bgcolor: alpha(theme.palette.primary.main, 0.05),
+                              borderRadius: 1,
+                              border: '1px solid',
+                              borderColor: alpha(theme.palette.primary.main, 0.2)
+                            }}
+                          >
+                            <Typography variant="subtitle2" color="primary.main" gutterBottom sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+                              <Psychology sx={{ fontSize: '1rem', mr: 1 }} />
+                              Need help understanding this topic?
+                            </Typography>
+                            <Typography variant="body2" sx={{ mb: 1.5, lineHeight: 1.5 }}>
+                              Download Excellence Coaching Hub app for detailed explanations and practice on this topic.
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                startIcon={<PhoneAndroid />}
+                                sx={{
+                                  textTransform: 'none',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                Google Play
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                startIcon={<Laptop />}
+                                sx={{
+                                  textTransform: 'none',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                Microsoft Store
+                              </Button>
+                            </Box>
+                          </Box>
                         )}
 
                         {/* Enhanced AI Grading Details - for open-ended questions (Sections B & C) */}

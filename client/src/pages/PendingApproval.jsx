@@ -291,7 +291,7 @@ export default function PendingApproval() {
                       <line x1="1" y1="10" x2="23" y2="10" />
                     </svg>
                   </div>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: textPrimary }}>Bank Transfer (BK / Equity)</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: textPrimary }}>Bank Transfer (BK)</span>
                 </div>
                 <PaymentRow label="Account Number" value="1002 1358 4477" isDark={isDark} textPrimary={textPrimary} textSecondary={textSecondary} borderColor={borderColor} />
                 <PaymentRow label="Bank Name" value="Bank of Kigali" isDark={isDark} textPrimary={textPrimary} textSecondary={textSecondary} borderColor={borderColor} showCopy={false} />

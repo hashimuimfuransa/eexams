@@ -134,7 +134,7 @@ const Terms = () => {
           8. Contact
         </Typography>
         <Typography paragraph>
-          For questions about these terms, please contact us through the platform or email legal@eexams.rw
+          For questions about these terms, please contact us through the platform or email info@excellencecoachinghub.com
         </Typography>
 
         <Divider sx={{ my: 4 }} />

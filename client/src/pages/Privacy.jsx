@@ -113,7 +113,7 @@ const Privacy = () => {
           5. Contact Us
         </Typography>
         <Typography paragraph>
-          For privacy-related inquiries, please contact us through the platform or email privacy@eexams.rw
+          For privacy-related inquiries, please contact us through the platform or email info@excellencecoachinghub.com
         </Typography>
 
         <Divider sx={{ my: 4 }} />

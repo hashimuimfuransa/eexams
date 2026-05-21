@@ -826,7 +826,7 @@ export default function TeacherDashboard() {
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'results'   && <ResultsSection results={results} />}
-      {activeSection === 'templates' && <TemplatesSection exams={filteredExams} setExams={setExams} />}
+      {activeSection === 'templates' && <TemplatesSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} />}
       {activeSection === 'reports'   && <ReportsSection />}
       {activeSection === 'settings'  && <SettingsSection user={user} />}
     </DashboardShell>
@@ -5846,7 +5846,7 @@ function ReportsSection() {
 }
 
 /* ── TEMPLATES ── */
-function TemplatesSection({ exams, setExams }) {
+function TemplatesSection({ exams, setExams, setActiveSection }) {
   const navigate = useNavigate();
   const [templates, setTemplates] = useState([]);
   const [questionBank, setQuestionBank] = useState([]);
@@ -5941,12 +5941,17 @@ function TemplatesSection({ exams, setExams }) {
       console.log('Reusing exam from question bank:', examId);
       const r = await api.post(`/question-bank/${examId}/reuse`, {}, { timeout: 120000 });
       console.log('Reuse response:', r.data);
-      setExams(p => [r.data, ...p]);
-      setSnack('✓ Exam copied from question bank successfully!');
-      setActiveSection('exams');
+      if (r.data && r.data._id) {
+        setExams(p => [r.data, ...p]);
+        setSnack('✓ Exam copied from question bank successfully!');
+        setActiveSection('exams');
+      } else {
+        setSnack('✗ Unexpected response from server.');
+      }
     } catch (error) {
       console.error('Error reusing exam:', error);
-      setSnack('✗ Error copying exam from question bank.');
+      const errorMessage = error.response?.data?.message || error.message || 'Error copying exam from question bank.';
+      setSnack(`✗ ${errorMessage}`);
     } finally {
       setReusingExamId(null);
     }

@@ -27,8 +27,8 @@ export const PLANS = {
   },
   basic: {
     name: 'Basic',
-    price: 9,
-    priceRWF: 9000,
+    price: 100,
+    priceRWF: 100000,
     maxExams: 30,
     maxStudents: 200,
     maxTeachers: 3,
@@ -52,8 +52,8 @@ export const PLANS = {
   },
   premium: {
     name: 'Premium',
-    price: 29,
-    priceRWF: 29000,
+    price: 200,
+    priceRWF: 200000,
     maxExams: Infinity,
     maxStudents: Infinity,
     maxTeachers: 10,

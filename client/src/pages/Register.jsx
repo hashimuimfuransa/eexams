@@ -161,7 +161,7 @@ const Register = () => {
   const navigate = useNavigate();
   const { mode, toggleMode } = useThemeMode();
 
-  // Check if already logged in - redirect to dashboard
+  // Check if already logged in - redirect to dashboard or pending-approval
   // Skip this check when arriving via Google OAuth flow so new Google users
   // can complete registration instead of being bounced straight to the dashboard.
   useEffect(() => {
@@ -170,8 +170,13 @@ const Register = () => {
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     if (token && user.role) {
-      console.log('[Register] User already logged in, redirecting to dashboard');
-      navigate('/dashboard');
+      console.log('[Register] User already logged in, checking subscription status');
+      // Redirect to pending-approval if subscription status is pending
+      if (user.role !== 'superadmin' && user.subscriptionStatus === 'pending') {
+        navigate('/pending-approval');
+      } else {
+        navigate('/dashboard');
+      }
     }
   }, [navigate]);
 

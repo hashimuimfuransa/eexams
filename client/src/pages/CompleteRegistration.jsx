@@ -73,7 +73,12 @@ export default function CompleteRegistration() {
   // Check if user already has complete registration
   useEffect(() => {
     if (user?.subscriptionPlan) {
-      navigate('/dashboard');
+      // Redirect to pending-approval if subscription status is pending
+      if (user.role !== 'superadmin' && user.subscriptionStatus === 'pending') {
+        navigate('/pending-approval');
+      } else {
+        navigate('/dashboard');
+      }
     }
   }, [user, navigate]);
 

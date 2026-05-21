@@ -26,17 +26,17 @@ const tokens = {
 };
 
 const INDIVIDUAL_PRICES = {
-  free:       { label: 'Free',       rwf: 0,      usd: 0    },
-  basic:      { label: 'Basic',      rwf: 9000,   usd: 9    },
-  premium:    { label: 'Premium',    rwf: 29000,  usd: 29   },
-  enterprise: { label: 'Enterprise', rwf: null,   usd: null },
+  free:       { label: 'Free',       rwf: 0,        usd: 0     },
+  basic:      { label: 'Basic',      rwf: 100000,   usd: 100   },
+  premium:    { label: 'Premium',    rwf: 200000,   usd: 200   },
+  enterprise: { label: 'Enterprise', rwf: null,     usd: null  },
 };
 
 const ORG_PRICES = {
-  free:       { label: 'Free Trial', rwf: 0,      usd: 0    },
-  basic:      { label: 'Basic',      rwf: 15000,  usd: 15   },
-  premium:    { label: 'Premium',    rwf: 49000,  usd: 49   },
-  enterprise: { label: 'Enterprise', rwf: null,   usd: null },
+  free:       { label: 'Free Trial', rwf: 0,        usd: 0     },
+  basic:      { label: 'Basic',      rwf: 100000,   usd: 100   },
+  premium:    { label: 'Premium',    rwf: 300000,   usd: 300   },
+  enterprise: { label: 'Enterprise', rwf: null,     usd: null  },
 };
 
 function CopyButton({ text, isDark }) {

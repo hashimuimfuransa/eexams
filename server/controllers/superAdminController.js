@@ -1238,8 +1238,7 @@ const getMarketplaceExamsWithStats = async (req, res) => {
     // Get exams with creator info
     let examsQuery = Exam.find(query)
       .populate('createdBy', 'firstName lastName email organization')
-      .populate('level', 'name subLevels')
-      .populate('sections.questions');
+      .populate('level', 'name subLevels');
 
     // Sort
     if (sortBy === 'requests') {

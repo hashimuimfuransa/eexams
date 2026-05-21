@@ -4243,7 +4243,7 @@ const reuseQuestionBankExam = async (req, res) => {
         // Use the already populated question data instead of fetching again
         const originalQuestion = question;
         if (originalQuestion) {
-          const newQuestion = new Question({
+          const newQuestionData = {
             text: originalQuestion.text,
             type: originalQuestion.type,
             options: originalQuestion.options,
@@ -4252,9 +4252,15 @@ const reuseQuestionBankExam = async (req, res) => {
             exam: newExam._id,
             section: originalQuestion.section,
             difficulty: originalQuestion.difficulty,
-            matchingPairs: originalQuestion.matchingPairs,
-            itemsToOrder: originalQuestion.itemsToOrder,
-          });
+          };
+          // Only include matchingPairs and itemsToOrder if they exist
+          if (originalQuestion.matchingPairs) {
+            newQuestionData.matchingPairs = originalQuestion.matchingPairs;
+          }
+          if (originalQuestion.itemsToOrder) {
+            newQuestionData.itemsToOrder = originalQuestion.itemsToOrder;
+          }
+          const newQuestion = new Question(newQuestionData);
           await newQuestion.save();
           questionMap.set((question._id || question).toString(), newQuestion._id);
           newQuestionIds.push(newQuestion._id);

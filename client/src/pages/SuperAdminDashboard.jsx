@@ -86,10 +86,10 @@ function OverviewSection({ stats, statsLoading, setActiveSection }) {
   useEffect(() => { api.get('/superadmin/organizations').then(r => setOrgs((r.data||[]).slice(0,5))).catch(()=>{}).finally(()=>setLoadingOrgs(false)); }, []);
 
   const planData = [
-    { plan:'Free',       color: PLAN_COLORS.free,       count: stats?.planBreakdown?.free ?? 0 },
-    { plan:'Basic',      color: PLAN_COLORS.basic,      count: stats?.planBreakdown?.basic ?? 0 },
-    { plan:'Premium',    color: PLAN_COLORS.premium,    count: stats?.planBreakdown?.premium ?? 0 },
-    { plan:'Enterprise', color: PLAN_COLORS.enterprise, count: stats?.planBreakdown?.enterprise ?? 0 },
+    { plan:'Free',       color: PLAN_COLORS.free,       count: stats?.organizations?.byPlan?.free ?? 0 },
+    { plan:'Basic',      color: PLAN_COLORS.basic,      count: stats?.organizations?.byPlan?.basic ?? 0 },
+    { plan:'Premium',    color: PLAN_COLORS.premium,    count: stats?.organizations?.byPlan?.premium ?? 0 },
+    { plan:'Enterprise', color: PLAN_COLORS.enterprise, count: stats?.organizations?.byPlan?.enterprise ?? 0 },
   ];
   const planTotal = planData.reduce((s,p)=>s+p.count,0)||1;
 
@@ -1662,28 +1662,640 @@ function SubscriptionsSection({ stats }) {
 }
 
 function AnalyticsSection({ stats }) {
-  return(
+  const [activeTab, setActiveTab] = useState('overview');
+  const [period, setPeriod] = useState('30d');
+  const [loading, setLoading] = useState(false);
+  const [studentAnalytics, setStudentAnalytics] = useState(null);
+  const [teacherAnalytics, setTeacherAnalytics] = useState(null);
+  const [orgAnalytics, setOrgAnalytics] = useState(null);
+  const [trendsAnalytics, setTrendsAnalytics] = useState(null);
+  const [examAnalytics, setExamAnalytics] = useState(null);
+  const [marketplaceAnalytics, setMarketplaceAnalytics] = useState(null);
+
+  const tabs = [
+    { id: 'overview', label: 'Overview', icon: <TrendingUp sx={{fontSize:18}}/> },
+    { id: 'students', label: 'Students', icon: <People sx={{fontSize:18}}/> },
+    { id: 'teachers', label: 'Teachers', icon: <SupervisorAccount sx={{fontSize:18}}/> },
+    { id: 'organizations', label: 'Organizations', icon: <Business sx={{fontSize:18}}/> },
+    { id: 'trends', label: 'Trends', icon: <TrendingUp sx={{fontSize:18}}/> },
+    { id: 'exams', label: 'Exams', icon: <School sx={{fontSize:18}}/> },
+    { id: 'marketplace', label: 'Marketplace', icon: <AttachMoney sx={{fontSize:18}}/> },
+  ];
+
+  const periods = [
+    { value: '7d', label: '7 Days' },
+    { value: '30d', label: '30 Days' },
+    { value: '90d', label: '90 Days' },
+    { value: '1y', label: '1 Year' },
+  ];
+
+  useEffect(() => {
+    if (activeTab === 'students') fetchStudentAnalytics();
+    else if (activeTab === 'teachers') fetchTeacherAnalytics();
+    else if (activeTab === 'organizations') fetchOrgAnalytics();
+    else if (activeTab === 'trends') fetchTrendsAnalytics();
+    else if (activeTab === 'exams') fetchExamAnalytics();
+    else if (activeTab === 'marketplace') fetchMarketplaceAnalytics();
+  }, [activeTab, period]);
+
+  const fetchStudentAnalytics = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/superadmin/analytics/students', { params: { period } });
+      setStudentAnalytics(res.data);
+    } catch (err) {
+      console.error('Failed to fetch student analytics:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTeacherAnalytics = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/superadmin/analytics/teachers', { params: { period } });
+      setTeacherAnalytics(res.data);
+    } catch (err) {
+      console.error('Failed to fetch teacher analytics:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchOrgAnalytics = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/superadmin/analytics/organizations', { params: { period } });
+      setOrgAnalytics(res.data);
+    } catch (err) {
+      console.error('Failed to fetch org analytics:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTrendsAnalytics = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/superadmin/analytics/trends', { params: { period } });
+      setTrendsAnalytics(res.data);
+    } catch (err) {
+      console.error('Failed to fetch trends analytics:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchExamAnalytics = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/superadmin/analytics/exams', { params: { period } });
+      setExamAnalytics(res.data);
+    } catch (err) {
+      console.error('Failed to fetch exam analytics:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchMarketplaceAnalytics = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/superadmin/analytics/marketplace', { params: { period } });
+      setMarketplaceAnalytics(res.data);
+    } catch (err) {
+      console.error('Failed to fetch marketplace analytics:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const StatCard = ({ label, value, icon, color, bg, sub }) => (
+    <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, display: 'flex', alignItems: 'center', gap: 2, '&:hover': { boxShadow: '0 6px 24px rgba(13,64,108,0.09)' } }}>
+      <Box sx={{ width: 48, height: 48, borderRadius: 2.5, bgcolor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</Box>
+      <Box>
+        <Typography variant="h4" fontWeight={800} sx={{ color, fontFamily: "'DM Sans',sans-serif", lineHeight: 1 }}>{value || '—'}</Typography>
+        <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontWeight: 600 }}>{label}</Typography>
+        {sub && <Typography sx={{ fontSize: 10, color: tokens.textMuted }}>{sub}</Typography>}
+      </Box>
+    </Paper>
+  );
+
+  return (
     <Box>
-      <SectionTitle>Platform Analytics</SectionTitle>
-      <Grid container spacing={2} sx={{mb:3}}>
-        {[
-          {label:'Organizations',value:stats?.totalOrganizations??0,icon:<Business sx={{color:tokens.primary,fontSize:24}}/>,bg:'rgba(13,64,108,0.1)'},
-          {label:'Teachers',value:stats?.totalTeachers??0,icon:<SupervisorAccount sx={{color:tokens.accent,fontSize:24}}/>,bg:'rgba(12,189,115,0.1)'},
-          {label:'Students',value:stats?.totalStudents??0,icon:<People sx={{color:tokens.warning,fontSize:24}}/>,bg:'rgba(245,158,11,0.1)'},
-          {label:'Total Exams',value:stats?.totalExams??0,icon:<School sx={{color:'#6366F1',fontSize:24}}/>,bg:'rgba(99,102,241,0.1)'},
-        ].map((c,i)=>(
-          <Grid item xs={6} md={3} key={i}>
-            <Paper elevation={0} sx={{p:2.5,borderRadius:3,bgcolor:'white',border:`1px solid ${tokens.surfaceBorder}`,display:'flex',alignItems:'center',gap:2,'&:hover':{boxShadow:'0 6px 24px rgba(13,64,108,0.09)'}}}>
-              <Box sx={{width:48,height:48,borderRadius:2.5,bgcolor:c.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>{c.icon}</Box>
-              <Box><Typography variant="h5" fontWeight={800} sx={{fontFamily:"'DM Sans',sans-serif"}}>{c.value}</Typography><Typography sx={{fontSize:12,color:tokens.textMuted}}>{c.label}</Typography></Box>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-      <Paper elevation={0} sx={{p:3,borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white'}}>
-        <SectionTitle>Platform Growth Trend</SectionTitle>
-        <AreaChart data={[30,45,40,60,55,75,70]} color={tokens.accent}/>
+      <SectionTitle>Advanced Analytics</SectionTitle>
+
+      {/* Period Selector */}
+      <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.textSecondary }}>Time Period:</Typography>
+          {periods.map(p => (
+            <Chip
+              key={p.value}
+              label={p.label}
+              onClick={() => setPeriod(p.value)}
+              sx={{
+                borderRadius: 2,
+                fontWeight: 700,
+                fontSize: 12,
+                bgcolor: period === p.value ? tokens.primary : 'white',
+                color: period === p.value ? 'white' : tokens.textSecondary,
+                border: period === p.value ? 'none' : `1px solid ${tokens.surfaceBorder}`,
+                cursor: 'pointer',
+                '&:hover': { bgcolor: period === p.value ? tokens.primary : '#F8FAFC' }
+              }}
+            />
+          ))}
+        </Box>
       </Paper>
+
+      {/* Tabs */}
+      <Paper elevation={0} sx={{ mb: 3, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+        <Box sx={{ display: 'flex', borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
+          {tabs.map(tab => (
+            <Box
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              sx={{
+                px: 3,
+                py: 2,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                borderBottom: activeTab === tab.id ? `3px solid ${tokens.primary}` : '3px solid transparent',
+                bgcolor: activeTab === tab.id ? '#F8FAFC' : 'white',
+                transition: 'all 0.2s',
+                '&:hover': { bgcolor: '#F8FAFC' }
+              }}
+            >
+              {tab.icon}
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: activeTab === tab.id ? tokens.primary : tokens.textSecondary, fontFamily: "'DM Sans',sans-serif" }}>
+                {tab.label}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Paper>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress sx={{ color: tokens.accent }} />
+        </Box>
+      ) : (
+        <>
+          {activeTab === 'overview' && (
+            <Grid container spacing={2}>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Organizations" value={stats?.totalOrganizations ?? 0} icon={<Business sx={{ color: tokens.primary, fontSize: 24 }} />} color={tokens.primary} bg="rgba(13,64,108,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Teachers" value={stats?.totalTeachers ?? 0} icon={<SupervisorAccount sx={{ color: tokens.accent, fontSize: 24 }} />} color={tokens.accent} bg="rgba(12,189,115,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Students" value={stats?.totalStudents ?? 0} icon={<People sx={{ color: tokens.warning, fontSize: 24 }} />} color={tokens.warning} bg="rgba(245,158,11,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Total Exams" value={stats?.totalExams ?? 0} icon={<School sx={{ color: '#6366F1', fontSize: 24 }} />} color="#6366F1" bg="rgba(99,102,241,0.1)" />
+              </Grid>
+              <Grid item xs={12}>
+                <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Platform Growth Trend</SectionTitle>
+                  <AreaChart data={[30, 45, 40, 60, 55, 75, 70]} color={tokens.accent} />
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {activeTab === 'students' && studentAnalytics && (
+            <Grid container spacing={2}>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Students Analyzed" value={studentAnalytics.summary?.totalStudentsAnalyzed ?? 0} icon={<People sx={{ color: tokens.primary, fontSize: 24 }} />} color={tokens.primary} bg="rgba(13,64,108,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Avg Score" value={`${studentAnalytics.summary?.overallAverageScore ?? 0}%`} icon={<TrendingUp sx={{ color: tokens.accent, fontSize: 24 }} />} color={tokens.accent} bg="rgba(12,189,115,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Pass Rate" value={`${studentAnalytics.summary?.overallPassRate ?? 0}%`} icon={<CheckCircle sx={{ color: tokens.warning, fontSize: 24 }} />} color={tokens.warning} bg="rgba(245,158,11,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Exams Completed" value={studentAnalytics.summary?.totalExamsCompleted ?? 0} icon={<School sx={{ color: '#6366F1', fontSize: 24 }} />} color="#6366F1" bg="rgba(99,102,241,0.1)" />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Top Performers</SectionTitle>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Student</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Organization</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Avg Score</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Pass Rate</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exams</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {studentAnalytics.topPerformers?.slice(0, 5).map((s, i) => (
+                          <TableRow key={i} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{s.student?.firstName} {s.student?.lastName}</Typography>
+                              <Typography variant="caption" sx={{ color: tokens.textMuted }}>{s.student?.email}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{s.organization?.name || '—'}</Typography>
+                            </TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: tokens.accent }}>{s.averageScore}%</Typography></TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: s.passRate >= 70 ? tokens.accent : tokens.warning }}>{s.passRate}%</Typography></TableCell>
+                            <TableCell>{s.examCount}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Students Needing Improvement</SectionTitle>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Student</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Organization</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Avg Score</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Pass Rate</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exams</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {studentAnalytics.needingImprovement?.slice(0, 5).map((s, i) => (
+                          <TableRow key={i} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{s.student?.firstName} {s.student?.lastName}</Typography>
+                              <Typography variant="caption" sx={{ color: tokens.textMuted }}>{s.student?.email}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{s.organization?.name || '—'}</Typography>
+                            </TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: '#EF4444' }}>{s.averageScore}%</Typography></TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: tokens.warning }}>{s.passRate}%</Typography></TableCell>
+                            <TableCell>{s.examCount}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Subject Breakdown</SectionTitle>
+                  <Grid container spacing={2}>
+                    {studentAnalytics.subjectBreakdown?.map((subject, i) => (
+                      <Grid item xs={6} md={3} key={i}>
+                        <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#F8FAFC', border: `1px solid ${tokens.surfaceBorder}` }}>
+                          <Typography variant="h6" fontWeight={700} sx={{ color: tokens.primary }}>{subject.subject}</Typography>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted }}>{subject.examCount} exams</Typography>
+                          <Typography variant="h5" fontWeight={800} sx={{ color: subject.averageScore >= 70 ? tokens.accent : tokens.warning }}>{subject.averageScore}% avg</Typography>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {activeTab === 'teachers' && teacherAnalytics && (
+            <Grid container spacing={2}>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Total Teachers" value={teacherAnalytics.summary?.totalTeachers ?? 0} icon={<SupervisorAccount sx={{ color: tokens.primary, fontSize: 24 }} />} color={tokens.primary} bg="rgba(13,64,108,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Active Teachers" value={teacherAnalytics.summary?.activeTeachers ?? 0} icon={<CheckCircle sx={{ color: tokens.accent, fontSize: 24 }} />} color={tokens.accent} bg="rgba(12,189,115,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Exams Created" value={teacherAnalytics.summary?.totalExamsCreated ?? 0} icon={<School sx={{ color: tokens.warning, fontSize: 24 }} />} color={tokens.warning} bg="rgba(245,158,11,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Student Attempts" value={teacherAnalytics.summary?.totalStudentAttempts ?? 0} icon={<People sx={{ color: '#6366F1', fontSize: 24 }} />} color="#6366F1" bg="rgba(99,102,241,0.1)" />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Top Teachers by Performance</SectionTitle>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Teacher</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Organization</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exams</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Students</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Avg Score</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {teacherAnalytics.topTeachers?.slice(0, 5).map((t, i) => (
+                          <TableRow key={i} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{t.teacher?.firstName} {t.teacher?.lastName}</Typography>
+                              <Typography variant="caption" sx={{ color: tokens.textMuted }}>{t.teacher?.email}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{t.organization?.name || '—'}</Typography>
+                            </TableCell>
+                            <TableCell>{t.examCount}</TableCell>
+                            <TableCell>{t.totalStudents}</TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: t.averageStudentScore >= 70 ? tokens.accent : tokens.warning }}>{t.averageStudentScore}%</Typography></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Most Active Teachers</SectionTitle>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Teacher</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Organization</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exams Created</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Students</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Avg Score</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {teacherAnalytics.mostActiveTeachers?.slice(0, 5).map((t, i) => (
+                          <TableRow key={i} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{t.teacher?.firstName} {t.teacher?.lastName}</Typography>
+                              <Typography variant="caption" sx={{ color: tokens.textMuted }}>{t.teacher?.email}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{t.organization?.name || '—'}</Typography>
+                            </TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: tokens.primary }}>{t.examCount}</Typography></TableCell>
+                            <TableCell>{t.totalStudents}</TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: t.averageStudentScore >= 70 ? tokens.accent : tokens.warning }}>{t.averageStudentScore}%</Typography></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {activeTab === 'organizations' && orgAnalytics && (
+            <Grid container spacing={2}>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Total Organizations" value={orgAnalytics.summary?.totalOrganizations ?? 0} icon={<Business sx={{ color: tokens.primary, fontSize: 24 }} />} color={tokens.primary} bg="rgba(13,64,108,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Active Organizations" value={orgAnalytics.summary?.activeOrganizations ?? 0} icon={<CheckCircle sx={{ color: tokens.accent, fontSize: 24 }} />} color={tokens.accent} bg="rgba(12,189,115,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Exams Created" value={orgAnalytics.summary?.totalExamsCreated ?? 0} icon={<School sx={{ color: tokens.warning, fontSize: 24 }} />} color={tokens.warning} bg="rgba(245,158,11,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Student Attempts" value={orgAnalytics.summary?.totalStudentAttempts ?? 0} icon={<People sx={{ color: '#6366F1', fontSize: 24 }} />} color="#6366F1" bg="rgba(99,102,241,0.1)" />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Top Organizations</SectionTitle>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Organization</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Teachers</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exams</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Students</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Avg Score</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Plan</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {orgAnalytics.topOrganizations?.slice(0, 10).map((org, i) => (
+                          <TableRow key={i} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{org.organization?.organization || `${org.organization?.firstName} ${org.organization?.lastName}`}</Typography>
+                              <Typography variant="caption" sx={{ color: tokens.textMuted }}>{org.organization?.email}</Typography>
+                            </TableCell>
+                            <TableCell>{org.teacherCount}</TableCell>
+                            <TableCell>{org.examCount}</TableCell>
+                            <TableCell>{org.studentCount}</TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: org.averageStudentScore >= 70 ? tokens.accent : tokens.warning }}>{org.averageStudentScore}%</Typography></TableCell>
+                            <TableCell><Chip label={org.subscriptionPlan} size="small" sx={{ bgcolor: `${PLAN_COLORS[org.subscriptionPlan] || PLAN_COLORS.free}15`, color: PLAN_COLORS[org.subscriptionPlan] || PLAN_COLORS.free, fontWeight: 600, textTransform: 'capitalize' }} /></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>By Subscription Plan</SectionTitle>
+                  <Grid container spacing={2}>
+                    {Object.entries(orgAnalytics.byPlan || {}).map(([plan, orgs]) => (
+                      <Grid item xs={6} md={3} key={plan}>
+                        <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#F8FAFC', border: `1px solid ${tokens.surfaceBorder}` }}>
+                          <Typography variant="h6" fontWeight={700} sx={{ color: PLAN_COLORS[plan] || tokens.textSecondary, textTransform: 'capitalize' }}>{plan}</Typography>
+                          <Typography variant="h5" fontWeight={800} sx={{ color: tokens.primary }}>{orgs.length} organizations</Typography>
+                          <Typography variant="caption" sx={{ color: tokens.textMuted }}>Total exams: {orgs.reduce((sum, o) => sum + o.examCount, 0)}</Typography>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {activeTab === 'trends' && trendsAnalytics && (
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>User Registrations Over Time</SectionTitle>
+                  <Box sx={{ mt: 2 }}>
+                    {trendsAnalytics.userRegistrations?.length > 0 ? (
+                      <AreaChart data={trendsAnalytics.userRegistrations.map(d => d.total)} color={tokens.primary} />
+                    ) : (
+                      <Typography sx={{ color: tokens.textMuted }}>No data available</Typography>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Exam Creation Trend</SectionTitle>
+                  <Box sx={{ mt: 2 }}>
+                    {trendsAnalytics.examCreation?.length > 0 ? (
+                      <AreaChart data={trendsAnalytics.examCreation.map(d => d.total)} color={tokens.accent} />
+                    ) : (
+                      <Typography sx={{ color: tokens.textMuted }}>No data available</Typography>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Exam Completions Trend</SectionTitle>
+                  <Box sx={{ mt: 2 }}>
+                    {trendsAnalytics.examCompletions?.length > 0 ? (
+                      <AreaChart data={trendsAnalytics.examCompletions.map(d => d.total)} color={tokens.warning} />
+                    ) : (
+                      <Typography sx={{ color: tokens.textMuted }}>No data available</Typography>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {activeTab === 'exams' && examAnalytics && (
+            <Grid container spacing={2}>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Total Exams" value={examAnalytics.summary?.totalExams ?? 0} icon={<School sx={{ color: tokens.primary, fontSize: 24 }} />} color={tokens.primary} bg="rgba(13,64,108,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="With Completions" value={examAnalytics.summary?.examsWithCompletions ?? 0} icon={<CheckCircle sx={{ color: tokens.accent, fontSize: 24 }} />} color={tokens.accent} bg="rgba(12,189,115,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Total Completions" value={examAnalytics.summary?.totalCompletions ?? 0} icon={<People sx={{ color: tokens.warning, fontSize: 24 }} />} color={tokens.warning} bg="rgba(245,158,11,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Overall Avg Score" value={`${Math.round(examAnalytics.summary?.overallAverageScore ?? 0)}%`} icon={<TrendingUp sx={{ color: '#6366F1', fontSize: 24 }} />} color="#6366F1" bg="rgba(99,102,241,0.1)" />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Most Popular Exams</SectionTitle>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exam</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Completions</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Avg Score</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Pass Rate</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {examAnalytics.mostPopularExams?.slice(0, 5).map((e, i) => (
+                          <TableRow key={i} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{e.exam?.title}</Typography>
+                              <Typography variant="caption" sx={{ color: tokens.textMuted }}>By {e.exam?.createdBy?.firstName} {e.exam?.createdBy?.lastName}</Typography>
+                            </TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: tokens.primary }}>{e.completionCount}</Typography></TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: e.averageScore >= 70 ? tokens.accent : tokens.warning }}>{e.averageScore}%</Typography></TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: e.passRate >= 70 ? tokens.accent : tokens.warning }}>{e.passRate}%</Typography></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Most Difficult Exams</SectionTitle>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exam</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Completions</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Avg Score</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Pass Rate</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {examAnalytics.mostDifficultExams?.slice(0, 5).map((e, i) => (
+                          <TableRow key={i} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{e.exam?.title}</Typography>
+                              <Typography variant="caption" sx={{ color: tokens.textMuted }}>By {e.exam?.createdBy?.firstName} {e.exam?.createdBy?.lastName}</Typography>
+                            </TableCell>
+                            <TableCell>{e.completionCount}</TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: '#EF4444' }}>{e.averageScore}%</Typography></TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: tokens.warning }}>{e.passRate}%</Typography></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {activeTab === 'marketplace' && marketplaceAnalytics && (
+            <Grid container spacing={2}>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Marketplace Exams" value={marketplaceAnalytics.summary?.totalMarketplaceExams ?? 0} icon={<School sx={{ color: tokens.primary, fontSize: 24 }} />} color={tokens.primary} bg="rgba(13,64,108,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Total Requests" value={marketplaceAnalytics.summary?.totalRequests ?? 0} icon={<People sx={{ color: tokens.accent, fontSize: 24 }} />} color={tokens.accent} bg="rgba(12,189,115,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Approval Rate" value={`${marketplaceAnalytics.summary?.approvalRate ?? 0}%`} icon={<CheckCircle sx={{ color: tokens.warning, fontSize: 24 }} />} color={tokens.warning} bg="rgba(245,158,11,0.1)" />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <StatCard label="Total Revenue" value={`$${marketplaceAnalytics.summary?.totalRevenue ?? 0}`} icon={<AttachMoney sx={{ color: '#6366F1', fontSize: 24 }} />} color="#6366F1" bg="rgba(99,102,241,0.1)" />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                  <SectionTitle>Top Requested Exams</SectionTitle>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exam</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Requests</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Approved</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Revenue</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {marketplaceAnalytics.topRequestedExams?.slice(0, 10).map((e, i) => (
+                          <TableRow key={i} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{e.exam?.title}</Typography>
+                              <Typography variant="caption" sx={{ color: tokens.textMuted }}>Price: ${e.exam?.publicPrice || 0}</Typography>
+                            </TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: tokens.primary }}>{e.requestCount}</Typography></TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: tokens.accent }}>{e.approvedCount}</Typography></TableCell>
+                            <TableCell><Typography sx={{ fontWeight: 700, color: '#6366F1' }}>${e.revenue}</Typography></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+        </>
+      )}
     </Box>
   );
 }

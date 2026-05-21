@@ -1,6 +1,8 @@
 const User = require('../models/User');
 const Exam = require('../models/Exam');
 const ActivityLog = require('../models/ActivityLog');
+const Result = require('../models/Result');
+const ExamRequest = require('../models/ExamRequest');
 const bcrypt = require('bcryptjs');
 
 // @desc    Create a new super admin
@@ -453,6 +455,800 @@ const getSuperAdminDashboardStats = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+// ==================== ADVANCED ANALYTICS ====================
+
+// @desc    Get comprehensive student performance analytics
+// @route   GET /api/superadmin/analytics/students
+// @access  Private/SuperAdmin
+const getStudentPerformanceAnalytics = async (req, res) => {
+  try {
+    const { period = '30d', limit = 50, sortBy = 'averageScore' } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Get all completed results in period
+    const results = await Result.find({
+      isCompleted: true,
+      createdAt: { $gte: startDate }
+    }).populate('student', 'firstName lastName email organization createdBy').populate('exam', 'title level');
+
+    // Fetch students with populated createdBy to get organization info
+    const studentIds = results.filter(r => r.student).map(r => r.student._id);
+    const studentsWithOrg = await User.find({
+      _id: { $in: studentIds }
+    }).populate('createdBy', 'firstName lastName organization email');
+
+    // Create a map of student IDs to their organization info
+    const studentOrgMap = new Map();
+    studentsWithOrg.forEach(student => {
+      if (student.createdBy) {
+        studentOrgMap.set(student._id.toString(), {
+          name: student.createdBy.organization || `${student.createdBy.firstName} ${student.createdBy.lastName}`,
+          email: student.createdBy.email,
+          id: student.createdBy._id
+        });
+      } else if (student.organization) {
+        // If student has organization field directly
+        studentOrgMap.set(student._id.toString(), {
+          name: student.organization,
+          email: null,
+          id: null
+        });
+      }
+    });
+
+    // Calculate per-student metrics
+    const studentMetrics = new Map();
+
+    results.forEach(result => {
+      if (!result.student) return;
+
+      const studentId = result.student._id.toString();
+      if (!studentMetrics.has(studentId)) {
+        studentMetrics.set(studentId, {
+          student: result.student,
+          organization: studentOrgMap.get(studentId) || null,
+          examCount: 0,
+          totalScore: 0,
+          maxPossibleScore: 0,
+          passedExams: 0,
+          failedExams: 0,
+          totalTimeSpent: 0,
+          subjects: new Map()
+        });
+      }
+
+      const metrics = studentMetrics.get(studentId);
+      metrics.examCount++;
+      metrics.totalScore += result.totalScore || 0;
+      metrics.maxPossibleScore += result.maxPossibleScore || 0;
+
+      // Calculate pass/fail (70% threshold)
+      const percentage = result.maxPossibleScore > 0 
+        ? (result.totalScore / result.maxPossibleScore) * 100 
+        : 0;
+      if (percentage >= 70) metrics.passedExams++;
+      else metrics.failedExams++;
+
+      // Track time spent
+      if (result.startTime && result.endTime) {
+        metrics.totalTimeSpent += (new Date(result.endTime) - new Date(result.startTime)) / 1000 / 60; // in minutes
+      }
+
+      // Track subjects (from exam title or level)
+      const subject = result.exam?.level || 'General';
+      if (!metrics.subjects.has(subject)) {
+        metrics.subjects.set(subject, { count: 0, totalScore: 0, maxScore: 0 });
+      }
+      const subjectData = metrics.subjects.get(subject);
+      subjectData.count++;
+      subjectData.totalScore += result.totalScore || 0;
+      subjectData.maxScore += result.maxPossibleScore || 0;
+    });
+
+    // Convert to array and calculate averages
+    const studentsArray = Array.from(studentMetrics.values()).map(metrics => ({
+      student: metrics.student,
+      organization: metrics.organization,
+      examCount: metrics.examCount,
+      averageScore: metrics.maxPossibleScore > 0 
+        ? Math.round((metrics.totalScore / metrics.maxPossibleScore) * 100) 
+        : 0,
+      passRate: metrics.examCount > 0 
+        ? Math.round((metrics.passedExams / metrics.examCount) * 100) 
+        : 0,
+      passedExams: metrics.passedExams,
+      failedExams: metrics.failedExams,
+      averageTimeSpent: metrics.examCount > 0 
+        ? Math.round(metrics.totalTimeSpent / metrics.examCount) 
+        : 0,
+      subjects: Array.from(metrics.subjects.entries()).map(([subject, data]) => ({
+        subject,
+        examCount: data.count,
+        averageScore: data.maxScore > 0 ? Math.round((data.totalScore / data.maxScore) * 100) : 0
+      }))
+    }));
+
+    // Sort based on sortBy parameter
+    if (sortBy === 'averageScore') {
+      studentsArray.sort((a, b) => b.averageScore - a.averageScore);
+    } else if (sortBy === 'examCount') {
+      studentsArray.sort((a, b) => b.examCount - a.examCount);
+    } else if (sortBy === 'passRate') {
+      studentsArray.sort((a, b) => b.passRate - a.passRate);
+    }
+
+    // Calculate overall statistics
+    const totalStudents = studentsArray.length;
+    const overallAverageScore = totalStudents > 0
+      ? Math.round(studentsArray.reduce((sum, s) => sum + s.averageScore, 0) / totalStudents)
+      : 0;
+    const overallPassRate = totalStudents > 0
+      ? Math.round(studentsArray.reduce((sum, s) => sum + s.passRate, 0) / totalStudents)
+      : 0;
+
+    // Get top performers and students needing improvement
+    const topPerformers = studentsArray.slice(0, 10);
+    const needingImprovement = [...studentsArray]
+      .filter(s => s.averageScore < 60)
+      .sort((a, b) => a.averageScore - b.averageScore)
+      .slice(0, 10);
+
+    res.json({
+      period,
+      summary: {
+        totalStudentsAnalyzed: totalStudents,
+        overallAverageScore,
+        overallPassRate,
+        totalExamsCompleted: results.length
+      },
+      students: studentsArray.slice(0, parseInt(limit)),
+      topPerformers,
+      needingImprovement,
+      subjectBreakdown: calculateSubjectBreakdown(results)
+    });
+  } catch (error) {
+    console.error('Get student performance analytics error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get comprehensive teacher performance analytics
+// @route   GET /api/superadmin/analytics/teachers
+// @access  Private/SuperAdmin
+const getTeacherPerformanceAnalytics = async (req, res) => {
+  try {
+    const { period = '30d', limit = 50, sortBy = 'examCount' } = req.query;
+
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Get all teachers with organization info
+    const teachers = await User.find({ role: 'teacher' })
+      .select('firstName lastName email organization createdBy createdAt')
+      .populate('createdBy', 'firstName lastName organization email');
+    const exams = await Exam.find({
+      createdBy: { $in: teachers.map(t => t._id) },
+      createdAt: { $gte: startDate }
+    }).populate('createdBy', 'firstName lastName email');
+
+    // Get results for teacher exams
+    const examIds = exams.map(e => e._id);
+    const results = await Result.find({
+      exam: { $in: examIds },
+      isCompleted: true,
+      createdAt: { $gte: startDate }
+    }).populate('exam', 'title createdBy');
+
+    // Calculate per-teacher metrics
+    const teacherMetrics = new Map();
+
+    teachers.forEach(teacher => {
+      teacherMetrics.set(teacher._id.toString(), {
+        teacher,
+        organization: teacher.createdBy ? {
+          name: teacher.createdBy.organization || `${teacher.createdBy.firstName} ${teacher.createdBy.lastName}`,
+          email: teacher.createdBy.email,
+          id: teacher.createdBy._id
+        } : null,
+        examCount: 0,
+        totalStudents: 0,
+        totalScore: 0,
+        maxPossibleScore: 0,
+        examsCreated: []
+      });
+    });
+
+    exams.forEach(exam => {
+      const teacherId = exam.createdBy._id.toString();
+      if (teacherMetrics.has(teacherId)) {
+        const metrics = teacherMetrics.get(teacherId);
+        metrics.examCount++;
+        metrics.examsCreated.push({
+          id: exam._id,
+          title: exam.title,
+          createdAt: exam.createdAt
+        });
+      }
+    });
+
+    results.forEach(result => {
+      const teacherId = result.exam.createdBy._id.toString();
+      if (teacherMetrics.has(teacherId)) {
+        const metrics = teacherMetrics.get(teacherId);
+        metrics.totalStudents++;
+        metrics.totalScore += result.totalScore || 0;
+        metrics.maxPossibleScore += result.maxPossibleScore || 0;
+      }
+    });
+
+    // Convert to array and calculate averages
+    const teachersArray = Array.from(teacherMetrics.values()).map(metrics => ({
+      teacher: metrics.teacher,
+      organization: metrics.organization,
+      examCount: metrics.examCount,
+      totalStudents: metrics.totalStudents,
+      averageStudentScore: metrics.maxPossibleScore > 0
+        ? Math.round((metrics.totalScore / metrics.maxPossibleScore) * 100)
+        : 0,
+      examsCreated: metrics.examsCreated
+    }));
+
+    // Sort
+    if (sortBy === 'examCount') {
+      teachersArray.sort((a, b) => b.examCount - a.examCount);
+    } else if (sortBy === 'studentCount') {
+      teachersArray.sort((a, b) => b.totalStudents - a.totalStudents);
+    } else if (sortBy === 'averageScore') {
+      teachersArray.sort((a, b) => b.averageStudentScore - a.averageStudentScore);
+    }
+
+    // Get top teachers
+    const topTeachers = teachersArray.slice(0, 10);
+    const mostActiveTeachers = [...teachersArray]
+      .sort((a, b) => b.examCount - a.examCount)
+      .slice(0, 10);
+
+    res.json({
+      period,
+      summary: {
+        totalTeachers: teachers.length,
+        activeTeachers: teachersArray.filter(t => t.examCount > 0).length,
+        totalExamsCreated: exams.length,
+        totalStudentAttempts: results.length
+      },
+      teachers: teachersArray.slice(0, parseInt(limit)),
+      topTeachers,
+      mostActiveTeachers
+    });
+  } catch (error) {
+    console.error('Get teacher performance analytics error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get comprehensive organization performance analytics
+// @route   GET /api/superadmin/analytics/organizations
+// @access  Private/SuperAdmin
+const getOrganizationPerformanceAnalytics = async (req, res) => {
+  try {
+    const { period = '30d', limit = 50, sortBy = 'examCount' } = req.query;
+
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Get all organizations (admins + individual teachers)
+    const orgAdmins = await User.find({
+      role: { $in: ['admin', 'superadmin'] },
+      userType: 'organization'
+    }).select('firstName lastName email organization subscriptionPlan subscriptionStatus createdAt');
+
+    const individualTeachers = await User.find({
+      role: 'teacher',
+      userType: 'individual'
+    }).select('firstName lastName email organization createdAt');
+
+    const organizations = [...orgAdmins, ...individualTeachers];
+
+    // Get teachers for each organization
+    const orgTeachers = await User.find({
+      createdBy: { $in: organizations.map(o => o._id) },
+      role: 'teacher'
+    });
+
+    // Get students for each organization
+    const orgStudents = await User.find({
+      createdBy: { $in: organizations.map(o => o._id) },
+      role: 'student'
+    });
+
+    // Get exams created by org and its teachers
+    const allCreatorIds = [
+      ...organizations.map(o => o._id),
+      ...orgTeachers.map(t => t._id)
+    ];
+
+    const exams = await Exam.find({
+      createdBy: { $in: allCreatorIds },
+      createdAt: { $gte: startDate }
+    });
+
+    // Get results for org exams
+    const examIds = exams.map(e => e._id);
+    const results = await Result.find({
+      exam: { $in: examIds },
+      isCompleted: true,
+      createdAt: { $gte: startDate }
+    });
+
+    // Calculate per-organization metrics
+    const orgMetrics = new Map();
+
+    organizations.forEach(org => {
+      const orgId = org._id.toString();
+      const teacherCount = orgTeachers.filter(t => t.createdBy?.toString() === orgId).length;
+      const studentCount = orgStudents.filter(s => s.createdBy?.toString() === orgId).length;
+
+      orgMetrics.set(orgId, {
+        organization: org,
+        teacherCount,
+        studentCount,
+        examCount: 0,
+        resultCount: 0,
+        totalScore: 0,
+        maxPossibleScore: 0,
+        subscriptionPlan: org.subscriptionPlan || 'free',
+        subscriptionStatus: org.subscriptionStatus || 'unknown'
+      });
+    });
+
+    exams.forEach(exam => {
+      const creatorId = exam.createdBy.toString();
+      // Find which organization this creator belongs to
+      const org = organizations.find(o => o._id.toString() === creatorId);
+      if (org) {
+        const metrics = orgMetrics.get(org._id.toString());
+        if (metrics) metrics.examCount++;
+      }
+    });
+
+    results.forEach(result => {
+      const exam = exams.find(e => e._id.toString() === result.exam.toString());
+      if (exam) {
+        const creatorId = exam.createdBy.toString();
+        const org = organizations.find(o => o._id.toString() === creatorId);
+        if (org) {
+          const metrics = orgMetrics.get(org._id.toString());
+          if (metrics) {
+            metrics.resultCount++;
+            metrics.totalScore += result.totalScore || 0;
+            metrics.maxPossibleScore += result.maxPossibleScore || 0;
+          }
+        }
+      }
+    });
+
+    // Convert to array
+    const orgsArray = Array.from(orgMetrics.values()).map(metrics => ({
+      organization: metrics.organization,
+      teacherCount: metrics.teacherCount,
+      studentCount: metrics.studentCount,
+      examCount: metrics.examCount,
+      resultCount: metrics.resultCount,
+      averageStudentScore: metrics.maxPossibleScore > 0
+        ? Math.round((metrics.totalScore / metrics.maxPossibleScore) * 100)
+        : 0,
+      subscriptionPlan: metrics.subscriptionPlan,
+      subscriptionStatus: metrics.subscriptionStatus
+    }));
+
+    // Sort
+    if (sortBy === 'examCount') {
+      orgsArray.sort((a, b) => b.examCount - a.examCount);
+    } else if (sortBy === 'studentCount') {
+      orgsArray.sort((a, b) => b.studentCount - a.studentCount);
+    } else if (sortBy === 'resultCount') {
+      orgsArray.sort((a, b) => b.resultCount - a.resultCount);
+    } else if (sortBy === 'averageScore') {
+      orgsArray.sort((a, b) => b.averageStudentScore - a.averageStudentScore);
+    }
+
+    // Get top organizations
+    const topOrganizations = orgsArray.slice(0, 10);
+
+    // Group by subscription plan
+    const byPlan = {
+      free: orgsArray.filter(o => o.subscriptionPlan === 'free'),
+      basic: orgsArray.filter(o => o.subscriptionPlan === 'basic'),
+      premium: orgsArray.filter(o => o.subscriptionPlan === 'premium'),
+      enterprise: orgsArray.filter(o => o.subscriptionPlan === 'enterprise')
+    };
+
+    res.json({
+      period,
+      summary: {
+        totalOrganizations: organizations.length,
+        activeOrganizations: orgsArray.filter(o => o.examCount > 0).length,
+        totalExamsCreated: exams.length,
+        totalStudentAttempts: results.length,
+        totalTeachers: orgTeachers.length,
+        totalStudents: orgStudents.length
+      },
+      organizations: orgsArray.slice(0, parseInt(limit)),
+      topOrganizations,
+      byPlan
+    });
+  } catch (error) {
+    console.error('Get organization performance analytics error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get time-series analytics for growth trends
+// @route   GET /api/superadmin/analytics/trends
+// @access  Private/SuperAdmin
+const getTimeSeriesAnalytics = async (req, res) => {
+  try {
+    const { period = '30d', granularity = 'daily' } = req.query;
+
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Get user registrations over time
+    const userRegistrations = await User.aggregate([
+      { $match: { createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: {
+            date: {
+              $dateToString: {
+                format: granularity === 'daily' ? '%Y-%m-%d' : '%Y-%m',
+                date: '$createdAt'
+              }
+            },
+            role: '$role'
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.date': 1 } }
+    ]);
+
+    // Get exam creation over time
+    const examCreation = await Exam.aggregate([
+      { $match: { createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: {
+            date: {
+              $dateToString: {
+                format: granularity === 'daily' ? '%Y-%m-%d' : '%Y-%m',
+                date: '$createdAt'
+              }
+            }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.date': 1 } }
+    ]);
+
+    // Get exam completions over time
+    const examCompletions = await Result.aggregate([
+      { $match: { isCompleted: true, createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: {
+            date: {
+              $dateToString: {
+                format: granularity === 'daily' ? '%Y-%m-%d' : '%Y-%m',
+                date: '$createdAt'
+              }
+            }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.date': 1 } }
+    ]);
+
+    // Get marketplace requests over time
+    const marketplaceRequests = await ExamRequest.aggregate([
+      { $match: { requestedAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: {
+            date: {
+              $dateToString: {
+                format: granularity === 'daily' ? '%Y-%m-%d' : '%Y-%m',
+                date: '$requestedAt'
+              }
+            },
+            status: '$status'
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.date': 1 } }
+    ]);
+
+    res.json({
+      period,
+      granularity,
+      userRegistrations: formatTimeSeriesData(userRegistrations),
+      examCreation: formatTimeSeriesData(examCreation),
+      examCompletions: formatTimeSeriesData(examCompletions),
+      marketplaceRequests: formatTimeSeriesData(marketplaceRequests)
+    });
+  } catch (error) {
+    console.error('Get time series analytics error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get comprehensive exam analytics
+// @route   GET /api/superadmin/analytics/exams
+// @access  Private/SuperAdmin
+const getExamAnalytics = async (req, res) => {
+  try {
+    const { period = '30d', limit = 50, sortBy = 'completionCount' } = req.query;
+
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Get all exams
+    const exams = await Exam.find()
+      .populate('createdBy', 'firstName lastName email organization')
+      .populate('level', 'name')
+      .sort({ createdAt: -1 });
+
+    // Get results for all exams
+    const examIds = exams.map(e => e._id);
+    const results = await Result.find({
+      exam: { $in: examIds },
+      isCompleted: true,
+      createdAt: { $gte: startDate }
+    });
+
+    // Calculate per-exam metrics
+    const examMetrics = new Map();
+
+    exams.forEach(exam => {
+      examMetrics.set(exam._id.toString(), {
+        exam,
+        completionCount: 0,
+        totalScore: 0,
+        maxPossibleScore: 0,
+        passedCount: 0,
+        failedCount: 0,
+        averageTimeSpent: 0,
+        totalTimeSpent: 0
+      });
+    });
+
+    results.forEach(result => {
+      const examId = result.exam.toString();
+      if (examMetrics.has(examId)) {
+        const metrics = examMetrics.get(examId);
+        metrics.completionCount++;
+        metrics.totalScore += result.totalScore || 0;
+        metrics.maxPossibleScore += result.maxPossibleScore || 0;
+
+        const percentage = result.maxPossibleScore > 0
+          ? (result.totalScore / result.maxPossibleScore) * 100
+          : 0;
+        if (percentage >= 70) metrics.passedCount++;
+        else metrics.failedCount++;
+
+        if (result.startTime && result.endTime) {
+          metrics.totalTimeSpent += (new Date(result.endTime) - new Date(result.startTime)) / 1000 / 60;
+        }
+      }
+    });
+
+    // Convert to array and calculate averages
+    const examsArray = Array.from(examMetrics.values()).map(metrics => ({
+      exam: metrics.exam,
+      completionCount: metrics.completionCount,
+      averageScore: metrics.maxPossibleScore > 0
+        ? Math.round((metrics.totalScore / metrics.maxPossibleScore) * 100)
+        : 0,
+      passRate: metrics.completionCount > 0
+        ? Math.round((metrics.passedCount / metrics.completionCount) * 100)
+        : 0,
+      passedCount: metrics.passedCount,
+      failedCount: metrics.failedCount,
+      averageTimeSpent: metrics.completionCount > 0
+        ? Math.round(metrics.totalTimeSpent / metrics.completionCount)
+        : 0
+    }));
+
+    // Sort
+    if (sortBy === 'completionCount') {
+      examsArray.sort((a, b) => b.completionCount - a.completionCount);
+    } else if (sortBy === 'averageScore') {
+      examsArray.sort((a, b) => b.averageScore - a.averageScore);
+    } else if (sortBy === 'passRate') {
+      examsArray.sort((a, b) => b.passRate - a.passRate);
+    }
+
+    // Get most popular exams
+    const mostPopularExams = examsArray.slice(0, 10);
+    const mostDifficultExams = [...examsArray]
+      .filter(e => e.completionCount >= 5)
+      .sort((a, b) => a.averageScore - b.averageScore)
+      .slice(0, 10);
+
+    res.json({
+      period,
+      summary: {
+        totalExams: exams.length,
+        examsWithCompletions: examsArray.filter(e => e.completionCount > 0).length,
+        totalCompletions: results.length,
+        overallAverageScore: examsArray.reduce((sum, e) => sum + e.averageScore * e.completionCount, 0) / results.length || 0
+      },
+      exams: examsArray.slice(0, parseInt(limit)),
+      mostPopularExams,
+      mostDifficultExams
+    });
+  } catch (error) {
+    console.error('Get exam analytics error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get marketplace analytics
+// @route   GET /api/superadmin/analytics/marketplace
+// @access  Private/SuperAdmin
+const getMarketplaceAnalytics = async (req, res) => {
+  try {
+    const { period = '30d' } = req.query;
+
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Get marketplace exams
+    const marketplaceExams = await Exam.find({ isPubliclyListed: true });
+
+    // Get exam requests in period
+    const requests = await ExamRequest.find({
+      requestedAt: { $gte: startDate }
+    }).populate('exam', 'title publicPrice');
+
+    // Calculate metrics
+    const totalRequests = requests.length;
+    const approvedRequests = requests.filter(r => r.status === 'approved').length;
+    const pendingRequests = requests.filter(r => r.status === 'pending').length;
+    const rejectedRequests = requests.filter(r => r.status === 'rejected').length;
+
+    const approvalRate = totalRequests > 0
+      ? Math.round((approvedRequests / totalRequests) * 100)
+      : 0;
+
+    // Calculate revenue
+    const totalRevenue = requests
+      .filter(r => r.paymentStatus === 'paid')
+      .reduce((sum, r) => sum + (r.amount || 0), 0);
+
+    // Get per-exam request stats
+    const examRequestStats = new Map();
+    requests.forEach(request => {
+      if (!request.exam) return;
+      const examId = request.exam._id.toString();
+      if (!examRequestStats.has(examId)) {
+        examRequestStats.set(examId, {
+          exam: request.exam,
+          requestCount: 0,
+          approvedCount: 0,
+          revenue: 0
+        });
+      }
+      const stats = examRequestStats.get(examId);
+      stats.requestCount++;
+      if (request.status === 'approved') stats.approvedCount++;
+      if (request.paymentStatus === 'paid') stats.revenue += request.amount || 0;
+    });
+
+    const examsArray = Array.from(examRequestStats.values())
+      .sort((a, b) => b.requestCount - a.requestCount)
+      .slice(0, 20);
+
+    res.json({
+      period,
+      summary: {
+        totalMarketplaceExams: marketplaceExams.length,
+        totalRequests,
+        approvedRequests,
+        pendingRequests,
+        rejectedRequests,
+        approvalRate,
+        totalRevenue
+      },
+      topRequestedExams: examsArray
+    });
+  } catch (error) {
+    console.error('Get marketplace analytics error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Helper function to calculate subject breakdown
+function calculateSubjectBreakdown(results) {
+  const subjectMap = new Map();
+
+  results.forEach(result => {
+    const subject = result.exam?.level || 'General';
+    if (!subjectMap.has(subject)) {
+      subjectMap.set(subject, { count: 0, totalScore: 0, maxScore: 0 });
+    }
+    const data = subjectMap.get(subject);
+    data.count++;
+    data.totalScore += result.totalScore || 0;
+    data.maxScore += result.maxPossibleScore || 0;
+  });
+
+  return Array.from(subjectMap.entries()).map(([subject, data]) => ({
+    subject,
+    examCount: data.count,
+    averageScore: data.maxScore > 0 ? Math.round((data.totalScore / data.maxScore) * 100) : 0
+  }));
+}
+
+// Helper function to format time series data
+function formatTimeSeriesData(aggregateResult) {
+  const formatted = new Map();
+
+  aggregateResult.forEach(item => {
+    const date = item._id.date;
+    const key = item._id.role ? `${date}_${item._id.role}` : date;
+
+    if (!formatted.has(date)) {
+      formatted.set(date, { date, total: 0, byRole: {} });
+    }
+
+    const data = formatted.get(date);
+    data.total += item.count;
+
+    if (item._id.role) {
+      data.byRole[item._id.role] = (data.byRole[item._id.role] || 0) + item.count;
+    }
+  });
+
+  return Array.from(formatted.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
 
 // @desc    Delete organization
 // @route   DELETE /api/superadmin/organizations/:id
@@ -1343,11 +2139,14 @@ const getMarketplaceExamsWithStats = async (req, res) => {
 // @access  Private/SuperAdmin
 const getExamUsageDetails = async (req, res) => {
   try {
+    console.log('[SuperAdmin] Getting exam usage details for ID:', req.params.id);
+    
     const exam = await Exam.findById(req.params.id)
       .populate('createdBy', 'firstName lastName email organization')
       .populate('level', 'name subLevels');
 
     if (!exam) {
+      console.log('[SuperAdmin] Exam not found');
       return res.status(404).json({ message: 'Exam not found' });
     }
 
@@ -1413,11 +2212,11 @@ const getExamUsageDetails = async (req, res) => {
       const dateStr = date.toISOString().split('T')[0];
       
       const dayRequests = allRequests.filter(r => 
-        r.requestedAt.toISOString().split('T')[0] === dateStr
+        r.requestedAt && r.requestedAt.toISOString().split('T')[0] === dateStr
       ).length;
       
       const dayCompletions = allResults.filter(r => 
-        r.isCompleted && r.updatedAt.toISOString().split('T')[0] === dateStr
+        r.isCompleted && r.createdAt.toISOString().split('T')[0] === dateStr
       ).length;
 
       timeline.push({ date: dateStr, requests: dayRequests, completions: dayCompletions });
@@ -1565,5 +2364,11 @@ module.exports = {
   getMarketplaceExamsWithStats,
   getExamUsageDetails,
   updateExamMarketplaceSettings,
-  updateExamDetails
+  updateExamDetails,
+  getStudentPerformanceAnalytics,
+  getTeacherPerformanceAnalytics,
+  getOrganizationPerformanceAnalytics,
+  getTimeSeriesAnalytics,
+  getExamAnalytics,
+  getMarketplaceAnalytics
 };

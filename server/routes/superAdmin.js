@@ -25,7 +25,13 @@ const {
   getMarketplaceExamsWithStats,
   getExamUsageDetails,
   updateExamMarketplaceSettings,
-  updateExamDetails
+  updateExamDetails,
+  getStudentPerformanceAnalytics,
+  getTeacherPerformanceAnalytics,
+  getOrganizationPerformanceAnalytics,
+  getTimeSeriesAnalytics,
+  getExamAnalytics,
+  getMarketplaceAnalytics
 } = require('../controllers/superAdminController');
 const auth = require('../middleware/auth');
 
@@ -90,6 +96,14 @@ router.get('/subscription-requests', getSubscriptionRequests);
 router.put('/subscription-requests/:id/approve', approveSubscriptionRequest);
 router.put('/subscription-requests/:id/reject', rejectSubscriptionRequest);
 router.get('/subscriptions', getAllSubscriptions);
+
+// Advanced analytics routes
+router.get('/analytics/students', getStudentPerformanceAnalytics);
+router.get('/analytics/teachers', getTeacherPerformanceAnalytics);
+router.get('/analytics/organizations', getOrganizationPerformanceAnalytics);
+router.get('/analytics/trends', getTimeSeriesAnalytics);
+router.get('/analytics/exams', getExamAnalytics);
+router.get('/analytics/marketplace', getMarketplaceAnalytics);
 
 // 404 handler for unmatched superadmin routes
 router.use((req, res) => {

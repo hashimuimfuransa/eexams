@@ -27,13 +27,25 @@ import {
   Refresh,
   ArrowForward,
   AddCircle,
-  PhoneAndroid,
-  Laptop,
   Psychology
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
+
+// Google Play Icon SVG
+const GooglePlayIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+    <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.3,13.1L18.06,14.37L15.5,11.81L18.06,9.25L20.3,10.5C20.93,10.86 20.93,11.73 20.3,13.1M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z" />
+  </svg>
+);
+
+// Microsoft Store Icon SVG
+const MicrosoftStoreIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+    <path d="M1,1H11V11H1V1M13,1H23V11H13V1M1,13H11V23H1V13M13,13H23V23H13V13Z" />
+  </svg>
+);
 
 const Dashboard = memo(() => {
   const theme = useTheme();
@@ -229,9 +241,9 @@ const Dashboard = memo(() => {
         </Typography>
 
         {/* App Download Recommendation */}
-        <Card 
-          elevation={3} 
-          sx={{ 
+        <Card
+          elevation={3}
+          sx={{
             mb: 4,
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white'
@@ -254,7 +266,7 @@ const Dashboard = memo(() => {
                   href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
                   target="_blank"
                   rel="noopener noreferrer"
-                  startIcon={<PhoneAndroid />}
+                  startIcon={<GooglePlayIcon />}
                   sx={{
                     bgcolor: 'white',
                     color: '#667eea',
@@ -273,7 +285,7 @@ const Dashboard = memo(() => {
                   href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare"
                   target="_blank"
                   rel="noopener noreferrer"
-                  startIcon={<Laptop />}
+                  startIcon={<MicrosoftStoreIcon />}
                   sx={{
                     bgcolor: 'white',
                     color: '#667eea',
@@ -291,6 +303,61 @@ const Dashboard = memo(() => {
             </Box>
           </CardContent>
         </Card>
+
+        {/* Pending Exam Requests Section - Moved to top */}
+        {pendingRequests.filter(r => r.status === 'pending').length > 0 && (
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h5" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Schedule color="warning" />
+              Pending Exam Requests
+            </Typography>
+            <Paper elevation={3} sx={{ p: 3, mb: 4, bgcolor: 'warning.light', border: '2px solid', borderColor: 'warning.main' }}>
+              {pendingRequests.filter(r => r.status === 'pending').map((request) => (
+                <Card key={request._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper' }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                      <Box sx={{ flex: 1, minWidth: 200 }}>
+                        <Typography variant="h6" fontWeight="bold">
+                          {request.exam?.title || 'Exam'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Requested: {formatDate(request.requestedAt)}
+                        </Typography>
+                        {request.amount > 0 && (
+                          <Typography variant="body2" color="warning.main" fontWeight="bold">
+                            Price: RWF {request.amount.toLocaleString()}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Chip
+                        label="Pending Approval"
+                        color="warning"
+                        size="medium"
+                        sx={{ fontWeight: 'bold' }}
+                      />
+                    </Box>
+                    <Box sx={{ mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
+                      <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#0D406C', mb: 1 }}>
+                        Have questions? Contact us:
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <Typography sx={{ fontSize: 13, color: '#64748B' }}>
+                          📞 +250 788 535 156
+                        </Typography>
+                        <Typography sx={{ fontSize: 13, color: '#64748B' }}>
+                          📞 +250 793 828 834
+                        </Typography>
+                        <Typography sx={{ fontSize: 13, color: '#64748B' }}>
+                          📞 +250 781 671 517
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </Paper>
+          </Box>
+        )}
 
         {/* Available Exams Section */}
         <Box sx={{ mt: 4 }}>
@@ -436,16 +503,16 @@ const Dashboard = memo(() => {
           )}
         </Box>
 
-        {/* Pending Exam Requests Section */}
-        {pendingRequests.filter(r => r.status === 'pending').length > 0 && (
+        {/* Approved Exam Requests Section */}
+        {pendingRequests.filter(r => r.status === 'approved').length > 0 && (
           <Box sx={{ mt: 4 }}>
             <Typography variant="h5" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Schedule color="warning" />
-              Pending Exam Requests
+              <CheckCircle color="success" />
+              Approved Exam Requests
             </Typography>
-            <Paper elevation={2} sx={{ p: 3, mb: 4, bgcolor: 'warning.light' }}>
-              {pendingRequests.filter(r => r.status === 'pending').map((request) => (
-                <Card key={request._id} elevation={1} sx={{ mb: 2, bgcolor: 'background.paper' }}>
+            <Paper elevation={3} sx={{ p: 3, mb: 4, bgcolor: 'success.light', border: '2px solid', borderColor: 'success.main' }}>
+              {pendingRequests.filter(r => r.status === 'approved').map((request) => (
+                <Card key={request._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper' }}>
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
                       <Box sx={{ flex: 1, minWidth: 200 }}>
@@ -453,37 +520,30 @@ const Dashboard = memo(() => {
                           {request.exam?.title || 'Exam'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Requested: {formatDate(request.requestedAt)}
+                          Approved: {formatDate(request.updatedAt)}
                         </Typography>
                         {request.amount > 0 && (
-                          <Typography variant="body2" color="warning.main" fontWeight="bold">
+                          <Typography variant="body2" color="success.main" fontWeight="bold">
                             Price: RWF {request.amount.toLocaleString()}
                           </Typography>
                         )}
                       </Box>
                       <Chip
-                        label="Pending Approval"
-                        color="warning"
-                        size="small"
+                        label="Approved"
+                        color="success"
+                        size="medium"
                         sx={{ fontWeight: 'bold' }}
                       />
                     </Box>
-                    <Box sx={{ mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
-                      <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#0D406C', mb: 1 }}>
-                        Have questions? Contact us:
-                      </Typography>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                        <Typography sx={{ fontSize: 13, color: '#64748B' }}>
-                          📞 +250 788 535 156
-                        </Typography>
-                        <Typography sx={{ fontSize: 13, color: '#64748B' }}>
-                          📞 +250 793 828 834
-                        </Typography>
-                        <Typography sx={{ fontSize: 13, color: '#64748B' }}>
-                          📞 +250 781 671 517
-                        </Typography>
-                      </Box>
-                    </Box>
+                    <Button
+                      variant="contained"
+                      component={RouterLink}
+                      to={`/student/exam/${request.exam?._id}`}
+                      sx={{ mt: 2 }}
+                      startIcon={<PlayArrow />}
+                    >
+                      Start Exam Now
+                    </Button>
                   </CardContent>
                 </Card>
               ))}

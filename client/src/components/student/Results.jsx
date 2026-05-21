@@ -58,13 +58,25 @@ import {
   Verified,
   AutoGraph,
   Speed,
-  Psychology,
-  PhoneAndroid,
-  Laptop
+  Psychology
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
+
+// Google Play Icon SVG
+const GooglePlayIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+    <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.3,13.1L18.06,14.37L15.5,11.81L18.06,9.25L20.3,10.5C20.93,10.86 20.93,11.73 20.3,13.1M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z" />
+  </svg>
+);
+
+// Microsoft Store Icon SVG
+const MicrosoftStoreIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+    <path d="M1,1H11V11H1V1M13,1H23V11H13V1M1,13H11V23H1V13M13,13H23V23H13V13Z" />
+  </svg>
+);
 
 // Styled components
 const ScoreCircle = styled(Box)(({ theme, score }) => {
@@ -504,7 +516,7 @@ const Results = () => {
                         href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
                         target="_blank"
                         rel="noopener noreferrer"
-                        startIcon={<PhoneAndroid />}
+                        startIcon={<GooglePlayIcon />}
                         sx={{
                           bgcolor: 'white',
                           color: '#667eea',
@@ -523,7 +535,7 @@ const Results = () => {
                         href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare"
                         target="_blank"
                         rel="noopener noreferrer"
-                        startIcon={<Laptop />}
+                        startIcon={<MicrosoftStoreIcon />}
                         sx={{
                           bgcolor: 'white',
                           color: '#667eea',

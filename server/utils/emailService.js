@@ -391,11 +391,38 @@ const sendWelcomeEmail = async (user) => {
           Go to Dashboard →
         </a>
       </div>
-      
+
       <div class="divider"></div>
-      
+
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);">
+        <div class="info-box-title" style="color: ${BRAND.primary};">
+          <span style="font-size: 18px;">📱</span> Download Our Mobile App
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0 0 12px 0; line-height: 1.6;">
+            Get the Excellence Coaching Hub app to access detailed explanations, practice questions, and personalized learning paths to help you master topics you're struggling with.
+          </p>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 16px;">
+            <a href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 8px; background: #FFFFFF; color: ${BRAND.primary}; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.3,13.1L18.06,14.37L15.5,11.81L18.06,9.25L20.3,10.5C20.93,10.86 20.93,11.73 20.3,13.1M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z" />
+              </svg>
+              Google Play
+            </a>
+            <a href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 8px; background: #FFFFFF; color: ${BRAND.primary}; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M1,1H11V11H1V1M13,1H23V11H13V1M1,13H11V23H1V13M13,13H23V23H13V13Z" />
+              </svg>
+              Microsoft Store
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
       <p class="message" style="font-size: 13px; text-align: center;">
-        Need help getting started? Visit our <a href="${CLIENT_URL}/help" style="color: ${BRAND.accent}; font-weight: 600;">Help Center</a> 
+        Need help getting started? Visit our <a href="${CLIENT_URL}/help" style="color: ${BRAND.accent}; font-weight: 600;">Help Center</a>
         or contact us at <a href="mailto:support@eexams.com" style="color: ${BRAND.accent}; font-weight: 600;">support@eexams.com</a>
       </p>
     `;
@@ -1292,6 +1319,193 @@ const sendStudentPasswordResetEmail = async (student, newPassword) => {
   }
 };
 
+/**
+ * Send exam approval notification to student
+ */
+const sendStudentExamApprovedEmail = async (student, exam, shareToken) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, student exam approval email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const content = `
+      <p class="greeting">Great news, ${student.firstName || 'there'}! 🎉</p>
+
+      <p class="message">
+        Your exam request has been approved! You can now take the exam and track your progress.
+      </p>
+
+      <div style="text-align: center; margin: 24px 0;">
+        <span class="status-badge approved">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block;"></span>
+          Exam Approved
+        </span>
+      </div>
+
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: rgba(12, 189, 115, 0.05);">
+        <div class="info-box-title" style="color: ${BRAND.accent};">
+          <span style="font-size: 18px;">📝</span> Exam Details
+        </div>
+        <ul class="details-list">
+          <li>
+            <span class="label">Title</span>
+            <span class="value">${exam.title || 'Untitled Exam'}</span>
+          </li>
+          <li>
+            <span class="label">Time Limit</span>
+            <span class="value">${exam.timeLimit || 0} minutes</span>
+          </li>
+          <li>
+            <span class="label">Status</span>
+            <span class="value" style="color: ${BRAND.success};">Ready to Start</span>
+          </li>
+        </ul>
+      </div>
+
+      <div style="text-align: center;">
+        <a href="${CLIENT_URL}/student/exam/${exam._id}" class="cta-button">
+          Start Exam Now →
+        </a>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);">
+        <div class="info-box-title" style="color: ${BRAND.primary};">
+          <span style="font-size: 18px;">📱</span> Download Our Mobile App
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0 0 12px 0; line-height: 1.6;">
+            Get the Excellence Coaching Hub app to access detailed explanations, practice questions, and personalized learning paths to help you master topics you're struggling with.
+          </p>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 16px;">
+            <a href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 8px; background: #FFFFFF; color: ${BRAND.primary}; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.3,13.1L18.06,14.37L15.5,11.81L18.06,9.25L20.3,10.5C20.93,10.86 20.93,11.73 20.3,13.1M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z" />
+              </svg>
+              Google Play
+            </a>
+            <a href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 8px; background: #FFFFFF; color: ${BRAND.primary}; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M1,1H11V11H1V1M13,1H23V11H13V1M1,13H11V23H1V13M13,13H23V23H13V13Z" />
+              </svg>
+              Microsoft Store
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const email = wrapEmail(content, 'Your Exam Request Has Been Approved!');
+    email.to = student.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Student exam approval email sent to ${student.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send student exam approval email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send grades notification to student with app recommendation
+ */
+const sendStudentGradesEmail = async (student, result, exam) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, student grades email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const percentage = Math.round((result.totalScore / result.maxPossibleScore) * 100);
+    const grade = percentage >= 80 ? 'A' : percentage >= 70 ? 'B' : percentage >= 60 ? 'C' : percentage >= 50 ? 'D' : 'F';
+
+    const content = `
+      <p class="greeting">Hello ${student.firstName || 'there'},</p>
+
+      <p class="message">
+        Your exam results are now available! You can view your detailed performance and feedback.
+      </p>
+
+      <div style="text-align: center; margin: 24px 0;">
+        <span class="status-badge ${percentage >= 70 ? 'approved' : 'pending'}">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block;"></span>
+          Grade: ${grade} (${percentage}%)
+        </span>
+      </div>
+
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: rgba(12, 189, 115, 0.05);">
+        <div class="info-box-title" style="color: ${BRAND.accent};">
+          <span style="font-size: 18px;">📊</span> Exam Results
+        </div>
+        <ul class="details-list">
+          <li>
+            <span class="label">Exam</span>
+            <span class="value">${exam.title || 'Untitled Exam'}</span>
+          </li>
+          <li>
+            <span class="label">Your Score</span>
+            <span class="value">${result.totalScore} / ${result.maxPossibleScore}</span>
+          </li>
+          <li>
+            <span class="label">Percentage</span>
+            <span class="value">${percentage}%</span>
+          </li>
+          <li>
+            <span class="label">Grade</span>
+            <span class="value" style="color: ${percentage >= 70 ? BRAND.success : BRAND.warning};">${grade}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div style="text-align: center;">
+        <a href="${CLIENT_URL}/student/results/${result._id}" class="cta-button">
+          View Detailed Results →
+        </a>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);">
+        <div class="info-box-title" style="color: ${BRAND.primary};">
+          <span style="font-size: 18px;">📱</span> Improve Your Learning
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0 0 12px 0; line-height: 1.6;">
+            ${percentage < 70 ? 'Struggling with some topics?' : 'Want to improve your scores even more?'} Get the Excellence Coaching Hub app to access detailed explanations, practice questions, and personalized learning paths.
+          </p>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 16px;">
+            <a href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 8px; background: #FFFFFF; color: ${BRAND.primary}; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.3,13.1L18.06,14.37L15.5,11.81L18.06,9.25L20.3,10.5C20.93,10.86 20.93,11.73 20.3,13.1M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z" />
+              </svg>
+              Google Play
+            </a>
+            <a href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 8px; background: #FFFFFF; color: ${BRAND.primary}; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M1,1H11V11H1V1M13,1H23V11H13V1M1,13H11V23H1V13M13,13H23V23H13V13Z" />
+              </svg>
+              Microsoft Store
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const email = wrapEmail(content, `Your Exam Results: ${exam.title || 'Exam'}`);
+    email.to = student.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Student grades email sent to ${student.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send student grades email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendWelcomeEmail,
   sendPendingApprovalEmail,
@@ -1306,6 +1520,8 @@ module.exports = {
   sendTeacherWelcomeEmail,
   sendTeacherUpdateEmail,
   sendContactEmail,
+  sendStudentExamApprovedEmail,
+  sendStudentGradesEmail,
   FROM_EMAIL,
   CLIENT_URL,
 };

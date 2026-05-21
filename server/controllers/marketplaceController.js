@@ -3,6 +3,7 @@ const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
 const User = require('../models/User');
 const Result = require('../models/Result');
+const emailService = require('../utils/emailService');
 
 // @desc    Get all marketplace exams
 // @route   GET /api/marketplace/exams
@@ -153,6 +154,11 @@ const processExamApproval = async (request, waivePayment = false) => {
   });
 
   await request.save();
+
+  // Send email notification to student about exam approval
+  emailService.sendStudentExamApprovedEmail(studentUser, exam, shareToken).catch(err => {
+    console.error('[Marketplace] Failed to send student exam approval email:', err);
+  });
 
   return {
     request,

@@ -2,9 +2,10 @@ const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
 const Exam = require('../models/Exam');
-const Question = require('../models/Question');
 const Result = require('../models/Result');
-const SharedExam = require('../models/SharedExam');
+const User = require('../models/User');
+const Question = require('../models/Question');
+const emailService = require('../utils/emailService');
 const { parseExamFile } = require('../utils/fileParser');
 const { gradeOpenEndedAnswer, generateModelAnswers } = require('../utils/aiGrading');
 const { gradeQuestionByType } = require('../utils/enhancedGrading');
@@ -1908,6 +1909,11 @@ const completeExam = async (req, res) => {
       // Save the result
       await result.save();
       console.log(`✅ Successfully saved exam result ${result._id}`);
+
+      // Send email notification to student about grades
+      emailService.sendStudentGradesEmail(req.user, result, exam).catch(err => {
+        console.error('[ExamController] Failed to send student grades email:', err);
+      });
 
       // Remove user from exam's assignedTo array after completion
       try {

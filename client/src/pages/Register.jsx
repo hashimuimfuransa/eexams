@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
+import SEO from '../components/SEO';
 import api from '../services/api';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -795,6 +796,17 @@ const Register = () => {
 
   return (
     <>
+      <SEO
+        title="Teacher Registration - Join eexams | Create Online Exams in Rwanda"
+        description="Register as a teacher on eexams - Rwanda's leading online exam platform. Create AI-powered exams, grade students instantly, and share exams with educators across Rwanda."
+        keywords="teacher registration, Rwanda teachers, online exam platform, create exams, teacher tools, education technology Rwanda, e-learning Rwanda, school management, exam software"
+        ogUrl="https://www.eexams.net/register"
+        canonical="https://www.eexams.net/register"
+        breadcrumbs={[
+          { name: 'Home', url: 'https://www.eexams.net/' },
+          { name: 'Teacher Registration', url: 'https://www.eexams.net/register' }
+        ]}
+      />
       {/* Purpose Selection Modal */}
       {showPurposeModal && (
         <div style={{

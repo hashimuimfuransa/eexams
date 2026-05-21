@@ -5,6 +5,7 @@ import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share,
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
+import SEO from '../components/SEO';
 import api from '../services/api';
 
 const Marketplace = () => {
@@ -269,7 +270,18 @@ const Marketplace = () => {
 
   return (
     <>
-      <Nav 
+      <SEO
+        title="Exam Marketplace - Browse Public Exams in Rwanda | eexams"
+        description="Discover and access public exams shared by teachers across Rwanda. Browse exam bank, find practice tests, and request access to exams for your studies."
+        keywords="exam marketplace, public exams Rwanda, exam bank, practice tests, Rwanda exams, secondary exams, primary exams, national exams, exam sharing, teacher exams, student exams, exam preparation"
+        ogUrl="https://www.eexams.net/marketplace"
+        canonical="https://www.eexams.net/marketplace"
+        breadcrumbs={[
+          { name: 'Home', url: 'https://www.eexams.net/' },
+          { name: 'Marketplace', url: 'https://www.eexams.net/marketplace' }
+        ]}
+      />
+      <Nav
         scrolled={scrollY > 40}
         mode={mode}
         toggleMode={toggleMode}

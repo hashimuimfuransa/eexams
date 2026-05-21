@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
+import SEO from '../components/SEO';
 import api from '../services/api';
 
 // ─── Design tokens (matching login page) ──────────────────────────────────────
@@ -385,27 +386,39 @@ const StudentRegister = () => {
   }, [handleGoogleCredentialResponse]);
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      fontFamily: "'DM Sans', sans-serif",
-      background: isDark
-        ? `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.18) 0%, transparent 70%), ${tokens.dark.bg}`
-        : `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.1) 0%, transparent 70%), #F5FBF8`,
-      position: 'relative', overflow: 'hidden',
-      display: 'flex', flexDirection: 'column',
-    }}>
-      {/* Grid pattern */}
+    <>
+      <SEO
+        title="Student Registration - Join eexams | Take Online Exams in Rwanda"
+        description="Register as a student on eexams - Rwanda's leading online exam platform. Access public exams, take AI-graded tests, and improve your academic performance with instant results."
+        keywords="student registration, Rwanda students, online exams, take exams, practice tests, exam preparation, student portal, e-learning Rwanda, academic assessment, exam results"
+        ogUrl="https://www.eexams.net/student-register"
+        canonical="https://www.eexams.net/student-register"
+        breadcrumbs={[
+          { name: 'Home', url: 'https://www.eexams.net/' },
+          { name: 'Student Registration', url: 'https://www.eexams.net/student-register' }
+        ]}
+      />
       <div style={{
-        position: 'absolute', inset: 0, zIndex: 0,
-        backgroundImage: isDark
-          ? 'linear-gradient(rgba(26,90,140,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(26,90,140,0.4) 1px, transparent 1px)'
-          : 'linear-gradient(rgba(215,229,221,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(215,229,221,0.7) 1px, transparent 1px)',
-        backgroundSize: '60px 60px',
-        maskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-        WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-      }} />
-      <div style={{ position: 'absolute', top: '10%', left: '5%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(12,189,115,0.14) 0%, transparent 70%)', animation: 'float1 8s ease-in-out infinite', zIndex: 0 }} />
-      <div style={{ position: 'absolute', bottom: '10%', right: '5%', width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(157,246,214,0.16) 0%, transparent 70%)', animation: 'float2 10s ease-in-out infinite', zIndex: 0 }} />
+        minHeight: '100vh',
+        fontFamily: "'DM Sans', sans-serif",
+        background: isDark
+          ? `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.18) 0%, transparent 70%), ${tokens.dark.bg}`
+          : `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.1) 0%, transparent 70%), #F5FBF8`,
+        position: 'relative', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Grid pattern */}
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 0,
+          backgroundImage: isDark
+            ? 'linear-gradient(rgba(26,90,140,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(26,90,140,0.4) 1px, transparent 1px)'
+            : 'linear-gradient(rgba(215,229,221,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(215,229,221,0.7) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
+          maskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
+        }} />
+        <div style={{ position: 'absolute', top: '10%', left: '5%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(12,189,115,0.14) 0%, transparent 70%)', animation: 'float1 8s ease-in-out infinite', zIndex: 0 }} />
+        <div style={{ position: 'absolute', bottom: '10%', right: '5%', width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(157,246,214,0.16) 0%, transparent 70%)', animation: 'float2 10s ease-in-out infinite', zIndex: 0 }} />
 
       {/* Top bar */}
       <header style={{ position: 'relative', zIndex: 2, padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -850,6 +863,7 @@ const StudentRegister = () => {
         }
       `}</style>
     </div>
+    </>
   );
 };
 

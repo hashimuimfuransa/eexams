@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Chip, Button, Paper, Grid, TextField,
@@ -27,6 +27,42 @@ import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } 
 import StudentManagement from '../components/teacher/StudentManagement';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
 import usePlan from '../hooks/usePlan';
+
+// Memoized StudentRow component to prevent unnecessary re-renders
+const StudentRow = memo(({ row, index, fields, onUpdate, onRemove, disabled, canRemove }) => {
+  console.log('StudentRow render:', { index, row, disabled, canRemove });
+  return (
+    <TableRow key={row.id || index}>
+      {fields.map(f => (
+        <TableCell sx={{ py: 0.5, px: 0.75 }}>
+          <TextField 
+            fullWidth 
+            size="small" 
+            value={row[f]} 
+            onChange={e => {
+              console.log('TextField onChange:', { index, field: f, value: e.target.value });
+              onUpdate(index, f, e.target.value);
+            }}
+            disabled={disabled}
+            placeholder={f === 'email' ? 'student@email.com' : f === 'class' ? 'e.g. 10A' : ''}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 12 } }} 
+            inputProps={{ autoComplete: 'off' }}
+          />
+        </TableCell>
+      ))}
+      <TableCell sx={{ py: 0.5 }}>
+        <IconButton 
+          size="small" 
+          onClick={() => onRemove(index)} 
+          disabled={disabled || !canRemove} 
+          sx={{ color: tokens.danger }}
+        >
+          <Delete fontSize="small" />
+        </IconButton>
+      </TableCell>
+    </TableRow>
+  );
+});
 
 // Question Editor Component for Generated Exams
 const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, sections, onSectionChange }) => {
@@ -2139,6 +2175,7 @@ function ExamPreviewPanel({ exam }) {
 
 /* ── PUBLISH DIALOG ── */
 function PublishDialog({ examId, onClose }) {
+  console.log('PublishDialog render');
   const { user } = useAuth();
   const { hasMarketplaceAccess } = usePlan();
   const isXs = useMediaQuery('(max-width:600px)');
@@ -2333,7 +2370,9 @@ function PublishDialog({ examId, onClose }) {
 
   const addRow = () => setStudentRows(p => [...p, { firstName: '', lastName: '', email: '', class: '', id: Date.now() }]);
   const removeRow = (i) => setStudentRows(p => p.filter((_, idx) => idx !== i));
-  const updateRow = (i, field, val) => setStudentRows(p => p.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+  const updateRow = useCallback((i, field, val) => {
+    setStudentRows(p => p.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+  }, []);
 
   const handleStudentSelection = (event) => {
     const selectedIds = event.target.value;
@@ -2855,31 +2894,16 @@ function PublishDialog({ examId, onClose }) {
                     </TableHead>
                     <TableBody>
                       {studentRows.map((row, i) => (
-                        <TableRow key={row.id || i}>
-                          {['firstName', 'lastName', 'email', 'class'].map(f => (
-                            <TableCell key={f} sx={{ py: 0.5, px: 0.75 }}>
-                              <TextField 
-                                fullWidth 
-                                size="small" 
-                                value={row[f]} 
-                                onChange={e => updateRow(i, f, e.target.value)}
-                                disabled={studentSelectionMode === 'select'}
-                                placeholder={f === 'email' ? 'student@email.com' : f === 'class' ? 'e.g. 10A' : ''}
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 12 } }} 
-                              />
-                            </TableCell>
-                          ))}
-                          <TableCell sx={{ py: 0.5 }}>
-                            <IconButton 
-                              size="small" 
-                              onClick={() => removeRow(i)} 
-                              disabled={studentSelectionMode === 'select' || studentRows.length === 1} 
-                              sx={{ color: tokens.danger }}
-                            >
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
+                        <StudentRow 
+                          key={row.id || i}
+                          row={row}
+                          index={i}
+                          fields={['firstName', 'lastName', 'email', 'class']}
+                          onUpdate={updateRow}
+                          onRemove={removeRow}
+                          disabled={studentSelectionMode === 'select'}
+                          canRemove={studentRows.length > 1}
+                        />
                       ))}
                     </TableBody>
                   </Table>
@@ -4387,6 +4411,34 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
   );
 }
 
+// Memoized StudentFormFields component (moved outside StudentsSection to prevent re-creation)
+const StudentFormFields = memo(({ form, setForm, formError }) => {
+  console.log('StudentFormFields render');
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+      {formError && <Alert severity="error" sx={{ borderRadius: 2 }}>{formError}</Alert>}
+      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <TextField label="First Name *" value={form.firstName} onChange={e => { console.log('First Name onChange:', e.target.value); setForm(p => ({ ...p, firstName: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <TextField label="Last Name *" value={form.lastName} onChange={e => { console.log('Last Name onChange:', e.target.value); setForm(p => ({ ...p, lastName: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+      </Box>
+      <TextField label="Email *" type="email" value={form.email} onChange={e => { console.log('Email onChange:', e.target.value); setForm(p => ({ ...p, email: e.target.value })); }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <TextField label="Phone" value={form.phone} onChange={e => { console.log('Phone onChange:', e.target.value); setForm(p => ({ ...p, phone: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <TextField label="Class / Grade" value={form.class} onChange={e => { console.log('Class onChange:', e.target.value); setForm(p => ({ ...p, class: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+      </Box>
+      <FormControl sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+        <InputLabel>Gender</InputLabel>
+        <Select value={form.gender} onChange={e => setForm(p => ({ ...p, gender: e.target.value }))} label="Gender">
+          <MenuItem value="">Not specified</MenuItem>
+          <MenuItem value="male">Male</MenuItem>
+          <MenuItem value="female">Female</MenuItem>
+          <MenuItem value="other">Other</MenuItem>
+        </Select>
+      </FormControl>
+    </Box>
+  );
+});
+
 function StudentsSection() {
   const isXs = useMediaQuery('(max-width:600px)');
   const [students, setStudents] = useState([]);
@@ -4496,30 +4548,6 @@ function StudentsSection() {
 
   const openEdit = (s) => { setSelectedStudent(s); setForm({ firstName: s.firstName || '', lastName: s.lastName || '', email: s.email || '', phone: s.phone || '', class: s.class || '', gender: s.gender || '' }); setFormError(''); setEditDialog(true); };
   const openView = (s) => { setSelectedStudent(s); setViewDialog(true); };
-
-  const StudentFormFields = () => (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-      {formError && <Alert severity="error" sx={{ borderRadius: 2 }}>{formError}</Alert>}
-      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <TextField label="First Name *" value={form.firstName} onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-        <TextField label="Last Name *" value={form.lastName} onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-      </Box>
-      <TextField label="Email *" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <TextField label="Phone" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-        <TextField label="Class / Grade" value={form.class} onChange={e => setForm(p => ({ ...p, class: e.target.value }))} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-      </Box>
-      <FormControl sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-        <InputLabel>Gender</InputLabel>
-        <Select value={form.gender} onChange={e => setForm(p => ({ ...p, gender: e.target.value }))} label="Gender">
-          <MenuItem value="">Not specified</MenuItem>
-          <MenuItem value="male">Male</MenuItem>
-          <MenuItem value="female">Female</MenuItem>
-          <MenuItem value="other">Other</MenuItem>
-        </Select>
-      </FormControl>
-    </Box>
-  );
 
   const avatarBg = ['rgba(12,189,115,0.12)', 'rgba(13,64,108,0.1)', 'rgba(99,102,241,0.12)', 'rgba(245,158,11,0.12)', 'rgba(236,72,153,0.12)'];
   const avatarColor = [tokens.accentDark, tokens.primary, '#6366F1', '#D97706', '#DB2777'];
@@ -4665,7 +4693,7 @@ function StudentsSection() {
       {/* Create Dialog */}
       <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", pb: 0 }}>Add New Student</DialogTitle>
-        <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields /></DialogContent>
+        <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields form={form} setForm={setForm} formError={formError} /></DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setCreateDialog(false)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
           <Button variant="contained" onClick={handleCreate} disabled={saving}
@@ -4678,7 +4706,7 @@ function StudentsSection() {
       {/* Edit Dialog */}
       <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", pb: 0 }}>Edit Student</DialogTitle>
-        <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields /></DialogContent>
+        <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields form={form} setForm={setForm} formError={formError} /></DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setEditDialog(false)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
           <Button variant="contained" onClick={handleEdit} disabled={saving}

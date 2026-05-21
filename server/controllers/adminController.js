@@ -150,7 +150,7 @@ const registerStudent = async (req, res) => {
       password: defaultPassword,
       role: 'student',
       class: studentClass || '',
-      organization: organization || '',
+      organization: organization || req.user.organization || '',
       phone: phone || '',
       gender: gender || '',
       subscriptionPlan: 'free',

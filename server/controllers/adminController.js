@@ -4252,14 +4252,10 @@ const reuseQuestionBankExam = async (req, res) => {
             exam: newExam._id,
             section: originalQuestion.section,
             difficulty: originalQuestion.difficulty,
+            // Set to empty objects if undefined to avoid Mongoose cast errors
+            matchingPairs: originalQuestion.matchingPairs || { leftColumn: [], rightColumn: [], correctPairs: [] },
+            itemsToOrder: originalQuestion.itemsToOrder || { items: [], correctOrder: [] },
           };
-          // Only include matchingPairs and itemsToOrder if they exist
-          if (originalQuestion.matchingPairs) {
-            newQuestionData.matchingPairs = originalQuestion.matchingPairs;
-          }
-          if (originalQuestion.itemsToOrder) {
-            newQuestionData.itemsToOrder = originalQuestion.itemsToOrder;
-          }
           const newQuestion = new Question(newQuestionData);
           await newQuestion.save();
           questionMap.set((question._id || question).toString(), newQuestion._id);

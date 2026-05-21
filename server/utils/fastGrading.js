@@ -130,6 +130,27 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
     };
   }
 
+  // Check for meaningless answers like "I don't know", "no idea", etc.
+  const meaninglessPatterns = [
+    /^(i\s+don'?t\s+know|dont\s+know|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
+    /^(i\s+do\s+not\s+know|i\s+do\s+not\s+understand|i\s+have\s+no\s+clue|no\s+clue)$/i,
+    /^(skip|pass|n\/a|none|nothing|answer|question)$/i,
+    /^(please\s+help|help\s+me|idk)$/i
+  ];
+
+  const cleanAnswer = studentAnswer.toLowerCase().trim();
+  for (const pattern of meaninglessPatterns) {
+    if (pattern.test(cleanAnswer)) {
+      console.log(`Detected meaningless answer: "${studentAnswer}"`);
+      return {
+        score: 0,
+        feedback: 'Your answer indicates you do not know the answer. Please review the material and provide a proper response.',
+        correctedAnswer: modelAnswer,
+        gradingMethod: 'meaningless_answer'
+      };
+    }
+  }
+
   // For very short answers (less than 10 characters), use keyword matching for speed
   if (studentAnswer.length < 10) {
     console.log(`Using fast keyword matching for short answer: "${studentAnswer}"`);
@@ -147,6 +168,13 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
     // Simplified, faster prompt for all question types
     const isEssayQuestion = question.section === 'B' || question.section === 'C';
     const prompt = `Grade (0-${question.points}). Q: ${truncatedQuestion}. A: ${truncatedAnswer}. Model: ${truncatedModelAnswer}. ${isEssayQuestion ? 'Detailed feedback.' : 'Brief feedback.'}
+
+STRICT GRADING RULES:
+- Award 0 points for meaningless answers like "I don't know", "no idea", "skip", "pass", etc.
+- Award 0 points for answers that show no understanding of the question
+- Only award points for substantive, relevant answers
+- NO MINIMUM CREDIT - do not give points for effort alone
+
 Return JSON: {score,feedback,correctedAnswer}`;
 
     // Fast AI processing with timeout
@@ -210,6 +238,26 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
     };
   }
 
+  // Check for meaningless answers like "I don't know", "no idea", etc.
+  const meaninglessPatterns = [
+    /^(i\s+don'?t\s+know|dont\s+know|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
+    /^(i\s+do\s+not\s+know|i\s+do\s+not\s+understand|i\s+have\s+no\s+clue|no\s+clue)$/i,
+    /^(skip|pass|n\/a|none|nothing|answer|question)$/i,
+    /^(please\s+help|help\s+me|idk)$/i
+  ];
+
+  for (const pattern of meaninglessPatterns) {
+    if (pattern.test(studentAnswer)) {
+      console.log(`Detected meaningless answer in short answer grading: "${studentAnswer}"`);
+      return {
+        score: 0,
+        feedback: 'Your answer indicates you do not know the answer. Please review the material and provide a proper response.',
+        correctedAnswer: modelAnswer,
+        gradingMethod: 'meaningless_answer_short'
+      };
+    }
+  }
+
   // Quick exact match
   if (studentAnswer === correctAnswer) {
     return {
@@ -247,6 +295,26 @@ async function gradeWithKeywordsFast(studentAnswer, modelAnswer, maxPoints) {
   const student = studentAnswer.toLowerCase();
   const model = (modelAnswer || '').toLowerCase();
 
+  // Check for meaningless answers like "I don't know", "no idea", etc.
+  const meaninglessPatterns = [
+    /^(i\s+don'?t\s+know|dont\s+know|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
+    /^(i\s+do\s+not\s+know|i\s+do\s+not\s+understand|i\s+have\s+no\s+clue|no\s+clue)$/i,
+    /^(skip|pass|n\/a|none|nothing|answer|question)$/i,
+    /^(please\s+help|help\s+me|idk)$/i
+  ];
+
+  for (const pattern of meaninglessPatterns) {
+    if (pattern.test(student)) {
+      console.log(`Detected meaningless answer in keyword fallback: "${studentAnswer}"`);
+      return {
+        score: 0,
+        feedback: 'Your answer indicates you do not know the answer. Please review the material and provide a proper response.',
+        correctedAnswer: modelAnswer || 'Model answer not available',
+        gradingMethod: 'meaningless_answer_fallback'
+      };
+    }
+  }
+
   if (!model) {
     // When no model answer is available, use AI to grade based on its own assessment
     try {
@@ -264,7 +332,8 @@ STRICT GRADING GUIDELINES (No Model Answer Available):
 4. Award 0 points for answers that are incorrect, irrelevant, too brief, or show no understanding
 5. Very short answers (under 10 characters) or irrelevant answers should receive 0 points
 6. Mathematical expressions without explanation should receive 0 points
-7. NO MINIMUM CREDIT - do not give automatic points for effort alone
+7. Answers like "I don't know", "no idea", "skip", etc. should receive 0 points
+8. NO MINIMUM CREDIT - do not give automatic points for effort alone
 
 Return JSON: {score,feedback,correctedAnswer}`;
 

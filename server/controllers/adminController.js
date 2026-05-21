@@ -4606,7 +4606,7 @@ const createStudentAccounts = async (req, res) => {
         class: s.class || '',
         createdBy: req.user._id,
         organization: req.user.organization || '',
-        parentAdmin: req.user._id,
+        parentAdmin: req.orgAdminId || req.user._id,
       });
       exam.assignedTo.push(user._id);
       created.push({ _id: user._id, email: user.email, firstName: user.firstName, lastName: user.lastName, tempPassword: DEFAULT_PASSWORD });

@@ -2331,7 +2331,7 @@ function PublishDialog({ examId, onClose }) {
 
   const copyLink = (link, label) => { navigator.clipboard.writeText(link); setCopied(label); setTimeout(() => setCopied(''), 2500); };
 
-  const addRow = () => setStudentRows(p => [...p, { firstName: '', lastName: '', email: '', class: '' }]);
+  const addRow = () => setStudentRows(p => [...p, { firstName: '', lastName: '', email: '', class: '', id: Date.now() }]);
   const removeRow = (i) => setStudentRows(p => p.filter((_, idx) => idx !== i));
   const updateRow = (i, field, val) => setStudentRows(p => p.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
 
@@ -2680,7 +2680,6 @@ function PublishDialog({ examId, onClose }) {
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 44, '& .MuiTab-root': { fontWeight: 700, fontSize: 13, textTransform: 'none', fontFamily: "DM Sans,sans-serif", minHeight: 44 }, '& .MuiTabs-indicator': { backgroundColor: tokens.primary } }}>
           <Tab label="👁 Preview" />
           <Tab label="✏️ Edit Questions" />
-          <Tab label="🔗 Public Link" />
           <Tab label="🔒 Private / Invite" />
           {hasMarketplaceAccess && <Tab label="🌐 Public Marketplace" />}
         </Tabs>
@@ -2766,180 +2765,8 @@ function PublishDialog({ examId, onClose }) {
           </Box>
         )}
 
-        {/* TAB 2 — PUBLIC LINK */}
+        {/* TAB 2 — PRIVATE / INVITE */}
         {tab === 2 && (
-          <Box sx={{ p: 3 }}>
-            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2 }}>
-              <Typography fontWeight={700} sx={{ fontSize: 14, mb: 2, fontFamily: "DM Sans,sans-serif" }}>Share Settings</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Allow Multiple Attempts</InputLabel>
-                    <Select label="Allow Multiple Attempts" value={shareSettings.allowMultipleAttempts}
-                      onChange={e => setShareSettings(p => ({ ...p, allowMultipleAttempts: e.target.value }))} sx={{ borderRadius: 2 }}>
-                      <MenuItem value={false}>No (one attempt)</MenuItem>
-                      <MenuItem value={true}>Yes</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Show Results After</InputLabel>
-                    <Select label="Show Results After" value={shareSettings.showResults}
-                      onChange={e => setShareSettings(p => ({ ...p, showResults: e.target.value }))} sx={{ borderRadius: 2 }}>
-                      <MenuItem value={true}>Immediately</MenuItem>
-                      <MenuItem value={false}>Manually release</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth size="small" label="Max Students (blank = unlimited)" type="number"
-                    value={shareSettings.maxStudents} onChange={e => setShareSettings(p => ({ ...p, maxStudents: e.target.value }))}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth size="small" label="Expires At (blank = never)" type="datetime-local"
-                    value={shareSettings.expiresAt} onChange={e => setShareSettings(p => ({ ...p, expiresAt: e.target.value }))}
-                    InputLabelProps={{ shrink: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Password Protect</InputLabel>
-                    <Select label="Password Protect" value={shareSettings.requirePassword}
-                      onChange={e => setShareSettings(p => ({ ...p, requirePassword: e.target.value }))} sx={{ borderRadius: 2 }}>
-                      <MenuItem value={false}>No</MenuItem>
-                      <MenuItem value={true}>Yes</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                {shareSettings.requirePassword && (
-                  <Grid item xs={12} sm={6}>
-                    <TextField fullWidth size="small" label="Access Password" value={shareSettings.password}
-                      onChange={e => setShareSettings(p => ({ ...p, password: e.target.value }))}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                  </Grid>
-                )}
-              </Grid>
-            </Paper>
-
-            {shareResult ? (
-              <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1.5px solid ${isShareExpired() ? '#EF4444' : tokens.accent}`, bgcolor: isShareExpired() ? 'rgba(239, 68, 68, 0.03)' : 'rgba(12,189,115,0.03)' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {isShareExpired() ? <ErrorOutline sx={{ color: '#EF4444' }} /> : <CheckCircle sx={{ color: tokens.accent }} />}
-                    <Typography fontWeight={700} sx={{ color: isShareExpired() ? '#EF4444' : tokens.accentDark, fontFamily: "DM Sans,sans-serif" }}>
-                      {isShareExpired() ? 'Link expired!' : 'Public link created!'}
-                    </Typography>
-                  </Box>
-                  {isShareExpired() && (
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={resettingExpiration ? <CircularProgress size={14} color="inherit" /> : <RestartAlt sx={{ fontSize: 14 }} />}
-                      onClick={handleResetExpiration}
-                      disabled={resettingExpiration}
-                      sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', borderColor: '#EF4444', color: '#EF4444', whiteSpace: 'nowrap', px: 2, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.05)' } }}
-                    >
-                      {resettingExpiration ? 'Resetting...' : 'Reset Link'}
-                    </Button>
-                  )}
-                </Box>
-                {(shareResult.expiresAt || shareResult.settings?.expiresAt) && (
-                  <Typography sx={{ fontSize: 11.5, color: isShareExpired() ? '#EF4444' : tokens.textMuted, fontFamily: "DM Sans,sans-serif", mb: 2 }}>
-                    Expires: {new Date(shareResult.expiresAt || shareResult.settings?.expiresAt).toLocaleString()}
-                  </Typography>
-                )}
-                {[{ label: 'Public Link', value: shareResult.publicLink }].map(l => (
-                  <Box key={l.label} sx={{ mb: 1.5 }}>
-                    <Typography sx={{ fontSize: 12, color: tokens.textMuted, mb: 0.5, fontFamily: "DM Sans,sans-serif" }}>{l.label}</Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <TextField fullWidth size="small" value={l.value} InputProps={{ readOnly: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }} />
-                      <Button variant="contained" onClick={() => copyLink(l.value, l.label)}
-                        sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: copied === l.label ? tokens.accent : gradients.brand, boxShadow: 'none', whiteSpace: 'nowrap', px: 2 }}>
-                        {copied === l.label ? '✓ Copied' : 'Copy'}
-                      </Button>
-                    </Box>
-                  </Box>
-                ))}
-                <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>
-                  Anyone with this link can access the exam. Share it via WhatsApp, email, or any platform.
-                </Typography>
-              </Paper>
-            ) : (
-              <Button fullWidth variant="contained" size="large" startIcon={sharing ? <CircularProgress size={18} color="inherit" /> : <Share />}
-                onClick={() => handleShare('link')} disabled={sharing}
-                sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', py: 1.5, fontSize: 15 }}>
-                {sharing ? 'Generating Link…' : 'Generate Public Link'}
-              </Button>
-            )}
-
-            {/* Show students who joined via public link */}
-            {shareResult && shareResult.shareId && (
-              <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mt: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "DM Sans,sans-serif" }}>
-                    Students Who Joined via Link
-                  </Typography>
-                  <Button size="small" onClick={() => fetchShareStats(shareResult.shareId)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.primary }}>
-                    Refresh
-                  </Button>
-                </Box>
-                {shareStats?.students && shareStats.students.length > 0 ? (
-                  <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Name</TableCell>
-                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Email</TableCell>
-                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Status</TableCell>
-                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Score</TableCell>
-                          <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Actions</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {shareStats.students.map((student) => (
-                          <TableRow key={student.id}>
-                            <TableCell sx={{ fontSize: 12 }}>{student.name}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{student.email}</TableCell>
-                            <TableCell>
-                              <Chip
-                                label={student.hasCompleted ? 'Completed' : 'In Progress'}
-                                size="small"
-                                color={student.hasCompleted ? 'success' : 'default'}
-                                sx={{ fontWeight: 600, textTransform: 'capitalize', fontSize: 11 }}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>
-                              {student.score ? `${student.score.total}/${student.score.max} (${Math.round(student.score.percentage)}%)` : '-'}
-                            </TableCell>
-                            <TableCell>
-                              <Tooltip title="Remove student">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleRemoveSharedStudent(shareResult.shareToken, student.id)}
-                                  sx={{ color: '#EF4444' }}
-                                >
-                                  <Delete fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </Box>
-                ) : (
-                  <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontStyle: 'italic', py: 2 }}>
-                    No students have joined via this link yet.
-                  </Typography>
-                )}
-              </Paper>
-            )}
-          </Box>
-        )}
-
-        {/* TAB 3 — PRIVATE / INVITE */}
-        {tab === 3 && (
           <Box sx={{ p: 3 }}>
             <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
@@ -3028,7 +2855,7 @@ function PublishDialog({ examId, onClose }) {
                     </TableHead>
                     <TableBody>
                       {studentRows.map((row, i) => (
-                        <TableRow key={i}>
+                        <TableRow key={row.id || i}>
                           {['firstName', 'lastName', 'email', 'class'].map(f => (
                             <TableCell key={f} sx={{ py: 0.5, px: 0.75 }}>
                               <TextField 
@@ -3225,8 +3052,8 @@ function PublishDialog({ examId, onClose }) {
           </Box>
         )}
 
-        {/* TAB 4 — PUBLIC MARKETPLACE (enterprise only) */}
-        {hasMarketplaceAccess && tab === 4 && (
+        {/* TAB 3 — PUBLIC MARKETPLACE (enterprise only) */}
+        {hasMarketplaceAccess && tab === 3 && (
           <Box sx={{ p: 3 }}>
             <MarketplaceManager exam={exam} />
           </Box>

@@ -58,6 +58,113 @@ const getMarketplaceExamById = async (req, res) => {
   }
 };
 
+// Helper function to process exam approval (used for both manual and automatic approval)
+const processExamApproval = async (request, waivePayment = false) => {
+  // Create or find the user account
+  let studentUser;
+  if (request.userInfo.email) {
+    studentUser = await User.findOne({ email: request.userInfo.email.toLowerCase().trim() });
+  }
+
+  if (!studentUser) {
+    // Create a new student account
+    const tempPassword = Math.random().toString(36).slice(-8);
+    const nameParts = request.userInfo.name.split(' ');
+    const firstName = nameParts[0] || 'Student';
+    const lastName = nameParts.slice(1).join(' ') || 'User';
+
+    studentUser = await User.create({
+      email: request.userInfo.email ? request.userInfo.email.toLowerCase().trim() : `student-${Date.now()}@exam.local`,
+      password: tempPassword,
+      firstName,
+      lastName,
+      role: 'student',
+      userType: 'individual',
+      createdBy: request.teacher
+    });
+  }
+
+  // Assign the exam to the user
+  const exam = await Exam.findById(request.exam);
+  console.log(`Marketplace approval - Exam found: ${!!exam}, Exam locked: ${exam?.isLocked}, Current assignedTo: ${exam?.assignedTo?.length || 0}`);
+  console.log(`Marketplace approval - Student user ID: ${studentUser._id}, Already assigned: ${exam?.assignedTo?.includes(studentUser._id)}`);
+
+  if (exam && !exam.assignedTo.includes(studentUser._id)) {
+    exam.assignedTo.push(studentUser._id);
+    await exam.save();
+    console.log(`Marketplace approval - Successfully assigned student ${studentUser._id} to exam ${exam._id}`);
+    console.log(`Marketplace approval - New assignedTo count: ${exam.assignedTo.length}`);
+  } else if (exam) {
+    console.log(`Marketplace approval - Student already assigned to exam`);
+  } else {
+    console.log(`Marketplace approval - Exam not found: ${request.exam}`);
+  }
+
+  // Create a SharedExam for the approved user
+  const shareToken = SharedExam.generateShareToken();
+
+  // Generate a unique 6-digit access code
+  const accessCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+  // Generate exam slug from exam title
+  const examSlug = SharedExam.generateSlug(exam?.title || 'marketplace-exam') || 'marketplace-exam';
+
+  const sharedExam = await SharedExam.create({
+    exam: request.exam,
+    sharedBy: request.teacher,
+    shareToken,
+    examSlug,
+    shareType: 'link',
+    settings: {
+      publicAccess: true,
+      requirePassword: false,
+      maxStudents: null, // Unlimited access for marketplace exams
+      allowMultipleAttempts: false,
+      showResults: true
+    }
+  });
+
+  // Add the student to the shared exam
+  sharedExam.students.push({
+    student: studentUser._id,
+    studentId: studentUser._id,
+    email: studentUser.email,
+    name: studentUser.firstName + ' ' + studentUser.lastName,
+    accessMethod: 'link',
+    isActiveSession: false,
+    lastActivity: null,
+    firstAccessedAt: new Date()
+  });
+
+  await sharedExam.save();
+
+  // Update the request
+  request.status = 'approved';
+  request.processedAt = new Date();
+  request.shareToken = shareToken;
+  request.accessCode = accessCode;
+  request.sharedExam = sharedExam._id;
+  request.paymentStatus = waivePayment ? 'waived' : (request.amount > 0 ? 'pending' : 'paid');
+
+  console.log('Marketplace approval - Setting sharedExam:', {
+    requestId: request._id,
+    sharedExamId: sharedExam._id,
+    shareToken: shareToken
+  });
+
+  await request.save();
+
+  return {
+    request,
+    shareToken,
+    accessCode,
+    studentUser: {
+      email: studentUser.email,
+      name: studentUser.firstName + ' ' + studentUser.lastName
+    }
+  };
+};
+
 // @desc    Submit a request to take a marketplace exam
 // @route   POST /api/marketplace/exams/:id/request
 // @access  Public (for guest) or Private (for authenticated students)
@@ -223,6 +330,24 @@ const requestMarketplaceExam = async (req, res) => {
 
     const examRequest = await ExamRequest.create(requestData);
 
+    // Check if exam is free (price = 0) - auto-approve
+    const isFree = exam.publicPrice === 0 || exam.publicPrice === '0' || exam.publicPrice === '0 RWF';
+    
+    if (isFree) {
+      console.log(`Auto-approving free exam request: ${exam._id}, price: ${exam.publicPrice}`);
+      
+      // Process the approval automatically
+      const approvalResult = await processExamApproval(examRequest, false);
+      
+      return res.status(201).json({
+        message: 'Request approved automatically. This exam is free!',
+        requestId: examRequest._id,
+        shareToken: approvalResult.shareToken,
+        accessCode: approvalResult.accessCode,
+        autoApproved: true
+      });
+    }
+
     res.status(201).json({
       message: 'Request submitted successfully. The teacher will review your request.',
       requestId: examRequest._id
@@ -315,109 +440,15 @@ const approveExamRequest = async (req, res) => {
       return res.status(400).json({ message: 'Request has already been processed' });
     }
 
-    // Create or find the user account
-    let studentUser;
-    if (request.userInfo.email) {
-      studentUser = await User.findOne({ email: request.userInfo.email.toLowerCase().trim() });
-    }
-
-    if (!studentUser) {
-      // Create a new student account
-      const tempPassword = Math.random().toString(36).slice(-8);
-      const nameParts = request.userInfo.name.split(' ');
-      const firstName = nameParts[0] || 'Student';
-      const lastName = nameParts.slice(1).join(' ') || 'User';
-
-      studentUser = await User.create({
-        email: request.userInfo.email ? request.userInfo.email.toLowerCase().trim() : `student-${Date.now()}@exam.local`,
-        password: tempPassword,
-        firstName,
-        lastName,
-        role: 'student',
-        userType: 'individual',
-        createdBy: req.user._id
-      });
-    }
-
-    // Assign the exam to the user
-    const exam = await Exam.findById(request.exam);
-    console.log(`Marketplace approval - Exam found: ${!!exam}, Exam locked: ${exam?.isLocked}, Current assignedTo: ${exam?.assignedTo?.length || 0}`);
-    console.log(`Marketplace approval - Student user ID: ${studentUser._id}, Already assigned: ${exam?.assignedTo?.includes(studentUser._id)}`);
-
-    if (exam && !exam.assignedTo.includes(studentUser._id)) {
-      exam.assignedTo.push(studentUser._id);
-      await exam.save();
-      console.log(`Marketplace approval - Successfully assigned student ${studentUser._id} to exam ${exam._id}`);
-      console.log(`Marketplace approval - New assignedTo count: ${exam.assignedTo.length}`);
-    } else if (exam) {
-      console.log(`Marketplace approval - Student already assigned to exam`);
-    } else {
-      console.log(`Marketplace approval - Exam not found: ${request.exam}`);
-    }
-
-    // Create a SharedExam for the approved user
-    const shareToken = SharedExam.generateShareToken();
-
-    // Generate a unique 6-digit access code
-    const accessCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Generate exam slug from exam title
-    const examSlug = SharedExam.generateSlug(exam?.title || 'marketplace-exam') || 'marketplace-exam';
-
-    const sharedExam = await SharedExam.create({
-      exam: request.exam,
-      sharedBy: req.user._id,
-      shareToken,
-      examSlug,
-      shareType: 'link',
-      settings: {
-        publicAccess: true,
-        requirePassword: false,
-        maxStudents: null, // Unlimited access for marketplace exams
-        allowMultipleAttempts: false,
-        showResults: true
-      }
-    });
-
-    // Add the student to the shared exam
-    sharedExam.students.push({
-      student: studentUser._id,
-      studentId: studentUser._id,
-      email: studentUser.email,
-      name: studentUser.firstName + ' ' + studentUser.lastName,
-      accessMethod: 'link',
-      isActiveSession: false,
-      lastActivity: null,
-      firstAccessedAt: new Date()
-    });
-
-    await sharedExam.save();
-
-    // Update the request
-    request.status = 'approved';
-    request.processedAt = new Date();
-    request.shareToken = shareToken;
-    request.accessCode = accessCode;
-    request.sharedExam = sharedExam._id;
-    request.paymentStatus = waivePayment ? 'waived' : (request.amount > 0 ? 'pending' : 'paid');
-
-    console.log('Marketplace approval - Setting sharedExam:', {
-      requestId: request._id,
-      sharedExamId: sharedExam._id,
-      shareToken: shareToken
-    });
-
-    await request.save();
+    // Use the helper function to process approval
+    const approvalResult = await processExamApproval(request, waivePayment);
 
     res.json({
       message: 'Request approved successfully',
-      request,
-      shareToken,
-      accessCode,
-      studentUser: {
-        email: studentUser.email,
-        name: studentUser.firstName + ' ' + studentUser.lastName
-      }
+      request: approvalResult.request,
+      shareToken: approvalResult.shareToken,
+      accessCode: approvalResult.accessCode,
+      studentUser: approvalResult.studentUser
     });
   } catch (error) {
     console.error('Approve exam request error:', error);

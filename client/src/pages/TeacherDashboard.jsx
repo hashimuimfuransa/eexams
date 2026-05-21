@@ -5939,7 +5939,7 @@ function TemplatesSection({ exams, setExams }) {
     setReusingExamId(examId);
     try {
       console.log('Reusing exam from question bank:', examId);
-      const r = await api.post(`/question-bank/${examId}/reuse`, {}, { timeout: 30000 });
+      const r = await api.post(`/question-bank/${examId}/reuse`, {}, { timeout: 120000 });
       console.log('Reuse response:', r.data);
       setExams(p => [r.data, ...p]);
       setSnack('✓ Exam copied from question bank successfully!');

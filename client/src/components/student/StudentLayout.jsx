@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -71,7 +71,6 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
-import api from '../../services/api';
 
 const drawerWidth = 260;
 
@@ -87,7 +86,6 @@ const StudentLayout = ({ children }) => {
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
   const [examSubmenuOpen, setExamSubmenuOpen] = useState(true);
   const [helpDialogOpen, setHelpDialogOpen] = useState(false);
-  const [progress, setProgress] = useState({ completed: 0, total: 0, percentage: 0 });
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -125,32 +123,6 @@ const StudentLayout = ({ children }) => {
   const handleHelpClose = () => {
     setHelpDialogOpen(false);
   };
-
-  // Fetch student progress data
-  useEffect(() => {
-    const fetchProgress = async () => {
-      try {
-        const [resultsRes, examsRes] = await Promise.allSettled([
-          api.get('/student/results'),
-          api.get('/student/exams')
-        ]);
-
-        const completedCount = resultsRes.status === 'fulfilled' ? resultsRes.value.data.length : 0;
-        const totalCount = examsRes.status === 'fulfilled' ? examsRes.value.data.length : 0;
-        const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-
-        setProgress({
-          completed: completedCount,
-          total: totalCount,
-          percentage
-        });
-      } catch (err) {
-        console.error('Error fetching progress:', err);
-      }
-    };
-
-    fetchProgress();
-  }, []);
 
   const isActive = (path) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
@@ -416,12 +388,12 @@ const StudentLayout = ({ children }) => {
                     Progress
                   </Typography>
                   <Typography variant="caption" color="primary.main" fontWeight="bold" sx={{ fontSize: '0.7rem' }}>
-                    {progress.percentage}%
+                    75%
                   </Typography>
                 </Box>
                 <LinearProgress
                   variant="determinate"
-                  value={progress.percentage}
+                  value={75}
                   sx={{
                     height: 4,
                     borderRadius: 2,
@@ -433,7 +405,7 @@ const StudentLayout = ({ children }) => {
                   }}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', mt: 0.5 }}>
-                  {progress.completed} of {progress.total} exams completed
+                  Keep learning!
                 </Typography>
               </Box>
             </Box>

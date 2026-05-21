@@ -14,8 +14,7 @@ import {
   Divider,
   useTheme,
   IconButton,
-  useMediaQuery,
-  Grid
+  useMediaQuery
 } from '@mui/material';
 import {
   Assessment,

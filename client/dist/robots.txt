@@ -1,0 +1,30 @@
+# robots.txt for eexams
+# Allow search engines to crawl the site
+
+User-agent: *
+Allow: /
+
+# Disallow admin and private areas
+Disallow: /api/
+Disallow: /admin/
+Disallow: /teacher/
+Disallow: /student/
+Disallow: /org-admin/
+Disallow: /super-admin/
+Disallow: /dashboard
+Disallow: /login
+Disallow: /register
+Disallow: /pending-approval
+Disallow: /complete-registration
+
+# Allow public exam pages
+Allow: /exam/
+Allow: /join/
+Allow: /marketplace
+Allow: /public-exams
+
+# Sitemap location
+Sitemap: https://www.eexams.net/sitemap.xml
+
+# Crawl delay (optional, adjust based on server capacity)
+Crawl-delay: 1

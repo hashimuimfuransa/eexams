@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, memo } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
   Container,
@@ -48,7 +48,7 @@ const MicrosoftStoreIcon = () => (
   </svg>
 );
 
-const Dashboard = memo(() => {
+const Dashboard = () => {
   const theme = useTheme();
   const { user } = useContext(AuthContext);
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -823,6 +823,6 @@ const Dashboard = memo(() => {
       </Container>
     </StudentLayout>
   );
-});
+};
 
 export default Dashboard;

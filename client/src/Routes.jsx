@@ -76,7 +76,17 @@ const AppRoutes = () => {
       <Route path="/exam-result/:resultId" element={<ExamResult />} />
       
       {/* Public routes */}
-      <Route path="/" element={<App />} />
+      <Route path="/" element={
+        isAuthenticated ? (
+          user?.role === 'student'
+            ? <Navigate to="/student" replace />
+            : user?.role === 'superadmin'
+              ? <Navigate to="/super-admin" replace />
+              : user?.role === 'admin'
+                ? <Navigate to="/org-admin" replace />
+                : <Navigate to="/teacher" replace />
+        ) : <App />
+      } />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/student-register" element={<StudentRegister />} />

@@ -10,10 +10,39 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState(null);
   const [initialized, setInitialized] = useState(false);
 
+  // Session timeout duration: 1 day in milliseconds
+  const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
+
+  // Check for session timeout
+  const checkSessionTimeout = () => {
+    const lastActivity = localStorage.getItem('lastActivity');
+    if (lastActivity) {
+      const timeSinceLastActivity = Date.now() - parseInt(lastActivity);
+      if (timeSinceLastActivity > SESSION_TIMEOUT) {
+        console.log('Session expired due to inactivity, logging out');
+        logout();
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Update last activity timestamp
+  const updateLastActivity = () => {
+    localStorage.setItem('lastActivity', Date.now().toString());
+  };
+
   // Check for saved user on initial load
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        // Check session timeout first
+        if (checkSessionTimeout()) {
+          setLoading(false);
+          setInitialized(true);
+          return;
+        }
+
         // Get saved user from localStorage
         const savedUser = localStorage.getItem('user');
         const savedToken = localStorage.getItem('token');
@@ -37,6 +66,7 @@ export const AuthProvider = ({ children }) => {
                     console.log('Token expired, clearing auth data');
                     localStorage.removeItem('user');
                     localStorage.removeItem('token');
+                    localStorage.removeItem('lastActivity');
                     return;
                   }
                 }
@@ -44,6 +74,7 @@ export const AuthProvider = ({ children }) => {
                 console.error('Error parsing token:', tokenError);
                 localStorage.removeItem('user');
                 localStorage.removeItem('token');
+                localStorage.removeItem('lastActivity');
                 return;
               }
 
@@ -67,15 +98,18 @@ export const AuthProvider = ({ children }) => {
                 };
                 localStorage.setItem('user', JSON.stringify(freshUser));
                 setUser(freshUser);
+                updateLastActivity(); // Update activity timestamp on successful auth
               } catch {
                 // If verify fails (network issue), fall back to localStorage data
                 setUser(userData);
+                updateLastActivity(); // Update activity timestamp
               }
             }
           } catch (parseError) {
             console.error('Error parsing saved user data:', parseError);
             localStorage.removeItem('user');
             localStorage.removeItem('token');
+            localStorage.removeItem('lastActivity');
           }
         }
       } catch (err) {
@@ -83,6 +117,7 @@ export const AuthProvider = ({ children }) => {
         // Clear potentially corrupted data
         localStorage.removeItem('user');
         localStorage.removeItem('token');
+        localStorage.removeItem('lastActivity');
       } finally {
         // Set loading to false when done
         setLoading(false);
@@ -92,6 +127,40 @@ export const AuthProvider = ({ children }) => {
 
     checkAuth();
   }, []);
+
+  // Track user activity and update session timeout
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+
+    const handleActivity = () => {
+      updateLastActivity();
+    };
+
+    // Add event listeners for user activity
+    activityEvents.forEach(event => {
+      window.addEventListener(event, handleActivity);
+    });
+
+    // Update activity timestamp immediately
+    updateLastActivity();
+
+    // Set up periodic check for session timeout
+    const intervalId = setInterval(() => {
+      if (checkSessionTimeout()) {
+        // Session expired, redirect to login will happen via route protection
+        window.location.href = '/login';
+      }
+    }, 60000); // Check every minute
+
+    return () => {
+      activityEvents.forEach(event => {
+        window.removeEventListener(event, handleActivity);
+      });
+      clearInterval(intervalId);
+    };
+  }, [isAuthenticated]);
 
   // Login function with 5-second timeout
   const login = async (userData) => {
@@ -138,6 +207,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('user', JSON.stringify(user));
       // Also save token separately for API interceptor
       localStorage.setItem('token', response.data.token);
+      // Update activity timestamp
+      updateLastActivity();
       setUser(user);
       setLoading(false);
       return user;
@@ -213,6 +284,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('user', JSON.stringify(user));
       // Also save token separately for API interceptor
       localStorage.setItem('token', response.data.token);
+      // Update activity timestamp
+      updateLastActivity();
       setUser(user);
       setLoading(false);
       return user;
@@ -260,6 +333,8 @@ export const AuthProvider = ({ children }) => {
       if (!response.data.isNewUser || saveNewUserSession) {
         localStorage.setItem('user', JSON.stringify(user));
         localStorage.setItem('token', response.data.token);
+        // Update activity timestamp
+        updateLastActivity();
         setUser(user);
       }
 
@@ -277,6 +352,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    localStorage.removeItem('lastActivity');
     setUser(null);
   };
 

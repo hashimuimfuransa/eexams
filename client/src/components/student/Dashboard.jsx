@@ -13,7 +13,9 @@ import {
   Alert,
   Divider,
   useTheme,
-  IconButton
+  IconButton,
+  useMediaQuery,
+  Grid
 } from '@mui/material';
 import {
   Assessment,
@@ -50,6 +52,8 @@ const MicrosoftStoreIcon = () => (
 const Dashboard = memo(() => {
   const theme = useTheme();
   const { user } = useContext(AuthContext);
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const [results, setResults] = useState([]);
   const [scheduledExams, setScheduledExams] = useState([]);
   const [availableExams, setAvailableExams] = useState([]);
@@ -214,25 +218,13 @@ const Dashboard = memo(() => {
 
   return (
     <StudentLayout>
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom sx={{ mb: 0 }}>
-            My Dashboard
+      <Container maxWidth="xl" sx={{ mt: { xs: 2, sm: 3, md: 4 }, mb: { xs: 2, sm: 3, md: 4 } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: { xs: 3, sm: 4 }, flexWrap: 'wrap', gap: 2 }}>
+          <Typography variant={isMobile ? 'h5' : 'h4'} fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Assessment color="primary" />
+            Student Dashboard
           </Typography>
-          <IconButton
-            onClick={handleRefresh}
-            disabled={refreshing}
-            sx={{
-              bgcolor: 'primary.main',
-              color: 'white',
-              '&:hover': {
-                bgcolor: 'primary.dark',
-              },
-              '&:disabled': {
-                bgcolor: 'action.disabled',
-              }
-            }}
-          >
+          <IconButton onClick={handleRefresh} disabled={refreshing} color="primary" sx={{ bgcolor: 'background.paper', boxShadow: 1 }}>
             <Refresh sx={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           </IconButton>
         </Box>
@@ -307,17 +299,17 @@ const Dashboard = memo(() => {
         {/* Pending Exam Requests Section - Moved to top */}
         {pendingRequests.filter(r => r.status === 'pending').length > 0 && (
           <Box sx={{ mt: 4 }}>
-            <Typography variant="h5" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Schedule color="warning" />
               Pending Exam Requests
             </Typography>
-            <Paper elevation={3} sx={{ p: 3, mb: 4, bgcolor: 'warning.light', border: '2px solid', borderColor: 'warning.main' }}>
+            <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'warning.light', border: '2px solid', borderColor: 'warning.main' }}>
               {pendingRequests.filter(r => r.status === 'pending').map((request) => (
                 <Card key={request._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper' }}>
-                  <CardContent>
+                  <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                      <Box sx={{ flex: 1, minWidth: 200 }}>
-                        <Typography variant="h6" fontWeight="bold">
+                      <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
+                        <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">
                           {request.exam?.title || 'Exam'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -336,7 +328,7 @@ const Dashboard = memo(() => {
                         sx={{ fontWeight: 'bold' }}
                       />
                     </Box>
-                    <Box sx={{ mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
+                    <Box sx={{ mt: 2, p: { xs: 1.5, sm: 2 }, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
                       <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#0D406C', mb: 1 }}>
                         Have questions? Contact us:
                       </Typography>
@@ -433,8 +425,8 @@ const Dashboard = memo(() => {
                   >
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
+                        <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
+                          <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" sx={{ mb: 1 }}>
                             {exam.title || 'Exam'}
                           </Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
@@ -454,7 +446,7 @@ const Dashboard = memo(() => {
                             )}
                           </Box>
                         </Box>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', justifyContent: { xs: 'stretch', sm: 'flex-start' }, width: { xs: '100%', sm: 'auto' } }}>
                           <Chip
                             label={getStatusLabel()}
                             color={getStatusColor()}
@@ -466,12 +458,13 @@ const Dashboard = memo(() => {
                               variant="contained"
                               component={RouterLink}
                               to={`/student/exam/${exam._id}`}
-                              size="large"
+                              size={isMobile ? 'medium' : 'large'}
                               startIcon={<PlayArrow />}
+                              fullWidth={isMobile}
                               sx={{
                                 fontWeight: 'bold',
-                                px: 3,
-                                py: 1.5,
+                                px: { xs: 2, sm: 3 },
+                                py: { xs: 1.2, sm: 1.5 },
                                 textTransform: 'none'
                               }}
                             >
@@ -481,12 +474,13 @@ const Dashboard = memo(() => {
                             <Button
                               variant="outlined"
                               disabled
-                              size="large"
+                              size={isMobile ? 'medium' : 'large'}
                               startIcon={<Lock />}
+                              fullWidth={isMobile}
                               sx={{
                                 fontWeight: 'bold',
-                                px: 3,
-                                py: 1.5,
+                                px: { xs: 2, sm: 3 },
+                                py: { xs: 1.2, sm: 1.5 },
                                 textTransform: 'none'
                               }}
                             >
@@ -515,8 +509,8 @@ const Dashboard = memo(() => {
                 <Card key={request._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper' }}>
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                      <Box sx={{ flex: 1, minWidth: 200 }}>
-                        <Typography variant="h6" fontWeight="bold">
+                      <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
+                        <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">
                           {request.exam?.title || 'Exam'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -541,6 +535,7 @@ const Dashboard = memo(() => {
                       to={`/student/exam/${request.exam?._id}`}
                       sx={{ mt: 2 }}
                       startIcon={<PlayArrow />}
+                      fullWidth={isMobile}
                     >
                       Start Exam Now
                     </Button>
@@ -553,8 +548,8 @@ const Dashboard = memo(() => {
 
         {/* Marketplace Exams Section */}
         <Box sx={{ mt: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h5" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <School color="primary" />
               Exam Bank
             </Typography>
@@ -579,8 +574,8 @@ const Dashboard = memo(() => {
           </Box>
 
           {marketplaceExams.length === 0 ? (
-            <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mb: 4, bgcolor: 'grey.50' }}>
-              <School sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+            <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', mb: 4, bgcolor: 'grey.50' }}>
+              <School sx={{ fontSize: { xs: 48, sm: 64 }, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" fontWeight="bold">
                 No Exams Available
               </Typography>
@@ -615,10 +610,10 @@ const Dashboard = memo(() => {
                       }
                     }}
                   >
-                    <CardContent>
+                    <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-                        <Box sx={{ flex: 1, minWidth: 200 }}>
-                          <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
+                        <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
+                          <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" sx={{ mb: 1 }}>
                             {exam.title || 'Exam'}
                           </Typography>
                           <Typography
@@ -659,13 +654,14 @@ const Dashboard = memo(() => {
                             )}
                           </Box>
                         </Box>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 140 }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: { xs: '100%', sm: 140 }, width: { xs: '100%', sm: 'auto' } }}>
                           {isCompleted ? (
                             <Button
                               variant="contained"
                               size="small"
                               onClick={() => handleDirectRequest(exam._id, exam.title)}
                               startIcon={<AddCircle />}
+                              fullWidth={isMobile}
                               sx={{
                                 fontWeight: 'bold',
                                 textTransform: 'none',
@@ -680,6 +676,7 @@ const Dashboard = memo(() => {
                               variant="outlined"
                               disabled
                               size="small"
+                              fullWidth={isMobile}
                               sx={{
                                 fontWeight: 'bold',
                                 textTransform: 'none'
@@ -692,6 +689,7 @@ const Dashboard = memo(() => {
                               variant="outlined"
                               disabled
                               size="small"
+                              fullWidth={isMobile}
                               sx={{
                                 fontWeight: 'bold',
                                 textTransform: 'none'
@@ -705,6 +703,7 @@ const Dashboard = memo(() => {
                               size="small"
                               onClick={() => handleDirectRequest(exam._id, exam.title)}
                               startIcon={<AddCircle />}
+                              fullWidth={isMobile}
                               sx={{
                                 fontWeight: 'bold',
                                 textTransform: 'none',

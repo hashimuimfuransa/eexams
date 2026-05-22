@@ -31,7 +31,11 @@ const {
   getOrganizationPerformanceAnalytics,
   getTimeSeriesAnalytics,
   getExamAnalytics,
-  getMarketplaceAnalytics
+  getMarketplaceAnalytics,
+  getAllExamRequests,
+  superAdminApproveExamRequest,
+  superAdminRejectExamRequest,
+  getExamRequestStats
 } = require('../controllers/superAdminController');
 const auth = require('../middleware/auth');
 
@@ -104,6 +108,12 @@ router.get('/analytics/organizations', getOrganizationPerformanceAnalytics);
 router.get('/analytics/trends', getTimeSeriesAnalytics);
 router.get('/analytics/exams', getExamAnalytics);
 router.get('/analytics/marketplace', getMarketplaceAnalytics);
+
+// Exam request management routes (super admin can approve any pending exam from any organization)
+router.get('/exam-requests', getAllExamRequests);
+router.get('/exam-requests/stats', getExamRequestStats);
+router.put('/exam-requests/:requestId/approve', superAdminApproveExamRequest);
+router.put('/exam-requests/:requestId/reject', superAdminRejectExamRequest);
 
 // 404 handler for unmatched superadmin routes
 router.use((req, res) => {

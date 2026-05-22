@@ -2409,6 +2409,248 @@ const updateExamDetails = async (req, res) => {
   }
 };
 
+// @desc    Get all pending exam requests system-wide
+// @route   GET /api/superadmin/exam-requests
+// @access  Private/SuperAdmin
+const getAllExamRequests = async (req, res) => {
+  try {
+    const { status = 'pending', organizationId } = req.query;
+    
+    // Build query filter
+    const filter = {};
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+    
+    // If organizationId is provided, filter by teacher's organization
+    if (organizationId) {
+      const teachers = await User.find({ 
+        $or: [
+          { _id: organizationId, role: 'teacher' },
+          { parentAdmin: organizationId, role: 'teacher' }
+        ]
+      }).select('_id');
+      const teacherIds = teachers.map(t => t._id);
+      filter.teacher = { $in: teacherIds };
+    }
+    
+    const requests = await ExamRequest.find(filter)
+      .populate('exam', 'title description timeLimit isPubliclyListed')
+      .populate('teacher', 'firstName lastName email organization parentAdmin createdBy')
+      .populate('student', 'firstName lastName email')
+      .sort({ requestedAt: -1 });
+    
+    // Add organization info to each request
+    const requestsWithOrg = await Promise.all(requests.map(async (request) => {
+      let orgInfo = null;
+      let teacherInfo = request.teacher ? {
+        id: request.teacher._id,
+        firstName: request.teacher.firstName,
+        lastName: request.teacher.lastName,
+        email: request.teacher.email
+      } : null;
+      
+      if (request.teacher) {
+        // Try to get organization info from various sources
+        // 1. Check if teacher has createdBy (organization admin)
+        if (request.teacher.createdBy) {
+          const orgAdmin = await User.findById(request.teacher.createdBy).select('organization email');
+          if (orgAdmin) {
+            orgInfo = {
+              id: orgAdmin._id,
+              name: orgAdmin.organization || 'Unknown Organization',
+              email: orgAdmin.email
+            };
+          }
+        }
+        // 2. Check if teacher has parentAdmin (belongs to an organization)
+        else if (request.teacher.parentAdmin) {
+          const orgAdmin = await User.findById(request.teacher.parentAdmin).select('organization email');
+          if (orgAdmin) {
+            orgInfo = {
+              id: orgAdmin._id,
+              name: orgAdmin.organization || 'Unknown Organization',
+              email: orgAdmin.email
+            };
+          }
+        }
+        // 3. Check if teacher has organization field (individual teacher)
+        else if (request.teacher.organization) {
+          orgInfo = {
+            id: request.teacher._id,
+            name: request.teacher.organization,
+            email: request.teacher.email
+          };
+        }
+        // 4. Individual teacher without organization field
+        else {
+          orgInfo = {
+            id: request.teacher._id,
+            name: `${request.teacher.firstName} ${request.teacher.lastName} (Individual Teacher)`,
+            email: request.teacher.email
+          };
+        }
+      }
+      
+      return {
+        ...request.toObject(),
+        teacher: teacherInfo,
+        organization: orgInfo
+      };
+    }));
+    
+    res.json(requestsWithOrg);
+  } catch (error) {
+    console.error('Get all exam requests error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Approve an exam request (super admin override)
+// @route   PUT /api/superadmin/exam-requests/:requestId/approve
+// @access  Private/SuperAdmin
+const superAdminApproveExamRequest = async (req, res) => {
+  try {
+    const { waivePayment } = req.body;
+    
+    const request = await ExamRequest.findById(req.params.requestId);
+    
+    if (!request) {
+      return res.status(404).json({ message: 'Request not found' });
+    }
+    
+    // Check if already processed
+    if (request.status !== 'pending') {
+      return res.status(400).json({ message: 'Request has already been processed' });
+    }
+    
+    // Import the processExamApproval function from marketplaceController
+    const { processExamApproval } = require('./marketplaceController');
+    
+    // Use the helper function to process approval
+    const approvalResult = await processExamApproval(request, waivePayment);
+    
+    // Log the activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'superadmin_approve_exam_request',
+      details: {
+        requestId: request._id,
+        examId: request.exam,
+        teacherId: request.teacher,
+        studentEmail: approvalResult.studentUser.email,
+        waivedPayment: waivePayment
+      }
+    });
+    
+    res.json({
+      message: 'Request approved successfully by super admin',
+      request: approvalResult.request,
+      shareToken: approvalResult.shareToken,
+      accessCode: approvalResult.accessCode,
+      student: approvalResult.studentUser
+    });
+  } catch (error) {
+    console.error('Super admin approve exam request error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Reject an exam request (super admin override)
+// @route   PUT /api/superadmin/exam-requests/:requestId/reject
+// @access  Private/SuperAdmin
+const superAdminRejectExamRequest = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    
+    const request = await ExamRequest.findById(req.params.requestId);
+    
+    if (!request) {
+      return res.status(404).json({ message: 'Request not found' });
+    }
+    
+    // Check if already processed
+    if (request.status !== 'pending') {
+      return res.status(400).json({ message: 'Request has already been processed' });
+    }
+    
+    // Update request status
+    request.status = 'rejected';
+    request.processedAt = new Date();
+    request.teacherNotes = reason || 'Rejected by super admin';
+    
+    await request.save();
+    
+    // Log the activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'superadmin_reject_exam_request',
+      details: {
+        requestId: request._id,
+        examId: request.exam,
+        teacherId: request.teacher,
+        reason: reason || 'No reason provided'
+      }
+    });
+    
+    res.json({
+      message: 'Request rejected successfully',
+      request
+    });
+  } catch (error) {
+    console.error('Super admin reject exam request error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get exam request statistics for super admin
+// @route   GET /api/superadmin/exam-requests/stats
+// @access  Private/SuperAdmin
+const getExamRequestStats = async (req, res) => {
+  try {
+    const totalRequests = await ExamRequest.countDocuments();
+    const pendingRequests = await ExamRequest.countDocuments({ status: 'pending' });
+    const approvedRequests = await ExamRequest.countDocuments({ status: 'approved' });
+    const rejectedRequests = await ExamRequest.countDocuments({ status: 'rejected' });
+    
+    // Get requests by organization
+    const requestsByOrg = await ExamRequest.aggregate([
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'teacher',
+          foreignField: '_id',
+          as: 'teacherInfo'
+        }
+      },
+      {
+        $unwind: '$teacherInfo'
+      },
+      {
+        $group: {
+          _id: '$teacherInfo.createdBy',
+          organizationName: { $first: '$teacherInfo.organization' },
+          total: { $sum: 1 },
+          pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+          approved: { $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] } },
+          rejected: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } }
+        }
+      }
+    ]);
+    
+    res.json({
+      total: totalRequests,
+      pending: pendingRequests,
+      approved: approvedRequests,
+      rejected: rejectedRequests,
+      byOrganization: requestsByOrg
+    });
+  } catch (error) {
+    console.error('Get exam request stats error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   createSuperAdmin,
   getAllOrganizations,
@@ -2440,5 +2682,9 @@ module.exports = {
   getOrganizationPerformanceAnalytics,
   getTimeSeriesAnalytics,
   getExamAnalytics,
-  getMarketplaceAnalytics
+  getMarketplaceAnalytics,
+  getAllExamRequests,
+  superAdminApproveExamRequest,
+  superAdminRejectExamRequest,
+  getExamRequestStats
 };

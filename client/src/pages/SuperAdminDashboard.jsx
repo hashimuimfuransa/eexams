@@ -22,6 +22,7 @@ const nav = [
   { id: 'home',          label: 'Overview',                icon: <DashIcon sx={{ fontSize: 20 }} /> },
   { id: 'organizations', label: 'Organizations & Teachers', icon: <Business sx={{ fontSize: 20 }} /> },
   { id: 'users',         label: 'All Users',               icon: <People sx={{ fontSize: 20 }} /> },
+  { id: 'exam-requests', label: 'Exam Requests',           icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'subscriptions', label: 'Subscriptions',             icon: <AttachMoney sx={{ fontSize: 20 }} /> },
   { id: 'marketplace',   label: 'Exam Bank Marketplace',    icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'analytics',     label: 'Analytics',               icon: <TrendingUp sx={{ fontSize: 20 }} /> },
@@ -71,6 +72,7 @@ export default function SuperAdminDashboard() {
       {activeSection === 'home'          && <OverviewSection stats={stats} statsLoading={statsLoading} searchQuery={searchQuery} setActiveSection={setActiveSection} />}
       {activeSection === 'organizations' && <OrganizationsSection searchQuery={searchQuery} />}
       {activeSection === 'users'         && <AllUsersSection searchQuery={searchQuery} />}
+      {activeSection === 'exam-requests' && <ExamRequestsSection searchQuery={searchQuery} />}
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
       {activeSection === 'marketplace'   && <ExamBankMarketplaceSection searchQuery={searchQuery} />}
       {activeSection === 'analytics'     && <AnalyticsSection stats={stats} />}
@@ -3246,6 +3248,379 @@ function ExamBankMarketplaceSection({ searchQuery }) {
 
       <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={snack.severity} onClose={() => setSnack(s => ({ ...s, open: false }))} sx={{ borderRadius: 2 }}>{snack.msg}</Alert>
+      </Snackbar>
+    </Box>
+  );
+}
+
+/* ── EXAM REQUESTS ── */
+function ExamRequestsSection({ searchQuery }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('pending');
+  const [orgFilter, setOrgFilter] = useState('');
+  const [stats, setStats] = useState(null);
+  const [approveDialog, setApproveDialog] = useState(null);
+  const [rejectDialog, setRejectDialog] = useState(null);
+  const [processing, setProcessing] = useState(false);
+  const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+
+  useEffect(() => {
+    fetchRequests();
+    fetchStats();
+  }, [statusFilter, orgFilter]);
+
+  const fetchRequests = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (orgFilter) params.append('organizationId', orgFilter);
+      
+      const response = await api.get(`/superadmin/exam-requests?${params.toString()}`);
+      setRequests(response.data || []);
+    } catch (error) {
+      console.error('Error fetching exam requests:', error);
+      setSnack({ open: true, message: 'Failed to load exam requests', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const response = await api.get('/superadmin/exam-requests/stats');
+      setStats(response.data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!approveDialog) return;
+    setProcessing(true);
+    try {
+      await api.put(`/superadmin/exam-requests/${approveDialog._id}/approve`, { waivePayment: false });
+      setSnack({ open: true, message: 'Exam request approved successfully', severity: 'success' });
+      setApproveDialog(null);
+      fetchRequests();
+      fetchStats();
+    } catch (error) {
+      console.error('Error approving request:', error);
+      setSnack({ open: true, message: 'Failed to approve request', severity: 'error' });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectDialog) return;
+    setProcessing(true);
+    try {
+      await api.put(`/superadmin/exam-requests/${rejectDialog._id}/reject`, { reason: rejectDialog.reason || 'Rejected by super admin' });
+      setSnack({ open: true, message: 'Exam request rejected', severity: 'success' });
+      setRejectDialog(null);
+      fetchRequests();
+      fetchStats();
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      setSnack({ open: true, message: 'Failed to reject request', severity: 'error' });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const filteredRequests = requests.filter(r => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      r.exam?.title?.toLowerCase().includes(q) ||
+      r.userInfo?.name?.toLowerCase().includes(q) ||
+      r.userInfo?.email?.toLowerCase().includes(q) ||
+      r.teacher?.firstName?.toLowerCase().includes(q) ||
+      r.teacher?.lastName?.toLowerCase().includes(q) ||
+      r.organization?.name?.toLowerCase().includes(q)
+    );
+  });
+
+  const organizations = [...new Set(requests.map(r => r.organization?.id).filter(Boolean))];
+
+  return (
+    <Box>
+      <SectionTitle>Exam Requests Management</SectionTitle>
+
+      {/* Stats Cards */}
+      {stats && (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={6} md={3}>
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+              <Typography variant="h4" fontWeight={800} sx={{ color: tokens.textPrimary }}>{stats.total || 0}</Typography>
+              <Typography variant="caption" sx={{ color: tokens.textMuted }}>Total Requests</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+              <Typography variant="h4" fontWeight={800} sx={{ color: tokens.warning }}>{stats.pending || 0}</Typography>
+              <Typography variant="caption" sx={{ color: tokens.textMuted }}>Pending</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+              <Typography variant="h4" fontWeight={800} sx={{ color: tokens.accent }}>{stats.approved || 0}</Typography>
+              <Typography variant="caption" sx={{ color: tokens.textMuted }}>Approved</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+              <Typography variant="h4" fontWeight={800} sx={{ color: '#EF4444' }}>{stats.rejected || 0}</Typography>
+              <Typography variant="caption" sx={{ color: tokens.textMuted }}>Rejected</Typography>
+            </Paper>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Filter Bar */}
+      <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search by exam, student, teacher, organization..."
+              value={searchQuery}
+              InputProps={{
+                startAdornment: <Box component="span" sx={{ color: tokens.textMuted, mr: 1 }}>🔍</Box>
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#FAFBFC' } }}
+            />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="pending">Pending</MuiMenuItem>
+                <MuiMenuItem value="approved">Approved</MuiMenuItem>
+                <MuiMenuItem value="rejected">Rejected</MuiMenuItem>
+                <MuiMenuItem value="all">All</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Organization</InputLabel>
+              <Select label="Organization" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="">All Organizations</MuiMenuItem>
+                {organizations.map(orgId => {
+                  const org = requests.find(r => r.organization?.id === orgId)?.organization;
+                  return org ? (
+                    <MuiMenuItem key={orgId} value={orgId}>{org.name}</MuiMenuItem>
+                  ) : null;
+                })}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={fetchRequests}
+              startIcon={loading ? <CircularProgress size={16} /> : null}
+              disabled={loading}
+              sx={{ borderRadius: 2 }}
+            >
+              Refresh
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Requests Table */}
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
+          <CircularProgress sx={{ color: tokens.accent }} />
+        </Box>
+      ) : filteredRequests.length === 0 ? (
+        <Paper elevation={0} sx={{ p: 8, borderRadius: 3, border: `1px dashed ${tokens.surfaceBorder}`, bgcolor: '#FAFBFC', textAlign: 'center' }}>
+          <School sx={{ fontSize: 48, color: tokens.textMuted, mb: 2 }} />
+          <Typography variant="h6" sx={{ color: tokens.textMuted, mb: 1 }}>No exam requests found</Typography>
+          <Typography variant="body2" sx={{ color: tokens.textMuted }}>
+            {statusFilter === 'pending' ? 'No pending exam requests to review' : 'No exam requests match your filters'}
+          </Typography>
+        </Paper>
+      ) : (
+        <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}` }}>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Exam</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Student</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Teacher</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Organization</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Requested</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredRequests.map((request) => (
+                <TableRow key={request._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                  <TableCell>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>{request.exam?.title || 'Unknown Exam'}</Typography>
+                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>
+                        {request.exam?.timeLimit ? `${request.exam.timeLimit} min` : 'No time limit'}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>{request.userInfo?.name || 'Unknown'}</Typography>
+                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.userInfo?.email || 'No email'}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        {request.teacher ? `${request.teacher.firstName} ${request.teacher.lastName}` : 'Unknown'}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.teacher?.email || 'No email'}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>{request.organization?.name || 'N/A'}</Typography>
+                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.organization?.email || ''}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={request.status}
+                      size="small"
+                      sx={{
+                        height: 24,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        bgcolor: request.status === 'pending' ? 'rgba(245,158,11,0.1)' :
+                               request.status === 'approved' ? 'rgba(12,189,115,0.1)' :
+                               'rgba(239,68,68,0.1)',
+                        color: request.status === 'pending' ? tokens.warning :
+                               request.status === 'approved' ? tokens.accent :
+                               '#EF4444'
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="caption" sx={{ color: tokens.textMuted }}>
+                      {new Date(request.requestedAt).toLocaleDateString()}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    {request.status === 'pending' && (
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Tooltip title="Approve">
+                          <IconButton
+                            size="small"
+                            onClick={() => setApproveDialog(request)}
+                            sx={{ color: tokens.accent, bgcolor: `${tokens.accent}10`, '&:hover': { bgcolor: `${tokens.accent}20` } }}
+                          >
+                            <CheckCircle fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Reject">
+                          <IconButton
+                            size="small"
+                            onClick={() => setRejectDialog({ ...request, reason: '' })}
+                            sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.1)', '&:hover': { bgcolor: 'rgba(239,68,68,0.2)' } }}
+                          >
+                            <Block fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {/* Approve Dialog */}
+      <Dialog open={!!approveDialog} onClose={() => setApproveDialog(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Approve Exam Request</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>
+            Are you sure you want to approve this exam request for <b>{approveDialog?.userInfo?.name}</b>?
+          </Typography>
+          {approveDialog && (
+            <Box sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 2, mb: 2 }}>
+              <Typography fontWeight={600}>{approveDialog.exam?.title}</Typography>
+              <Typography variant="caption" sx={{ color: tokens.textMuted }}>
+                Student: {approveDialog.userInfo?.email} • Organization: {approveDialog.organization?.name}
+              </Typography>
+            </Box>
+          )}
+          <Typography variant="body2" sx={{ color: tokens.textMuted }}>
+            This will grant the student access to the exam and generate an access code.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setApproveDialog(null)} disabled={processing} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleApprove}
+            disabled={processing}
+            sx={{ borderRadius: 2, background: gradients.brand, textTransform: 'none', fontWeight: 700, px: 3 }}
+          >
+            {processing ? 'Approving...' : 'Approve Request'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog open={!!rejectDialog} onClose={() => setRejectDialog(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Reject Exam Request</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>
+            Are you sure you want to reject this exam request for <b>{rejectDialog?.userInfo?.name}</b>?
+          </Typography>
+          {rejectDialog && (
+            <Box sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 2, mb: 2 }}>
+              <Typography fontWeight={600}>{rejectDialog.exam?.title}</Typography>
+              <Typography variant="caption" sx={{ color: tokens.textMuted }}>
+                Student: {rejectDialog.userInfo?.email} • Organization: {rejectDialog.organization?.name}
+              </Typography>
+            </Box>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Reason for rejection (optional)"
+            value={rejectDialog?.reason || ''}
+            onChange={(e) => setRejectDialog(d => ({ ...d, reason: e.target.value }))}
+            sx={{ mt: 1, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setRejectDialog(null)} disabled={processing} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleReject}
+            disabled={processing}
+            sx={{ borderRadius: 2, bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' }, textTransform: 'none', fontWeight: 700, px: 3 }}
+          >
+            {processing ? 'Rejecting...' : 'Reject Request'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity={snack.severity} variant="filled">{snack.message}</Alert>
       </Snackbar>
     </Box>
   );

@@ -63,13 +63,16 @@ const getMarketplaceExamById = async (req, res) => {
 const processExamApproval = async (request, waivePayment = false) => {
   // Create or find the user account
   let studentUser;
+  let isNewUser = false;
+  let tempPassword = null;
+
   if (request.userInfo.email) {
     studentUser = await User.findOne({ email: request.userInfo.email.toLowerCase().trim() });
   }
 
   if (!studentUser) {
     // Create a new student account
-    const tempPassword = Math.random().toString(36).slice(-8);
+    tempPassword = Math.random().toString(36).slice(-8);
     const nameParts = request.userInfo.name.split(' ');
     const firstName = nameParts[0] || 'Student';
     const lastName = nameParts.slice(1).join(' ') || 'User';
@@ -83,6 +86,7 @@ const processExamApproval = async (request, waivePayment = false) => {
       userType: 'individual',
       createdBy: request.teacher
     });
+    isNewUser = true;
   }
 
   // Assign the exam to the user
@@ -92,9 +96,13 @@ const processExamApproval = async (request, waivePayment = false) => {
 
   if (exam && !exam.assignedTo.includes(studentUser._id)) {
     exam.assignedTo.push(studentUser._id);
+    // Ensure exam is active so students can see it
+    if (exam.status === 'draft') {
+      exam.status = 'active';
+    }
     await exam.save();
     console.log(`Marketplace approval - Successfully assigned student ${studentUser._id} to exam ${exam._id}`);
-    console.log(`Marketplace approval - New assignedTo count: ${exam.assignedTo.length}`);
+    console.log(`Marketplace approval - New assignedTo count: ${exam.assignedTo.length}, status: ${exam.status}`);
   } else if (exam) {
     console.log(`Marketplace approval - Student already assigned to exam`);
   } else {
@@ -156,7 +164,8 @@ const processExamApproval = async (request, waivePayment = false) => {
   await request.save();
 
   // Send email notification to student about exam approval
-  emailService.sendStudentExamApprovedEmail(studentUser, exam, shareToken).catch(err => {
+  // Include login credentials if this is a new user
+  emailService.sendStudentExamApprovedEmail(studentUser, exam, shareToken, isNewUser ? tempPassword : null).catch(err => {
     console.error('[Marketplace] Failed to send student exam approval email:', err);
   });
 

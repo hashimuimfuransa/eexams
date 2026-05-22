@@ -1322,11 +1322,37 @@ const sendStudentPasswordResetEmail = async (student, newPassword) => {
 /**
  * Send exam approval notification to student
  */
-const sendStudentExamApprovedEmail = async (student, exam, shareToken) => {
+const sendStudentExamApprovedEmail = async (student, exam, shareToken, password = null) => {
   try {
     if (!process.env.SENDGRID_API_KEY) {
       console.log('[EmailService] SENDGRID_API_KEY not configured, student exam approval email not sent');
       return { success: false, error: 'SendGrid not configured' };
+    }
+
+    let loginCredentialsSection = '';
+    if (password) {
+      loginCredentialsSection = `
+      <div class="info-box" style="border-color: ${BRAND.warning}; background: rgba(251, 191, 36, 0.05);">
+        <div class="info-box-title" style="color: ${BRAND.warning};">
+          <span style="font-size: 18px;">🔐</span> Your Login Credentials
+        </div>
+        <ul class="details-list">
+          <li>
+            <span class="label">Email</span>
+            <span class="value">${student.email}</span>
+          </li>
+          <li>
+            <span class="label">Password</span>
+            <span class="value" style="color: ${BRAND.warning}; font-family: monospace; font-size: 16px;">${password}</span>
+          </li>
+        </ul>
+        <p style="margin: 12px 0 0 0; font-size: 13px; color: #666;">
+          Please log in and change your password as soon as possible for security.
+        </p>
+      </div>
+
+      <div class="divider"></div>
+      `;
     }
 
     const content = `
@@ -1342,6 +1368,8 @@ const sendStudentExamApprovedEmail = async (student, exam, shareToken) => {
           Exam Approved
         </span>
       </div>
+
+      ${loginCredentialsSection}
 
       <div class="info-box" style="border-color: ${BRAND.accent}; background: rgba(12, 189, 115, 0.05);">
         <div class="info-box-title" style="color: ${BRAND.accent};">

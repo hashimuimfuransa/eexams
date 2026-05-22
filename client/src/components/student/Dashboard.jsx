@@ -309,7 +309,7 @@ const Dashboard = () => {
           </Card>
         )}
 
-        {/* Pending Exam Requests Section - Moved to top */}
+        {/* Pending Exam Requests Section */}
         {pendingRequests.filter(r => r.status === 'pending').length > 0 && (
           <Box sx={{ mt: 4 }}>
             <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

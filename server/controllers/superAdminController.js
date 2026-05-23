@@ -2651,6 +2651,155 @@ const getExamRequestStats = async (req, res) => {
   }
 };
 
+// @desc    Get all marketplace exam results (Super Admin only)
+// @route   GET /api/superadmin/marketplace/results
+// @access  Private/SuperAdmin
+const getAllMarketplaceResults = async (req, res) => {
+  try {
+    const { examId, teacherId, organizationId, limit = 100, offset = 0 } = req.query;
+
+    // Build query for marketplace exams
+    const examQuery = { isPubliclyListed: true };
+    
+    if (examId) {
+      examQuery._id = examId;
+    }
+    if (teacherId) {
+      examQuery.createdBy = teacherId;
+    }
+    if (organizationId) {
+      examQuery.createdBy = organizationId;
+    }
+
+    // Get all marketplace exams
+    const exams = await Exam.find(examQuery)
+      .select('_id title')
+      .sort({ createdAt: -1 });
+
+    if (exams.length === 0) {
+      return res.json({
+        exams: [],
+        results: [],
+        summary: {
+          totalExams: 0,
+          totalResults: 0,
+          averageScore: 0
+        }
+      });
+    }
+
+    const examIds = exams.map(e => e._id);
+
+    // Get all results for these exams
+    const results = await Result.find({
+      exam: { $in: examIds },
+      isCompleted: true
+    })
+      .populate('student', 'firstName lastName email studentId organization studentClass')
+      .populate('exam', 'title description timeLimit createdBy')
+      .sort({ endTime: -1 })
+      .skip(parseInt(offset))
+      .limit(parseInt(limit));
+
+    // Get total count for pagination
+    const totalResultsCount = await Result.countDocuments({
+      exam: { $in: examIds },
+      isCompleted: true
+    });
+
+    // Format results with additional calculated fields
+    const formattedResults = results.map(result => {
+      const percentage = result.maxPossibleScore > 0
+        ? Math.round((result.totalScore / result.maxPossibleScore) * 100)
+        : 0;
+
+      const timeTaken = result.endTime && result.startTime
+        ? Math.round((new Date(result.endTime) - new Date(result.startTime)) / (1000 * 60))
+        : 0;
+
+      return {
+        _id: result._id,
+        student: {
+          _id: result.student._id,
+          fullName: result.student.firstName && result.student.lastName
+            ? `${result.student.firstName} ${result.student.lastName}`
+            : result.student.studentId || 'Unknown',
+          firstName: result.student.firstName,
+          lastName: result.student.lastName,
+          studentId: result.student.studentId,
+          email: result.student.email,
+          organization: result.student.organization,
+          studentClass: result.student.studentClass
+        },
+        exam: {
+          _id: result.exam._id,
+          title: result.exam.title,
+          description: result.exam.description,
+          timeLimit: result.exam.timeLimit,
+          createdBy: result.exam.createdBy
+        },
+        totalScore: result.totalScore || 0,
+        maxPossibleScore: result.maxPossibleScore || 0,
+        percentage,
+        timeTaken,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        isCompleted: result.isCompleted,
+        aiGradingStatus: result.aiGradingStatus
+      };
+    });
+
+    // Calculate summary statistics
+    const totalResults = totalResultsCount;
+    const averageScore = totalResults > 0
+      ? Math.round(formattedResults.reduce((sum, r) => sum + r.percentage, 0) / formattedResults.length)
+      : 0;
+
+    // Group results by exam
+    const resultsByExam = {};
+    formattedResults.forEach(result => {
+      const examId = result.exam._id.toString();
+      if (!resultsByExam[examId]) {
+        resultsByExam[examId] = {
+          exam: result.exam,
+          results: [],
+          averageScore: 0,
+          totalAttempts: 0
+        };
+      }
+      resultsByExam[examId].results.push(result);
+      resultsByExam[examId].totalAttempts++;
+    });
+
+    // Calculate average score per exam
+    Object.keys(resultsByExam).forEach(examId => {
+      const examData = resultsByExam[examId];
+      examData.averageScore = examData.totalAttempts > 0
+        ? Math.round(examData.results.reduce((sum, r) => sum + r.percentage, 0) / examData.totalAttempts)
+        : 0;
+    });
+
+    res.json({
+      exams,
+      results: formattedResults,
+      resultsByExam: Object.values(resultsByExam),
+      summary: {
+        totalExams: exams.length,
+        totalResults,
+        averageScore
+      },
+      pagination: {
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        total: totalResultsCount
+      }
+    });
+  } catch (error) {
+    console.error('Get all marketplace results error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   createSuperAdmin,
   getAllOrganizations,
@@ -2686,5 +2835,6 @@ module.exports = {
   getAllExamRequests,
   superAdminApproveExamRequest,
   superAdminRejectExamRequest,
-  getExamRequestStats
+  getExamRequestStats,
+  getAllMarketplaceResults
 };

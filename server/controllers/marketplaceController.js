@@ -1112,6 +1112,141 @@ const getExamCompletionStatus = async (req, res) => {
   }
 };
 
+// @desc    Get student results for teacher's marketplace exams
+// @route   GET /api/marketplace/teacher/results
+// @access  Private (Teacher)
+const getTeacherMarketplaceResults = async (req, res) => {
+  try {
+    const { examId } = req.query;
+
+    // Build query for exams created by this teacher (or their organization)
+    const examQuery = {
+      isPubliclyListed: true,
+      $or: [
+        { createdBy: req.user._id },
+        { createdBy: req.orgAdminId },
+        { createdBy: req.user.parentAdmin }
+      ]
+    };
+
+    // If specific examId is provided, filter by it
+    if (examId) {
+      examQuery._id = examId;
+    }
+
+    // Get all marketplace exams by this teacher
+    const exams = await Exam.find(examQuery).select('_id title');
+
+    if (exams.length === 0) {
+      return res.json({
+        exams: [],
+        results: [],
+        summary: {
+          totalExams: 0,
+          totalResults: 0,
+          averageScore: 0
+        }
+      });
+    }
+
+    const examIds = exams.map(e => e._id);
+
+    // Get all results for these exams
+    const results = await Result.find({
+      exam: { $in: examIds },
+      isCompleted: true
+    })
+      .populate('student', 'firstName lastName email studentId organization studentClass')
+      .populate('exam', 'title description timeLimit')
+      .sort({ endTime: -1 });
+
+    // Format results with additional calculated fields
+    const formattedResults = results.map(result => {
+      const percentage = result.maxPossibleScore > 0
+        ? Math.round((result.totalScore / result.maxPossibleScore) * 100)
+        : 0;
+
+      const timeTaken = result.endTime && result.startTime
+        ? Math.round((new Date(result.endTime) - new Date(result.startTime)) / (1000 * 60))
+        : 0;
+
+      return {
+        _id: result._id,
+        student: {
+          _id: result.student._id,
+          fullName: result.student.firstName && result.student.lastName
+            ? `${result.student.firstName} ${result.student.lastName}`
+            : result.student.studentId || 'Unknown',
+          firstName: result.student.firstName,
+          lastName: result.student.lastName,
+          studentId: result.student.studentId,
+          email: result.student.email,
+          organization: result.student.organization,
+          studentClass: result.student.studentClass
+        },
+        exam: {
+          _id: result.exam._id,
+          title: result.exam.title,
+          description: result.exam.description,
+          timeLimit: result.exam.timeLimit
+        },
+        totalScore: result.totalScore || 0,
+        maxPossibleScore: result.maxPossibleScore || 0,
+        percentage,
+        timeTaken,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        isCompleted: result.isCompleted,
+        aiGradingStatus: result.aiGradingStatus
+      };
+    });
+
+    // Calculate summary statistics
+    const totalResults = formattedResults.length;
+    const averageScore = totalResults > 0
+      ? Math.round(formattedResults.reduce((sum, r) => sum + r.percentage, 0) / totalResults)
+      : 0;
+
+    // Group results by exam
+    const resultsByExam = {};
+    formattedResults.forEach(result => {
+      const examId = result.exam._id.toString();
+      if (!resultsByExam[examId]) {
+        resultsByExam[examId] = {
+          exam: result.exam,
+          results: [],
+          averageScore: 0,
+          totalAttempts: 0
+        };
+      }
+      resultsByExam[examId].results.push(result);
+      resultsByExam[examId].totalAttempts++;
+    });
+
+    // Calculate average score per exam
+    Object.keys(resultsByExam).forEach(examId => {
+      const examData = resultsByExam[examId];
+      examData.averageScore = examData.totalAttempts > 0
+        ? Math.round(examData.results.reduce((sum, r) => sum + r.percentage, 0) / examData.totalAttempts)
+        : 0;
+    });
+
+    res.json({
+      exams,
+      results: formattedResults,
+      resultsByExam: Object.values(resultsByExam),
+      summary: {
+        totalExams: exams.length,
+        totalResults,
+        averageScore
+      }
+    });
+  } catch (error) {
+    console.error('Get teacher marketplace results error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getMarketplaceExams,
   getMarketplaceExamById,
@@ -1134,5 +1269,6 @@ module.exports = {
   updateSubLevel,
   deleteSubLevel,
   getPersonalizedRecommendations,
-  getExamCompletionStatus
+  getExamCompletionStatus,
+  getTeacherMarketplaceResults
 };

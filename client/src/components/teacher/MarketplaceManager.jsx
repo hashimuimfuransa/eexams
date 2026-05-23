@@ -30,9 +30,12 @@ import {
   MenuItem,
   Autocomplete,
   InputAdornment,
-  Tooltip
+  Tooltip,
+  Tabs,
+  Tab,
+  Badge
 } from '@mui/material';
-import { Check, X, Phone, Email, Person, Refresh, ContentCopy, Delete, Add, Edit, Visibility, Upgrade } from '@mui/icons-material';
+import { Check, X, Phone, Email, Person, Refresh, ContentCopy, Delete, Add, Edit, Visibility, Upgrade, Assessment, TrendingUp } from '@mui/icons-material';
 import api from '../../services/api';
 import usePlan from '../../hooks/usePlan';
 
@@ -58,11 +61,16 @@ const MarketplaceManager = ({ exam }) => {
   const [subLevelDialog, setSubLevelDialog] = useState({ open: false, levelId: null, name: '', description: '' });
   const [previewExam, setPreviewExam] = useState(null);
   const [previewDialog, setPreviewDialog] = useState(false);
+  const [tabValue, setTabValue] = useState(0);
+  const [results, setResults] = useState([]);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsSummary, setResultsSummary] = useState(null);
 
   useEffect(() => {
     if (exam?._id) {
       fetchRequests();
       fetchLevels();
+      fetchResults();
     }
   }, [exam]);
 
@@ -107,6 +115,22 @@ const MarketplaceManager = ({ exam }) => {
       console.error('Error fetching levels:', error);
     } finally {
       setLoadingLevels(false);
+    }
+  };
+
+  const fetchResults = async () => {
+    try {
+      setResultsLoading(true);
+      const response = await api.get('/marketplace/teacher/results', {
+        params: { examId: exam?._id }
+      });
+      setResults(response.data.results || []);
+      setResultsSummary(response.data.summary || null);
+    } catch (error) {
+      console.error('Error fetching results:', error);
+      setMessage({ type: 'error', text: 'Failed to load results' });
+    } finally {
+      setResultsLoading(false);
     }
   };
 
@@ -361,6 +385,28 @@ const MarketplaceManager = ({ exam }) => {
         </Alert>
       )}
 
+      {/* Tabs */}
+      <Box sx={{ mb: 3 }}>
+        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
+          <Tab label="Settings" />
+          <Tab 
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                Student Results
+                {resultsSummary && resultsSummary.totalResults > 0 && (
+                  <Badge badgeContent={resultsSummary.totalResults} color="primary">
+                    <Assessment />
+                  </Badge>
+                )}
+              </Box>
+            }
+          />
+        </Tabs>
+      </Box>
+
+      {/* Settings Tab */}
+      {tabValue === 0 && (
+        <>
       {/* Settings Card */}
       <Card elevation={0} sx={{ borderRadius: 3, border: '1px solid #e2e8f0', mb: 3 }}>
         <CardContent>
@@ -736,6 +782,126 @@ const MarketplaceManager = ({ exam }) => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+        </>
+      )}
+
+      {/* Results Tab */}
+      {tabValue === 1 && (
+        <Card elevation={0} sx={{ borderRadius: 3, border: '1px solid #e2e8f0' }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              Student Results
+            </Typography>
+
+            {resultsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : results.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <Assessment sx={{ fontSize: 64, color: '#94a3b8', mb: 2 }} />
+                <Typography variant="body1" sx={{ color: '#64748b' }}>
+                  No results yet for this marketplace exam
+                </Typography>
+              </Box>
+            ) : (
+              <>
+                {/* Summary Stats */}
+                {resultsSummary && (
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={12} md={4}>
+                      <Paper sx={{ p: 2, borderRadius: 2, bgcolor: '#f8fafc' }}>
+                        <Typography variant="body2" sx={{ color: '#64748b' }}>
+                          Total Attempts
+                        </Typography>
+                        <Typography variant="h4" fontWeight={700} sx={{ color: '#0D406C' }}>
+                          {resultsSummary.totalResults}
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Paper sx={{ p: 2, borderRadius: 2, bgcolor: '#f8fafc' }}>
+                        <Typography variant="body2" sx={{ color: '#64748b' }}>
+                          Average Score
+                        </Typography>
+                        <Typography variant="h4" fontWeight={700} sx={{ color: '#0CBD73' }}>
+                          {resultsSummary.averageScore}%
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Paper sx={{ p: 2, borderRadius: 2, bgcolor: '#f8fafc' }}>
+                        <Typography variant="body2" sx={{ color: '#64748b' }}>
+                          Completion Rate
+                        </Typography>
+                        <Typography variant="h4" fontWeight={700} sx={{ color: '#F59E0B' }}>
+                          100%
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                )}
+
+                {/* Results Table */}
+                <TableContainer component={Paper} elevation={0}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Student</TableCell>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Score</TableCell>
+                        <TableCell>Percentage</TableCell>
+                        <TableCell>Time Taken</TableCell>
+                        <TableCell>Completed At</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {results.map((result) => (
+                        <TableRow key={result._id}>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Person fontSize="small" sx={{ color: '#64748b' }} />
+                              {result.student.fullName}
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Email fontSize="small" sx={{ color: '#64748b' }} />
+                              {result.student.email}
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Typography fontWeight={600}>
+                              {result.totalScore} / {result.maxPossibleScore}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={`${result.percentage}%`}
+                              size="small"
+                              color={result.percentage >= 70 ? 'success' : result.percentage >= 50 ? 'warning' : 'error'}
+                              sx={{ fontWeight: 600 }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {result.timeTaken} min
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {new Date(result.endTime).toLocaleDateString()}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
             )}
           </CardContent>
         </Card>

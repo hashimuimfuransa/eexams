@@ -25,7 +25,8 @@ const {
   updateSubLevel,
   deleteSubLevel,
   getPersonalizedRecommendations,
-  getExamCompletionStatus
+  getExamCompletionStatus,
+  getTeacherMarketplaceResults
 } = require('../controllers/marketplaceController');
 
 // Public routes (no authentication required)
@@ -51,6 +52,9 @@ router.put('/exam-requests/:requestId/reject', isAdminOrTeacher, rejectExamReque
 router.put('/exam-requests/:requestId/payment', isAdminOrTeacher, markPaymentReceived);
 router.put('/exam-requests/:requestId/reset', isAdminOrTeacher, resetAccessLink);
 router.delete('/exam-requests/:requestId', isAdminOrTeacher, deleteExamRequest);
+
+// Teacher routes for viewing marketplace exam results
+router.get('/teacher/results', isAdminOrTeacher, getTeacherMarketplaceResults);
 
 // Teacher routes for managing marketplace exam settings
 router.put('/exams/:id/settings', isAdminOrTeacher, requireMarketplaceAccess, updateMarketplaceExamSettings);

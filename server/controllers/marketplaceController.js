@@ -292,6 +292,15 @@ const requestMarketplaceExam = async (req, res) => {
       rejectedRequest.paymentStatus = 'pending';
       await rejectedRequest.save();
 
+      // Send email notification to all super admins about the re-request
+      emailService.sendSuperAdminPendingRequestEmail(rejectedRequest, exam, {
+        name: name,
+        email: email,
+        phone: phone
+      }).catch(err => {
+        console.error('[Marketplace] Failed to send super admin notification for re-request:', err);
+      });
+
       console.log(`Re-request allowed for rejected exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
       return res.status(201).json({
         message: 'Request submitted successfully. The teacher will review your request.',
@@ -344,6 +353,15 @@ const requestMarketplaceExam = async (req, res) => {
     }
 
     const examRequest = await ExamRequest.create(requestData);
+
+    // Send email notification to all super admins about the new pending request
+    emailService.sendSuperAdminPendingRequestEmail(examRequest, exam, {
+      name: name,
+      email: email,
+      phone: phone
+    }).catch(err => {
+      console.error('[Marketplace] Failed to send super admin notification:', err);
+    });
 
     // Check if exam is free (price = 0) - auto-approve
     const isFree = exam.publicPrice === 0 || exam.publicPrice === '0' || exam.publicPrice === '0 RWF';

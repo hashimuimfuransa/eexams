@@ -1534,6 +1534,103 @@ const sendStudentGradesEmail = async (student, result, exam) => {
   }
 };
 
+/**
+ * Send email notification to all super admins about a new pending exam request
+ */
+const sendSuperAdminPendingRequestEmail = async (examRequest, exam, studentInfo) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, super admin notification not sent');
+      return { success: false };
+    }
+
+    const User = require('../models/User');
+    
+    // Get all super admins
+    const superAdmins = await User.find({ role: 'superadmin' }).select('email firstName lastName');
+    
+    if (superAdmins.length === 0) {
+      console.log('[EmailService] No super admins found to notify');
+      return { success: false };
+    }
+
+    const superAdminEmails = superAdmins.map(sa => sa.email);
+    
+    const content = `
+      <div style="font-family: 'DM Sans', sans-serif; max-width: 600px; margin: 0 auto; background: #f5fbf8; border-radius: 12px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #0D406C 0%, #0CBD73 100%); padding: 40px 30px; text-align: center;">
+          <h1 style="color: white; font-size: 28px; font-weight: 700; margin: 0;">🔔 New Exam Request Pending</h1>
+          <p style="color: rgba(255,255,255,0.9); font-size: 16px; margin: 10px 0 0 0;">Action Required</p>
+        </div>
+        
+        <div style="padding: 40px 30px;">
+          <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+            A new exam request has been submitted and requires your approval.
+          </p>
+          
+          <div style="background: white; border-radius: 8px; padding: 25px; margin-bottom: 25px; border: 1px solid #D7E5DD;">
+            <h3 style="color: #0D406C; font-size: 18px; font-weight: 700; margin: 0 0 15px 0;">Request Details</h3>
+            
+            <div style="margin-bottom: 15px;">
+              <p style="color: #64748B; font-size: 14px; margin: 0 0 5px 0; font-weight: 600;">Student Name</p>
+              <p style="color: #0F172A; font-size: 16px; margin: 0;">${studentInfo.name}</p>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+              <p style="color: #64748B; font-size: 14px; margin: 0 0 5px 0; font-weight: 600;">Student Email</p>
+              <p style="color: #0F172A; font-size: 16px; margin: 0;">${studentInfo.email}</p>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+              <p style="color: #64748B; font-size: 14px; margin: 0 0 5px 0; font-weight: 600;">Exam Title</p>
+              <p style="color: #0F172A; font-size: 16px; margin: 0;">${exam.title}</p>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+              <p style="color: #64748B; font-size: 14px; margin: 0 0 5px 0; font-weight: 600;">Price</p>
+              <p style="color: #0F172A; font-size: 16px; margin: 0;">${exam.publicPrice > 0 ? `RWF ${exam.publicPrice.toLocaleString()}` : 'Free'}</p>
+            </div>
+            
+            <div>
+              <p style="color: #64748B; font-size: 14px; margin: 0 0 5px 0; font-weight: 600;">Request ID</p>
+              <p style="color: #0F172A; font-size: 14px; margin: 0; font-family: monospace;">${examRequest._id}</p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 30px;">
+            <a href="${CLIENT_URL}/superadmin" style="display: inline-block; background: linear-gradient(135deg, #0D406C 0%, #0CBD73 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 16px;">
+              Review Request in Admin Panel
+            </a>
+          </div>
+          
+          <p style="color: #64748B; font-size: 14px; text-align: center; margin-top: 25px;">
+            This is an automated notification. Please do not reply to this email.
+          </p>
+        </div>
+        
+        <div style="background: #0D406C; padding: 20px; text-align: center;">
+          <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin: 0;">© 2026 TestFy Rwanda. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
+    const emailWrapper = wrapEmail(content, '🔔 New Exam Request Pending - Action Required');
+    
+    // Send to all super admins
+    const emails = superAdminEmails.map(email => ({
+      ...emailWrapper,
+      to: email
+    }));
+
+    await sgMail.sendMultiple(emails);
+    console.log(`[EmailService] Super admin notification sent to ${superAdminEmails.length} super admins`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send super admin notification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendWelcomeEmail,
   sendPendingApprovalEmail,
@@ -1550,6 +1647,7 @@ module.exports = {
   sendContactEmail,
   sendStudentExamApprovedEmail,
   sendStudentGradesEmail,
+  sendSuperAdminPendingRequestEmail,
   FROM_EMAIL,
   CLIENT_URL,
 };

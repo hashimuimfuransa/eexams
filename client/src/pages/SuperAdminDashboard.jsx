@@ -3796,20 +3796,41 @@ function StudentResultsSection({ searchQuery }) {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortBy, setSortBy] = useState('date');
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [selectedResult, setSelectedResult] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [resultDetails, setResultDetails] = useState(null);
 
   useEffect(() => {
     fetchResults();
-  }, []);
+  }, [page, rowsPerPage]);
 
   const fetchResults = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/superadmin/results');
+      const response = await api.get('/superadmin/results', {
+        params: { page, limit: rowsPerPage }
+      });
       setResults(response.data.results || []);
     } catch (error) {
       console.error('Error fetching results:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewDetails = async (result) => {
+    setSelectedResult(result);
+    setDetailLoading(true);
+    setResultDetails(null);
+    try {
+      const response = await api.get(`/superadmin/results/${result._id}/details`);
+      setResultDetails(response.data);
+    } catch (error) {
+      console.error('Error fetching result details:', error);
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -3903,6 +3924,7 @@ function StudentResultsSection({ searchQuery }) {
                   <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Percentage</TableCell>
                   <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Date</TableCell>
+                  <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -3961,14 +3983,206 @@ function StudentResultsSection({ searchQuery }) {
                           {new Date(result.createdAt).toLocaleDateString()}
                         </Typography>
                       </TableCell>
+                      <TableCell>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => handleViewDetails(result)}
+                          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 12 }}
+                        >
+                          View Details
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           </TableContainer>
+          
+          {/* Pagination */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2 }}>
+            <Typography variant="body2" sx={{ color: tokens.textMuted }}>
+              Showing {Math.min(page * rowsPerPage, filteredResults.length)} of {filteredResults.length} results
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                size="small"
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+                sx={{ borderRadius: 2 }}
+              >
+                Previous
+              </Button>
+              <Button
+                size="small"
+                disabled={filteredResults.length < rowsPerPage}
+                onClick={() => setPage(p => p + 1)}
+                sx={{ borderRadius: 2 }}
+              >
+                Next
+              </Button>
+            </Box>
+          </Box>
         </Paper>
       )}
+
+      {/* Result Details Dialog */}
+      <Dialog 
+        open={!!selectedResult} 
+        onClose={() => setSelectedResult(null)} 
+        maxWidth="md" 
+        fullWidth 
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h6">Result Details</Typography>
+            <Typography variant="caption" sx={{ color: tokens.textMuted }}>
+              {selectedResult?.student?.firstName} {selectedResult?.student?.lastName} - {selectedResult?.exam?.title}
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setSelectedResult(null)}>
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {detailLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress sx={{ color: tokens.accent }} />
+            </Box>
+          ) : resultDetails ? (
+            <Box>
+              {/* Summary */}
+              <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, bgcolor: '#F8FAFC' }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={6} md={3}>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>Total Score</Typography>
+                    <Typography variant="h5" fontWeight={700} sx={{ color: tokens.primary }}>
+                      {resultDetails.totalScore} / {resultDetails.maxPossibleScore}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6} md={3}>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>Percentage</Typography>
+                    <Typography variant="h5" fontWeight={700} sx={{ color: getScoreColor(Math.round((resultDetails.totalScore / resultDetails.maxPossibleScore) * 100)) }}>
+                      {Math.round((resultDetails.totalScore / resultDetails.maxPossibleScore) * 100)}%
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6} md={3}>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>Questions</Typography>
+                    <Typography variant="h5" fontWeight={700} sx={{ color: tokens.primary }}>
+                      {resultDetails.answers?.length || 0}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6} md={3}>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>Duration</Typography>
+                    <Typography variant="h5" fontWeight={700} sx={{ color: tokens.primary }}>
+                      {resultDetails.duration || 'N/A'}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Questions and Answers */}
+              <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Questions & Answers</Typography>
+              {resultDetails.answers?.map((answer, index) => (
+                <Paper key={index} elevation={0} sx={{ p: 3, mb: 2, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}` }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                    <Typography variant="body1" fontWeight={600} sx={{ flex: 1 }}>
+                      Q{index + 1}. {answer.question?.text || answer.questionText}
+                    </Typography>
+                    <Chip
+                      label={answer.isCorrect ? 'Correct' : 'Incorrect'}
+                      size="small"
+                      sx={{
+                        ml: 2,
+                        fontWeight: 600,
+                        bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
+                        color: answer.isCorrect ? tokens.accent : '#EF4444'
+                      }}
+                    />
+                  </Box>
+                  
+                  {answer.question?.type === 'multiple-choice' && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Options:</Typography>
+                      {answer.question?.options?.map((option, optIndex) => (
+                        <Box
+                          key={optIndex}
+                          sx={{
+                            p: 1.5,
+                            mb: 1,
+                            borderRadius: 1,
+                            bgcolor: option === answer.selectedAnswer 
+                              ? (answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)')
+                              : option === answer.question?.correctAnswer
+                              ? 'rgba(12,189,115,0.05)'
+                              : '#F8FAFC',
+                            border: option === answer.selectedAnswer
+                              ? `1px solid ${answer.isCorrect ? tokens.accent : '#EF4444'}`
+                              : option === answer.question?.correctAnswer
+                              ? `1px solid ${tokens.accent}33`
+                              : '1px solid transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                          }}
+                        >
+                          {option === answer.selectedAnswer && <CheckCircle fontSize="small" sx={{ color: answer.isCorrect ? tokens.accent : '#EF4444' }} />}
+                          {option === answer.question?.correctAnswer && option !== answer.selectedAnswer && <CheckCircle fontSize="small" sx={{ color: tokens.accent, opacity: 0.5 }} />}
+                          <Typography variant="body2">{option}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+
+                  {answer.question?.type === 'true-false' && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
+                      <Chip
+                        label={answer.selectedAnswer}
+                        size="small"
+                        sx={{
+                          bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
+                          color: answer.isCorrect ? tokens.accent : '#EF4444',
+                          fontWeight: 600
+                        }}
+                      />
+                    </Box>
+                  )}
+
+                  {answer.question?.type === 'short-answer' && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
+                      <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                        <Typography variant="body2">{answer.selectedAnswer || 'No answer provided'}</Typography>
+                      </Paper>
+                      {answer.question?.correctAnswer && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 0.5 }}>Correct Answer:</Typography>
+                          <Typography variant="body2" sx={{ color: tokens.accent }}>{answer.question.correctAnswer}</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+
+                  {answer.marksObtained !== undefined && (
+                    <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${tokens.surfaceBorder}` }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted }}>
+                        Marks: <strong>{answer.marksObtained}</strong> / {answer.question?.marks || 0}
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              ))}
+            </Box>
+          ) : (
+            <Typography sx={{ color: tokens.textMuted, textAlign: 'center', py: 4 }}>
+              No details available
+            </Typography>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

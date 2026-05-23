@@ -36,7 +36,8 @@ const {
   superAdminApproveExamRequest,
   superAdminRejectExamRequest,
   getExamRequestStats,
-  getAllMarketplaceResults
+  getAllMarketplaceResults,
+  getResultDetails
 } = require('../controllers/superAdminController');
 const auth = require('../middleware/auth');
 
@@ -88,6 +89,7 @@ router.get('/exams/:id', getExamById);
 router.delete('/exams/:id', deleteExam);
 
 router.get('/results', getAllResults);
+router.get('/results/:id/details', getResultDetails);
 router.get('/overview', getSystemOverview);
 
 // Exam marketplace management routes

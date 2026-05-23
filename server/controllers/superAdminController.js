@@ -1450,6 +1450,84 @@ const getAllResults = async (req, res) => {
   }
 };
 
+// @desc    Get detailed result with questions and answers (super admin only)
+// @route   GET /api/superadmin/results/:id/details
+// @access  Private/SuperAdmin
+const getResultDetails = async (req, res) => {
+  try {
+    const Result = require('../models/Result');
+    const Exam = require('../models/Exam');
+
+    const result = await Result.findById(req.params.id)
+      .populate('student', 'firstName lastName email')
+      .populate('exam');
+
+    if (!result) {
+      return res.status(404).json({ message: 'Result not found' });
+    }
+
+    // Get full exam details with questions
+    const exam = await Exam.findById(result.exam._id)
+      .populate('sections.questions');
+
+    // Format answers with question details
+    const formattedAnswers = result.answers.map(answer => {
+      // Find the question in the exam
+      let question = null;
+      if (exam && exam.sections) {
+        for (const section of exam.sections) {
+          const found = section.questions.find(q => q._id.toString() === answer.questionId.toString());
+          if (found) {
+            question = found;
+            break;
+          }
+        }
+      }
+
+      return {
+        ...answer.toObject ? answer.toObject() : answer,
+        question: question ? {
+          _id: question._id,
+          text: question.text,
+          type: question.type,
+          options: question.options,
+          correctAnswer: question.correctAnswer,
+          marks: question.marks
+        } : null,
+        isCorrect: answer.isCorrect !== undefined ? answer.isCorrect : (
+          question && question.correctAnswer === answer.selectedAnswer
+        )
+      };
+    });
+
+    // Calculate duration if start and end times exist
+    let duration = 'N/A';
+    if (result.startTime && result.endTime) {
+      const diff = new Date(result.endTime) - new Date(result.startTime);
+      const minutes = Math.floor(diff / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+      duration = `${minutes}m ${seconds}s`;
+    }
+
+    res.json({
+      _id: result._id,
+      student: result.student,
+      exam: result.exam,
+      totalScore: result.totalScore,
+      maxPossibleScore: result.maxPossibleScore,
+      isCompleted: result.isCompleted,
+      startTime: result.startTime,
+      endTime: result.endTime,
+      duration,
+      answers: formattedAnswers,
+      createdAt: result.createdAt
+    });
+  } catch (error) {
+    console.error('Get result details error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get complete system overview (super admin only)
 // @route   GET /api/superadmin/overview
 // @access  Private/SuperAdmin
@@ -2822,6 +2900,7 @@ module.exports = {
   getAllUsers,
   getAllExams,
   getAllResults,
+  getResultDetails,
   getSystemOverview,
   getUserById,
   updateUser,

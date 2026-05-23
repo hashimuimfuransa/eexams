@@ -1471,12 +1471,13 @@ const getResultDetails = async (req, res) => {
       .populate('sections.questions');
 
     // Format answers with question details
-    const formattedAnswers = result.answers.map(answer => {
-      // Find the question in the exam
+    const Question = require('../models/Question');
+    const formattedAnswers = await Promise.all(result.answers.map(async (answer) => {
+      // Find the question in the exam using answer.question (ObjectId)
       let question = null;
-      if (exam && exam.sections && answer.questionId) {
+      if (exam && exam.sections && answer.question) {
         for (const section of exam.sections) {
-          const found = section.questions.find(q => q._id && q._id.toString() === answer.questionId.toString());
+          const found = section.questions.find(q => q._id && q._id.toString() === answer.question.toString());
           if (found) {
             question = found;
             break;
@@ -1484,15 +1485,30 @@ const getResultDetails = async (req, res) => {
         }
       }
 
-      // If question not found in exam, use the question data from the answer itself
+      // If question not found in exam, try to populate it from the Question model
+      if (!question && answer.question) {
+        try {
+          const populatedQuestion = await Question.findById(answer.question);
+          if (populatedQuestion) {
+            question = populatedQuestion;
+          }
+        } catch (err) {
+          console.error('Error populating question:', err);
+        }
+      }
+
+      // Build question data with fallbacks
       const questionData = question || {
-        _id: answer.questionId,
-        text: answer.questionText || answer.question?.text || 'Question text not available',
-        type: answer.questionType || answer.question?.type || 'multiple-choice',
-        options: answer.options || answer.question?.options || [],
-        correctAnswer: answer.correctAnswer || answer.question?.correctAnswer,
-        marks: answer.marks || answer.question?.marks || 1
+        _id: answer.question,
+        text: 'Question text not available',
+        type: 'multiple-choice',
+        options: [],
+        correctAnswer: answer.correctedAnswer || answer.correctOptionLetter,
+        marks: 1
       };
+
+      // Get the selected answer - check multiple possible field names
+      const selectedAnswer = answer.selectedOption || answer.textAnswer || answer.selectedOptionLetter;
 
       return {
         ...answer.toObject ? answer.toObject() : answer,
@@ -1504,11 +1520,12 @@ const getResultDetails = async (req, res) => {
           correctAnswer: questionData.correctAnswer,
           marks: questionData.marks
         },
+        selectedAnswer: selectedAnswer,
         isCorrect: answer.isCorrect !== undefined ? answer.isCorrect : (
-          questionData && questionData.correctAnswer === answer.selectedAnswer
+          questionData && questionData.correctAnswer === selectedAnswer
         )
       };
-    });
+    }));
 
     // Calculate duration if start and end times exist
     let duration = 'N/A';

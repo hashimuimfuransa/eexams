@@ -561,6 +561,16 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
       createdQuestions[section].push(question._id);
     }
 
+    // Reload exam to get latest version and avoid VersionError
+    exam = await Exam.findById(exam._id);
+    
+    // Re-apply exam fields in case they were lost during reload
+    exam.title = title;
+    exam.description = description || title;
+    exam.timeLimit = timeLimit || 60;
+    exam.passingScore = passingScore || 70;
+    exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
+    
     // Update exam with question IDs organized by section
     exam.sections.forEach(section => {
       section.questions = createdQuestions[section.name] || [];

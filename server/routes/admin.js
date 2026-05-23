@@ -58,7 +58,8 @@ const {
   checkStudentLimit,
   checkTeacherLimit,
   checkExamLimit,
-  requireAnalytics
+  requireAnalytics,
+  requireTemplatesAccess
 } = require('../middleware/planRestrictions');
 
 // Apply auth and admin/teacher middleware to all routes
@@ -186,11 +187,11 @@ router.get('/questions', getQuestions);
 router.put('/questions/:id', updateQuestion);
 router.delete('/questions/:id', deleteQuestion);
 
-// Template routes
-router.get('/templates', getTemplates);
-router.post('/templates', createTemplate);
-router.post('/templates/:id/use', useTemplate);
-router.delete('/templates/:id', deleteTemplate);
+// Template routes - requires Basic plan or higher
+router.get('/templates', requireTemplatesAccess, getTemplates);
+router.post('/templates', requireTemplatesAccess, createTemplate);
+router.post('/templates/:id/use', requireTemplatesAccess, useTemplate);
+router.delete('/templates/:id', requireTemplatesAccess, deleteTemplate);
 
 // Note: Question Bank routes are moved to a separate router to allow access from any organization
 // See questionBank.js routes

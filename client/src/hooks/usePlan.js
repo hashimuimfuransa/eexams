@@ -21,6 +21,7 @@ export default function usePlan() {
     hasCustomBranding: hasFeature(plan, 'customBranding'),
     hasAPIAccess: hasFeature(plan, 'apiAccess'),
     hasMarketplaceAccess: hasFeature(plan, 'marketplaceAccess'),
+    hasTemplatesAccess: hasFeature(plan, 'templates'),
     
     // Limit checks (need to pass current count)
     checkExamLimit: (count) => checkLimit(plan, 'maxExams', count),

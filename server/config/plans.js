@@ -16,6 +16,7 @@ const PLANS = {
     customBranding: false,
     apiAccess: false,
     marketplaceAccess: false,
+    templates: false,
     examPerMonth: 5,
     storageLimit: 100, // MB
     features: [
@@ -41,6 +42,7 @@ const PLANS = {
     customBranding: false,
     apiAccess: false,
     marketplaceAccess: false,
+    templates: true,
     examPerMonth: 30,
     storageLimit: 500, // MB
     features: [
@@ -65,6 +67,7 @@ const PLANS = {
     customBranding: false,
     apiAccess: false,
     marketplaceAccess: false,
+    templates: true,
     examPerMonth: Infinity,
     storageLimit: 2000, // MB
     features: [
@@ -91,6 +94,7 @@ const PLANS = {
     customBranding: true,
     apiAccess: true,
     marketplaceAccess: true,
+    templates: true,
     examPerMonth: Infinity,
     storageLimit: 10000, // MB
     features: [
@@ -151,6 +155,7 @@ const ORG_PLANS = {
     customBranding: false,
     apiAccess: false,
     marketplaceAccess: false,
+    templates: false,
     storageLimit: 100,
     features: [
       '1 teacher account',
@@ -174,6 +179,7 @@ const ORG_PLANS = {
     customBranding: false,
     apiAccess: false,
     marketplaceAccess: false,
+    templates: true,
     storageLimit: 1000,
     features: [
       'Up to 5 teacher accounts',
@@ -198,6 +204,7 @@ const ORG_PLANS = {
     customBranding: false,
     apiAccess: false,
     marketplaceAccess: false,
+    templates: true,
     storageLimit: 5000,
     features: [
       'Up to 20 teacher accounts',
@@ -223,6 +230,7 @@ const ORG_PLANS = {
     customBranding: true,
     apiAccess: true,
     marketplaceAccess: true,
+    templates: true,
     storageLimit: 20000,
     features: [
       'Unlimited teacher accounts',

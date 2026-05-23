@@ -429,55 +429,55 @@ const Login = () => {
           window.google.accounts.id.initialize({
             client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '192720000772-1qkm1i0lmg52b17vaslf0gm56lll3p0m.apps.googleusercontent.com',
             callback: handleGoogleCredentialResponse,
-            auto_select: true,  // Enable for returning users - shows "Continue as [Name]"
+            auto_select: false,  // Disabled auto-login - user must manually click the button
             cancel_on_tap_outside: true,
           });
           googleInitialized.current = true;
 
-          // Check for returning Google user (one-tap prompt)
-          window.google.accounts.id.prompt((notification) => {
-            if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-              const reason = notification.getNotDisplayedReason() || notification.getSkippedReason();
-              console.log('[GoogleAuth] One-tap not shown:', reason);
-              
-              // Detect FedCM lockout - expanded list of reasons
-              const lockoutReasons = [
-                'FEDERATED_LOGIN_DISABLED',
-                'USER_CANCELLED',
-                'TOO_MANY_ATTEMPTS',
-                'UNKNOWN_REASON',
-                'ABORT_ERROR',
-                'SIGNAL_ABORTED',
-                'FEDCM_DISABLED',
-                'THIRD_PARTY_COOKIES_DISABLED'
-                // Note: TAP_OUTSIDE is not a lockout - it's just user dismissal
-              ];
-              
-              if (lockoutReasons.includes(reason) || 
-                  reason?.includes('abort') || 
-                  reason?.includes('disabled') ||
-                  reason?.includes('FEDCM')) {
-                setFedcmLocked(true);
-                setFedcmLockType(reason === 'FEDERATED_LOGIN_DISABLED' ? 'permanent' : 'temporary');
-                console.log('[GoogleAuth] FedCM locked:', reason);
-              }
-              
-              // If prompt not shown for any reason, increment click counter
-              if (notification.isNotDisplayed()) {
-                setGoogleClickCount(prev => {
-                  const newCount = prev + 1;
-                  console.log('[GoogleAuth] Failed attempt count:', newCount);
-                  // Show warning banner immediately on first failed attempt
-                  if (newCount >= 1 && !fedcmLocked) {
-                    setFedcmLocked(true);
-                    setFedcmLockType('temporary');
-                    console.log('[GoogleAuth] Showing warning banner after', newCount, 'failed attempt(s)');
-                  }
-                  return newCount;
-                });
-              }
-            }
-          });
+          // One-tap prompt disabled - user must manually click "Continue with Google" button
+          // window.google.accounts.id.prompt((notification) => {
+          //   if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          //     const reason = notification.getNotDisplayedReason() || notification.getSkippedReason();
+          //     console.log('[GoogleAuth] One-tap not shown:', reason);
+          //     
+          //     // Detect FedCM lockout - expanded list of reasons
+          //     const lockoutReasons = [
+          //       'FEDERATED_LOGIN_DISABLED',
+          //       'USER_CANCELLED',
+          //       'TOO_MANY_ATTEMPTS',
+          //       'UNKNOWN_REASON',
+          //       'ABORT_ERROR',
+          //       'SIGNAL_ABORTED',
+          //       'FEDCM_DISABLED',
+          //       'THIRD_PARTY_COOKIES_DISABLED'
+          //       // Note: TAP_OUTSIDE is not a lockout - it's just user dismissal
+          //     ];
+          //     
+          //     if (lockoutReasons.includes(reason) || 
+          //         reason?.includes('abort') || 
+          //         reason?.includes('disabled') ||
+          //         reason?.includes('FEDCM')) {
+          //       setFedcmLocked(true);
+          //       setFedcmLockType(reason === 'FEDERATED_LOGIN_DISABLED' ? 'permanent' : 'temporary');
+          //       console.log('[GoogleAuth] FedCM locked:', reason);
+          //     }
+          //     
+          //     // If prompt not shown for any reason, increment click counter
+          //     if (notification.isNotDisplayed()) {
+          //       setGoogleClickCount(prev => {
+          //         const newCount = prev + 1;
+          //         console.log('[GoogleAuth] Failed attempt count:', newCount);
+          //         // Show warning banner immediately on first failed attempt
+          //         if (newCount >= 1 && !fedcmLocked) {
+          //           setFedcmLocked(true);
+          //           setFedcmLockType('temporary');
+          //           console.log('[GoogleAuth] Showing warning banner after', newCount, 'failed attempt(s)');
+          //         }
+          //         return newCount;
+          //       });
+          //     }
+          //   }
+          // });
         }
       } catch (err) {
         console.error('[GoogleAuth] Error:', err);

@@ -225,6 +225,23 @@ const requireMarketplaceAccess = async (req, res, next) => {
   next();
 };
 
+// Middleware to check if user has templates access
+const requireTemplatesAccess = async (req, res, next) => {
+  const user = req.user;
+  const { plan } = await resolveEffectivePlan(user);
+  
+  if (!hasFeature(plan, 'templates')) {
+    return res.status(403).json({
+      message: 'Templates feature requires Basic plan or higher. Please upgrade your subscription to save and use exam templates.',
+      code: 'FEATURE_NOT_AVAILABLE',
+      upgradeRequired: true,
+      requiredPlan: 'basic'
+    });
+  }
+  
+  next();
+};
+
 // Get current plan usage stats
 const getPlanUsage = async (userId) => {
   try {
@@ -284,5 +301,6 @@ module.exports = {
   requireAPIAccess,
   requireCustomBranding,
   requireMarketplaceAccess,
+  requireTemplatesAccess,
   getPlanUsage
 };

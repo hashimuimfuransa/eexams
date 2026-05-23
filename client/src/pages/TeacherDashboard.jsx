@@ -708,15 +708,19 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
 };
 
 // Function to get navigation items based on subscription plan
-const getNavigationItems = (user) => {
+const getNavigationItems = (user, hasTemplatesAccess) => {
   const baseNav = [
     { id: 'home',      label: 'Dashboard',  icon: <DashboardCustomize sx={{ fontSize: 20 }} /> },
     { id: 'exams',     label: 'My Exams',   icon: <Assignment sx={{ fontSize: 20 }} /> },
     { id: 'students',  label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
     { id: 'results',   label: 'Results',    icon: <ListAlt sx={{ fontSize: 20 }} /> },
-    { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> },
     { id: 'settings',  label: 'Settings',   icon: <Settings sx={{ fontSize: 20 }} /> },
   ];
+
+  // Only show templates if user has access (Basic plan or higher)
+  if (hasTemplatesAccess) {
+    baseNav.splice(4, 0, { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> });
+  }
 
   // If not custom enterprise, remove AI-related features from home section
   // (The AI tab is part of the home section, not a separate nav item)
@@ -783,6 +787,7 @@ export default function TeacherDashboard() {
   const isMobile = useMediaQuery('(max-width:900px)');
   const isXs = useMediaQuery('(max-width:600px)');
   const { user, logout } = useAuth();
+  const { hasTemplatesAccess } = usePlan();
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [activeSection, setActiveSection] = useState('home');
   const [stats, setStats] = useState(null);
@@ -852,7 +857,7 @@ export default function TeacherDashboard() {
   );
 
   // Get navigation items based on subscription plan
-  const nav = getNavigationItems(user);
+  const nav = getNavigationItems(user, hasTemplatesAccess);
 
   return (
     <DashboardShell
@@ -892,7 +897,7 @@ const QUESTION_TYPES_META = [
 /* ── HOME ── */
 function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const { canUseAdvancedAI, hasMarketplaceAccess } = usePlan();
+  const { canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess } = usePlan();
   const [aiMode, setAiMode] = useState(canUseAdvancedAI ? 'describe' : 'upload');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, sections: [{ name: 'A', description: 'Section A', questions: [] }] });
   const [manualSection, setManualSection] = useState(0);
@@ -1383,9 +1388,11 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
               <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: isXs ? 11 : 12.5, fontFamily: "DM Sans,sans-serif", lineHeight: 1.4 }}>{isXs ? 'Create exams quickly • Reuse from Question Bank' : 'Describe your exam or upload a document to create it quickly • Reuse questions from Question Bank'}</Typography>
             </Box>
           </Box>
-          <Button variant="contained" onClick={() => setActiveSection('templates')} sx={{ bgcolor: 'white', color: tokens.primary, borderRadius: 2.5, fontWeight: 700, fontSize: isXs ? 11 : 13, textTransform: 'none', px: isXs ? 2 : 3, py: isXs ? 1 : 1.25, fontFamily: "DM Sans,sans-serif", width: isXs ? '100%' : 'auto', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}>
-            {isXs ? '📋 Templates & Bank' : '📋 Use Templates & Question Bank'}
-          </Button>
+          {hasTemplatesAccess && (
+            <Button variant="contained" onClick={() => setActiveSection('templates')} sx={{ bgcolor: 'white', color: tokens.primary, borderRadius: 2.5, fontWeight: 700, fontSize: isXs ? 11 : 13, textTransform: 'none', px: isXs ? 2 : 3, py: isXs ? 1 : 1.25, fontFamily: "DM Sans,sans-serif", width: isXs ? '100%' : 'auto', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}>
+              {isXs ? '📋 Templates & Bank' : '📋 Use Templates & Question Bank'}
+            </Button>
+          )}
         </Box>
 
         <Box sx={{ display: 'flex', bgcolor: 'white', borderBottom: `1px solid ${tokens.surfaceBorder}`, flexWrap: isXs ? 'wrap' : 'nowrap' }}>
@@ -1987,7 +1994,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           {[
             { label: 'Create Exam',      icon: <Add sx={{ fontSize: 18 }} />,         color: tokens.accent,  bg: 'rgba(12,189,115,0.09)',  section: 'exams' },
             { label: 'Add Students',     icon: <People sx={{ fontSize: 18 }} />,       color: '#6366F1',      bg: 'rgba(99,102,241,0.09)',  section: 'students' },
-            { label: 'Browse Templates', icon: <Description sx={{ fontSize: 18 }} />,  color: tokens.primary, bg: 'rgba(13,64,108,0.07)',   section: 'templates' },
+            ...(hasTemplatesAccess ? [{ label: 'Browse Templates', icon: <Description sx={{ fontSize: 18 }} />,  color: tokens.primary, bg: 'rgba(13,64,108,0.07)',   section: 'templates' }] : []),
             { label: 'View Reports',     icon: <BarChart sx={{ fontSize: 18 }} />,     color: tokens.warning, bg: 'rgba(245,158,11,0.09)',  section: 'reports' },
           ].map((a, i) => (
             <Box key={i} onClick={() => setActiveSection(a.section)} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderRadius: 2.5, bgcolor: a.bg, cursor: 'pointer', flex: '1 1 130px', minWidth: { xs: 0, sm: 130 }, border: `1px solid ${a.color}18`, transition: 'opacity 0.15s', '&:hover': { opacity: 0.82 } }}>

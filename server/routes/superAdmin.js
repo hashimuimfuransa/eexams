@@ -37,7 +37,8 @@ const {
   superAdminRejectExamRequest,
   getExamRequestStats,
   getAllMarketplaceResults,
-  getResultDetails
+  getResultDetails,
+  getExamForReview
 } = require('../controllers/superAdminController');
 const auth = require('../middleware/auth');
 
@@ -95,6 +96,7 @@ router.get('/overview', getSystemOverview);
 // Exam marketplace management routes
 router.get('/marketplace-exams', getMarketplaceExamsWithStats);
 router.get('/marketplace-exams/:id/usage', getExamUsageDetails);
+router.get('/marketplace-exams/:id/review', getExamForReview);
 router.put('/marketplace-exams/:id/settings', updateExamMarketplaceSettings);
 router.put('/marketplace-exams/:id', updateExamDetails);
 

@@ -2765,6 +2765,9 @@ function ExamBankMarketplaceSection({ searchQuery }) {
   const [results, setResults] = useState([]);
   const [resultsLoading, setResultsLoading] = useState(false);
   const [resultsSummary, setResultsSummary] = useState(null);
+  const [reviewDialog, setReviewDialog] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewData, setReviewData] = useState(null);
 
   // Filter states
   const [statusFilter, setStatusFilter] = useState('');
@@ -2857,6 +2860,21 @@ function ExamBankMarketplaceSection({ searchQuery }) {
       setSnack({ open: true, msg: err.response?.data?.message || 'Failed to update settings', severity: 'error' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleReviewExam = async (exam) => {
+    setReviewDialog(exam);
+    setReviewLoading(true);
+    setReviewData(null);
+    try {
+      const res = await api.get(`/superadmin/marketplace-exams/${exam._id}/review`);
+      setReviewData(res.data.exam);
+    } catch (err) {
+      console.error('Failed to fetch exam for review:', err);
+      setSnack({ open: true, msg: 'Failed to load exam details', severity: 'error' });
+    } finally {
+      setReviewLoading(false);
     }
   };
 
@@ -3054,6 +3072,11 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                     )}
                   </Box>
                   <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Tooltip title="Review Questions">
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleReviewExam(exam); }} sx={{ color: tokens.accent, bgcolor: 'rgba(12,189,115,0.1)', '&:hover': { bgcolor: 'rgba(12,189,115,0.2)' }, width: 32, height: 32 }}>
+                        <Visibility fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="Edit Settings">
                       <IconButton size="small" onClick={(e) => { e.stopPropagation(); setEditDialog({ ...exam, levelId: exam.level?._id || null, subLevel: exam.subLevel || '' }); }} sx={{ color: tokens.primary, bgcolor: `${tokens.primary}10`, '&:hover': { bgcolor: `${tokens.primary}20` }, width: 32, height: 32 }}>
                         <Edit fontSize="small" />
@@ -3294,11 +3317,140 @@ function ExamBankMarketplaceSection({ searchQuery }) {
             variant="contained"
             onClick={handleDeleteExam}
             disabled={saving}
-            sx={{ bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' } }}
+            sx={{ bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' }, textTransform: 'none' }}
           >
             {saving ? 'Deleting…' : 'Delete Exam'}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Exam Review Dialog */}
+      <Dialog open={!!reviewDialog} onClose={() => setReviewDialog(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h6">Exam Review</Typography>
+            {reviewDialog && <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block', mt: 0.5 }}>{reviewDialog.title}</Typography>}
+          </Box>
+          <IconButton onClick={() => setReviewDialog(null)}>
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: '20px !important' }}>
+          {reviewLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress sx={{ color: tokens.accent }} />
+            </Box>
+          ) : reviewData ? (
+            <Box>
+              {/* Exam Summary */}
+              <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, bgcolor: '#F8FAFC' }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>Created By</Typography>
+                    <Typography variant="body1" fontWeight={600}>
+                      {reviewData.createdBy?.organization || `${reviewData.createdBy?.firstName} ${reviewData.createdBy?.lastName}`}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>Time Limit</Typography>
+                    <Typography variant="body1" fontWeight={600}>{reviewData.timeLimit} minutes</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>Passing Score</Typography>
+                    <Typography variant="body1" fontWeight={600}>{reviewData.passingScore}%</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>Status</Typography>
+                    <Chip
+                      label={reviewData.status}
+                      size="small"
+                      sx={{
+                        fontWeight: 600,
+                        bgcolor: reviewData.status === 'active' ? 'rgba(12,189,115,0.1)' : 'rgba(100,116,139,0.1)',
+                        color: reviewData.status === 'active' ? tokens.accent : '#64748B'
+                      }}
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Questions */}
+              <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Questions ({reviewData.sections?.reduce((acc, s) => acc + (s.questions?.length || 0), 0) || 0})</Typography>
+              {reviewData.sections?.map((section, sectionIndex) => (
+                <Box key={section._id} sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, color: tokens.primary }}>
+                    Section {sectionIndex + 1}: {section.title || 'Untitled Section'}
+                  </Typography>
+                  {section.questions?.map((question, qIndex) => (
+                    <Paper key={question._id} elevation={0} sx={{ p: 3, mb: 2, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}` }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                        <Typography variant="body1" fontWeight={600} sx={{ flex: 1 }}>
+                          Q{qIndex + 1}. {question.text}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, ml: 2 }}>
+                          <Chip label={question.type} size="small" sx={{ fontWeight: 600, bgcolor: 'rgba(99,102,241,0.1)', color: '#6366F1' }} />
+                          <Chip label={`${question.marks} marks`} size="small" sx={{ fontWeight: 600, bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning }} />
+                        </Box>
+                      </Box>
+
+                      {question.type === 'multiple-choice' && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Options:</Typography>
+                          {question.options?.map((option, optIndex) => (
+                            <Box
+                              key={optIndex}
+                              sx={{
+                                p: 1.5,
+                                mb: 1,
+                                borderRadius: 1,
+                                bgcolor: option === question.correctAnswer ? 'rgba(12,189,115,0.1)' : '#F8FAFC',
+                                border: option === question.correctAnswer ? `1px solid ${tokens.accent}` : '1px solid transparent',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1
+                              }}
+                            >
+                              {option === question.correctAnswer && <CheckCircle fontSize="small" sx={{ color: tokens.accent }} />}
+                              <Typography variant="body2">{option}</Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
+
+                      {question.type === 'true-false' && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Correct Answer:</Typography>
+                          <Chip
+                            label={question.correctAnswer}
+                            size="small"
+                            sx={{
+                              bgcolor: 'rgba(12,189,115,0.1)',
+                              color: tokens.accent,
+                              fontWeight: 600
+                            }}
+                          />
+                        </Box>
+                      )}
+
+                      {question.type === 'short-answer' && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Correct Answer:</Typography>
+                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 1, border: `1px solid ${tokens.accent}33` }}>
+                            <Typography variant="body2" sx={{ color: tokens.accent }}>{question.correctAnswer}</Typography>
+                          </Paper>
+                        </Box>
+                      )}
+                    </Paper>
+                  ))}
+                </Box>
+              ))}
+            </Box>
+          ) : (
+            <Typography sx={{ color: tokens.textMuted, textAlign: 'center', py: 4 }}>
+              No exam details available
+            </Typography>
+          )}
+        </DialogContent>
       </Dialog>
 
       <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>

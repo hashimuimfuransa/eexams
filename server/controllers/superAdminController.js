@@ -2488,6 +2488,29 @@ const updateExamDetails = async (req, res) => {
   }
 };
 
+// @desc    Get exam with all questions for review (super admin only)
+// @route   GET /api/superadmin/marketplace-exams/:id/review
+// @access  Private/SuperAdmin
+const getExamForReview = async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.id)
+      .populate('createdBy', 'firstName lastName email organization')
+      .populate('level', 'name description subLevels')
+      .populate('sections.questions');
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    res.json({
+      exam
+    });
+  } catch (error) {
+    console.error('Get exam for review error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get all pending exam requests system-wide
 // @route   GET /api/superadmin/exam-requests
 // @access  Private/SuperAdmin
@@ -2916,6 +2939,7 @@ module.exports = {
   getExamUsageDetails,
   updateExamMarketplaceSettings,
   updateExamDetails,
+  getExamForReview,
   getStudentPerformanceAnalytics,
   getTeacherPerformanceAnalytics,
   getOrganizationPerformanceAnalytics,

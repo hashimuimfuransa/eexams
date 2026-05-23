@@ -2772,6 +2772,30 @@ function ExamBankMarketplaceSection({ searchQuery }) {
   // Filter states
   const [statusFilter, setStatusFilter] = useState('');
   const [sortBy, setSortBy] = useState('createdAt');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+
+  // Helper to get option display text (handles both string and object formats)
+  const getOptionText = (opt) => {
+    if (typeof opt === 'string') return opt;
+    if (opt && typeof opt === 'object') return opt.text || opt.label || opt.value || '';
+    return '';
+  };
+
+  // Handle filter changes with reset
+  const handleStatusFilterChange = (value) => {
+    setStatusFilter(value);
+    setPage(1);
+    setHasMore(true);
+    setExams([]);
+  };
+
+  const handleSortByChange = (value) => {
+    setSortBy(value);
+    setPage(1);
+    setHasMore(true);
+    setExams([]);
+  };
 
   useEffect(() => {
     fetchExams();
@@ -2779,20 +2803,33 @@ function ExamBankMarketplaceSection({ searchQuery }) {
     if (tabValue === 1) {
       fetchResults();
     }
-  }, [statusFilter, sortBy, tabValue]);
+  }, [statusFilter, sortBy, tabValue, page]);
 
-  const fetchExams = async () => {
+  const fetchExams = async (reset = false) => {
+    if (reset) {
+      setPage(1);
+      setHasMore(true);
+      setExams([]);
+    }
     setLoading(true);
     try {
       const res = await api.get('/superadmin/marketplace-exams', {
-        params: { status: statusFilter, sortBy }
+        params: { status: statusFilter, sortBy, page, limit: 20 }
       });
-      setExams(res.data.exams || []);
+      const newExams = res.data.exams || [];
+      setExams(prev => reset ? newExams : [...prev, ...newExams]);
       setStats(res.data.stats);
+      setHasMore(newExams.length >= 20);
     } catch (err) {
       console.error('Failed to fetch marketplace exams:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMore = () => {
+    if (!loading && hasMore) {
+      setPage(p => p + 1);
     }
   };
 
@@ -2982,7 +3019,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
           <Grid item xs={6} md={3}>
             <FormControl fullWidth size="small">
               <InputLabel>Status</InputLabel>
-              <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+              <Select label="Status" value={statusFilter} onChange={(e) => handleStatusFilterChange(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
                 <MuiMenuItem value="">All Status</MuiMenuItem>
                 <MuiMenuItem value="public">Public</MuiMenuItem>
                 <MuiMenuItem value="private">Private</MuiMenuItem>
@@ -2992,7 +3029,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
           <Grid item xs={6} md={3}>
             <FormControl fullWidth size="small">
               <InputLabel>Sort By</InputLabel>
-              <Select label="Sort By" value={sortBy} onChange={(e) => setSortBy(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+              <Select label="Sort By" value={sortBy} onChange={(e) => handleSortByChange(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
                 <MuiMenuItem value="createdAt">Recently Added</MuiMenuItem>
                 <MuiMenuItem value="requests">Most Requests</MuiMenuItem>
                 <MuiMenuItem value="completions">Most Completions</MuiMenuItem>
@@ -3093,6 +3130,20 @@ function ExamBankMarketplaceSection({ searchQuery }) {
             </Grid>
           ))}
         </Grid>
+      )}
+
+      {/* Load More Button */}
+      {!loading && hasMore && exams.length > 0 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+          <Button
+            variant="outlined"
+            onClick={loadMore}
+            disabled={loading}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+          >
+            {loading ? 'Loading...' : 'Load More'}
+          </Button>
+        </Box>
       )}
 
       {/* Exam Details Dialog */}
@@ -3396,24 +3447,28 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                       {question.type === 'multiple-choice' && (
                         <Box sx={{ mt: 2 }}>
                           <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Options:</Typography>
-                          {question.options?.map((option, optIndex) => (
-                            <Box
-                              key={optIndex}
-                              sx={{
-                                p: 1.5,
-                                mb: 1,
-                                borderRadius: 1,
-                                bgcolor: option === question.correctAnswer ? 'rgba(12,189,115,0.1)' : '#F8FAFC',
-                                border: option === question.correctAnswer ? `1px solid ${tokens.accent}` : '1px solid transparent',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1
-                              }}
-                            >
-                              {option === question.correctAnswer && <CheckCircle fontSize="small" sx={{ color: tokens.accent }} />}
-                              <Typography variant="body2">{option}</Typography>
-                            </Box>
-                          ))}
+                          {question.options?.map((option, optIndex) => {
+                            const optionText = getOptionText(option);
+                            const isCorrect = optionText === getOptionText(question.correctAnswer);
+                            return (
+                              <Box
+                                key={optIndex}
+                                sx={{
+                                  p: 1.5,
+                                  mb: 1,
+                                  borderRadius: 1,
+                                  bgcolor: isCorrect ? 'rgba(12,189,115,0.1)' : '#F8FAFC',
+                                  border: isCorrect ? `1px solid ${tokens.accent}` : '1px solid transparent',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 1
+                                }}
+                              >
+                                {isCorrect && <CheckCircle fontSize="small" sx={{ color: tokens.accent }} />}
+                                <Typography variant="body2">{optionText}</Typography>
+                              </Box>
+                            );
+                          })}
                         </Box>
                       )}
 
@@ -3954,6 +4009,27 @@ function StudentResultsSection({ searchQuery }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [resultDetails, setResultDetails] = useState(null);
 
+  // Helper to get option display text (handles both string and object formats)
+  const getOptionText = (opt) => {
+    if (typeof opt === 'string') return opt;
+    if (opt && typeof opt === 'object') return opt.text || opt.label || opt.value || '';
+    return '';
+  };
+
+  // Helper to check if option is selected
+  const isOptionSelected = (option, selectedAnswer) => {
+    const optionText = getOptionText(option);
+    const selectedText = getOptionText(selectedAnswer);
+    return optionText === selectedText;
+  };
+
+  // Helper to check if option is correct
+  const isOptionCorrect = (option, correctAnswer) => {
+    const optionText = getOptionText(option);
+    const correctText = getOptionText(correctAnswer);
+    return optionText === correctText;
+  };
+
   useEffect(() => {
     fetchResults();
   }, [page, rowsPerPage]);
@@ -4258,33 +4334,38 @@ function StudentResultsSection({ searchQuery }) {
                   {answer.question?.type === 'multiple-choice' && (
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Options:</Typography>
-                      {answer.question?.options?.map((option, optIndex) => (
-                        <Box
-                          key={optIndex}
-                          sx={{
-                            p: 1.5,
-                            mb: 1,
-                            borderRadius: 1,
-                            bgcolor: option === answer.selectedAnswer 
-                              ? (answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)')
-                              : option === answer.question?.correctAnswer
-                              ? 'rgba(12,189,115,0.05)'
-                              : '#F8FAFC',
-                            border: option === answer.selectedAnswer
-                              ? `1px solid ${answer.isCorrect ? tokens.accent : '#EF4444'}`
-                              : option === answer.question?.correctAnswer
-                              ? `1px solid ${tokens.accent}33`
-                              : '1px solid transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1
-                          }}
-                        >
-                          {option === answer.selectedAnswer && <CheckCircle fontSize="small" sx={{ color: answer.isCorrect ? tokens.accent : '#EF4444' }} />}
-                          {option === answer.question?.correctAnswer && option !== answer.selectedAnswer && <CheckCircle fontSize="small" sx={{ color: tokens.accent, opacity: 0.5 }} />}
-                          <Typography variant="body2">{option}</Typography>
-                        </Box>
-                      ))}
+                      {answer.question?.options?.map((option, optIndex) => {
+                        const isSelected = isOptionSelected(option, answer.selectedAnswer);
+                        const isCorrect = isOptionCorrect(option, answer.question?.correctAnswer);
+                        const optionText = getOptionText(option);
+                        return (
+                          <Box
+                            key={optIndex}
+                            sx={{
+                              p: 1.5,
+                              mb: 1,
+                              borderRadius: 1,
+                              bgcolor: isSelected
+                                ? (answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)')
+                                : isCorrect
+                                ? 'rgba(12,189,115,0.05)'
+                                : '#F8FAFC',
+                              border: isSelected
+                                ? `1px solid ${answer.isCorrect ? tokens.accent : '#EF4444'}`
+                                : isCorrect
+                                ? `1px solid ${tokens.accent}33`
+                                : '1px solid transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1
+                            }}
+                          >
+                            {isSelected && <CheckCircle fontSize="small" sx={{ color: answer.isCorrect ? tokens.accent : '#EF4444' }} />}
+                            {isCorrect && !isSelected && <CheckCircle fontSize="small" sx={{ color: tokens.accent, opacity: 0.5 }} />}
+                            <Typography variant="body2">{optionText}</Typography>
+                          </Box>
+                        );
+                      })}
                     </Box>
                   )}
 

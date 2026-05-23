@@ -1484,18 +1484,28 @@ const getResultDetails = async (req, res) => {
         }
       }
 
+      // If question not found in exam, use the question data from the answer itself
+      const questionData = question || {
+        _id: answer.questionId,
+        text: answer.questionText || answer.question?.text || 'Question text not available',
+        type: answer.questionType || answer.question?.type || 'multiple-choice',
+        options: answer.options || answer.question?.options || [],
+        correctAnswer: answer.correctAnswer || answer.question?.correctAnswer,
+        marks: answer.marks || answer.question?.marks || 1
+      };
+
       return {
         ...answer.toObject ? answer.toObject() : answer,
-        question: question ? {
-          _id: question._id,
-          text: question.text,
-          type: question.type,
-          options: question.options,
-          correctAnswer: question.correctAnswer,
-          marks: question.marks
-        } : null,
+        question: {
+          _id: questionData._id,
+          text: questionData.text,
+          type: questionData.type,
+          options: questionData.options,
+          correctAnswer: questionData.correctAnswer,
+          marks: questionData.marks
+        },
         isCorrect: answer.isCorrect !== undefined ? answer.isCorrect : (
-          question && question.correctAnswer === answer.selectedAnswer
+          questionData && questionData.correctAnswer === answer.selectedAnswer
         )
       };
     });

@@ -4313,30 +4313,38 @@ function StudentResultsSection({ searchQuery }) {
 
               {/* Questions and Answers */}
               <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Questions & Answers</Typography>
-              {resultDetails.answers?.map((answer, index) => (
-                <Paper key={index} elevation={0} sx={{ p: 3, mb: 2, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}` }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                    <Typography variant="body1" fontWeight={600} sx={{ flex: 1 }}>
-                      Q{index + 1}. {answer.question?.text || answer.questionText}
-                    </Typography>
-                    <Chip
-                      label={answer.isCorrect ? 'Correct' : 'Incorrect'}
-                      size="small"
-                      sx={{
-                        ml: 2,
-                        fontWeight: 600,
-                        bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
-                        color: answer.isCorrect ? tokens.accent : '#EF4444'
-                      }}
-                    />
-                  </Box>
-                  
-                  {answer.question?.type === 'multiple-choice' && (
+              {resultDetails.answers?.map((answer, index) => {
+                const question = answer.question;
+                const questionText = question?.text || answer.questionText || 'Question text not available';
+                const questionType = question?.type || answer.questionType || 'multiple-choice';
+                const options = question?.options || answer.options || [];
+                const correctAnswer = question?.correctAnswer || answer.correctAnswer;
+                const selectedAnswer = answer.selectedAnswer;
+
+                return (
+                  <Paper key={index} elevation={0} sx={{ p: 3, mb: 2, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}` }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                      <Typography variant="body1" fontWeight={600} sx={{ flex: 1 }}>
+                        Q{index + 1}. {questionText}
+                      </Typography>
+                      <Chip
+                        label={answer.isCorrect ? 'Correct' : 'Incorrect'}
+                        size="small"
+                        sx={{
+                          ml: 2,
+                          fontWeight: 600,
+                          bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
+                          color: answer.isCorrect ? tokens.accent : '#EF4444'
+                        }}
+                      />
+                    </Box>
+
+                  {questionType === 'multiple-choice' && options.length > 0 && (
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Options:</Typography>
-                      {answer.question?.options?.map((option, optIndex) => {
-                        const isSelected = isOptionSelected(option, answer.selectedAnswer);
-                        const isCorrect = isOptionCorrect(option, answer.question?.correctAnswer);
+                      {options.map((option, optIndex) => {
+                        const isSelected = isOptionSelected(option, selectedAnswer);
+                        const isCorrect = isOptionCorrect(option, correctAnswer);
                         const optionText = getOptionText(option);
                         return (
                           <Box
@@ -4369,11 +4377,11 @@ function StudentResultsSection({ searchQuery }) {
                     </Box>
                   )}
 
-                  {answer.question?.type === 'true-false' && (
+                  {questionType === 'true-false' && (
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
                       <Chip
-                        label={answer.selectedAnswer}
+                        label={selectedAnswer}
                         size="small"
                         sx={{
                           bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
@@ -4384,16 +4392,16 @@ function StudentResultsSection({ searchQuery }) {
                     </Box>
                   )}
 
-                  {answer.question?.type === 'short-answer' && (
+                  {questionType === 'short-answer' && (
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
                       <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
-                        <Typography variant="body2">{answer.selectedAnswer || 'No answer provided'}</Typography>
+                        <Typography variant="body2">{selectedAnswer || 'No answer provided'}</Typography>
                       </Paper>
-                      {answer.question?.correctAnswer && (
+                      {correctAnswer && (
                         <Box sx={{ mt: 1 }}>
                           <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 0.5 }}>Correct Answer:</Typography>
-                          <Typography variant="body2" sx={{ color: tokens.accent }}>{answer.question.correctAnswer}</Typography>
+                          <Typography variant="body2" sx={{ color: tokens.accent }}>{correctAnswer}</Typography>
                         </Box>
                       )}
                     </Box>
@@ -4402,12 +4410,13 @@ function StudentResultsSection({ searchQuery }) {
                   {answer.marksObtained !== undefined && (
                     <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${tokens.surfaceBorder}` }}>
                       <Typography variant="body2" sx={{ color: tokens.textMuted }}>
-                        Marks: <strong>{answer.marksObtained}</strong> / {answer.question?.marks || 0}
+                        Marks: <strong>{answer.marksObtained}</strong> / {question?.marks || 0}
                       </Typography>
                     </Box>
                   )}
                 </Paper>
-              ))}
+                );
+              })}
             </Box>
           ) : (
             <Typography sx={{ color: tokens.textMuted, textAlign: 'center', py: 4 }}>

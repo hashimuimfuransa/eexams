@@ -25,6 +25,7 @@ const nav = [
   { id: 'exam-requests', label: 'Exam Requests',           icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'subscriptions', label: 'Subscriptions',             icon: <AttachMoney sx={{ fontSize: 20 }} /> },
   { id: 'marketplace',   label: 'Exam Bank Marketplace',    icon: <School sx={{ fontSize: 20 }} /> },
+  { id: 'student-results', label: 'Student Results',         icon: <Assessment sx={{ fontSize: 20 }} /> },
   { id: 'analytics',     label: 'Analytics',               icon: <TrendingUp sx={{ fontSize: 20 }} /> },
   { id: 'settings',      label: 'Settings',                icon: <Settings sx={{ fontSize: 20 }} /> },
 ];
@@ -75,6 +76,7 @@ export default function SuperAdminDashboard() {
       {activeSection === 'exam-requests' && <ExamRequestsSection searchQuery={searchQuery} />}
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
       {activeSection === 'marketplace'   && <ExamBankMarketplaceSection searchQuery={searchQuery} />}
+      {activeSection === 'student-results' && <StudentResultsSection searchQuery={searchQuery} />}
       {activeSection === 'analytics'     && <AnalyticsSection stats={stats} />}
       {activeSection === 'settings'      && <SettingsSection user={user} />}
     </DashboardShell>
@@ -3459,14 +3461,17 @@ function ExamRequestsSection({ searchQuery }) {
     if (!approveDialog) return;
     setProcessing(true);
     try {
-      await api.put(`/superadmin/exam-requests/${approveDialog._id}/approve`, { waivePayment: false });
-      setSnack({ open: true, message: 'Exam request approved successfully', severity: 'success' });
+      const response = await api.put(`/superadmin/exam-requests/${approveDialog._id}/approve`, { waivePayment: false });
+      console.log('[SuperAdmin] Approval response:', response.data);
+      setSnack({ open: true, message: response.data.message || 'Exam request approved successfully', severity: 'success' });
       setApproveDialog(null);
       fetchRequests();
       fetchStats();
     } catch (error) {
-      console.error('Error approving request:', error);
-      setSnack({ open: true, message: 'Failed to approve request', severity: 'error' });
+      console.error('[SuperAdmin] Error approving request:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to approve request';
+      console.error('[SuperAdmin] Error message:', errorMessage);
+      setSnack({ open: true, message: errorMessage, severity: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -3781,6 +3786,189 @@ function ExamRequestsSection({ searchQuery }) {
       <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={snack.severity} variant="filled">{snack.message}</Alert>
       </Snackbar>
+    </Box>
+  );
+}
+
+/* ── STUDENT RESULTS ── */
+function StudentResultsSection({ searchQuery }) {
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [sortBy, setSortBy] = useState('date');
+
+  useEffect(() => {
+    fetchResults();
+  }, []);
+
+  const fetchResults = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/superadmin/results');
+      setResults(response.data.results || []);
+    } catch (error) {
+      console.error('Error fetching results:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredResults = results.filter(result => {
+    const matchesSearch = !searchQuery || 
+      result.student?.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      result.student?.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      result.student?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      result.exam?.title?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesStatus = filterStatus === 'all' || 
+      (filterStatus === 'completed' && result.isCompleted) ||
+      (filterStatus === 'incomplete' && !result.isCompleted);
+
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    if (sortBy === 'date') {
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    } else if (sortBy === 'score') {
+      const scoreA = a.maxPossibleScore > 0 ? (a.totalScore / a.maxPossibleScore) * 100 : 0;
+      const scoreB = b.maxPossibleScore > 0 ? (b.totalScore / b.maxPossibleScore) * 100 : 0;
+      return scoreB - scoreA;
+    } else if (sortBy === 'name') {
+      return `${a.student?.firstName} ${a.student?.lastName}`.localeCompare(`${b.student?.firstName} ${b.student?.lastName}`);
+    }
+    return 0;
+  });
+
+  const getScoreColor = (percentage) => {
+    if (percentage >= 70) return tokens.accent;
+    if (percentage >= 50) return tokens.warning;
+    return '#EF4444';
+  };
+
+  return (
+    <Box>
+      <SectionTitle>All Student Results</SectionTitle>
+
+      {/* Filter Bar */}
+      <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={4}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select label="Status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="all">All Status</MuiMenuItem>
+                <MuiMenuItem value="completed">Completed</MuiMenuItem>
+                <MuiMenuItem value="incomplete">In Progress</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Sort By</InputLabel>
+              <Select label="Sort By" value={sortBy} onChange={(e) => setSortBy(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="date">Most Recent</MuiMenuItem>
+                <MuiMenuItem value="score">Highest Score</MuiMenuItem>
+                <MuiMenuItem value="name">Student Name</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600 }}>
+                Total: {filteredResults.length} results
+              </Typography>
+            </Box>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress sx={{ color: tokens.accent }} />
+        </Box>
+      ) : filteredResults.length === 0 ? (
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 3, border: `1px dashed ${tokens.surfaceBorder}`, bgcolor: '#FAFBFC', textAlign: 'center' }}>
+          <Assessment sx={{ fontSize: 64, color: tokens.textMuted, mb: 2 }} />
+          <Typography sx={{ color: tokens.textMuted }}>No results found.</Typography>
+        </Paper>
+      ) : (
+        <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                  <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Student</TableCell>
+                  <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Email</TableCell>
+                  <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Exam</TableCell>
+                  <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Score</TableCell>
+                  <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Percentage</TableCell>
+                  <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>Date</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredResults.map((result) => {
+                  const percentage = result.maxPossibleScore > 0 
+                    ? Math.round((result.totalScore / result.maxPossibleScore) * 100) 
+                    : 0;
+                  return (
+                    <TableRow key={result._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Person fontSize="small" sx={{ color: tokens.textMuted }} />
+                          <Typography variant="body2" fontWeight={600}>
+                            {result.student?.firstName} {result.student?.lastName}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Email fontSize="small" sx={{ color: tokens.textMuted }} />
+                          <Typography variant="body2">{result.student?.email}</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>{result.exam?.title}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>
+                          {result.totalScore} / {result.maxPossibleScore}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={`${percentage}%`}
+                          size="small"
+                          sx={{
+                            fontWeight: 700,
+                            bgcolor: `${getScoreColor(percentage)}15`,
+                            color: getScoreColor(percentage)
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={result.isCompleted ? 'Completed' : 'In Progress'}
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            bgcolor: result.isCompleted ? 'rgba(12,189,115,0.1)' : 'rgba(245,158,11,0.1)',
+                            color: result.isCompleted ? tokens.accent : tokens.warning
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {new Date(result.createdAt).toLocaleDateString()}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
     </Box>
   );
 }

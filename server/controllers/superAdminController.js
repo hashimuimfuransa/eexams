@@ -3,6 +3,7 @@ const Exam = require('../models/Exam');
 const ActivityLog = require('../models/ActivityLog');
 const Result = require('../models/Result');
 const ExamRequest = require('../models/ExamRequest');
+const SharedExam = require('../models/SharedExam');
 const bcrypt = require('bcryptjs');
 
 // @desc    Create a new super admin
@@ -2513,22 +2514,30 @@ const superAdminApproveExamRequest = async (req, res) => {
   try {
     const { waivePayment } = req.body;
     
+    console.log('[SuperAdmin] Starting exam request approval for:', req.params.requestId);
+    
     const request = await ExamRequest.findById(req.params.requestId);
     
     if (!request) {
+      console.log('[SuperAdmin] Request not found:', req.params.requestId);
       return res.status(404).json({ message: 'Request not found' });
     }
     
+    console.log('[SuperAdmin] Request found, status:', request.status);
+    
     // Check if already processed
     if (request.status !== 'pending') {
+      console.log('[SuperAdmin] Request already processed:', request.status);
       return res.status(400).json({ message: 'Request has already been processed' });
     }
     
     // Import the processExamApproval function from marketplaceController
     const { processExamApproval } = require('./marketplaceController');
     
+    console.log('[SuperAdmin] Calling processExamApproval...');
     // Use the helper function to process approval
     const approvalResult = await processExamApproval(request, waivePayment);
+    console.log('[SuperAdmin] processExamApproval completed successfully');
     
     // Log the activity
     await ActivityLog.logActivity({
@@ -2543,6 +2552,7 @@ const superAdminApproveExamRequest = async (req, res) => {
       }
     });
     
+    console.log('[SuperAdmin] Sending success response');
     res.json({
       message: 'Request approved successfully by super admin',
       request: approvalResult.request,
@@ -2551,8 +2561,9 @@ const superAdminApproveExamRequest = async (req, res) => {
       student: approvalResult.studentUser
     });
   } catch (error) {
-    console.error('Super admin approve exam request error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('[SuperAdmin] Approve exam request error:', error);
+    console.error('[SuperAdmin] Error stack:', error.stack);
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 };
 

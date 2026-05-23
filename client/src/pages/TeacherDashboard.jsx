@@ -925,7 +925,6 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [publishExamId, setPublishExamId] = useState(null);
   const fileRef = useRef();
   const ansRef = useRef();
-  const autoSaveRef = useRef(null);
   // Question type configurator
   const [showQTypePanel, setShowQTypePanel] = useState(false);
   const [questionTypes, setQuestionTypes] = useState([
@@ -937,8 +936,6 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [chatMessages, setChatMessages] = useState([{ role: 'assistant', text: 'Hi! I\'m your AI teaching assistant. I can help you create exams, design assessment strategies, or answer questions about pedagogy.\n\n**Quick tips:**\n• Be specific about subject, grade level, and topics\n• Tell me how many questions you need\n• Mention any specific question types you prefer', suggestions: ['Create a math exam for Grade 10', 'How to assess critical thinking?', 'Design a science quiz with 20 questions'] }]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [autoSaving, setAutoSaving] = useState(false);
-  const [lastAutoSave, setLastAutoSave] = useState(null);
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [hasSpeechSupport, setHasSpeechSupport] = useState(false);
@@ -1001,62 +998,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     }
   };
 
-  // Auto-save functionality - saves every 2 minutes when there's a generated exam
-  useEffect(() => {
-    if (!generated || !generated.questions?.length) return;
-
-    const autoSave = async () => {
-      if (!generated?.title || !generated?.questions?.length) return;
-      setAutoSaving(true);
-      try {
-        const draftData = {
-          title: generated.title,
-          description: generated.description || generated.title,
-          timeLimit: generated.timeLimit || 60,
-          passingScore: generated.passingScore || 70,
-          totalMarks: generated.questions.reduce((s, q) => s + (q.marks || q.points || 1), 0),
-          questions: generated.questions.map(q => ({
-            text: q.text,
-            type: q.type || 'multiple-choice',
-            marks: q.marks || q.points || 1,
-            difficulty: q.difficulty || 'medium',
-            correctAnswer: q.correctAnswer || '',
-            options: q.options || [],
-            explanation: q.explanation || q.answerKey || '',
-            answerKey: q.answerKey || q.explanation || '',
-            gradingCriteria: q.gradingCriteria || q.keyPoints || [],
-            keyPoints: q.keyPoints || q.gradingCriteria || [],
-            acceptableAnswers: q.acceptableAnswers || [],
-            section: q.section || 'A',
-            leftItems: q.leftItems,
-            rightItems: q.rightItems,
-            items: q.items,
-            matchingPairs: q.matchingPairs,
-            itemsToOrder: q.itemsToOrder
-          }))
-        };
-        
-        await api.post('/exam/save-draft', draftData, { timeout: 30000 });
-        setLastAutoSave(new Date());
-        console.log('Auto-saved draft successfully');
-      } catch (err) {
-        console.error('Auto-save error:', err);
-      } finally {
-        setAutoSaving(false);
-      }
-    };
-
-    // Set up auto-save interval (every 2 minutes)
-    autoSaveRef.current = setInterval(autoSave, 120000); // 2 minutes in milliseconds
-
-    // Initial auto-save after 30 seconds
-    const initialSave = setTimeout(autoSave, 30000);
-
-    return () => {
-      if (autoSaveRef.current) clearInterval(autoSaveRef.current);
-      clearTimeout(initialSave);
-    };
-  }, [generated]);
+  // Auto-save disabled to prevent conflicts with manual saves and version errors
   const [showSuggestions, setShowSuggestions] = useState(true);
   const chatEndRef = useRef();
 
@@ -1300,7 +1242,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
         }))
       };
       
-      const res = await api.post('/exam/save-draft', draftData, { timeout: 30000 });
+      const res = await api.post('/exam/save-draft', draftData, { timeout: 120000 }); // 2 minutes for long exams
       alert(`Draft saved successfully! You can find it in the "My Exams" section.`);
       
       // Refresh the exams list to show the newly saved draft
@@ -1787,16 +1729,6 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
                 sx={{ color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 2, textTransform: 'none', fontSize: isXs ? 11 : 13 }}>
                 {savingDraft ? 'Saving...' : ' Save Draft'}
               </Button>
-              {autoSaving && (
-                <Typography sx={{ color: 'white', fontSize: isXs ? 10 : 11, ml: 1 }}>
-                  Auto-saving...
-                </Typography>
-              )}
-              {lastAutoSave && !autoSaving && (
-                <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: isXs ? 10 : 11, ml: 1 }}>
-                  Auto-saved {new Date(lastAutoSave).toLocaleTimeString()}
-                </Typography>
-              )}
               <Button size={isXs ? "small" : "small"} variant="contained" onClick={handlePublish} sx={{ bgcolor: 'white', color: tokens.accentDark, fontWeight: 700, borderRadius: 2, textTransform: 'none', fontSize: isXs ? 11 : 13 }}>Publish</Button>
             </Box>
           </Box>

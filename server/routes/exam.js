@@ -36,6 +36,55 @@ const {
 } = require('../middleware/planRestrictions');
 const groqClient = require('../utils/groqClient');
 
+// In-memory lock map for handling concurrent requests
+const examLocks = new Map();
+
+// Acquire a lock for an exam ID
+const acquireLock = (examId) => {
+  const lock = examLocks.get(examId);
+  if (lock) {
+    return false; // Lock already held
+  }
+  examLocks.set(examId, Date.now());
+  return true;
+};
+
+// Release a lock for an exam ID
+const releaseLock = (examId) => {
+  examLocks.delete(examId);
+};
+
+// Helper function to save with retry logic for VersionError
+const saveWithRetry = async (exam, maxRetries = 3) => {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await exam.save();
+      return { success: true };
+    } catch (error) {
+      if (error.name === 'VersionError' && attempt < maxRetries - 1) {
+        console.log(`VersionError on attempt ${attempt + 1}, reloading and retrying...`);
+        // Reload the document to get the latest version
+        const freshExam = await exam.constructor.findById(exam._id);
+        if (freshExam) {
+          // Copy the fields we want to save
+          freshExam.title = exam.title;
+          freshExam.description = exam.description;
+          freshExam.timeLimit = exam.timeLimit;
+          freshExam.passingScore = exam.passingScore;
+          freshExam.totalPoints = exam.totalPoints;
+          freshExam.sections = exam.sections;
+          exam = freshExam;
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+  return { success: false };
+};
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -561,21 +610,55 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
       createdQuestions[section].push(question._id);
     }
 
-    // Reload exam to get latest version and avoid VersionError
-    exam = await Exam.findById(exam._id);
+    // Use lock mechanism to prevent concurrent saves on the same exam
+    const lockKey = exam._id.toString();
+    let lockAcquired = false;
     
-    // Re-apply exam fields in case they were lost during reload
-    exam.title = title;
-    exam.description = description || title;
-    exam.timeLimit = timeLimit || 60;
-    exam.passingScore = passingScore || 70;
-    exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
-    
-    // Update exam with question IDs organized by section
-    exam.sections.forEach(section => {
-      section.questions = createdQuestions[section.name] || [];
-    });
-    await exam.save();
+    try {
+      // Try to acquire lock with exponential backoff
+      for (let i = 0; i < 5; i++) {
+        if (acquireLock(lockKey)) {
+          lockAcquired = true;
+          console.log(`Lock acquired for exam ${lockKey}`);
+          break;
+        }
+        // Wait with exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
+        await new Promise(resolve => setTimeout(resolve, 50 * Math.pow(2, i)));
+      }
+      
+      if (!lockAcquired) {
+        console.log(`Failed to acquire lock for exam ${lockKey} after 5 attempts`);
+        return res.status(429).json({ message: 'Another save operation is in progress. Please try again.' });
+      }
+      
+      // Reload exam to get latest version
+      exam = await Exam.findById(exam._id);
+      
+      // Re-apply exam fields in case they were lost during reload
+      exam.title = title;
+      exam.description = description || title;
+      exam.timeLimit = timeLimit || 60;
+      exam.passingScore = passingScore || 70;
+      exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
+      
+      // Update exam with question IDs organized by section
+      exam.sections.forEach(section => {
+        section.questions = createdQuestions[section.name] || [];
+      });
+      
+      // Save with retry logic
+      const saveResult = await saveWithRetry(exam, 3);
+      if (!saveResult.success) {
+        throw new Error('Failed to save exam after multiple retries');
+      }
+      
+    } finally {
+      // Always release the lock
+      if (lockAcquired) {
+        releaseLock(lockKey);
+        console.log(`Lock released for exam ${lockKey}`);
+      }
+    }
 
     res.status(201).json({
       message: 'Draft saved successfully',

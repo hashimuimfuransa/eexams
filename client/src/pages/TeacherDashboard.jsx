@@ -4539,8 +4539,23 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                           </Box>
                           <Chip label={`${sec.questions?.length || 0} Q`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent, fontWeight: 700 }} />
                         </Box>
+                        <Box sx={{ mt: 1 }}>
+                          <TextField
+                            fullWidth
+                            label="Question Count"
+                            type="number"
+                            size="small"
+                            value={sec.questionCount || sec.questions?.length || 0}
+                            onChange={e => {
+                              const updatedSections = [...editExam.sections];
+                              updatedSections[si] = { ...sec, questionCount: parseInt(e.target.value) || 0 };
+                              setEditExam(p => ({ ...p, sections: updatedSections }));
+                            }}
+                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                          />
+                        </Box>
                         {sec.questions && sec.questions.length > 0 && (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
                             {sec.questions.slice(0, 5).map((q, qi) => (
                               <Chip key={qi} label={`Q${qi + 1}`} size="small" sx={{ fontSize: 10, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }} />
                             ))}

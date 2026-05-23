@@ -115,6 +115,10 @@ const ExamSchema = new mongoose.Schema({
     description: {
       type: String
     },
+    questionCount: {
+      type: Number,
+      default: 0
+    },
     questions: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Question'

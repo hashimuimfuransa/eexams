@@ -820,6 +820,17 @@ const updateExam = async (req, res) => {
       console.log(`Updated sectionCRequiredQuestions to ${exam.sectionCRequiredQuestions} for exam ${exam._id}`);
     }
 
+    // Update section question counts if provided
+    if (req.body.sections && Array.isArray(req.body.sections)) {
+      for (const updatedSection of req.body.sections) {
+        const sectionIndex = exam.sections.findIndex(s => s.name === updatedSection.name);
+        if (sectionIndex !== -1 && updatedSection.questionCount !== undefined) {
+          exam.sections[sectionIndex].questionCount = parseInt(updatedSection.questionCount);
+          console.log(`Updated questionCount for section ${updatedSection.name} to ${exam.sections[sectionIndex].questionCount}`);
+        }
+      }
+    }
+
     const updatedExam = await exam.save();
 
     // If no answer file is set after update, generate AI model answers

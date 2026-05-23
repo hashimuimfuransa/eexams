@@ -406,7 +406,7 @@ const MarketplaceManager = ({ exam }) => {
 
       {/* Settings Tab */}
       {tabValue === 0 && (
-        <>
+        <Box>
       {/* Settings Card */}
       <Card elevation={0} sx={{ borderRadius: 3, border: '1px solid #e2e8f0', mb: 3 }}>
         <CardContent>
@@ -785,7 +785,8 @@ const MarketplaceManager = ({ exam }) => {
             )}
           </CardContent>
         </Card>
-        </>
+      )}
+      </Box>
       )}
 
       {/* Results Tab */}

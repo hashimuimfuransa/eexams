@@ -3430,12 +3430,29 @@ function areSemanticallySimilar(text1, text2) {
 const saveDraftExam = async (req, res) => {
   try {
     const { title, description, timeLimit, passingScore, questions, totalMarks } = req.body;
-    
+
     if (!title || !questions || questions.length === 0) {
       return res.status(400).json({ message: 'Title and at least one question are required' });
     }
 
-    // Create questions first
+    // Create draft exam first (without questions)
+    const exam = await Exam.create({
+      title,
+      description: description || title,
+      timeLimit: timeLimit || 60,
+      passingScore: passingScore || 70,
+      sections: [{
+        name: 'A',
+        description: 'Generated Questions',
+        questions: []
+      }],
+      createdBy: req.user._id,
+      status: 'draft',
+      isLocked: false,
+      totalPoints: totalMarks || 0
+    });
+
+    // Create questions with exam ID and section
     const createdQuestions = [];
     for (const q of questions) {
       const question = await Question.create({
@@ -3450,27 +3467,20 @@ const saveDraftExam = async (req, res) => {
         gradingCriteria: q.gradingCriteria || [],
         keyPoints: q.keyPoints || [],
         acceptableAnswers: q.acceptableAnswers || [],
-        createdBy: req.user._id
+        createdBy: req.user._id,
+        exam: exam._id,
+        section: 'A'
       });
       createdQuestions.push(question._id);
     }
 
-    // Create draft exam with single section
-    const exam = await Exam.create({
-      title,
-      description: description || title,
-      timeLimit: timeLimit || 60,
-      passingScore: passingScore || 70,
-      sections: [{
-        name: 'A',
-        description: 'Generated Questions',
-        questions: createdQuestions
-      }],
-      createdBy: req.user._id,
-      status: 'draft',
-      isLocked: false,
-      totalPoints: totalMarks || createdQuestions.reduce((sum, q) => sum + (q.marks || 1), 0)
-    });
+    // Update exam with question IDs and recalculate total points
+    exam.sections[0].questions = createdQuestions;
+    exam.totalPoints = totalMarks || createdQuestions.reduce((sum, id) => {
+      const q = questions.find(q => q._id === id);
+      return sum + (q?.marks || q?.points || 1);
+    }, 0);
+    await exam.save();
 
     res.status(201).json({
       message: 'Draft saved successfully',

@@ -2822,6 +2822,12 @@ function ExamBankMarketplaceSection({ searchQuery }) {
       setHasMore(newExams.length >= 20);
     } catch (err) {
       console.error('Failed to fetch marketplace exams:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        config: err.config
+      });
     } finally {
       setLoading(false);
     }

@@ -2194,6 +2194,8 @@ const getMarketplaceExamsWithStats = async (req, res) => {
   try {
     const { page = 1, limit = 50, status, search, sortBy = 'createdAt' } = req.query;
 
+    console.log('[SuperAdmin] Fetching marketplace exams with params:', { page, limit, status, search, sortBy });
+
     // Build query
     const query = {};
     if (status) {
@@ -2227,67 +2229,96 @@ const getMarketplaceExamsWithStats = async (req, res) => {
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
+    console.log('[SuperAdmin] Found exams:', exams.length);
+
     // Get total count
     const total = await Exam.countDocuments(query);
 
-    // Get comprehensive stats for each exam
+    // Get comprehensive stats for each exam using aggregation for better performance
     const ExamRequest = require('../models/ExamRequest');
     const Result = require('../models/Result');
 
-    const examsWithStats = await Promise.all(
-      exams.map(async (exam) => {
-        // Count requests
-        const requestCount = await ExamRequest.countDocuments({ exam: exam._id });
-        const approvedRequests = await ExamRequest.countDocuments({ exam: exam._id, status: 'approved' });
-        const pendingRequests = await ExamRequest.countDocuments({ exam: exam._id, status: 'pending' });
-        const rejectedRequests = await ExamRequest.countDocuments({ exam: exam._id, status: 'rejected' });
+    // Get all exam IDs for batch querying
+    const examIds = exams.map(e => e._id);
 
-        // Count completions
-        const completedCount = await Result.countDocuments({ exam: exam._id, isCompleted: true });
-        const inProgressCount = await Result.countDocuments({ exam: exam._id, isCompleted: false });
+    // Batch fetch all request stats at once
+    const requestStats = await ExamRequest.aggregate([
+      { $match: { exam: { $in: examIds } } },
+      { $group: {
+        _id: '$exam',
+        total: { $sum: 1 },
+        approved: { $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] } },
+        pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+        rejected: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } },
+        uniqueRequesters: { $addToSet: '$student' }
+      }}
+    ]);
 
-        // Calculate average score
-        const completedResults = await Result.find({ exam: exam._id, isCompleted: true });
-        let totalScore = 0;
-        let maxScore = 0;
-        completedResults.forEach(r => {
-          totalScore += r.totalScore || 0;
-          maxScore += r.maxPossibleScore || 0;
-        });
-        const averageScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+    // Batch fetch all result stats at once
+    const resultStats = await Result.aggregate([
+      { $match: { exam: { $in: examIds } } },
+      { $group: {
+        _id: '$exam',
+        completed: { $sum: { $cond: [{ $eq: ['$isCompleted', true] }, 1, 0] } },
+        inProgress: { $sum: { $cond: [{ $eq: ['$isCompleted', false] }, 1, 0] } },
+        totalScore: { $sum: '$totalScore' },
+        maxScore: { $sum: '$maxPossibleScore' }
+      }}
+    ]);
 
-        // Get unique users who requested
-        const uniqueRequesters = await ExamRequest.distinct('student', { exam: exam._id, student: { $ne: null } });
-        const uniqueRequestersCount = uniqueRequesters.length;
+    // Create lookup maps
+    const requestStatsMap = new Map();
+    requestStats.forEach(stat => {
+      requestStatsMap.set(stat._id.toString(), {
+        requestCount: stat.total,
+        approvedRequests: stat.approved,
+        pendingRequests: stat.pending,
+        rejectedRequests: stat.rejected,
+        uniqueRequestersCount: stat.uniqueRequesters.filter(id => id != null).length
+      });
+    });
 
-        // Get recent requests
-        const recentRequests = await ExamRequest.find({ exam: exam._id })
-          .populate('student', 'firstName lastName email')
-          .sort({ requestedAt: -1 })
-          .limit(5);
+    const resultStatsMap = new Map();
+    resultStats.forEach(stat => {
+      resultStatsMap.set(stat._id.toString(), {
+        completedCount: stat.completed,
+        inProgressCount: stat.inProgress,
+        averageScore: stat.maxScore > 0 ? Math.round((stat.totalScore / stat.maxScore) * 100) : 0
+      });
+    });
 
-        return {
-          ...exam.toObject(),
-          stats: {
-            requestCount,
-            approvedRequests,
-            pendingRequests,
-            rejectedRequests,
-            completedCount,
-            inProgressCount,
-            averageScore,
-            uniqueRequestersCount,
-            completionRate: requestCount > 0 ? Math.round((completedCount / requestCount) * 100) : 0
-          },
-          recentRequests
-        };
-      })
-    );
+    // Combine stats with exams
+    const examsWithStats = exams.map(exam => {
+      const reqStats = requestStatsMap.get(exam._id.toString()) || {
+        requestCount: 0,
+        approvedRequests: 0,
+        pendingRequests: 0,
+        rejectedRequests: 0,
+        uniqueRequestersCount: 0
+      };
+      const resStats = resultStatsMap.get(exam._id.toString()) || {
+        completedCount: 0,
+        inProgressCount: 0,
+        averageScore: 0
+      };
+
+      return {
+        ...exam.toObject(),
+        stats: {
+          ...reqStats,
+          ...resStats,
+          completionRate: reqStats.requestCount > 0 ? Math.round((resStats.completedCount / reqStats.requestCount) * 100) : 0
+        },
+        recentRequests: [] // Skip recent requests for performance
+      };
+    });
 
     // Get overall marketplace stats
     const totalMarketplaceExams = await Exam.countDocuments({ isPubliclyListed: true });
     const totalRequests = await ExamRequest.countDocuments();
     const totalCompletions = await Result.countDocuments({ isCompleted: true });
+
+    console.log('[SuperAdmin] Successfully fetched marketplace exams');
 
     res.json({
       exams: examsWithStats,
@@ -2306,7 +2337,16 @@ const getMarketplaceExamsWithStats = async (req, res) => {
     });
   } catch (error) {
     console.error('Get marketplace exams with stats error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

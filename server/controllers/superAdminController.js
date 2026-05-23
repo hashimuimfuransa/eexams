@@ -1474,9 +1474,9 @@ const getResultDetails = async (req, res) => {
     const formattedAnswers = result.answers.map(answer => {
       // Find the question in the exam
       let question = null;
-      if (exam && exam.sections) {
+      if (exam && exam.sections && answer.questionId) {
         for (const section of exam.sections) {
-          const found = section.questions.find(q => q._id.toString() === answer.questionId.toString());
+          const found = section.questions.find(q => q._id && q._id.toString() === answer.questionId.toString());
           if (found) {
             question = found;
             break;

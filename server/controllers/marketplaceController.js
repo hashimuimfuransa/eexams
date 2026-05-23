@@ -1285,6 +1285,7 @@ module.exports = {
   deleteLevel,
   addSubLevel,
   updateSubLevel,
+  processExamApproval,
   deleteSubLevel,
   getPersonalizedRecommendations,
   getExamCompletionStatus,

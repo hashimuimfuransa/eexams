@@ -3864,6 +3864,65 @@ const ExamInterface = () => {
                         {currentQuestion.text}
                       </Typography>
 
+                      {/* Passage display for comprehension questions */}
+                      {currentQuestion.passage && (
+                        <Box sx={{ mb: 3, p: 3, bgcolor: '#EFF6FF', borderRadius: 2, border: '2px solid #BFDBFE' }}>
+                          <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#1E40AF', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            📖 Passage
+                          </Typography>
+                          <Typography sx={{ fontSize: 14, color: '#1E3A8A', whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
+                            {currentQuestion.passage}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      {/* Word bank display for fill-in-blank questions */}
+                      {currentQuestion.wordBank && currentQuestion.wordBank.length > 0 && (
+                        <Box sx={{ mb: 3, p: 2, bgcolor: '#F0FDF4', borderRadius: 2, border: '2px solid #BBF7D0' }}>
+                          <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#166534', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            📝 Word Bank
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {currentQuestion.wordBank.map((word, idx) => (
+                              <Chip 
+                                key={idx} 
+                                label={word} 
+                                size="medium" 
+                                sx={{ 
+                                  bgcolor: '#DCFCE7', 
+                                  color: '#166534', 
+                                  fontSize: 13, 
+                                  fontWeight: 600,
+                                  border: '1px solid #86EFAC',
+                                  '&:hover': { bgcolor: '#BBF7D0' }
+                                }} 
+                              />
+                            ))}
+                          </Box>
+                        </Box>
+                      )}
+
+                      {/* Instructions display for grammar exercises */}
+                      {currentQuestion.instructions && (
+                        <Box sx={{ mb: 3, p: 2, bgcolor: '#FEF3C7', borderRadius: 2, border: '2px solid #FDE68A' }}>
+                          <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#92400E', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            ℹ️ Instructions
+                          </Typography>
+                          <Typography sx={{ fontSize: 14, color: '#78350F', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                            {currentQuestion.instructions}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      {/* Subsection title display */}
+                      {currentQuestion.subsectionTitle && (
+                        <Box sx={{ mb: 2 }}>
+                          <Typography sx={{ fontSize: 13, fontWeight: 700, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            {currentQuestion.subsectionTitle}
+                          </Typography>
+                        </Box>
+                      )}
+
                       {/* Question image display */}
                       {(currentQuestion.imageUrl || currentQuestion.image) && (
                         <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>

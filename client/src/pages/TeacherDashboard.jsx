@@ -76,17 +76,21 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
     'multiple-choice': '#3B82F6',
     'true-false': '#8B5CF6',
     'fill-blank': '#F59E0B',
+    'fill-in-blank': '#F59E0B',
     'open-ended': '#EC4899',
     'matching': '#10B981',
-    'ordering': '#6366F1'
+    'ordering': '#6366F1',
+    'short-answer': '#8B5CF6'
   };
   const typeIcons = {
     'multiple-choice': <RadioButtonChecked sx={{ fontSize: 14 }} />,
     'true-false': <CheckBox sx={{ fontSize: 14 }} />,
     'fill-blank': <ShortText sx={{ fontSize: 14 }} />,
+    'fill-in-blank': <ShortText sx={{ fontSize: 14 }} />,
     'open-ended': <FormatListNumbered sx={{ fontSize: 14 }} />,
     'matching': <FormatListNumbered sx={{ fontSize: 14 }} />,
-    'ordering': <FormatListNumbered sx={{ fontSize: 14 }} />
+    'ordering': <FormatListNumbered sx={{ fontSize: 14 }} />,
+    'short-answer': <ShortText sx={{ fontSize: 14 }} />
   };
 
   const handleSave = () => {
@@ -191,6 +195,15 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
             {localQ.text || 'Untitled Question'}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: isMobile ? 0.5 : 1, mt: 0.25, flexWrap: 'wrap' }}>
+            {localQ.subsectionTitle && (
+              <Chip label={localQ.subsectionTitle} size="small" sx={{ height: 16, fontSize: 9, bgcolor: '#E0E7FF', color: '#3730A3', fontWeight: 600 }} />
+            )}
+            {localQ.wordBank && localQ.wordBank.length > 0 && (
+              <Chip label="Word Bank" size="small" sx={{ height: 16, fontSize: 9, bgcolor: '#DCFCE7', color: '#166534', fontWeight: 600 }} />
+            )}
+            {localQ.passage && (
+              <Chip label="Passage" size="small" sx={{ height: 16, fontSize: 9, bgcolor: '#DBEAFE', color: '#1E40AF', fontWeight: 600 }} />
+            )}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: tokens.textMuted, fontSize: isMobile ? 10 : 11 }}>
               {typeIcons[qType]}
               <span style={{ textTransform: 'capitalize', fontSize: isMobile ? 9 : 11 }}>{qType.replace('-', ' ')}</span>
@@ -281,6 +294,53 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
               {qType.replace('-', ' ')} Question Editor
             </Typography>
           </Box>
+
+          {/* Display Context Information (Passage, Word Bank, Instructions) */}
+          {localQ.passage && (
+            <Box sx={{ mb: 2, p: 1.5, bgcolor: '#EFF6FF', borderRadius: 2, border: '1px solid #BFDBFE' }}>
+              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#1E40AF', mb: 0.5, textTransform: 'uppercase' }}>
+                📖 Passage
+              </Typography>
+              <Typography sx={{ fontSize: 12, color: '#1E3A8A', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                {localQ.passage}
+              </Typography>
+            </Box>
+          )}
+          
+          {localQ.wordBank && localQ.wordBank.length > 0 && (
+            <Box sx={{ mb: 2, p: 1.5, bgcolor: '#F0FDF4', borderRadius: 2, border: '1px solid #BBF7D0' }}>
+              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#166534', mb: 0.5, textTransform: 'uppercase' }}>
+                📝 Word Bank
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {localQ.wordBank.map((word, idx) => (
+                  <Chip key={idx} label={word} size="small" sx={{ bgcolor: '#DCFCE7', color: '#166534', fontSize: 11, fontWeight: 600 }} />
+                ))}
+              </Box>
+            </Box>
+          )}
+          
+          {localQ.instructions && (
+            <Box sx={{ mb: 2, p: 1.5, bgcolor: '#FEF3C7', borderRadius: 2, border: '1px solid #FDE68A' }}>
+              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#92400E', mb: 0.5, textTransform: 'uppercase' }}>
+                ℹ️ Instructions
+              </Typography>
+              <Typography sx={{ fontSize: 12, color: '#78350F', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                {localQ.instructions}
+              </Typography>
+            </Box>
+          )}
+
+          {localQ.subsectionTitle && (
+            <Box sx={{ mb: 2 }}>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, color: tokens.textSecondary, textTransform: 'uppercase' }}>
+                Subsection
+              </Typography>
+              <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontWeight: 600 }}>
+                {localQ.subsectionTitle}
+              </Typography>
+            </Box>
+          )}
 
           <Grid container spacing={2.5}>
             {/* Question Text - Full Width */}
@@ -884,16 +944,6 @@ const PLAN_Q_LIMITS = {
   enterprise: { maxQuestions: 100, maxPerType: 50 },
 };
 
-const QUESTION_TYPES_META = [
-  { type: 'multiple-choice', label: 'Multiple Choice', icon: '☑', color: '#0CBD73' },
-  { type: 'true-false',      label: 'True / False',    icon: '⇄', color: '#6366F1' },
-  { type: 'short-answer',    label: 'Short Answer',    icon: '✏', color: '#F59E0B' },
-  { type: 'open-ended',      label: 'Open Ended',      icon: '📝', color: '#EC4899' },
-  { type: 'fill-in-blank',   label: 'Fill in Blank',   icon: '___', color: '#0EA5E9' },
-  { type: 'matching',        label: 'Matching',        icon: '⇄', color: '#10B981' },
-  { type: 'ordering',         label: 'Ordering',         icon: '⇅', color: '#8B5CF6' },
-];
-
 /* ── HOME ── */
 function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
@@ -905,6 +955,8 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [manualPublishing, setManualPublishing] = useState(false);
   const [manualError, setManualError] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [pastedExam, setPastedExam] = useState('');
+  const [examInputMode, setExamInputMode] = useState('describe'); // 'describe' or 'paste'
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [generated, setGenerated] = useState(null);
@@ -925,15 +977,9 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [publishExamId, setPublishExamId] = useState(null);
   const fileRef = useRef();
   const ansRef = useRef();
-  // Question type configurator
-  const [showQTypePanel, setShowQTypePanel] = useState(false);
-  const [questionTypes, setQuestionTypes] = useState([
-    { type: 'multiple-choice', label: 'Multiple Choice', count: 5 },
-    { type: 'open-ended',      label: 'Open Ended',      count: 2 },
-  ]);
   // AI chat assistant - Enhanced with smart guidance
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState([{ role: 'assistant', text: 'Hi! I\'m your AI teaching assistant. I can help you create exams, design assessment strategies, or answer questions about pedagogy.\n\n**Quick tips:**\n• Be specific about subject, grade level, and topics\n• Tell me how many questions you need\n• Mention any specific question types you prefer', suggestions: ['Create a math exam for Grade 10', 'How to assess critical thinking?', 'Design a science quiz with 20 questions'] }]);
+  const [chatMessages, setChatMessages] = useState([{ role: 'assistant', text: 'Hi! I\'m your AI teaching assistant. I can help you create exams, design assessment strategies, or answer questions about pedagogy.\n\n**Quick tips:**\n• Be specific about subject, grade level, and topics\n• Tell me how many questions you need and what types (e.g., "10 multiple-choice, 5 short-answer")\n• Include all requirements in your prompt for best results', suggestions: ['Create a math exam for Grade 10 with 15 multiple-choice questions', 'How to assess critical thinking?', 'Design a science quiz with 20 questions: 10 multiple-choice, 5 true-false, 5 short-answer'] }]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   // Voice recording state
@@ -1021,24 +1067,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
   const effectivePlan = (user?.subscriptionPlan || 'free').toLowerCase();
   const planLimits = PLAN_Q_LIMITS[effectivePlan] || PLAN_Q_LIMITS.free;
-  const totalQSelected = questionTypes.reduce((s, qt) => s + qt.count, 0);
   const canUseAI = planLimits.maxQuestions > 0;
-
-  const updateQTypeCount = (type, delta) => {
-    setQuestionTypes(prev => prev.map(qt => {
-      if (qt.type !== type) return qt;
-      const next = Math.max(0, Math.min(qt.count + delta, planLimits.maxPerType));
-      return { ...qt, count: next };
-    }).filter(qt => qt.count > 0));
-  };
-
-  const addQType = (meta) => {
-    if (questionTypes.find(qt => qt.type === meta.type)) return;
-    if (totalQSelected >= planLimits.maxQuestions) return;
-    setQuestionTypes(prev => [...prev, { type: meta.type, label: meta.label, count: 1 }]);
-  };
-
-  const removeQType = (type) => setQuestionTypes(prev => prev.filter(qt => qt.type !== type));
 
   // Smart message analyzer to detect incomplete inputs
   const analyzeMessage = (msg) => {
@@ -1137,12 +1166,15 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const avgPerf = results.length ? Math.round(results.reduce((s, r) => s + ((r.percentage ?? r.scores?.percentage ?? 0)), 0) / results.length) : (stats?.avgScore ? Math.round(stats.avgScore) : 0);
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (examInputMode === 'describe' && !prompt.trim()) return;
+    if (examInputMode === 'paste' && !pastedExam.trim()) return;
     if (!canUseAI) { setAiError('AI exam generation requires Basic plan or higher. Please upgrade your subscription.'); return; }
     setAiLoading(true); setAiError('');
-    const activeTypes = questionTypes.filter(qt => qt.count > 0);
     try {
-      const res = await api.post('/exam/ai-generate', { prompt, questionTypes: activeTypes }, { timeout: 90000 });
+      const payload = examInputMode === 'paste' 
+        ? { prompt: prompt.trim(), pastedExam: pastedExam.trim() }
+        : { prompt: prompt.trim() };
+      const res = await api.post('/exam/ai-generate', payload, { timeout: 90000 });
       setGenerated(res.data);
     }
     catch (err) { setAiError(err.response?.data?.message || 'AI generation failed.'); }
@@ -1493,29 +1525,70 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
                 </Paper>
               )}
 
+              {/* Input mode toggle */}
+              <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
+                <Button
+                  size="small"
+                  onClick={() => setExamInputMode('describe')}
+                  sx={{
+                    borderRadius: 2,
+                    px: 2,
+                    py: 1,
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    fontFamily: "DM Sans,sans-serif",
+                    bgcolor: examInputMode === 'describe' ? tokens.primary : '#F1F5F9',
+                    color: examInputMode === 'describe' ? 'white' : tokens.textSecondary,
+                    '&:hover': { bgcolor: examInputMode === 'describe' ? tokens.primaryDark : '#E2E8F0' }
+                  }}
+                >
+                  ✏️ Describe Exam
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => setExamInputMode('paste')}
+                  sx={{
+                    borderRadius: 2,
+                    px: 2,
+                    py: 1,
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    fontFamily: "DM Sans,sans-serif",
+                    bgcolor: examInputMode === 'paste' ? tokens.primary : '#F1F5F9',
+                    color: examInputMode === 'paste' ? 'white' : tokens.textSecondary,
+                    '&:hover': { bgcolor: examInputMode === 'paste' ? tokens.primaryDark : '#E2E8F0' }
+                  }}
+                >
+                  📋 Paste Exam
+                </Button>
+              </Box>
+
               {/* Smart exam description input with guidance */}
               <Box sx={{ mb: 2 }}>
-                <Box sx={{ position: 'relative' }}>
-                  <TextField 
-                    fullWidth 
-                    multiline 
-                    minRows={isXs ? 4 : 3} 
-                    maxRows={isXs ? 8 : 6} 
-                    placeholder={isXs ? "Describe your exam:\n• Subject & topic\n• Grade level\n• Number of questions\n• Duration" : "Describe your exam in detail for best results:\n• Subject: What topic or subject area?\n• Grade/Level: What grade or class level?\n• Topics: What specific content to cover?\n• Question count: How many questions? (e.g., 10 MCQ, 5 open-ended)\n• Duration: How long should the exam be?\n\nExample: 'Biology exam for Grade 10 covering cell division and photosynthesis with 15 multiple-choice questions and 3 open-ended questions, 60 minutes duration'"}
-                    value={prompt} 
-                    onChange={e => setPrompt(e.target.value)}
-                    disabled={!canUseAI}
-                    sx={{ 
-                      '& .MuiOutlinedInput-root': { 
-                        borderRadius: 2, 
-                        fontFamily: "DM Sans,sans-serif", 
-                        bgcolor: '#FAFBFC', 
-                        fontSize: isXs ? 13 : 14, 
-                        lineHeight: 1.6,
-                        paddingRight: isRecording ? '60px' : '48px'
-                      } 
-                    }} 
-                  />
+                {examInputMode === 'describe' ? (
+                  <Box sx={{ position: 'relative' }}>
+                    <TextField 
+                      fullWidth 
+                      multiline 
+                      minRows={isXs ? 4 : 3} 
+                      maxRows={isXs ? 8 : 6} 
+                      placeholder={isXs ? "Describe your exam:\n• Subject & topic\n• Grade level\n• Number of questions & types\n• Duration" : "Describe your exam in detail for best results:\n• Subject: What topic or subject area?\n• Grade/Level: What grade or class level?\n• Topics: What specific content to cover?\n• Question count & types: How many questions of each type? (e.g., 10 multiple-choice, 5 short-answer, 3 open-ended)\n• Duration: How long should the exam be?\n\nExample: 'Biology exam for Grade 10 covering cell division and photosynthesis with 15 multiple-choice questions, 5 short-answer questions, and 3 open-ended questions, 60 minutes duration'"}
+                      value={prompt} 
+                      onChange={e => setPrompt(e.target.value)}
+                      disabled={!canUseAI}
+                      sx={{ 
+                        '& .MuiOutlinedInput-root': { 
+                          borderRadius: 2, 
+                          fontFamily: "DM Sans,sans-serif", 
+                          bgcolor: '#FAFBFC', 
+                          fontSize: isXs ? 13 : 14, 
+                          lineHeight: 1.6,
+                          paddingRight: isRecording ? '60px' : '48px'
+                        } 
+                      }} 
+                    />
                   {/* Voice recording button */}
                   {hasSpeechSupport && canUseAI && (
                     <Box sx={{ position: 'absolute', right: isXs ? 6 : 8, top: isXs ? 6 : 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
@@ -1571,79 +1644,91 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
                       </IconButton>
                     </Tooltip>
                   )}
-                </Box>
-                {/* Voice command tip */}
-                {hasSpeechSupport && canUseAI && !prompt && (
-                  <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: 12 }}>
-                    🎙️ <strong>Voice Command:</strong> Click the microphone button to describe your exam verbally. Speak clearly and include subject, grade level, topics, and question types for best results.
-                  </Alert>
-                )}
-                {/* Input validation hint */}
-                {prompt.trim() && prompt.trim().length < 20 && (
-                  <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: 12 }}>
-                    💡 Tip: Add more details like subject, grade level, and specific topics for better results.
-                  </Alert>
-                )}
-                {prompt.trim() && prompt.trim().length >= 20 && (
-                  <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <CheckCircle sx={{ fontSize: 14, color: tokens.accent }} />
-                    <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
-                      Good! Ready to create a quality exam.
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-
-              {/* Question type configurator */}
-              <Box sx={{ mb: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Button size="small" onClick={() => setShowQTypePanel(v => !v)}
-                    sx={{ borderRadius: 2, color: tokens.textSecondary, bgcolor: '#F1F5F9', fontFamily: "DM Sans,sans-serif", fontSize: 12, textTransform: 'none', px: 1.5, fontWeight: 600, '&:hover': { bgcolor: '#E2E8F0' } }}>
-                    ≡ Question Types {showQTypePanel ? '▲' : '▼'}
-                  </Button>
-                </Box>
-
-                {/* Selected types row (always visible) */}
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: showQTypePanel ? 1.5 : 0 }}>
-                  {questionTypes.map(qt => {
-                    const meta = QUESTION_TYPES_META.find(m => m.type === qt.type);
-                    return (
-                      <Box key={qt.type} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1.25, py: 0.5, borderRadius: 2, border: `1.5px solid ${meta?.color || tokens.accent}`, bgcolor: `${meta?.color || tokens.accent}12` }}>
-                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: meta?.color || tokens.accent, fontFamily: "DM Sans,sans-serif" }}>{meta?.icon} {qt.label}</Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, ml: 0.5 }}>
-                          <Box onClick={() => updateQTypeCount(qt.type, -1)} sx={{ width: 18, height: 18, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: tokens.textSecondary, '&:hover': { bgcolor: 'rgba(0,0,0,0.15)' } }}>−</Box>
-                          <Typography sx={{ fontSize: 12, fontWeight: 800, color: tokens.textPrimary, minWidth: 18, textAlign: 'center' }}>{qt.count}</Typography>
-                          <Box onClick={() => updateQTypeCount(qt.type, 1)} sx={{ width: 18, height: 18, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: tokens.textSecondary, '&:hover': { bgcolor: 'rgba(0,0,0,0.15)' } }}>+</Box>
-                        </Box>
-                        <Box onClick={() => removeQType(qt.type)} sx={{ ml: 0.25, cursor: 'pointer', color: tokens.textMuted, fontSize: 13, lineHeight: 1, '&:hover': { color: '#EF4444' } }}>×</Box>
-                      </Box>
-                    );
-                  })}
-                </Box>
-
-                {/* Expanded type picker */}
-                {showQTypePanel && (
-                  <Box sx={{ p: 1.5, border: `1px solid ${tokens.surfaceBorder}`, borderRadius: 2, bgcolor: '#F8FAFC' }}>
-                    <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontWeight: 600, mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>Add Question Type</Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                      {QUESTION_TYPES_META.map(meta => {
-                        const already = questionTypes.find(qt => qt.type === meta.type);
-                        const atMax = totalQSelected >= planLimits.maxQuestions;
-                        return (
-                          <Box key={meta.type} onClick={() => !already && !atMax && addQType(meta)}
-                            sx={{ px: 1.5, py: 0.75, borderRadius: 2, border: `1.5px solid ${already ? meta.color : tokens.surfaceBorder}`, bgcolor: already ? `${meta.color}18` : 'white', cursor: (already || atMax) ? 'default' : 'pointer', opacity: atMax && !already ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 0.75, transition: 'all 0.15s', '&:hover': { borderColor: (already || atMax) ? undefined : meta.color } }}>
-                            <Typography sx={{ fontSize: 13 }}>{meta.icon}</Typography>
-                            <Typography sx={{ fontSize: 12, fontWeight: 600, color: already ? meta.color : tokens.textSecondary, fontFamily: "DM Sans,sans-serif" }}>{meta.label}</Typography>
-                            {already && <Chip label="added" size="small" sx={{ height: 16, fontSize: 9, fontWeight: 700, bgcolor: `${meta.color}22`, color: meta.color, ml: 0.5, '& .MuiChip-label': { px: 0.75 } }} />}
-                          </Box>
-                        );
-                      })}
+                  {/* Voice command tip */}
+                  {hasSpeechSupport && canUseAI && !prompt && (
+                    <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: 12 }}>
+                      🎙️ <strong>Voice Command:</strong> Click the microphone button to describe your exam verbally. Include subject, grade level, number of questions, and question types (e.g., "Create a Grade 10 math exam with 15 multiple-choice questions").
+                    </Alert>
+                  )}
+                  {/* Input validation hint */}
+                  {prompt.trim() && prompt.trim().length < 20 && (
+                    <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: 12 }}>
+                      💡 Tip: Add more details like subject, grade level, question types and counts for better results.
+                    </Alert>
+                  )}
+                  {prompt.trim() && prompt.trim().length >= 20 && (
+                    <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <CheckCircle sx={{ fontSize: 14, color: tokens.accent }} />
+                      <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
+                        Good! Ready to create a quality exam.
+                      </Typography>
                     </Box>
-                    {!canUseAI && (
-                      <Box sx={{ mt: 1.5, p: 1, borderRadius: 1.5, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: 12, fontWeight: 600 }}>
-                        Exam creation requires Basic plan or higher.
-                      </Box>
-                    )}
+                  )}
+                </Box>
+                ) : (
+                  <Box>
+                    <TextField 
+                      fullWidth 
+                      multiline 
+                      minRows={isXs ? 6 : 5} 
+                      maxRows={isXs ? 12 : 10} 
+                      placeholder="Paste your exam content here including questions and marking guide. The AI will extract the EXACT questions from your pasted exam and convert them to the proper format. The same questions will be used - no new questions will be created.
+
+Example format:
+SECTION A: Multiple Choice (20 marks)
+1. What is the capital of Rwanda?
+   A. Kigali
+   B. Gisenyi
+   C. Butare
+   D. Ruhengeri
+   Answer: A (2 marks)
+
+2. Which of the following is a component of a cell?
+   A. Nucleus
+   B. Mitochondria
+   C. Both A and B
+   D. None of the above
+   Answer: C (2 marks)
+
+SECTION B: Short Answer (10 marks)
+3. Explain the process of photosynthesis in 3-4 sentences.
+   Answer: Photosynthesis is the process by which plants convert light energy into chemical energy... (5 marks)
+
+4. Define the term 'mitosis'.
+   Answer: Mitosis is the process of cell division... (5 marks)"
+                      value={pastedExam} 
+                      onChange={e => setPastedExam(e.target.value)}
+                      disabled={!canUseAI}
+                      sx={{ 
+                        '& .MuiOutlinedInput-root': { 
+                          borderRadius: 2, 
+                          fontFamily: "DM Sans,sans-serif", 
+                          bgcolor: '#FAFBFC', 
+                          fontSize: isXs ? 12 : 13, 
+                          lineHeight: 1.6,
+                        } 
+                      }} 
+                    />
+                    <TextField 
+                      fullWidth 
+                      multiline 
+                      minRows={isXs ? 2 : 2} 
+                      maxRows={isXs ? 4 : 3} 
+                      placeholder="Optional: Add any specific instructions for the new exam (e.g., 'Make it about the same topic but for Grade 11 instead of Grade 10')"
+                      value={prompt} 
+                      onChange={e => setPrompt(e.target.value)}
+                      disabled={!canUseAI}
+                      sx={{ 
+                        mt: 2,
+                        '& .MuiOutlinedInput-root': { 
+                          borderRadius: 2, 
+                          fontFamily: "DM Sans,sans-serif", 
+                          bgcolor: '#FAFBFC', 
+                          fontSize: isXs ? 12 : 13, 
+                          lineHeight: 1.5,
+                        } 
+                      }} 
+                    />
                   </Box>
                 )}
               </Box>
@@ -1651,7 +1736,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', flexDirection: isXs ? 'column' : 'row' }}>
                 <Box sx={{ flexGrow: 1 }} />
                 <Button variant="contained" startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesome />}
-                  onClick={handleGenerate} disabled={aiLoading || !prompt.trim() || !canUseAI}
+                  onClick={handleGenerate} disabled={aiLoading || (examInputMode === 'describe' && !prompt.trim()) || (examInputMode === 'paste' && !pastedExam.trim()) || !canUseAI}
                   sx={{ borderRadius: 2.5, fontWeight: 700, px: isXs ? 2.5 : 3, py: isXs ? 1.25 : 1.5, textTransform: 'none', background: canUseAI ? gradients.brand : '#CBD5E1', boxShadow: 'none', fontFamily: "DM Sans,sans-serif", fontSize: isXs ? 13 : 14, width: isXs ? '100%' : 'auto', '&:hover': { boxShadow: canUseAI ? '0 4px 14px rgba(12,189,115,0.35)' : 'none' } }}>
                   {aiLoading ? 'Generating…' : '✦ Generate Exam'}
                 </Button>

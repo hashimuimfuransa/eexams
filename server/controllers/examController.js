@@ -419,6 +419,10 @@ const createExam = async (req, res) => {
               rightColumn: qd.rightItems || qd.matchingPairs?.rightColumn || [],
               correctPairs: qd.matchingPairs?.correctPairs || qd.correctAnswer || []
             };
+            // Also store leftItems and rightItems for new structure
+            questionData.leftItems = qd.leftItems || [];
+            questionData.rightItems = qd.rightItems || [];
+            questionData.correctMatches = qd.correctMatches || {};
           }
 
           // Add ordering-specific fields

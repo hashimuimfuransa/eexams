@@ -440,15 +440,25 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         explanation: q.explanation || '',
         answerKey: q.answerKey || q.explanation || '',
         gradingCriteria: normalizedGradingCriteria,
-        keyPoints: Array.isArray(q.keyPoints) 
+        keyPoints: Array.isArray(q.keyPoints)
           ? q.keyPoints.map(kp => typeof kp === 'string' ? kp : JSON.stringify(kp))
-          : (typeof q.keyPoints === 'string' 
+          : (typeof q.keyPoints === 'string'
               ? (q.keyPoints.startsWith('[') ? JSON.parse(q.keyPoints).map(kp => typeof kp === 'string' ? kp : JSON.stringify(kp)) : [q.keyPoints])
               : []),
         acceptableAnswers: q.acceptableAnswers || [],
         exam: exam._id,
         section: section,
-        createdBy: req.user._id
+        createdBy: req.user._id,
+        // Preserve new structure fields from pasted exams
+        leftItems: q.leftItems || [],
+        rightItems: q.rightItems || [],
+        correctMatches: q.correctMatches || {},
+        wordBank: q.wordBank || [],
+        passage: q.passage || '',
+        subsectionTitle: q.subsectionTitle || '',
+        subsection: q.subsection || '',
+        instructions: q.instructions || '',
+        sectionTitle: q.sectionTitle || ''
       };
 
       // Handle options - preserve user's options but ensure correct structure
@@ -709,17 +719,238 @@ router.get('/drafts', auth, isAdminOrTeacher, async (req, res) => {
 // AI exam generation route - requires Basic plan or higher
 router.post('/ai-generate', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
   try {
-    const { prompt, questionTypes } = req.body;
+    const { prompt, pastedExam } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ message: 'Prompt is required' });
 
     // Resolve the user's effective plan
     const { plan } = await resolveEffectivePlan(req.user);
     const limits = AI_PLAN_LIMITS[plan] || AI_PLAN_LIMITS.basic;
 
-    // Validate and normalise questionTypes coming from the client
-    let qtConfig = Array.isArray(questionTypes) && questionTypes.length > 0
-      ? questionTypes
-      : [{ type: 'multiple-choice', count: 5, label: 'Multiple Choice' }, { type: 'open-ended', count: 2, label: 'Open-Ended' }];
+    let qtConfig;
+    let examContext = '';
+
+    // If pasted exam is provided, parse it to extract the actual questions
+    if (pastedExam && pastedExam.trim()) {
+      const parseExamPrompt = `You are extracting the FULL structure of a pasted exam including passages, instructions, word banks, examples, and ALL questions. Preserve the hierarchical structure exactly as it appears.
+
+PASTED EXAM:
+"${pastedExam.trim()}"
+
+TEACHER INSTRUCTIONS: "${prompt.trim()}"
+
+IMPORTANT: The pasted exam includes a TEACHER'S MARKING GUIDE at the end. You MUST extract ALL answers from this marking guide and include them in the correctAnswer field for each question.
+
+Return ONLY a JSON object with this structure:
+{
+  "title": "exam title from pasted exam or based on instructions",
+  "description": "exam description",
+  "timeLimit": 60,
+  "passingScore": 70,
+  "sections": [
+    {
+      "name": "A",
+      "title": "COMPREHENSION (20 Marks)",
+      "description": "Read the passage carefully and answer the questions.",
+      "passage": "The full passage text if present (e.g., My name is Keza...)",
+      "subsections": [
+        {
+          "name": "A",
+          "title": "Match the words with their meanings. (5 marks)",
+          "wordBank": ["sunny", "library", "singing", "playground", "rainy"],
+          "instructions": "Fill in the blanks using the correct words from the box.",
+          "questions": [
+            {
+              "text": "We read books in the ____________.",
+              "type": "fill-in-blank",
+              "points": 2,
+              "correctAnswer": "library"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "text": "What is the name of the school?",
+          "type": "short-answer",
+          "points": 2,
+          "correctAnswer": "Sunrise Primary School"
+        },
+        {
+          "text": "There ____ many books in the library.",
+          "type": "multiple-choice",
+          "points": 1,
+          "options": [
+            {"text": "is", "isCorrect": false, "letter": "a"},
+            {"text": "are", "isCorrect": true, "letter": "b"},
+            {"text": "am", "isCorrect": false, "letter": "c"}
+          ],
+          "correctAnswer": "b"
+        }
+      ]
+    }
+  ]
+}
+
+CRITICAL RULES:
+- PRESERVE the full exam structure including passages, instructions, word banks, examples
+- Extract passages (like comprehension passages) into the "passage" field
+- Extract section titles with marks (e.g., "COMPREHENSION (20 Marks)")
+- Extract subsections (A, B, C within a section) with their own titles and instructions
+- Extract word banks/boxes into the "wordBank" array
+- Extract examples into the "examples" array if present
+- Extract ALL questions as individual items
+- For matching exercises: Create ONE question with type "matching" that contains ALL matching pairs. Use this structure:
+  {
+    "text": "Match the words with their meanings",
+    "type": "matching",
+    "points": 5,
+    "leftItems": ["Doctor", "School", "Market", "Library", "Farmer"],
+    "rightItems": ["A person who treats sick people", "A place where children learn", "A place where people buy and sell things", "A place with books", "A person who grows crops"],
+    "correctMatches": {"Doctor": 1, "School": 0, "Market": 2, "Library": 3, "Farmer": 4},
+    "correctAnswer": "1-b, 2-a, 3-c, 4-d, 5-e"
+  }
+- For fill-in-blank: each blank is a separate question with type "fill-in-blank". Extract the exact word from the marking guide as correctAnswer.
+- For grammar exercises: each sentence/item is a separate question. Extract the model answer from the marking guide as correctAnswer.
+- For multiple-choice: each MCQ is a separate question. Mark the correct option with isCorrect: true and set correctAnswer to the letter (e.g., "b").
+- Extract the exact text from the pasted exam
+- CRITICAL: Use the TEACHER'S MARKING GUIDE to find ALL correct answers. The marking guide is at the end of the pasted exam.
+- For short-answer questions: extract the exact answer from the marking guide
+- For open-ended questions: extract the model answer or key points from the marking guide
+- Supported types: multiple-choice, true-false, short-answer, open-ended, fill-in-blank, matching, ordering
+- If a section has subsections (A, B, C), use the "subsections" array
+- If a section has no subsections, put questions directly in "questions" array
+- Keep the hierarchical structure intact - this is a professional exam format
+- EVERY question MUST have a correctAnswer field populated from the marking guide`;
+
+      try {
+        const parseResponse = await groqClient.generateContent(parseExamPrompt, {
+          model: 'balanced',
+          jsonMode: true,
+          temperature: 0.1,
+          maxTokens: 16384
+        });
+        
+        let parseText = parseResponse.text || '';
+        parseText = parseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        
+        console.log('Parsed exam text length:', parseText.length);
+        
+        const parsed = JSON.parse(parseText);
+        console.log('Parsed exam structure:', JSON.stringify(parsed, null, 2).substring(0, 500));
+        
+        // Extract question types from the parsed exam for plan limits
+        const extractedTypes = {};
+        if (parsed.sections) {
+          parsed.sections.forEach(section => {
+            if (section.questions) {
+              section.questions.forEach(q => {
+                const type = q.type || 'multiple-choice';
+                extractedTypes[type] = (extractedTypes[type] || 0) + 1;
+              });
+            }
+          });
+        }
+        
+        qtConfig = Object.entries(extractedTypes).map(([type, count]) => ({
+          type,
+          count,
+          label: type.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())
+        }));
+        
+        if (qtConfig.length === 0) {
+          qtConfig = [{ type: 'multiple-choice', count: 10, label: 'Multiple Choice' }];
+        }
+        
+        console.log('Extracted question types:', qtConfig);
+        
+        // Flatten questions from sections and subsections into top-level questions array for frontend compatibility
+        const flattenedQuestions = [];
+        if (parsed.sections) {
+          parsed.sections.forEach(section => {
+            // Add questions directly in the section
+            if (section.questions) {
+              section.questions.forEach(q => {
+                flattenedQuestions.push({
+                  ...q,
+                  section: section.name || 'A',
+                  sectionTitle: section.title || '',
+                  passage: section.passage || null
+                });
+              });
+            }
+            // Add questions from subsections
+            if (section.subsections) {
+              section.subsections.forEach(subsection => {
+                if (subsection.questions) {
+                  subsection.questions.forEach(q => {
+                    flattenedQuestions.push({
+                      ...q,
+                      section: section.name || 'A',
+                      subsection: subsection.name || '',
+                      subsectionTitle: subsection.title || '',
+                      instructions: subsection.instructions || '',
+                      wordBank: subsection.wordBank || null,
+                      passage: section.passage || null
+                    });
+                  });
+                }
+              });
+            }
+          });
+        }
+        
+        console.log('Flattened questions count:', flattenedQuestions.length);
+        
+        // Return the parsed exam with flattened questions and full structure preserved
+        return res.json({
+          ...parsed,
+          questions: flattenedQuestions
+        });
+      } catch (parseError) {
+        console.error('Failed to parse pasted exam:', parseError);
+        console.error('Parse error details:', parseError.message);
+        return res.status(500).json({ message: 'Failed to parse the pasted exam. Please check the format and try again.' });
+      }
+    } else {
+      // Parse question types and counts from the prompt using AI
+      const parsePrompt = `Analyze this exam request and extract the question types and counts: "${prompt.trim()}"
+
+Return ONLY a JSON object with this structure:
+{
+  "questionTypes": [
+    {"type": "multiple-choice", "count": 10, "label": "Multiple Choice"},
+    {"type": "short-answer", "count": 5, "label": "Short Answer"}
+  ],
+  "totalQuestions": 15,
+  "subject": "extracted subject",
+  "gradeLevel": "extracted grade level"
+}
+
+Rules:
+- If the user specifies question types and counts, use exactly those
+- If only total questions is given without types, default to multiple-choice
+- If no count is specified, default to 10 multiple-choice questions
+- Supported types: multiple-choice, true-false, short-answer, open-ended, fill-in-blank, matching, ordering
+- Be accurate - only extract what is explicitly stated in the prompt`;
+
+      try {
+        const parseResponse = await groqClient.generateContent(parsePrompt, {
+          model: 'fast',
+          jsonMode: true,
+          temperature: 0.1,
+          maxTokens: 1024
+        });
+        
+        let parseText = parseResponse.text || '';
+        parseText = parseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        
+        const parsed = JSON.parse(parseText);
+        qtConfig = parsed.questionTypes || [{ type: 'multiple-choice', count: 10, label: 'Multiple Choice' }];
+      } catch (parseError) {
+        console.error('Failed to parse question types from prompt, using defaults:', parseError);
+        qtConfig = [{ type: 'multiple-choice', count: 10, label: 'Multiple Choice' }];
+      }
+    }
 
     // Enforce per-type and total caps based on plan
     qtConfig = qtConfig.map(qt => ({
@@ -739,7 +970,9 @@ router.post('/ai-generate', auth, isAdminOrTeacher, requireAIFeatures, async (re
       `- Section ${String.fromCharCode(65 + qtConfig.indexOf(qt))}: EXACTLY ${qt.count} questions of type "${qt.type}" (${qt.label})`
     ).join('\n  ');
 
-    const systemPrompt = `Generate exam JSON based on: "${prompt.trim()}"
+    const systemPrompt = `You are an expert exam creator for students in Rwanda with deep knowledge of the Rwandan curriculum and educational standards. Generate exam JSON based on the teacher's request: "${examContext}${prompt.trim()}"
+
+${pastedExam && pastedExam.trim() ? `REFERENCE EXAM STRUCTURE: The teacher has provided a pasted exam. Create a NEW exam with the SAME structure (question types, counts, sections) but with DIFFERENT questions on the same or related topic. Do not copy the exact questions from the pasted exam - create fresh, original questions following the same format and difficulty level.` : ''}
 
 CRITICAL REQUIREMENTS:
 1. Generate EXACTLY the following number of questions per section:
@@ -747,10 +980,36 @@ CRITICAL REQUIREMENTS:
 2. Return ONLY valid JSON, no markdown, no explanations outside JSON
 3. Follow the exact format specified below
 
+ANTI-HALLUCINATION AND ACCURACY RULES:
+4. NEVER HALLUCINATE - Only use facts, dates, names, and information you are certain about
+5. If you are uncertain about any fact, date, statistic, or name, either:
+   - Omit that specific detail and use a general formulation instead
+   - Use a well-known, universally accepted example
+   - Explicitly state it as a hypothetical scenario
+6. Verify all factual information before including it in questions
+7. For Rwanda-specific content, use accurate information about:
+   - Rwanda's geography (provinces, districts, landmarks)
+   - Rwanda's history (key dates, events, figures)
+   - Rwanda's culture and traditions
+   - The Rwandan education system and curriculum
+8. For science and mathematics, use accurate formulas, constants, and principles
+9. For literature and arts, use well-known, established works and authors
+10. Ensure questions are age-appropriate for the specified grade level
+11. Avoid obscure, controversial, or ambiguous facts that could confuse students
+12. Use clear, unambiguous language in all questions
+13. Ensure all answer options (for multiple-choice) are plausible but only one is clearly correct
+14. For open-ended questions, provide comprehensive model answers that cover key concepts
+
+QUALITY STANDARDS:
+15. Each question must test a specific learning objective or skill
+16. Questions should progress from easier to more difficult within each section
+17. Include a mix of recall, understanding, application, and analysis questions where appropriate
+18. Ensure questions are free from cultural bias and are inclusive
+
 Return raw JSON:
 {
-  "title": "Exam title",
-  "description": "Brief description",
+  "title": "Exam title based on the prompt",
+  "description": "Brief description based on the prompt",
   "timeLimit": 60,
   "passingScore": 70,
   "sections": [

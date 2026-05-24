@@ -743,8 +743,14 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
 
     console.log(`Model answer: "${correctAnswer}"`);
 
-    // If no model answer is available, try to extract from question text
+    // If no model answer is available, try to extract from question text or word bank
     if (!correctAnswer) {
+      // Check if there's a word bank - use it as context for AI grading
+      if (question.wordBank && question.wordBank.length > 0) {
+        console.log(`Word bank available: ${question.wordBank.join(', ')}`);
+        // The word bank will be passed to AI grading as context
+      }
+
       // Look for common patterns in fill-in-blank questions
       const questionText = question.text || '';
       const answerPatterns = [
@@ -762,12 +768,21 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
       }
     }
 
+    // Prepare context for AI grading (include word bank if available)
+    let gradingContext = question.text || '';
+    if (question.wordBank && question.wordBank.length > 0) {
+      gradingContext += `\n\nWord Bank: ${question.wordBank.join(', ')}`;
+    }
+    if (question.passage) {
+      gradingContext += `\n\nPassage: ${question.passage}`;
+    }
+
     // Use AI grading for fill-in-blank questions
     const gradingResult = await gradeOpenEndedAnswer(
       studentAnswer,
       correctAnswer,
       question.points || 1,
-      question.text || '',
+      gradingContext,
       'fill-in-blank'
     );
 
@@ -842,7 +857,17 @@ const gradeMatching = async (question, answer) => {
         }));
     }
 
-    const correctPairs = question.matchingPairs?.correctPairs || [];
+    // Support both old structure (matchingPairs) and new structure (leftItems/rightItems/correctMatches)
+    let correctPairs = question.matchingPairs?.correctPairs || [];
+    
+    // If using new structure with leftItems/rightItems/correctMatches
+    if (correctPairs.length === 0 && question.leftItems && question.rightItems && question.correctMatches) {
+      // Convert correctMatches Map to array format
+      correctPairs = Array.from(question.correctMatches.entries()).map(([left, right]) => ({
+        left: parseInt(left),
+        right: right
+      }));
+    }
 
     if (normalizedMatches.length === 0) {
       return {

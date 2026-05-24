@@ -53,8 +53,14 @@ const QuestionSchema = new mongoose.Schema({
   },
   section: {
     type: String,
-    enum: ['A', 'B', 'C'],
-    required: true
+    required: true,
+    validate: {
+      validator: function(v) {
+        // Allow any single uppercase letter or multiple letters
+        return /^[A-Z]+$/.test(v);
+      },
+      message: 'Section must be uppercase letters (A-Z)'
+    }
   },
   // For matching questions
   matchingPairs: {
@@ -65,6 +71,22 @@ const QuestionSchema = new mongoose.Schema({
       right: String
     }]
   },
+  // New structure for matching questions (from pasted exams)
+  leftItems: [String],
+  rightItems: [String],
+  correctMatches: {
+    type: Map,
+    of: Number
+  },
+  // For fill-in-blank questions with word banks
+  wordBank: [String],
+  // For comprehension questions with passages
+  passage: String,
+  // For hierarchical exam structure
+  subsectionTitle: String,
+  subsection: String,
+  instructions: String,
+  sectionTitle: String,
   // For ordering questions
   itemsToOrder: {
     items: [String],

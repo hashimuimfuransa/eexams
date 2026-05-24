@@ -182,13 +182,23 @@ const ExamRequest = () => {
       <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F9', pt: 20, pb: 8 }}>
         <Box sx={{ maxWidth: 900, margin: '0 auto', px: 3 }}>
           {/* Back Button */}
-          <Button
-            onClick={() => navigate('/marketplace')}
-            sx={{ mb: 3, textTransform: 'none', fontWeight: 600, color: '#64748B' }}
-            startIcon={<ArrowBack />}
-          >
-            Back to Marketplace
-          </Button>
+          <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            <Button
+              onClick={() => navigate('/marketplace')}
+              sx={{ textTransform: 'none', fontWeight: 600, color: '#64748B' }}
+              startIcon={<ArrowBack />}
+            >
+              Back to Marketplace
+            </Button>
+            {isAuthenticated && user?.role === 'student' && (
+              <Button
+                onClick={() => navigate('/student/dashboard')}
+                sx={{ textTransform: 'none', fontWeight: 600, color: '#0D406C' }}
+              >
+                Go to Dashboard
+              </Button>
+            )}
+          </Box>
 
           {error && !success && (
             <Alert severity="error" sx={{ mb: 3 }}>

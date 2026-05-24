@@ -116,6 +116,15 @@ const Marketplace = () => {
       return;
     }
 
+    // Check if user is already approved for this exam
+    if (approvedExamIds.includes(examId) && !isRetake) {
+      alert('You have already been approved for this exam. Redirecting to dashboard to take the exam...');
+      setTimeout(() => {
+        navigate('/student/dashboard');
+      }, 2000);
+      return;
+    }
+
     // Check if there's already a pending retake request for this exam
     if (isRetake && pendingRetakeExamIds.includes(examId)) {
       alert('You already have a pending retake request for this exam. Redirecting to dashboard to view your pending requests...');

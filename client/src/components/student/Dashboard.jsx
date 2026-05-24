@@ -63,6 +63,7 @@ const Dashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [requestingExam, setRequestingExam] = useState(null);
+  const [timeRemainingMap, setTimeRemainingMap] = useState({});
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -154,6 +155,38 @@ const Dashboard = () => {
 
     return () => clearInterval(interval);
   }, [user]);
+
+  // Real-time countdown timer for in-progress exams
+  useEffect(() => {
+    if (inProgressExams.length === 0) return;
+
+    // Initialize time remaining map from server data
+    const initialMap = {};
+    inProgressExams.forEach(exam => {
+      initialMap[exam._id] = exam.timeRemaining;
+    });
+    setTimeRemainingMap(initialMap);
+
+    // Update countdown every second
+    const interval = setInterval(() => {
+      setTimeRemainingMap(prevMap => {
+        const newMap = { ...prevMap };
+        let hasValidTime = false;
+
+        inProgressExams.forEach(exam => {
+          const currentRemaining = newMap[exam._id];
+          if (currentRemaining > 0) {
+            newMap[exam._id] = Math.max(0, currentRemaining - 1000);
+            hasValidTime = true;
+          }
+        });
+
+        return newMap;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [inProgressExams]);
 
   const handleRefresh = () => {
     fetchData(true);
@@ -399,7 +432,7 @@ const Dashboard = () => {
             </Typography>
             <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'error.light', border: '2px solid', borderColor: 'error.main' }}>
               {inProgressExams.map((exam) => {
-                const timeRemaining = exam.timeRemaining || 0;
+                const timeRemaining = timeRemainingMap[exam._id] || exam.timeRemaining || 0;
                 const isUrgent = timeRemaining < 5 * 60 * 1000; // Less than 5 minutes
 
                 return (

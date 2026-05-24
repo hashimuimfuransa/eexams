@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Typography, Card, CardContent, Button, TextField, CircularProgress, Alert, Grid, Chip, Divider } from '@mui/material';
 import { ArrowBack, School, AccessTime, AttachMoney, CheckCircle } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +9,8 @@ import api from '../services/api';
 
 const ExamRequest = () => {
   const { examId } = useParams();
+  const [searchParams] = useSearchParams();
+  const isRetake = searchParams.get('retake') === 'true';
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
   const { mode, toggleMode } = useThemeMode();
@@ -41,6 +43,13 @@ const ExamRequest = () => {
     }
     fetchExamDetails();
   }, [examId, isAuthenticated, user]);
+
+  // Auto-handle free exams (but not for retakes)
+  useEffect(() => {
+    if (exam && exam.publicPrice === 0 && isAuthenticated && user?.role === 'student' && !isRetake) {
+      handleAutoAccess();
+    }
+  }, [exam, isAuthenticated, user, isRetake]);
 
   const fetchExamDetails = async () => {
     try {
@@ -83,7 +92,10 @@ const ExamRequest = () => {
       setError(null);
 
       // The server will use authenticated user info if available
-      const response = await api.post(`/marketplace/exams/${examId}/request`, formData);
+      const response = await api.post(`/marketplace/exams/${examId}/request`, {
+        ...formData,
+        isRetake
+      });
 
       setSuccess(true);
 
@@ -98,8 +110,32 @@ const ExamRequest = () => {
     }
   };
 
+  const handleAutoAccess = async () => {
+    try {
+      setSubmitting(true);
+      const response = await api.post(`/marketplace/exams/${examId}/request`, formData);
+      setSuccess(true);
+      setTimeout(() => {
+        navigate('/student/dashboard');
+      }, 2000);
+    } catch (err) {
+      console.error('Error auto-granting access:', err);
+      setError(err.response?.data?.message || 'Failed to grant access. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const calculateTotalQuestions = (sections) => {
     return sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
+  };
+
+  // Calculate effective price (500 RWF for retakes of free exams)
+  const getEffectivePrice = () => {
+    if (isRetake && exam?.publicPrice === 0) {
+      return 500;
+    }
+    return exam?.publicPrice || 0;
   };
 
   if (loading) {
@@ -155,122 +191,16 @@ const ExamRequest = () => {
               sx={{ mb: 3 }}
               icon={<CheckCircle />}
             >
-              Request submitted successfully! The teacher will review your request. Redirecting to marketplace...
+              {exam?.publicPrice === 0 
+                ? 'Access granted successfully! Redirecting to dashboard...'
+                : 'Request submitted successfully! The teacher will review your request. Redirecting to dashboard...'}
             </Alert>
           )}
 
           {exam && (
             <Grid container spacing={3}>
-              {/* Exam Details Card */}
-              <Grid item xs={12} md={5}>
-                <Card 
-                  elevation={0} 
-                  sx={{ 
-                    borderRadius: 3, 
-                    border: '1px solid #E2E8F0',
-                    height: 'fit-content'
-                  }}
-                >
-                  <CardContent sx={{ p: 3 }}>
-                    <Chip 
-                      label="Public Exam" 
-                      size="small" 
-                      sx={{ 
-                        background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
-                        color: 'white',
-                        fontWeight: 700,
-                        fontSize: 11,
-                        letterSpacing: '0.04em',
-                        mb: 2
-                      }} 
-                    />
-                    
-                    <Typography variant="h5" fontWeight={700} sx={{ mb: 2, color: '#0F172A', lineHeight: 1.3 }}>
-                      {exam.title}
-                    </Typography>
-                    
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        color: '#64748B', 
-                        mb: 3,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 3,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                        lineHeight: 1.6
-                      }}
-                    >
-                      {exam.publicDescription || exam.description}
-                    </Typography>
-
-                    <Divider sx={{ mb: 3 }} />
-
-                    {/* Stats */}
-                    <Box sx={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: '1fr 1fr', 
-                      gap: 2, 
-                      mb: 3 
-                    }}>
-                      <Box sx={{ textAlign: 'center', p: 2, borderRadius: 2, bgcolor: 'rgba(241,245,249,0.8)' }}>
-                        <Typography sx={{ fontSize: 24, fontWeight: 800, color: '#0D406C', lineHeight: 1, mb: 0.5 }}>
-                          {calculateTotalQuestions(exam.sections)}
-                        </Typography>
-                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Questions
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, borderRadius: 2, bgcolor: 'rgba(241,245,249,0.8)' }}>
-                        <Typography sx={{ fontSize: 24, fontWeight: 800, color: '#0CBD73', lineHeight: 1, mb: 0.5 }}>
-                          {exam.timeLimit}
-                        </Typography>
-                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Minutes
-                        </Typography>
-                      </Box>
-                    </Box>
-
-                    {/* Price */}
-                    {exam.publicPrice > 0 ? (
-                      <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between', 
-                        p: 2, 
-                        borderRadius: 2, 
-                        background: 'rgba(245,158,11,0.08)', 
-                        border: '1px solid rgba(245,158,11,0.2)'
-                      }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <AttachMoney sx={{ color: '#F59E0B', fontSize: 20 }} />
-                          <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>Price</Typography>
-                        </Box>
-                        <Typography sx={{ fontSize: 18, fontWeight: 700, color: '#F59E0B' }}>
-                          RWF {exam.publicPrice.toLocaleString()}
-                        </Typography>
-                      </Box>
-                    ) : (
-                      <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        p: 2, 
-                        borderRadius: 2, 
-                        background: 'rgba(12,189,115,0.08)', 
-                        border: '1px solid rgba(12,189,115,0.2)'
-                      }}>
-                        <Typography sx={{ fontSize: 14, fontWeight: 700, color: '#0CBD73' }}>
-                          Free Exam
-                        </Typography>
-                      </Box>
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-
               {/* Request Form Card */}
-              <Grid item xs={12} md={7}>
+              <Grid item xs={12} md={12}>
                 <Card 
                   elevation={0} 
                   sx={{ 
@@ -283,10 +213,10 @@ const ExamRequest = () => {
                       <School sx={{ color: '#0D406C', fontSize: 28 }} />
                       <Box>
                         <Typography variant="h5" fontWeight={700} sx={{ color: '#0F172A' }}>
-                          Request Access
+                          {isRetake ? 'Request Retake' : 'Request Access'}
                         </Typography>
                         <Typography sx={{ color: '#64748B', fontSize: 14 }}>
-                          Fill in your details to request access to this exam
+                          {isRetake ? 'Submit your retake request for this exam' : 'Fill in your details to request access to this exam'}
                         </Typography>
                       </Box>
                     </Box>
@@ -299,9 +229,39 @@ const ExamRequest = () => {
                           <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0CBD73', mb: 2 }}>
                             Payment & Approval Information
                           </Typography>
-                          <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.8, mb: 2 }}>
-                            To complete your request, please contact us for payment instructions and approval:
-                          </Typography>
+                          {getEffectivePrice() > 0 ? (
+                            <>
+                              <Box sx={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'space-between', 
+                                p: 2, 
+                                borderRadius: 2, 
+                                background: 'rgba(245,158,11,0.08)', 
+                                border: '1px solid rgba(245,158,11,0.2)',
+                                mb: 2
+                              }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <AttachMoney sx={{ color: '#F59E0B', fontSize: 20 }} />
+                                  <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>
+                                    {isRetake && exam?.publicPrice === 0 ? 'Retake Fee' : 'Amount to Pay'}
+                                  </Typography>
+                                </Box>
+                                <Typography sx={{ fontSize: 18, fontWeight: 700, color: '#F59E0B' }}>
+                                  RWF {getEffectivePrice().toLocaleString()}
+                                </Typography>
+                              </Box>
+                              <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.8, mb: 2 }}>
+                                {isRetake && exam?.publicPrice === 0
+                                  ? 'Retake fee for this free exam. Please contact us for payment instructions and approval:'
+                                  : 'To complete your request, please contact us for payment instructions and approval:'}
+                              </Typography>
+                            </>
+                          ) : (
+                            <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.8, mb: 2 }}>
+                              This is a free exam. You will be granted access automatically.
+                            </Typography>
+                          )}
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                             <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
                               📞 +250 788 535 156
@@ -315,30 +275,32 @@ const ExamRequest = () => {
                           </Box>
                         </Box>
 
-                        <Button
-                          onClick={handleSubmit}
-                          fullWidth
-                          variant="contained"
-                          disabled={submitting || success}
-                          sx={{
-                            borderRadius: 2,
-                            textTransform: 'none',
-                            fontWeight: 700,
-                            py: 1.5,
-                            background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                            boxShadow: '0 4px 12px rgba(12,189,115,0.35)',
-                            fontSize: 16
-                          }}
-                        >
-                          {submitting ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <CircularProgress size={20} color="inherit" />
-                              Submitting...
-                            </Box>
-                          ) : (
-                            'Request Access'
-                          )}
-                        </Button>
+                        {getEffectivePrice() > 0 && (
+                          <Button
+                            onClick={handleSubmit}
+                            fullWidth
+                            variant="contained"
+                            disabled={submitting || success}
+                            sx={{
+                              borderRadius: 2,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              py: 1.5,
+                              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                              boxShadow: '0 4px 12px rgba(12,189,115,0.35)',
+                              fontSize: 16
+                            }}
+                          >
+                            {submitting ? (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <CircularProgress size={20} color="inherit" />
+                                Submitting...
+                              </Box>
+                            ) : (
+                              isRetake ? 'Request Retake' : 'Request Access'
+                            )}
+                          </Button>
+                        )}
                       </>
                     ) : (
                       <form onSubmit={handleSubmit}>

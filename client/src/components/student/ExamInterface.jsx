@@ -61,7 +61,9 @@ import {
   FullscreenExit,
   Security,
   DragIndicator,
-  SwapVert
+  SwapVert,
+  Calculate,
+  Close
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
 import { useThemeMode } from '../../context/ThemeContext';
@@ -259,6 +261,9 @@ const ExamInterface = () => {
   const [selectiveAnswering, setSelectiveAnswering] = useState(false);
   const [selectedQuestions, setSelectedQuestions] = useState({});
   const [lastQuestionSaved, setLastQuestionSaved] = useState(false);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [lastActiveTime, setLastActiveTime] = useState(Date.now());
+  const [calculatorDisplay, setCalculatorDisplay] = useState('');
 
   // Reset lastQuestionSaved when exam loads or when switching questions
   useEffect(() => {
@@ -279,6 +284,36 @@ const ExamInterface = () => {
     const seconds = totalSeconds % 60;
 
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Calculator functions
+  const handleCalculatorInput = (value) => {
+    setCalculatorDisplay(prev => prev + value);
+  };
+
+  const handleCalculatorClear = () => {
+    setCalculatorDisplay('');
+  };
+
+  const handleCalculatorCalculate = () => {
+    try {
+      let expression = calculatorDisplay;
+      // Replace mathematical functions with JavaScript equivalents
+      expression = expression.replace(/sin\(/g, 'Math.sin(');
+      expression = expression.replace(/cos\(/g, 'Math.cos(');
+      expression = expression.replace(/tan\(/g, 'Math.tan(');
+      expression = expression.replace(/log\(/g, 'Math.log10(');
+      expression = expression.replace(/ln\(/g, 'Math.log(');
+      expression = expression.replace(/sqrt\(/g, 'Math.sqrt(');
+      expression = expression.replace(/\^/g, '**');
+      expression = expression.replace(/π/g, 'Math.PI');
+      expression = expression.replace(/e/g, 'Math.E');
+
+      const result = eval(expression);
+      setCalculatorDisplay(result.toString());
+    } catch (error) {
+      setCalculatorDisplay('Error');
+    }
   };
 
   // This will be defined after saveAnswerToServer function
@@ -406,7 +441,20 @@ const ExamInterface = () => {
           setSession(sessionRes.data);
 
           // Set time remaining
-          setTimeRemaining(sessionRes.data.timeRemaining || 0);
+          const remainingTime = sessionRes.data.timeRemaining || 0;
+          setTimeRemaining(remainingTime);
+
+          // Check if time has already expired - auto-submit immediately
+          if (remainingTime <= 0) {
+            setSnackbar({
+              open: true,
+              message: 'Your exam time has expired. Your exam is being submitted automatically.',
+              severity: 'error'
+            });
+            // Submit the exam without showing confirmation
+            handleSubmitExam();
+            return;
+          }
 
           // Initialize answers from session
           const initialAnswers = {};
@@ -613,6 +661,50 @@ const ExamInterface = () => {
       return () => clearInterval(timer);
     }
   }, [loading, timeRemaining, examCompleted]);
+
+  // Track user activity and detect if they left the exam
+  useEffect(() => {
+    if (loading || examCompleted || !exam) return;
+
+    const updateLastActiveTime = () => {
+      setLastActiveTime(Date.now());
+    };
+
+    // Track user activity
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    events.forEach(event => {
+      window.addEventListener(event, updateLastActiveTime);
+    });
+
+    // Handle visibility change (user leaving/returning to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // User returned to the tab
+        const now = Date.now();
+        const timeAway = now - lastActiveTime;
+        const oneMinute = 60 * 1000;
+
+        if (timeAway > oneMinute) {
+          // User was away for more than 1 minute - auto-submit
+          setSnackbar({
+            open: true,
+            message: 'You left the exam for more than 1 minute. Your exam is being submitted automatically.',
+            severity: 'error'
+          });
+          handleSubmitExam();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      events.forEach(event => {
+        window.removeEventListener(event, updateLastActiveTime);
+      });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loading, examCompleted, exam, lastActiveTime]);
 
   // Create a ref outside the effect to track fullscreen requests
   const hasRequestedFullscreen = React.useRef(false);
@@ -3653,11 +3745,34 @@ const ExamInterface = () => {
                         bgcolor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.lighter',
                         borderRadius: 1,
                         border: '1px solid',
-                        borderColor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main'
+                        borderColor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
                       }}>
                         <Typography variant="h6" fontWeight="bold" color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main'}>
                           {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
                         </Typography>
+                        <Tooltip title="Open Calculator">
+                          <Button
+                            variant="contained"
+                            startIcon={<Calculate />}
+                            onClick={() => setCalculatorOpen(true)}
+                            sx={{
+                              bgcolor: 'primary.main',
+                              color: 'white',
+                              fontWeight: 'bold',
+                              textTransform: 'none',
+                              px: 2,
+                              py: 1,
+                              '&:hover': {
+                                bgcolor: 'primary.dark'
+                              }
+                            }}
+                          >
+                            Calculator
+                          </Button>
+                        </Tooltip>
                       </Box>
 
                       {(() => {
@@ -4298,6 +4413,123 @@ const ExamInterface = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Calculator Dialog */}
+      <Dialog
+        open={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        aria-labelledby="calculator-dialog-title"
+        sx={{
+          '& .MuiDialog-paper': {
+            maxWidth: { xs: '95%', sm: '800px' },
+            width: { xs: '95%', sm: '800px' }
+          }
+        }}
+      >
+        <DialogTitle id="calculator-dialog-title">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Calculate sx={{ mr: 1, fontSize: 28 }} />
+              <Typography variant="h6" fontWeight="bold">
+                Scientific Calculator
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setCalculatorOpen(false)} size="large">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ 
+            mt: 2, 
+            minHeight: { xs: '300px', sm: '500px' },
+            border: '2px solid',
+            borderColor: 'primary.main',
+            borderRadius: 2,
+            p: 1
+          }}>
+            <Box
+              sx={{
+                width: '100%',
+                height: { xs: '300px', sm: '500px' },
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <Box
+                sx={{
+                  bgcolor: 'background.default',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 2,
+                  mb: 2,
+                  minHeight: '60px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  fontSize: { xs: '1.5rem', sm: '2rem' },
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+              >
+                {calculatorDisplay || '0'}
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, flex: 1 }}>
+                <Button onClick={() => handleCalculatorInput('sin(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>sin</Button>
+                <Button onClick={() => handleCalculatorInput('cos(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>cos</Button>
+                <Button onClick={() => handleCalculatorInput('tan(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>tan</Button>
+                <Button onClick={() => handleCalculatorInput('log(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>log</Button>
+                <Button onClick={() => handleCalculatorInput('ln(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>ln</Button>
+                <Button onClick={() => handleCalculatorInput('sqrt(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>√</Button>
+                <Button onClick={() => handleCalculatorInput('^')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>x^y</Button>
+                <Button onClick={() => handleCalculatorInput('π')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>π</Button>
+                <Button onClick={() => handleCalculatorInput('7')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>7</Button>
+                <Button onClick={() => handleCalculatorInput('8')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>8</Button>
+                <Button onClick={() => handleCalculatorInput('9')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>9</Button>
+                <Button onClick={() => handleCalculatorInput('/')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>÷</Button>
+                <Button onClick={() => handleCalculatorInput('4')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>4</Button>
+                <Button onClick={() => handleCalculatorInput('5')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>5</Button>
+                <Button onClick={() => handleCalculatorInput('6')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>6</Button>
+                <Button onClick={() => handleCalculatorInput('*')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>×</Button>
+                <Button onClick={() => handleCalculatorInput('1')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>1</Button>
+                <Button onClick={() => handleCalculatorInput('2')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>2</Button>
+                <Button onClick={() => handleCalculatorInput('3')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>3</Button>
+                <Button onClick={() => handleCalculatorInput('-')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>-</Button>
+                <Button onClick={() => handleCalculatorInput('0')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>0</Button>
+                <Button onClick={() => handleCalculatorInput('.')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>.</Button>
+                <Button onClick={() => handleCalculatorClear()} sx={{ bgcolor: 'error.light', '&:hover': { bgcolor: 'error.dark' } }}>C</Button>
+                <Button onClick={() => handleCalculatorInput('+')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>+</Button>
+                <Button onClick={() => handleCalculatorInput('(')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>(</Button>
+                <Button onClick={() => handleCalculatorInput(')')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>)</Button>
+                <Button onClick={() => handleCalculatorInput('e')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>e</Button>
+                <Button onClick={() => handleCalculatorCalculate()} sx={{ bgcolor: 'success.light', '&:hover': { bgcolor: 'success.dark' }, gridColumn: 'span 1' }}>=</Button>
+              </Box>
+            </Box>
+          </Box>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom fontWeight="bold">
+              How to use:
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Type mathematical expressions directly (e.g., 2+2, sin(30), sqrt(16))
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Use the virtual keyboard for advanced functions and symbols
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Press Enter to calculate results
+            </Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
       </Container>
     </Box>
   );
@@ -4308,6 +4540,7 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
   const theme = useTheme();
   const { mode } = useThemeMode();
   const [localAnswer, setLocalAnswer] = useState(answer?.textAnswer || '');
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
 
   const handleInputChange = (event) => {
     const value = event.target.value;
@@ -4325,6 +4558,26 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
 
   return (
     <Box>
+      {/* Calculator Button */}
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="contained"
+          startIcon={<Calculate />}
+          onClick={() => setCalculatorOpen(true)}
+          sx={{
+            bgcolor: 'primary.main',
+            color: 'white',
+            fontWeight: 'bold',
+            textTransform: 'none',
+            '&:hover': {
+              bgcolor: 'primary.dark'
+            }
+          }}
+        >
+          Calculator
+        </Button>
+      </Box>
+
       {/* Answer Input */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'warning.main' }}>
@@ -4374,6 +4627,123 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
           </Typography>
         </Alert>
       )}
+
+      {/* Calculator Dialog */}
+      <Dialog
+        open={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        aria-labelledby="calculator-dialog-title"
+        sx={{
+          '& .MuiDialog-paper': {
+            maxWidth: { xs: '95%', sm: '800px' },
+            width: { xs: '95%', sm: '800px' }
+          }
+        }}
+      >
+        <DialogTitle id="calculator-dialog-title">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Calculate sx={{ mr: 1, fontSize: 28 }} />
+              <Typography variant="h6" fontWeight="bold">
+                Scientific Calculator
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setCalculatorOpen(false)} size="large">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ 
+            mt: 2, 
+            minHeight: { xs: '300px', sm: '500px' },
+            border: '2px solid',
+            borderColor: 'primary.main',
+            borderRadius: 2,
+            p: 1
+          }}>
+            <Box
+              sx={{
+                width: '100%',
+                height: { xs: '300px', sm: '500px' },
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <Box
+                sx={{
+                  bgcolor: 'background.default',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 2,
+                  mb: 2,
+                  minHeight: '60px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  fontSize: { xs: '1.5rem', sm: '2rem' },
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+              >
+                {calculatorDisplay || '0'}
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, flex: 1 }}>
+                <Button onClick={() => handleCalculatorInput('sin(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>sin</Button>
+                <Button onClick={() => handleCalculatorInput('cos(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>cos</Button>
+                <Button onClick={() => handleCalculatorInput('tan(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>tan</Button>
+                <Button onClick={() => handleCalculatorInput('log(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>log</Button>
+                <Button onClick={() => handleCalculatorInput('ln(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>ln</Button>
+                <Button onClick={() => handleCalculatorInput('sqrt(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>√</Button>
+                <Button onClick={() => handleCalculatorInput('^')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>x^y</Button>
+                <Button onClick={() => handleCalculatorInput('π')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>π</Button>
+                <Button onClick={() => handleCalculatorInput('7')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>7</Button>
+                <Button onClick={() => handleCalculatorInput('8')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>8</Button>
+                <Button onClick={() => handleCalculatorInput('9')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>9</Button>
+                <Button onClick={() => handleCalculatorInput('/')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>÷</Button>
+                <Button onClick={() => handleCalculatorInput('4')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>4</Button>
+                <Button onClick={() => handleCalculatorInput('5')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>5</Button>
+                <Button onClick={() => handleCalculatorInput('6')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>6</Button>
+                <Button onClick={() => handleCalculatorInput('*')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>×</Button>
+                <Button onClick={() => handleCalculatorInput('1')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>1</Button>
+                <Button onClick={() => handleCalculatorInput('2')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>2</Button>
+                <Button onClick={() => handleCalculatorInput('3')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>3</Button>
+                <Button onClick={() => handleCalculatorInput('-')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>-</Button>
+                <Button onClick={() => handleCalculatorInput('0')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>0</Button>
+                <Button onClick={() => handleCalculatorInput('.')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>.</Button>
+                <Button onClick={() => handleCalculatorClear()} sx={{ bgcolor: 'error.light', '&:hover': { bgcolor: 'error.dark' } }}>C</Button>
+                <Button onClick={() => handleCalculatorInput('+')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>+</Button>
+                <Button onClick={() => handleCalculatorInput('(')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>(</Button>
+                <Button onClick={() => handleCalculatorInput(')')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>)</Button>
+                <Button onClick={() => handleCalculatorInput('e')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>e</Button>
+                <Button onClick={() => handleCalculatorCalculate()} sx={{ bgcolor: 'success.light', '&:hover': { bgcolor: 'success.dark' }, gridColumn: 'span 1' }}>=</Button>
+              </Box>
+            </Box>
+          </Box>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom fontWeight="bold">
+              How to use:
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Type mathematical expressions directly (e.g., 2+2, sin(30), sqrt(16))
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Use the virtual keyboard for advanced functions and symbols
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Press Enter to calculate results
+            </Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
@@ -4382,6 +4752,7 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
 const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const theme = useTheme();
   const { mode } = useThemeMode();
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
 
   // Get left items (questions/prompts) and right items (answers/choices)
   const leftItems = question.leftItems || question.options?.filter((_, i) => i % 2 === 0) || [];
@@ -4442,6 +4813,26 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 
   return (
     <Box>
+      {/* Calculator Button */}
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="contained"
+          startIcon={<Calculate />}
+          onClick={() => setCalculatorOpen(true)}
+          sx={{
+            bgcolor: 'primary.main',
+            color: 'white',
+            fontWeight: 'bold',
+            textTransform: 'none',
+            '&:hover': {
+              bgcolor: 'primary.dark'
+            }
+          }}
+        >
+          Calculator
+        </Button>
+      </Box>
+
       <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 3 }}>
         Matching Question
       </Typography>
@@ -4660,6 +5051,123 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
           </Typography>
         </Box>
       )}
+
+      {/* Calculator Dialog */}
+      <Dialog
+        open={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        aria-labelledby="calculator-dialog-title"
+        sx={{
+          '& .MuiDialog-paper': {
+            maxWidth: { xs: '95%', sm: '800px' },
+            width: { xs: '95%', sm: '800px' }
+          }
+        }}
+      >
+        <DialogTitle id="calculator-dialog-title">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Calculate sx={{ mr: 1, fontSize: 28 }} />
+              <Typography variant="h6" fontWeight="bold">
+                Scientific Calculator
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setCalculatorOpen(false)} size="large">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ 
+            mt: 2, 
+            minHeight: { xs: '300px', sm: '500px' },
+            border: '2px solid',
+            borderColor: 'primary.main',
+            borderRadius: 2,
+            p: 1
+          }}>
+            <Box
+              sx={{
+                width: '100%',
+                height: { xs: '300px', sm: '500px' },
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <Box
+                sx={{
+                  bgcolor: 'background.default',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 2,
+                  mb: 2,
+                  minHeight: '60px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  fontSize: { xs: '1.5rem', sm: '2rem' },
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+              >
+                {calculatorDisplay || '0'}
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, flex: 1 }}>
+                <Button onClick={() => handleCalculatorInput('sin(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>sin</Button>
+                <Button onClick={() => handleCalculatorInput('cos(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>cos</Button>
+                <Button onClick={() => handleCalculatorInput('tan(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>tan</Button>
+                <Button onClick={() => handleCalculatorInput('log(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>log</Button>
+                <Button onClick={() => handleCalculatorInput('ln(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>ln</Button>
+                <Button onClick={() => handleCalculatorInput('sqrt(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>√</Button>
+                <Button onClick={() => handleCalculatorInput('^')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>x^y</Button>
+                <Button onClick={() => handleCalculatorInput('π')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>π</Button>
+                <Button onClick={() => handleCalculatorInput('7')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>7</Button>
+                <Button onClick={() => handleCalculatorInput('8')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>8</Button>
+                <Button onClick={() => handleCalculatorInput('9')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>9</Button>
+                <Button onClick={() => handleCalculatorInput('/')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>÷</Button>
+                <Button onClick={() => handleCalculatorInput('4')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>4</Button>
+                <Button onClick={() => handleCalculatorInput('5')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>5</Button>
+                <Button onClick={() => handleCalculatorInput('6')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>6</Button>
+                <Button onClick={() => handleCalculatorInput('*')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>×</Button>
+                <Button onClick={() => handleCalculatorInput('1')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>1</Button>
+                <Button onClick={() => handleCalculatorInput('2')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>2</Button>
+                <Button onClick={() => handleCalculatorInput('3')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>3</Button>
+                <Button onClick={() => handleCalculatorInput('-')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>-</Button>
+                <Button onClick={() => handleCalculatorInput('0')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>0</Button>
+                <Button onClick={() => handleCalculatorInput('.')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>.</Button>
+                <Button onClick={() => handleCalculatorClear()} sx={{ bgcolor: 'error.light', '&:hover': { bgcolor: 'error.dark' } }}>C</Button>
+                <Button onClick={() => handleCalculatorInput('+')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>+</Button>
+                <Button onClick={() => handleCalculatorInput('(')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>(</Button>
+                <Button onClick={() => handleCalculatorInput(')')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>)</Button>
+                <Button onClick={() => handleCalculatorInput('e')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>e</Button>
+                <Button onClick={() => handleCalculatorCalculate()} sx={{ bgcolor: 'success.light', '&:hover': { bgcolor: 'success.dark' }, gridColumn: 'span 1' }}>=</Button>
+              </Box>
+            </Box>
+          </Box>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom fontWeight="bold">
+              How to use:
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Type mathematical expressions directly (e.g., 2+2, sin(30), sqrt(16))
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Use the virtual keyboard for advanced functions and symbols
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Press Enter to calculate results
+            </Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
@@ -4668,6 +5176,7 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const theme = useTheme();
   const { mode } = useThemeMode();
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
 
   const items = question.items || question.options || [];
 
@@ -4722,6 +5231,26 @@ const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 
   return (
     <Box>
+      {/* Calculator Button */}
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="contained"
+          startIcon={<Calculate />}
+          onClick={() => setCalculatorOpen(true)}
+          sx={{
+            bgcolor: 'primary.main',
+            color: 'white',
+            fontWeight: 'bold',
+            textTransform: 'none',
+            '&:hover': {
+              bgcolor: 'primary.dark'
+            }
+          }}
+        >
+          Calculator
+        </Button>
+      </Box>
+
       <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 3 }}>
         Ordering Question
       </Typography>
@@ -4826,6 +5355,123 @@ const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
           </Typography>
         </Box>
       )}
+
+      {/* Calculator Dialog */}
+      <Dialog
+        open={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        aria-labelledby="calculator-dialog-title"
+        sx={{
+          '& .MuiDialog-paper': {
+            maxWidth: { xs: '95%', sm: '800px' },
+            width: { xs: '95%', sm: '800px' }
+          }
+        }}
+      >
+        <DialogTitle id="calculator-dialog-title">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Calculate sx={{ mr: 1, fontSize: 28 }} />
+              <Typography variant="h6" fontWeight="bold">
+                Scientific Calculator
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setCalculatorOpen(false)} size="large">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ 
+            mt: 2, 
+            minHeight: { xs: '300px', sm: '500px' },
+            border: '2px solid',
+            borderColor: 'primary.main',
+            borderRadius: 2,
+            p: 1
+          }}>
+            <Box
+              sx={{
+                width: '100%',
+                height: { xs: '300px', sm: '500px' },
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <Box
+                sx={{
+                  bgcolor: 'background.default',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 2,
+                  mb: 2,
+                  minHeight: '60px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  fontSize: { xs: '1.5rem', sm: '2rem' },
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+              >
+                {calculatorDisplay || '0'}
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, flex: 1 }}>
+                <Button onClick={() => handleCalculatorInput('sin(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>sin</Button>
+                <Button onClick={() => handleCalculatorInput('cos(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>cos</Button>
+                <Button onClick={() => handleCalculatorInput('tan(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>tan</Button>
+                <Button onClick={() => handleCalculatorInput('log(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>log</Button>
+                <Button onClick={() => handleCalculatorInput('ln(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>ln</Button>
+                <Button onClick={() => handleCalculatorInput('sqrt(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>√</Button>
+                <Button onClick={() => handleCalculatorInput('^')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>x^y</Button>
+                <Button onClick={() => handleCalculatorInput('π')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>π</Button>
+                <Button onClick={() => handleCalculatorInput('7')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>7</Button>
+                <Button onClick={() => handleCalculatorInput('8')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>8</Button>
+                <Button onClick={() => handleCalculatorInput('9')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>9</Button>
+                <Button onClick={() => handleCalculatorInput('/')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>÷</Button>
+                <Button onClick={() => handleCalculatorInput('4')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>4</Button>
+                <Button onClick={() => handleCalculatorInput('5')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>5</Button>
+                <Button onClick={() => handleCalculatorInput('6')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>6</Button>
+                <Button onClick={() => handleCalculatorInput('*')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>×</Button>
+                <Button onClick={() => handleCalculatorInput('1')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>1</Button>
+                <Button onClick={() => handleCalculatorInput('2')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>2</Button>
+                <Button onClick={() => handleCalculatorInput('3')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>3</Button>
+                <Button onClick={() => handleCalculatorInput('-')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>-</Button>
+                <Button onClick={() => handleCalculatorInput('0')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>0</Button>
+                <Button onClick={() => handleCalculatorInput('.')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>.</Button>
+                <Button onClick={() => handleCalculatorClear()} sx={{ bgcolor: 'error.light', '&:hover': { bgcolor: 'error.dark' } }}>C</Button>
+                <Button onClick={() => handleCalculatorInput('+')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>+</Button>
+                <Button onClick={() => handleCalculatorInput('(')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>(</Button>
+                <Button onClick={() => handleCalculatorInput(')')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>)</Button>
+                <Button onClick={() => handleCalculatorInput('e')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>e</Button>
+                <Button onClick={() => handleCalculatorCalculate()} sx={{ bgcolor: 'success.light', '&:hover': { bgcolor: 'success.dark' }, gridColumn: 'span 1' }}>=</Button>
+              </Box>
+            </Box>
+          </Box>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom fontWeight="bold">
+              How to use:
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Type mathematical expressions directly (e.g., 2+2, sin(30), sqrt(16))
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Use the virtual keyboard for advanced functions and symbols
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Press Enter to calculate results
+            </Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
@@ -4921,6 +5567,7 @@ const getQuestionTypeColor = (type, section, question = null) => {
 const DragDropQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const [placements, setPlacements] = useState(answer?.dragDropAnswer || []);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
   const dropZones = question.dragDropData?.dropZones || [];
   const draggableItems = question.dragDropData?.draggableItems || [];
 
@@ -4964,6 +5611,26 @@ const DragDropQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 
   return (
     <Box>
+      {/* Calculator Button */}
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="contained"
+          startIcon={<Calculate />}
+          onClick={() => setCalculatorOpen(true)}
+          sx={{
+            bgcolor: 'primary.main',
+            color: 'white',
+            fontWeight: 'bold',
+            textTransform: 'none',
+            '&:hover': {
+              bgcolor: 'primary.dark'
+            }
+          }}
+        >
+          Calculator
+        </Button>
+      </Box>
+
       <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
         <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           <DragIndicator sx={{ mr: 1, fontSize: 20, color: 'error.main' }} />
@@ -5146,6 +5813,123 @@ const DragDropQuestion = ({ question, answer, onAnswerChange, disabled }) => {
           </Paper>
         )}
       </Box>
+
+      {/* Calculator Dialog */}
+      <Dialog
+        open={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        aria-labelledby="calculator-dialog-title"
+        sx={{
+          '& .MuiDialog-paper': {
+            maxWidth: { xs: '95%', sm: '800px' },
+            width: { xs: '95%', sm: '800px' }
+          }
+        }}
+      >
+        <DialogTitle id="calculator-dialog-title">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Calculate sx={{ mr: 1, fontSize: 28 }} />
+              <Typography variant="h6" fontWeight="bold">
+                Scientific Calculator
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setCalculatorOpen(false)} size="large">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ 
+            mt: 2, 
+            minHeight: { xs: '300px', sm: '500px' },
+            border: '2px solid',
+            borderColor: 'primary.main',
+            borderRadius: 2,
+            p: 1
+          }}>
+            <Box
+              sx={{
+                width: '100%',
+                height: { xs: '300px', sm: '500px' },
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <Box
+                sx={{
+                  bgcolor: 'background.default',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 2,
+                  mb: 2,
+                  minHeight: '60px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  fontSize: { xs: '1.5rem', sm: '2rem' },
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+              >
+                {calculatorDisplay || '0'}
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, flex: 1 }}>
+                <Button onClick={() => handleCalculatorInput('sin(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>sin</Button>
+                <Button onClick={() => handleCalculatorInput('cos(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>cos</Button>
+                <Button onClick={() => handleCalculatorInput('tan(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>tan</Button>
+                <Button onClick={() => handleCalculatorInput('log(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>log</Button>
+                <Button onClick={() => handleCalculatorInput('ln(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>ln</Button>
+                <Button onClick={() => handleCalculatorInput('sqrt(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>√</Button>
+                <Button onClick={() => handleCalculatorInput('^')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>x^y</Button>
+                <Button onClick={() => handleCalculatorInput('π')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>π</Button>
+                <Button onClick={() => handleCalculatorInput('7')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>7</Button>
+                <Button onClick={() => handleCalculatorInput('8')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>8</Button>
+                <Button onClick={() => handleCalculatorInput('9')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>9</Button>
+                <Button onClick={() => handleCalculatorInput('/')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>÷</Button>
+                <Button onClick={() => handleCalculatorInput('4')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>4</Button>
+                <Button onClick={() => handleCalculatorInput('5')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>5</Button>
+                <Button onClick={() => handleCalculatorInput('6')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>6</Button>
+                <Button onClick={() => handleCalculatorInput('*')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>×</Button>
+                <Button onClick={() => handleCalculatorInput('1')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>1</Button>
+                <Button onClick={() => handleCalculatorInput('2')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>2</Button>
+                <Button onClick={() => handleCalculatorInput('3')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>3</Button>
+                <Button onClick={() => handleCalculatorInput('-')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>-</Button>
+                <Button onClick={() => handleCalculatorInput('0')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>0</Button>
+                <Button onClick={() => handleCalculatorInput('.')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>.</Button>
+                <Button onClick={() => handleCalculatorClear()} sx={{ bgcolor: 'error.light', '&:hover': { bgcolor: 'error.dark' } }}>C</Button>
+                <Button onClick={() => handleCalculatorInput('+')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>+</Button>
+                <Button onClick={() => handleCalculatorInput('(')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>(</Button>
+                <Button onClick={() => handleCalculatorInput(')')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>)</Button>
+                <Button onClick={() => handleCalculatorInput('e')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>e</Button>
+                <Button onClick={() => handleCalculatorCalculate()} sx={{ bgcolor: 'success.light', '&:hover': { bgcolor: 'success.dark' }, gridColumn: 'span 1' }}>=</Button>
+              </Box>
+            </Box>
+          </Box>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom fontWeight="bold">
+              How to use:
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Type mathematical expressions directly (e.g., 2+2, sin(30), sqrt(16))
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Use the virtual keyboard for advanced functions and symbols
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              • Press Enter to calculate results
+            </Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

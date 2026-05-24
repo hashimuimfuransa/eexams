@@ -323,7 +323,7 @@ const Dashboard = () => {
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
                       <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
                         <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">
-                          {request.exam?.title || 'Exam'}
+                          {request.exam?.title || request.examTitle || 'Exam'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           Requested: {formatDate(request.requestedAt)}
@@ -397,9 +397,27 @@ const Dashboard = () => {
               <Typography variant="h6" color="text.secondary" fontWeight="bold">
                 No Available Exams
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                All assigned exams have been completed. Check back later for new exams.
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                All assigned exams have been completed. Check the exam bank for more exams.
               </Typography>
+              <Button
+                variant="contained"
+                component={RouterLink}
+                to="/marketplace"
+                size="medium"
+                endIcon={<ArrowForward />}
+                sx={{
+                  fontWeight: 'bold',
+                  textTransform: 'none',
+                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                  boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
+                  '&:hover': {
+                    boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
+                  }
+                }}
+              >
+                Go to Exam Bank
+              </Button>
             </Paper>
           ) : (
             <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
@@ -421,11 +439,11 @@ const Dashboard = () => {
                   return 'success';
                 };
                 return (
-                  <Card 
-                    key={exam._id} 
-                    elevation={canStart ? 3 : 1} 
-                    sx={{ 
-                      mb: 0, 
+                  <Card
+                    key={exam._id}
+                    elevation={canStart ? 3 : 1}
+                    sx={{
+                      mb: 0,
                       bgcolor: 'background.paper',
                       border: canStart ? '2px solid' : '1px solid',
                       borderColor: canStart ? 'primary.main' : 'divider',
@@ -508,6 +526,31 @@ const Dashboard = () => {
               })}
             </Box>
           )}
+
+          {/* Exam Bank Button - Always show */}
+          <Box sx={{ mt: 2, mb: 4 }}>
+            <Button
+              variant="contained"
+              component={RouterLink}
+              to="/marketplace"
+              size="large"
+              endIcon={<ArrowForward />}
+              fullWidth
+              sx={{
+                fontWeight: 'bold',
+                textTransform: 'none',
+                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
+                py: 1.5,
+                fontSize: 16,
+                '&:hover': {
+                  boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
+                }
+              }}
+            >
+              Go to Exam Bank for More Exams
+            </Button>
+          </Box>
         </Box>
 
         {/* Approved Exam Requests Section - Only show when no available exams */}
@@ -524,7 +567,7 @@ const Dashboard = () => {
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
                       <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
                         <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">
-                          {request.exam?.title || 'Exam'}
+                          {request.exam?.title || request.examTitle || 'Exam'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           Approved: {formatDate(request.updatedAt)}

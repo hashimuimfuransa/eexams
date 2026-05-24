@@ -397,32 +397,83 @@ const Results = () => {
           <Paper
             elevation={3}
             sx={{
-              p: 3,
+              p: { xs: 2, sm: 3, md: 4 },
               mb: 4,
               borderRadius: 4,
               background: 'linear-gradient(135deg, #0D406C 0%, #1A5A8C 100%)',
               color: 'white',
             }}
           >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box>
-                <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: { xs: 'flex-start', sm: 'center' }, 
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: { xs: 2, sm: 3 }
+            }}>
+              <Box sx={{ width: { xs: '100%', sm: 'auto' } }}>
+                <Typography 
+                  variant="h4" 
+                  component="h1" 
+                  fontWeight="bold" 
+                  gutterBottom
+                  sx={{ 
+                    fontSize: { xs: '1.5rem', sm: '2rem', md: '2.25rem' },
+                    lineHeight: 1.2
+                  }}
+                >
                   {detailedResult.exam?.title || 'Exam (Deleted)'}
                 </Typography>
-                <Typography variant="subtitle1">
+                <Typography 
+                  variant="subtitle1"
+                  sx={{ 
+                    fontSize: { xs: '0.9rem', sm: '1rem' }
+                  }}
+                >
                   Completed on {formatDate(detailedResult.endTime)}
                 </Typography>
               </Box>
 
-              <Button
-                variant="contained"
-                color="secondary"
-                onClick={() => navigate('/student/results')}
-                startIcon={<ArrowBack />}
-                sx={{ color: 'black', fontWeight: 'bold' }}
-              >
-                Back to Results
-              </Button>
+              <Box sx={{ 
+                display: 'flex', 
+                gap: 2, 
+                flexWrap: 'wrap',
+                width: { xs: '100%', sm: 'auto' },
+                flexDirection: { xs: 'column', sm: 'row' }
+              }}>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  onClick={() => navigate('/student/dashboard')}
+                  startIcon={<ArrowBack />}
+                  sx={{ 
+                    color: 'black', 
+                    fontWeight: 'bold',
+                    width: { xs: '100%', sm: 'auto' },
+                    py: { xs: 1.5, sm: 1 }
+                  }}
+                >
+                  Back to Dashboard
+                </Button>
+                <Button
+                  variant="contained"
+                  component={RouterLink}
+                  to="/marketplace"
+                  startIcon={<School />}
+                  sx={{
+                    background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    width: { xs: '100%', sm: 'auto' },
+                    py: { xs: 1.5, sm: 1 },
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #0A2E4D 0%, #0A9E5E 100%)'
+                    }
+                  }}
+                >
+                  Go to Exam Bank
+                </Button>
+              </Box>
             </Box>
           </Paper>
         </Grow>

@@ -7,6 +7,11 @@ const ExamRequestSchema = new mongoose.Schema({
     ref: 'Exam',
     required: true
   },
+  // Backup exam title (in case exam is deleted)
+  examTitle: {
+    type: String,
+    default: null
+  },
   // The teacher who published the exam
   teacher: {
     type: mongoose.Schema.Types.ObjectId,
@@ -46,6 +51,11 @@ const ExamRequestSchema = new mongoose.Schema({
   amount: {
     type: Number,
     default: 0
+  },
+  // Whether this is a retake request
+  isRetake: {
+    type: Boolean,
+    default: false
   },
   // Payment status
   paymentStatus: {

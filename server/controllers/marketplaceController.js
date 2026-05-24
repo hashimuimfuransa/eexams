@@ -187,6 +187,7 @@ const requestMarketplaceExam = async (req, res) => {
   try {
     // Check if user is authenticated
     const isAuthenticated = req.user && req.user._id;
+    const isRetake = req.body.isRetake === true;
     
     let name, phone, email;
 
@@ -335,16 +336,24 @@ const requestMarketplaceExam = async (req, res) => {
       }
     }
 
+    // Calculate the amount - 500 RWF for retakes of free exams
+    let amount = exam.publicPrice || 0;
+    if (isRetake && amount === 0) {
+      amount = 500;
+    }
+
     // Create the request
     const requestData = {
       exam: exam._id,
+      examTitle: exam.title,
       teacher: exam.createdBy,
       userInfo: {
         name: name.trim(),
         email: email.trim(),
         phone: phone?.trim() || null
       },
-      amount: exam.publicPrice || 0
+      amount: amount,
+      isRetake: isRetake
     };
 
     // Add student reference if authenticated
@@ -363,10 +372,10 @@ const requestMarketplaceExam = async (req, res) => {
       console.error('[Marketplace] Failed to send super admin notification:', err);
     });
 
-    // Check if exam is free (price = 0) - auto-approve
+    // Check if exam is free (price = 0) - auto-approve, but NOT for retakes
     const isFree = exam.publicPrice === 0 || exam.publicPrice === '0' || exam.publicPrice === '0 RWF';
     
-    if (isFree) {
+    if (isFree && !isRetake) {
       console.log(`Auto-approving free exam request: ${exam._id}, price: ${exam.publicPrice}`);
       
       // Process the approval automatically
@@ -382,7 +391,9 @@ const requestMarketplaceExam = async (req, res) => {
     }
 
     res.status(201).json({
-      message: 'Request submitted successfully. The teacher will review your request.',
+      message: isRetake && isFree 
+        ? 'Retake request submitted successfully. Please pay 500 RWF to complete your request.'
+        : 'Request submitted successfully. The teacher will review your request.',
       requestId: examRequest._id
     });
   } catch (error) {

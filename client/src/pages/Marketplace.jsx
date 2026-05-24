@@ -106,33 +106,16 @@ const Marketplace = () => {
   const handleRequestAccess = async (examId, isRetake = false) => {
     // Check if user is authenticated as a student
     const isStudent = isAuthenticated && user?.role === 'student';
-    
+
     if (!isStudent) {
       // Redirect to student registration with the exam as redirect target
-      const redirectUrl = `/marketplace/exams/${examId}/request`;
+      const redirectUrl = `/marketplace/exams/${examId}/request${isRetake ? '?retake=true' : ''}`;
       navigate(`/student-register?redirect=${encodeURIComponent(redirectUrl)}`);
       return;
     }
 
-    // If authenticated as student
-    if (isRetake) {
-      // For retake, submit request directly without redirecting
-      try {
-        const response = await api.post(`/marketplace/exams/${examId}/request`);
-        // Refresh completion status after successful retake request
-        fetchExamCompletionStatus();
-        // Show success message or redirect to dashboard
-        navigate('/student/dashboard', { state: { message: 'Retake request submitted successfully!' } });
-      } catch (err) {
-        console.error('Error requesting retake:', err);
-        if (err.response?.data?.message) {
-          alert(err.response.data.message);
-        }
-      }
-    } else {
-      // First time request - redirect to exam request page
-      navigate(`/marketplace/exams/${examId}/request`);
-    }
+    // Always redirect to exam request page (for both first time and retake)
+    navigate(`/marketplace/exams/${examId}/request${isRetake ? '?retake=true' : ''}`);
   };
 
   const handleShareExam = async (examId, examTitle) => {

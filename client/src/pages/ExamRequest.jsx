@@ -104,7 +104,18 @@ const ExamRequest = () => {
       }, 3000);
     } catch (err) {
       console.error('Error submitting request:', err);
-      setError(err.response?.data?.message || 'Failed to submit request. Please try again.');
+      const errorMessage = err.response?.data?.message || 'Failed to submit request. Please try again.';
+      
+      // Check if error is due to pending request
+      if (errorMessage.includes('pending') || errorMessage.includes('already')) {
+        // Redirect to dashboard to see pending requests
+        alert(errorMessage + ' Redirecting to dashboard to view your pending requests...');
+        setTimeout(() => {
+          navigate('/student/dashboard');
+        }, 2000);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setSubmitting(false);
     }

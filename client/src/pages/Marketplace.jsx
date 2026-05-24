@@ -116,6 +116,15 @@ const Marketplace = () => {
       return;
     }
 
+    // Check if there's already a pending retake request for this exam
+    if (isRetake && pendingRetakeExamIds.includes(examId)) {
+      alert('You already have a pending retake request for this exam. Redirecting to dashboard to view your pending requests...');
+      setTimeout(() => {
+        navigate('/student/dashboard');
+      }, 2000);
+      return;
+    }
+
     // Always redirect to exam request page (for both first time and retake)
     navigate(`/marketplace/exams/${examId}/request${isRetake ? '?retake=true' : ''}`);
   };

@@ -222,10 +222,13 @@ const Dashboard = () => {
       alert(`Retake request for "${examTitle}" submitted successfully! The teacher will review your request.`);
     } catch (err) {
       console.error('Error requesting retake:', err);
-      if (err.response?.data?.message) {
-        alert(err.response.data.message);
+      const errorMessage = err.response?.data?.message || 'Failed to submit retake request. Please try again.';
+      
+      // Check if error is due to pending request
+      if (errorMessage.includes('pending') || errorMessage.includes('already')) {
+        alert(errorMessage + ' You can view your pending requests in the Pending Exam Requests section above.');
       } else {
-        alert('Failed to submit retake request. Please try again.');
+        alert(errorMessage);
       }
     } finally {
       setRequestingExam(null);

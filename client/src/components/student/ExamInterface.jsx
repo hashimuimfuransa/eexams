@@ -4541,6 +4541,34 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
   const { mode } = useThemeMode();
   const [localAnswer, setLocalAnswer] = useState(answer?.textAnswer || '');
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calculatorDisplay, setCalculatorDisplay] = useState('');
+
+  const handleCalculatorInput = (value) => {
+    setCalculatorDisplay(prev => prev + value);
+  };
+
+  const handleCalculatorClear = () => {
+    setCalculatorDisplay('');
+  };
+
+  const handleCalculatorCalculate = () => {
+    try {
+      let expression = calculatorDisplay;
+      expression = expression.replace(/sin\(/g, 'Math.sin(');
+      expression = expression.replace(/cos\(/g, 'Math.cos(');
+      expression = expression.replace(/tan\(/g, 'Math.tan(');
+      expression = expression.replace(/log\(/g, 'Math.log10(');
+      expression = expression.replace(/ln\(/g, 'Math.log(');
+      expression = expression.replace(/sqrt\(/g, 'Math.sqrt(');
+      expression = expression.replace(/\^/g, '**');
+      expression = expression.replace(/π/g, 'Math.PI');
+      expression = expression.replace(/e/g, 'Math.E');
+      const result = eval(expression);
+      setCalculatorDisplay(result.toString());
+    } catch (error) {
+      setCalculatorDisplay('Error');
+    }
+  };
 
   const handleInputChange = (event) => {
     const value = event.target.value;
@@ -4753,6 +4781,34 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const theme = useTheme();
   const { mode } = useThemeMode();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calculatorDisplay, setCalculatorDisplay] = useState('');
+
+  const handleCalculatorInput = (value) => {
+    setCalculatorDisplay(prev => prev + value);
+  };
+
+  const handleCalculatorClear = () => {
+    setCalculatorDisplay('');
+  };
+
+  const handleCalculatorCalculate = () => {
+    try {
+      let expression = calculatorDisplay;
+      expression = expression.replace(/sin\(/g, 'Math.sin(');
+      expression = expression.replace(/cos\(/g, 'Math.cos(');
+      expression = expression.replace(/tan\(/g, 'Math.tan(');
+      expression = expression.replace(/log\(/g, 'Math.log10(');
+      expression = expression.replace(/ln\(/g, 'Math.log(');
+      expression = expression.replace(/sqrt\(/g, 'Math.sqrt(');
+      expression = expression.replace(/\^/g, '**');
+      expression = expression.replace(/π/g, 'Math.PI');
+      expression = expression.replace(/e/g, 'Math.E');
+      const result = eval(expression);
+      setCalculatorDisplay(result.toString());
+    } catch (error) {
+      setCalculatorDisplay('Error');
+    }
+  };
 
   // Get left items (questions/prompts) and right items (answers/choices)
   const leftItems = question.leftItems || question.options?.filter((_, i) => i % 2 === 0) || [];
@@ -5177,6 +5233,34 @@ const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const theme = useTheme();
   const { mode } = useThemeMode();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calculatorDisplay, setCalculatorDisplay] = useState('');
+
+  const handleCalculatorInput = (value) => {
+    setCalculatorDisplay(prev => prev + value);
+  };
+
+  const handleCalculatorClear = () => {
+    setCalculatorDisplay('');
+  };
+
+  const handleCalculatorCalculate = () => {
+    try {
+      let expression = calculatorDisplay;
+      expression = expression.replace(/sin\(/g, 'Math.sin(');
+      expression = expression.replace(/cos\(/g, 'Math.cos(');
+      expression = expression.replace(/tan\(/g, 'Math.tan(');
+      expression = expression.replace(/log\(/g, 'Math.log10(');
+      expression = expression.replace(/ln\(/g, 'Math.log(');
+      expression = expression.replace(/sqrt\(/g, 'Math.sqrt(');
+      expression = expression.replace(/\^/g, '**');
+      expression = expression.replace(/π/g, 'Math.PI');
+      expression = expression.replace(/e/g, 'Math.E');
+      const result = eval(expression);
+      setCalculatorDisplay(result.toString());
+    } catch (error) {
+      setCalculatorDisplay('Error');
+    }
+  };
 
   const items = question.items || question.options || [];
 
@@ -5568,8 +5652,36 @@ const DragDropQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const [placements, setPlacements] = useState(answer?.dragDropAnswer || []);
   const [selectedItem, setSelectedItem] = useState(null);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calculatorDisplay, setCalculatorDisplay] = useState('');
   const dropZones = question.dragDropData?.dropZones || [];
   const draggableItems = question.dragDropData?.draggableItems || [];
+
+  const handleCalculatorInput = (value) => {
+    setCalculatorDisplay(prev => prev + value);
+  };
+
+  const handleCalculatorClear = () => {
+    setCalculatorDisplay('');
+  };
+
+  const handleCalculatorCalculate = () => {
+    try {
+      let expression = calculatorDisplay;
+      expression = expression.replace(/sin\(/g, 'Math.sin(');
+      expression = expression.replace(/cos\(/g, 'Math.cos(');
+      expression = expression.replace(/tan\(/g, 'Math.tan(');
+      expression = expression.replace(/log\(/g, 'Math.log10(');
+      expression = expression.replace(/ln\(/g, 'Math.log(');
+      expression = expression.replace(/sqrt\(/g, 'Math.sqrt(');
+      expression = expression.replace(/\^/g, '**');
+      expression = expression.replace(/π/g, 'Math.PI');
+      expression = expression.replace(/e/g, 'Math.E');
+      const result = eval(expression);
+      setCalculatorDisplay(result.toString());
+    } catch (error) {
+      setCalculatorDisplay('Error');
+    }
+  };
 
   const handleDrop = (itemIndex, zoneIndex) => {
     if (disabled) return;

@@ -3,6 +3,8 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const mammoth = require('mammoth');
+const pdf = require('pdf-parse');
 const {
   createExam,
   getExams,
@@ -37,6 +39,24 @@ const {
 const { authLimiter, submissionLimiter, aiGradingLimiter, examCreationLimiter } = require('../middleware/rateLimiter');
 const { cacheExam, cacheExamList, invalidateExamCache } = require('../middleware/cacheMiddleware');
 const groqClient = require('../utils/groqClient');
+
+// Configure multer for reference file uploads (memory storage)
+const memoryStorage = multer.memoryStorage();
+const memoryUpload = multer({
+  storage: memoryStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit for larger files
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['.pdf', '.doc', '.docx', '.txt'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedTypes.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, DOC, DOCX, and TXT files are allowed.'));
+    }
+  }
+});
 
 // In-memory lock map for handling concurrent requests
 const examLocks = new Map();
@@ -220,7 +240,11 @@ function buildSectionsInstruction(questionTypes) {
     return `{
   "name": "${sectionName}",
   "description": "${qt.label || qt.type}",
-  "questions": [ /* EXACTLY ${qt.count} questions of type "${qt.type}" with format: ${schema} */ ]
+  "questions": [
+    /* CRITICAL: Generate EXACTLY ${qt.count} questions */
+    /* EVERY question in this section MUST have "type": "${qt.type}" */
+    /* Question format: ${schema} */
+  ]
 }`;
   }).join(',\n  ');
 }
@@ -244,6 +268,10 @@ function mapQuestionType(type) {
   }
   // Open ended variations
   if (t.includes('open') || t.includes('essay') || t.includes('long') || t.includes('descriptive')) {
+    return 'open-ended';
+  }
+  // Handle "open" type specifically
+  if (t === 'open') {
     return 'open-ended';
   }
   // Matching variations
@@ -716,10 +744,67 @@ router.get('/drafts', auth, isAdminOrTeacher, async (req, res) => {
   }
 });
 
+// Upload reference material (exam, textbook, study guide) for AI to reference
+router.post('/upload-reference', auth, isAdminOrTeacher, memoryUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const { buffer, originalname, mimetype, size } = req.file;
+    const ext = path.extname(originalname).toLowerCase();
+    let content = '';
+
+    console.log(`Processing file: ${originalname}, size: ${(size / 1024 / 1024).toFixed(2)}MB, type: ${mimetype}`);
+
+    // Parse file based on type
+    if (ext === '.pdf') {
+      const data = await pdf(buffer);
+      content = data.text;
+      console.log(`PDF extracted: ${content.length} characters`);
+    } else if (ext === '.doc' || ext === '.docx') {
+      const result = await mammoth.extractRawText({ buffer });
+      content = result.value;
+      console.log(`DOCX extracted: ${content.length} characters`);
+    } else if (ext === '.txt') {
+      content = buffer.toString('utf-8');
+      console.log(`TXT extracted: ${content.length} characters`);
+    } else {
+      return res.status(400).json({ message: 'Unsupported file type' });
+    }
+
+    // Clean up the content more efficiently
+    content = content.replace(/\s+/g, ' ').trim();
+
+    // Limit content size to avoid overwhelming the AI (increased to 100k for larger files)
+    const maxContentLength = 100000; // 100k characters
+    if (content.length > maxContentLength) {
+      const originalLength = content.length;
+      content = content.substring(0, maxContentLength) + '... (content truncated)';
+      console.log(`Content truncated from ${originalLength} to ${maxContentLength} characters`);
+    }
+
+    res.json({
+      success: true,
+      content: content,
+      filename: originalname,
+      type: mimetype,
+      size: size,
+      contentLength: content.length
+    });
+  } catch (error) {
+    console.error('Error uploading reference file:', error);
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ message: 'File too large. Maximum size is 50MB.' });
+    }
+    res.status(500).json({ message: 'Failed to process file: ' + error.message });
+  }
+});
+
 // AI exam generation route - requires Basic plan or higher
 router.post('/ai-generate', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
   try {
-    const { prompt, pastedExam } = req.body;
+    const { prompt, pastedExam, referenceContent } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ message: 'Prompt is required' });
 
     // Resolve the user's effective plan
@@ -912,8 +997,15 @@ CRITICAL RULES:
         return res.status(500).json({ message: 'Failed to parse the pasted exam. Please check the format and try again.' });
       }
     } else {
+      // If reference content is provided, include it in the prompt context
+      if (referenceContent && referenceContent.trim()) {
+        examContext = `\n\nREFERENCE MATERIAL:\n${referenceContent.trim()}`;
+      }
+
       // Parse question types and counts from the prompt using AI
       const parsePrompt = `Analyze this exam request and extract the question types and counts: "${prompt.trim()}"
+
+${referenceContent && referenceContent.trim() ? `The user has provided reference material. IMPORTANT: If they specify question counts in the prompt, use EXACTLY those counts - do not change them based on the reference material. Only create a comprehensive structure if they DON'T specify counts.` : ''}
 
 Return ONLY a JSON object with this structure:
 {
@@ -926,12 +1018,16 @@ Return ONLY a JSON object with this structure:
   "gradeLevel": "extracted grade level"
 }
 
-Rules:
-- If the user specifies question types and counts, use exactly those
+CRITICAL RULES:
+- If the user specifies question types and counts (e.g., "20 multiple-choice, 10 short-answer"), use EXACTLY those numbers - do not change them
+- If the user specifies a total (e.g., "50 questions"), distribute appropriately but ensure total equals that number
 - If only total questions is given without types, default to multiple-choice
-- If no count is specified, default to 10 multiple-choice questions
+- If no count is specified and no reference material, default to 10 multiple-choice questions
+- If no count is specified but reference material is provided, create a comprehensive structure (30-50 questions total)
 - Supported types: multiple-choice, true-false, short-answer, open-ended, fill-in-blank, matching, ordering
-- Be accurate - only extract what is explicitly stated in the prompt`;
+- IMPORTANT: Use "open-ended" for open/essay questions, NOT "open"
+- Be accurate - only extract what is explicitly stated in the prompt
+- NEVER modify the user's specified counts`;
 
       try {
         const parseResponse = await groqClient.generateContent(parsePrompt, {
@@ -940,28 +1036,54 @@ Rules:
           temperature: 0.1,
           maxTokens: 1024
         });
-        
+
         let parseText = parseResponse.text || '';
         parseText = parseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-        
+
         const parsed = JSON.parse(parseText);
         qtConfig = parsed.questionTypes || [{ type: 'multiple-choice', count: 10, label: 'Multiple Choice' }];
+
+        // Normalize question types (e.g., "open" -> "open-ended")
+        qtConfig = qtConfig.map(qt => ({
+          ...qt,
+          type: mapQuestionType(qt.type)
+        }));
       } catch (parseError) {
         console.error('Failed to parse question types from prompt, using defaults:', parseError);
         qtConfig = [{ type: 'multiple-choice', count: 10, label: 'Multiple Choice' }];
       }
     }
 
-    // Enforce per-type and total caps based on plan
-    qtConfig = qtConfig.map(qt => ({
-      ...qt,
-      count: Math.min(qt.count || 1, limits.maxPerType),
-    }));
-    const totalRequested = qtConfig.reduce((s, qt) => s + qt.count, 0);
-    if (totalRequested > limits.maxQuestions) {
-      const scale = limits.maxQuestions / totalRequested;
-      qtConfig = qtConfig.map(qt => ({ ...qt, count: Math.max(1, Math.round(qt.count * scale)) }));
+    // Enforce per-type and total caps based on plan (only if user didn't specify exact counts)
+    // If user specified exact counts in prompt, respect them completely
+    const userSpecifiedCounts = prompt.match(/\d+\s*(questions|items|qs)/gi) ||
+                                 prompt.match(/(\d+)\s*(multiple-choice|true-false|short-answer|open-ended|fill-in-blank|matching|ordering)/gi) ||
+                                 prompt.match(/(\d+)\s*(mcq|mc|tf|sa|oe|fib)/gi) ||
+                                 prompt.match(/(\d+)\s*of/gi);
+
+    console.log('User prompt:', prompt);
+    console.log('User specified counts pattern match:', userSpecifiedCounts);
+    console.log('Parsed qtConfig before limits:', JSON.stringify(qtConfig, null, 2));
+
+    // Skip plan limits entirely if user specified counts
+    if (!userSpecifiedCounts) {
+      // Only apply limits if user didn't specify exact counts
+      console.log('No user-specified counts, applying plan limits');
+      qtConfig = qtConfig.map(qt => ({
+        ...qt,
+        count: Math.min(qt.count || 1, limits.maxPerType),
+      }));
+      const totalRequested = qtConfig.reduce((s, qt) => s + qt.count, 0);
+      if (totalRequested > limits.maxQuestions) {
+        const scale = limits.maxQuestions / totalRequested;
+        qtConfig = qtConfig.map(qt => ({ ...qt, count: Math.max(1, Math.round(qt.count * scale)) }));
+      }
+    } else {
+      console.log('User specified exact counts, SKIPPING plan limits completely');
+      // Don't apply any limits - use exactly what the AI parsed
     }
+
+    console.log('Final qtConfig after limits:', JSON.stringify(qtConfig, null, 2));
 
     const sectionsTemplate = buildSectionsInstruction(qtConfig);
 
@@ -974,37 +1096,79 @@ Rules:
 
 ${pastedExam && pastedExam.trim() ? `REFERENCE EXAM STRUCTURE: The teacher has provided a pasted exam. Create a NEW exam with the SAME structure (question types, counts, sections) but with DIFFERENT questions on the same or related topic. Do not copy the exact questions from the pasted exam - create fresh, original questions following the same format and difficulty level.` : ''}
 
+${referenceContent && referenceContent.trim() ? `REFERENCE MATERIAL: The teacher has provided reference material (exam, textbook, or study guide). 
+IMPORTANT: 
+1. ANALYZE the reference material to detect the subject (e.g., English, Mathematics, Science, Social Studies, Kinyarwanda, etc.)
+2. Create a PROFESSIONAL exam structure appropriate for that subject
+3. Generate a COMPREHENSIVE exam with multiple sections covering different topics from the reference
+4. Include a variety of question types appropriate for the subject
+5. Create NEW questions based on this material - do not copy exact text from the reference
+6. Ensure the exam covers the main concepts, topics, and learning objectives from the reference material
+7. The exam should be thorough and comprehensive, testing understanding of the entire reference material` : ''}
+
+PROFESSIONAL EXAM STRUCTURE GUIDELINES:
+- A professional exam should have 3-5 sections covering different topics or question types
+- Each section should have 8-15 questions (total 30-50 questions for a comprehensive exam)
+- Include a mix of question types: multiple-choice, true-false, short-answer, fill-in-blank, matching, and open-ended
+- Sections should be organized by topic or skill being tested
+- Include clear instructions for each section
+- Questions should progress from basic recall to higher-order thinking (analysis, application)
+- Include appropriate difficulty distribution: 30% easy, 50% medium, 20% challenging
+- For language subjects (English, Kinyarwanda): Include grammar, vocabulary, reading comprehension, and writing sections
+- For mathematics: Include computational, conceptual, and problem-solving questions
+- For science: Include knowledge recall, application, and analysis questions
+- For social studies: Include factual recall, interpretation, and critical thinking questions
+
 CRITICAL REQUIREMENTS:
 1. Generate EXACTLY the following number of questions per section:
   ${countInstructions}
-2. Return ONLY valid JSON, no markdown, no explanations outside JSON
-3. Follow the exact format specified below
+2. DO NOT change the question counts - the user has specified these exact numbers
+3. DO NOT change the question types - each section MUST use the specified question type
+4. Return ONLY valid JSON, no markdown, no explanations outside JSON
+5. Follow the exact format specified below
+6. Create a comprehensive exam that thoroughly tests the reference material
+7. Ensure all major topics from the reference are covered in the exam
+8. If the total questions generated don't match the specified counts, the exam is INVALID
+9. If any question type doesn't match the section specification, the exam is INVALID
+10. You MUST generate ALL sections specified in the sections array - do not skip any sections
+11. DO NOT repeat the same question across different sections - each question must be unique
+12. DO NOT use the same question text with different question types - create genuinely different questions
+
+QUESTION TYPE ENFORCEMENT:
+- Section A MUST contain ONLY multiple-choice questions
+- Section B MUST contain ONLY short-answer questions
+- Section C MUST contain ONLY open-ended questions
+- Each question MUST have a "type" field that matches its section's type
+- Do NOT mix question types within a section
+- ALL sections must be present in the response
+- Each question must be unique - no duplicates across sections
 
 ANTI-HALLUCINATION AND ACCURACY RULES:
-4. NEVER HALLUCINATE - Only use facts, dates, names, and information you are certain about
-5. If you are uncertain about any fact, date, statistic, or name, either:
+6. NEVER HALLUCINATE - Only use facts, dates, names, and information you are certain about
+7. If you are uncertain about any fact, date, statistic, or name, either:
    - Omit that specific detail and use a general formulation instead
    - Use a well-known, universally accepted example
    - Explicitly state it as a hypothetical scenario
-6. Verify all factual information before including it in questions
-7. For Rwanda-specific content, use accurate information about:
+8. Verify all factual information before including it in questions
+9. For Rwanda-specific content, use accurate information about:
    - Rwanda's geography (provinces, districts, landmarks)
    - Rwanda's history (key dates, events, figures)
    - Rwanda's culture and traditions
    - The Rwandan education system and curriculum
-8. For science and mathematics, use accurate formulas, constants, and principles
-9. For literature and arts, use well-known, established works and authors
-10. Ensure questions are age-appropriate for the specified grade level
-11. Avoid obscure, controversial, or ambiguous facts that could confuse students
-12. Use clear, unambiguous language in all questions
-13. Ensure all answer options (for multiple-choice) are plausible but only one is clearly correct
-14. For open-ended questions, provide comprehensive model answers that cover key concepts
+10. For science and mathematics, use accurate formulas, constants, and principles
+11. For literature and arts, use well-known, established works and authors
+12. Ensure questions are age-appropriate for the specified grade level
+13. Avoid obscure, controversial, or ambiguous facts that could confuse students
+14. Use clear, unambiguous language in all questions
+15. Ensure all answer options (for multiple-choice) are plausible but only one is clearly correct
+16. For open-ended questions, provide comprehensive model answers that cover key concepts
 
 QUALITY STANDARDS:
-15. Each question must test a specific learning objective or skill
-16. Questions should progress from easier to more difficult within each section
-17. Include a mix of recall, understanding, application, and analysis questions where appropriate
-18. Ensure questions are free from cultural bias and are inclusive
+17. Each question must test a specific learning objective or skill
+18. Questions should progress from easier to more difficult within each section
+19. Include a mix of recall, understanding, application, and analysis questions where appropriate
+20. Ensure questions are free from cultural bias and are inclusive
+21. The exam should be comprehensive and cover the reference material thoroughly
 
 Return raw JSON:
 {
@@ -1107,6 +1271,126 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
     }
 
     examData = fixStringifiedArrays(examData);
+
+    // Validate that question types match the specification
+    console.log('Validating question types against specification...');
+    console.log(`Expected ${qtConfig.length} sections, got ${examData.sections?.length || 0} sections`);
+    let validatedQuestions = [];
+    let countMismatches = [];
+    if (examData.sections) {
+      examData.sections.forEach((section, idx) => {
+        const expectedType = qtConfig[idx]?.type;
+        const expectedCount = qtConfig[idx]?.count;
+        const actualCount = section.questions?.length || 0;
+
+        console.log(`Section ${section.name}: Expected type "${expectedType}", count ${expectedCount}, Description: "${section.description}"`);
+        console.log(`  Actual count: ${actualCount} questions`);
+
+        if (actualCount !== expectedCount) {
+          countMismatches.push({
+            section: section.name,
+            expected: expectedCount,
+            actual: actualCount
+          });
+          console.warn(`  WARNING: Count mismatch! Expected ${expectedCount}, got ${actualCount}`);
+        }
+
+        if (section.questions) {
+          section.questions.forEach((q, qIdx) => {
+            const actualType = q.type;
+            console.log(`  Question ${qIdx + 1}: type="${actualType}" (expected: "${expectedType}")`);
+            if (actualType !== expectedType) {
+              console.warn(`  WARNING: Question type mismatch! Expected "${expectedType}" but got "${actualType}"`);
+              // Force the correct type
+              q.type = expectedType;
+              console.log(`  FIXED: Changed type to "${expectedType}"`);
+            }
+          });
+          validatedQuestions = validatedQuestions.concat(section.questions);
+        }
+      });
+    }
+
+    // Check if all expected sections were generated
+    if (examData.sections && examData.sections.length < qtConfig.length) {
+      console.error(`ERROR: Only ${examData.sections.length} sections generated, expected ${qtConfig.length}`);
+      console.error('Missing sections:', qtConfig.slice(examData.sections.length).map(qt => qt.type));
+      // This is a critical error - the AI didn't generate all sections
+      // We should return an error to the user
+      return res.status(500).json({
+        message: `AI generation incomplete: Only ${examData.sections.length} of ${qtConfig.length} sections were generated. Please try again.`
+      });
+    }
+
+    // Check if question counts match and trim excess questions
+    if (countMismatches.length > 0) {
+      console.log('Question count mismatches detected - trimming to match specifications:');
+      countMismatches.forEach(m => {
+        console.log(`  Section ${m.section}: expected ${m.expected}, got ${m.actual}`);
+      });
+
+      // Trim or add questions to match exact counts
+      examData.sections.forEach((section, idx) => {
+        const expectedCount = qtConfig[idx]?.count;
+        const actualCount = section.questions?.length || 0;
+
+        if (actualCount > expectedCount) {
+          // Trim excess questions
+          console.log(`  Trimming Section ${section.name} from ${actualCount} to ${expectedCount} questions`);
+          section.questions = section.questions.slice(0, expectedCount);
+        } else if (actualCount < expectedCount) {
+          // Not enough questions - log warning but continue
+          console.warn(`  Section ${section.name} has only ${actualCount} questions (expected ${expectedCount})`);
+        }
+      });
+
+      // Recalculate total after trimming
+      validatedQuestions = [];
+      examData.sections.forEach(section => {
+        if (section.questions) {
+          validatedQuestions = validatedQuestions.concat(section.questions);
+        }
+      });
+      console.log(`Total questions after trimming: ${validatedQuestions.length}`);
+    }
+
+    // Deduplicate questions across sections
+    console.log('Checking for duplicate questions across sections...');
+    const seenQuestions = new Set();
+    let duplicatesRemoved = 0;
+
+    examData.sections.forEach((section, sectionIdx) => {
+      if (section.questions) {
+        const originalCount = section.questions.length;
+        section.questions = section.questions.filter(q => {
+          // Create a normalized version of the question text for comparison
+          const normalizedText = q.text?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
+          const questionKey = `${normalizedText.substring(0, 100)}_${q.type}`;
+
+          if (seenQuestions.has(questionKey)) {
+            console.warn(`  Removing duplicate question in Section ${section.name}: "${normalizedText.substring(0, 50)}..."`);
+            duplicatesRemoved++;
+            return false;
+          }
+          seenQuestions.add(questionKey);
+          return true;
+        });
+        console.log(`  Section ${section.name}: ${originalCount} -> ${section.questions.length} questions (removed ${originalCount - section.questions.length} duplicates)`);
+      }
+    });
+
+    if (duplicatesRemoved > 0) {
+      console.log(`Total duplicates removed: ${duplicatesRemoved}`);
+      // Recalculate total after deduplication
+      validatedQuestions = [];
+      examData.sections.forEach(section => {
+        if (section.questions) {
+          validatedQuestions = validatedQuestions.concat(section.questions);
+        }
+      });
+    }
+
+    console.log(`Total questions after validation: ${validatedQuestions.length}`);
 
     // Post-process questions to fix field mappings based on question type
     function normalizeQuestionFields(question) {
@@ -1214,7 +1498,7 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
     if (!examData.description) examData.description = prompt.trim();
 
     // Flatten sections into questions array for frontend compatibility
-    let allQuestions = [];
+    let flattenedQuestions = [];
     if (examData.sections && Array.isArray(examData.sections)) {
       examData.sections.forEach((section, sIdx) => {
         if (section.questions && Array.isArray(section.questions)) {
@@ -1373,15 +1657,15 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
               baseQuestion.correctAnswer = q.explanation || 'Not provided';
             }
 
-            allQuestions.push(baseQuestion);
+            flattenedQuestions.push(baseQuestion);
           });
         }
       });
     }
 
     // If no questions found in sections, try direct questions array
-    if (allQuestions.length === 0 && examData.questions && Array.isArray(examData.questions)) {
-      allQuestions = examData.questions.map((q, idx) => ({
+    if (flattenedQuestions.length === 0 && examData.questions && Array.isArray(examData.questions)) {
+      flattenedQuestions = examData.questions.map((q, idx) => ({
         text: q.text || q.question || 'Untitled Question',
         type: mapQuestionType(q.type),
         marks: q.points || q.marks || 1,
@@ -1392,14 +1676,14 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
       }));
     }
 
-    examData.questions = allQuestions;
-    examData.totalMarks = allQuestions.reduce((sum, q) => sum + (q.marks || 1), 0);
+    examData.questions = flattenedQuestions;
+    examData.totalMarks = flattenedQuestions.reduce((sum, q) => sum + (q.marks || 1), 0);
 
     // Attach plan metadata so the client can display it
     examData._planLimits = limits;
     examData._qtConfig = qtConfig;
 
-    console.log(`AI Exam Generated: ${examData.title} with ${allQuestions.length} questions`);
+    console.log(`AI Exam Generated: ${examData.title} with ${flattenedQuestions.length} questions`);
 
     res.json(examData);
   } catch (err) {

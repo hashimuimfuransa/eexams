@@ -957,6 +957,8 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [prompt, setPrompt] = useState('');
   const [pastedExam, setPastedExam] = useState('');
   const [examInputMode, setExamInputMode] = useState('describe'); // 'describe' or 'paste'
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadedFileContent, setUploadedFileContent] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [generated, setGenerated] = useState(null);
@@ -1166,19 +1168,56 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const avgPerf = results.length ? Math.round(results.reduce((s, r) => s + ((r.percentage ?? r.scores?.percentage ?? 0)), 0) / results.length) : (stats?.avgScore ? Math.round(stats.avgScore) : 0);
 
   const handleGenerate = async () => {
-    if (examInputMode === 'describe' && !prompt.trim()) return;
+    if (examInputMode === 'describe' && !prompt.trim() && !uploadedFileContent) return;
     if (examInputMode === 'paste' && !pastedExam.trim()) return;
     if (!canUseAI) { setAiError('AI exam generation requires Basic plan or higher. Please upgrade your subscription.'); return; }
     setAiLoading(true); setAiError('');
     try {
-      const payload = examInputMode === 'paste' 
+      const payload = examInputMode === 'paste'
         ? { prompt: prompt.trim(), pastedExam: pastedExam.trim() }
-        : { prompt: prompt.trim() };
+        : { prompt: prompt.trim(), referenceContent: uploadedFileContent };
       const res = await api.post('/exam/ai-generate', payload, { timeout: 90000 });
       setGenerated(res.data);
     }
     catch (err) { setAiError(err.response?.data?.message || 'AI generation failed.'); }
     finally { setAiLoading(false); }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file size (50MB limit)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      setAiError(`File too large. Maximum size is 50MB. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB.`);
+      return;
+    }
+
+    setUploadedFile(file);
+    setAiLoading(true);
+    setAiError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await api.post('/exam/upload-reference', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000 // 60 second timeout for larger files
+      });
+
+      setUploadedFileContent(res.data.content);
+    } catch (err) {
+      if (err.response?.status === 413) {
+        setAiError('File too large. Maximum size is 50MB.');
+      } else {
+        setAiError(err.response?.data?.message || 'Failed to upload file');
+      }
+      setUploadedFile(null);
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const handleUpload = async () => {
@@ -1568,103 +1607,157 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
               {/* Smart exam description input with guidance */}
               <Box sx={{ mb: 2 }}>
                 {examInputMode === 'describe' ? (
-                  <Box sx={{ position: 'relative' }}>
-                    <TextField 
-                      fullWidth 
-                      multiline 
-                      minRows={isXs ? 4 : 3} 
-                      maxRows={isXs ? 8 : 6} 
-                      placeholder={isXs ? "Describe your exam:\n• Subject & topic\n• Grade level\n• Number of questions & types\n• Duration" : "Describe your exam in detail for best results:\n• Subject: What topic or subject area?\n• Grade/Level: What grade or class level?\n• Topics: What specific content to cover?\n• Question count & types: How many questions of each type? (e.g., 10 multiple-choice, 5 short-answer, 3 open-ended)\n• Duration: How long should the exam be?\n\nExample: 'Biology exam for Grade 10 covering cell division and photosynthesis with 15 multiple-choice questions, 5 short-answer questions, and 3 open-ended questions, 60 minutes duration'"}
-                      value={prompt} 
-                      onChange={e => setPrompt(e.target.value)}
-                      disabled={!canUseAI}
-                      sx={{ 
-                        '& .MuiOutlinedInput-root': { 
-                          borderRadius: 2, 
-                          fontFamily: "DM Sans,sans-serif", 
-                          bgcolor: '#FAFBFC', 
-                          fontSize: isXs ? 13 : 14, 
-                          lineHeight: 1.6,
-                          paddingRight: isRecording ? '60px' : '48px'
-                        } 
-                      }} 
-                    />
-                  {/* Voice recording button */}
-                  {hasSpeechSupport && canUseAI && (
-                    <Box sx={{ position: 'absolute', right: isXs ? 6 : 8, top: isXs ? 6 : 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                      <Tooltip title={isRecording ? "Stop recording" : "Use voice command to describe your exam"}>
-                        <IconButton
-                          onClick={isRecording ? stopRecording : startRecording}
-                          size="small"
-                          sx={{
-                            bgcolor: isRecording ? '#EF4444' : tokens.primary,
-                            color: 'white',
-                            width: isXs ? 36 : 40,
-                            height: isXs ? 36 : 40,
-                            '&:hover': { bgcolor: isRecording ? '#DC2626' : tokens.primaryDark },
-                            animation: isRecording ? 'pulse 1.5s infinite' : 'none',
-                            '@keyframes pulse': {
-                              '0%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0.7)' },
-                              '70%': { transform: 'scale(1.05)', boxShadow: '0 0 0 10px rgba(239, 68, 68, 0)' },
-                              '100%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0)' }
-                            }
-                          }}
-                        >
-                          {isRecording ? <Stop sx={{ fontSize: isXs ? 18 : 20 }} /> : <Mic sx={{ fontSize: isXs ? 18 : 20 }} />}
-                        </IconButton>
-                      </Tooltip>
-                      {isRecording && (
-                        <Box sx={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: 0.5, 
-                          bgcolor: '#EF4444', 
-                          color: 'white', 
-                          px: 1, 
-                          py: 0.25, 
-                          borderRadius: 1, 
-                          fontSize: 9, 
-                          fontWeight: 700,
-                          animation: 'pulse 1.5s infinite'
-                        }}>
-                          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'white' }} />
-                          Recording
+                  <Box>
+                    {/* File upload section */}
+                    <Box sx={{ mb: 2, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '2px dashed #CBD5E1' }}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, mb: 1, textTransform: 'uppercase' }}>
+                        📎 Upload Reference Material (Optional)
+                      </Typography>
+                      <Typography sx={{ fontSize: 12, color: tokens.textMuted, mb: 1.5 }}>
+                        Upload an exam, textbook, or study guide for the AI to reference when generating questions
+                      </Typography>
+                      <Typography sx={{ fontSize: 11, color: tokens.textMuted, mb: 1.5 }}>
+                        Supported formats: PDF, DOC, DOCX, TXT (Max: 50MB)
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,.txt"
+                          onChange={handleFileUpload}
+                          disabled={!canUseAI || aiLoading}
+                          style={{ display: 'none' }}
+                          id="reference-file-upload"
+                        />
+                        <label htmlFor="reference-file-upload">
+                          <Button
+                            component="span"
+                            variant="outlined"
+                            size="small"
+                            disabled={!canUseAI || aiLoading}
+                            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                          >
+                            Choose File
+                          </Button>
+                        </label>
+                        {uploadedFile && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${uploadedFile.name} (${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)`}
+                              size="small"
+                              onDelete={() => { setUploadedFile(null); setUploadedFileContent(''); }}
+                              sx={{ bgcolor: '#DCFCE7', color: '#166534', fontWeight: 600 }}
+                            />
+                          </Box>
+                        )}
+                        {aiLoading && <CircularProgress size={16} />}
+                      </Box>
+                      {uploadedFileContent && (
+                        <Box sx={{ mt: 1, p: 1, bgcolor: '#DBEAFE', borderRadius: 1 }}>
+                          <Typography sx={{ fontSize: 11, color: '#1E40AF', fontWeight: 600 }}>
+                            ✓ File uploaded successfully - AI will use this as reference
+                          </Typography>
                         </Box>
                       )}
                     </Box>
-                  )}
-                  {!hasSpeechSupport && canUseAI && (
-                    <Tooltip title="Voice commands not supported in this browser (use Chrome or Edge)">
-                      <IconButton
-                        size="small"
-                        disabled
-                        sx={{ position: 'absolute', right: 8, top: 8, color: tokens.textMuted }}
-                      >
-                        <MicOff sx={{ fontSize: 20 }} />
-                      </IconButton>
-                    </Tooltip>
-                  )}
-                  {/* Voice command tip */}
-                  {hasSpeechSupport && canUseAI && !prompt && (
-                    <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: 12 }}>
-                      🎙️ <strong>Voice Command:</strong> Click the microphone button to describe your exam verbally. Include subject, grade level, number of questions, and question types (e.g., "Create a Grade 10 math exam with 15 multiple-choice questions").
-                    </Alert>
-                  )}
-                  {/* Input validation hint */}
-                  {prompt.trim() && prompt.trim().length < 20 && (
-                    <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: 12 }}>
-                      💡 Tip: Add more details like subject, grade level, question types and counts for better results.
-                    </Alert>
-                  )}
-                  {prompt.trim() && prompt.trim().length >= 20 && (
-                    <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <CheckCircle sx={{ fontSize: 14, color: tokens.accent }} />
-                      <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
-                        Good! Ready to create a quality exam.
-                      </Typography>
+
+                    <Box sx={{ position: 'relative' }}>
+                      <TextField
+                        fullWidth
+                        multiline
+                        minRows={isXs ? 4 : 3}
+                        maxRows={isXs ? 8 : 6}
+                        placeholder={isXs ? "Describe your exam:\n• Subject & topic\n• Grade level\n• Number of questions & types\n• Duration" : "Describe your exam in detail for best results:\n• Subject: What topic or subject area?\n• Grade/Level: What grade or class level?\n• Topics: What specific content to cover?\n• Question count & types: How many questions of each type? (e.g., 10 multiple-choice, 5 short-answer, 3 open-ended)\n• Duration: How long should the exam be?\n\nExample: 'Biology exam for Grade 10 covering cell division and photosynthesis with 15 multiple-choice questions, 5 short-answer questions, and 3 open-ended questions, 60 minutes duration'"}
+                        value={prompt}
+                        onChange={e => setPrompt(e.target.value)}
+                        disabled={!canUseAI}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 2,
+                            fontFamily: "DM Sans,sans-serif",
+                            bgcolor: '#FAFBFC',
+                            fontSize: isXs ? 13 : 14,
+                            lineHeight: 1.6,
+                            paddingRight: isRecording ? '60px' : '48px'
+                          }
+                        }}
+                      />
+                      {/* Voice recording button */}
+                      {hasSpeechSupport && canUseAI && (
+                        <Box sx={{ position: 'absolute', right: isXs ? 6 : 8, top: isXs ? 6 : 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
+                          <Tooltip title={isRecording ? "Stop recording" : "Use voice command to describe your exam"}>
+                            <IconButton
+                              onClick={isRecording ? stopRecording : startRecording}
+                              size="small"
+                              sx={{
+                                bgcolor: isRecording ? '#EF4444' : tokens.primary,
+                                color: 'white',
+                                width: isXs ? 36 : 40,
+                                height: isXs ? 36 : 40,
+                                '&:hover': { bgcolor: isRecording ? '#DC2626' : tokens.primaryDark },
+                                animation: isRecording ? 'pulse 1.5s infinite' : 'none',
+                                '@keyframes pulse': {
+                                  '0%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0.7)' },
+                                  '70%': { transform: 'scale(1.05)', boxShadow: '0 0 0 10px rgba(239, 68, 68, 0)' },
+                                  '100%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0)' }
+                                }
+                              }}
+                            >
+                              {isRecording ? <Stop sx={{ fontSize: isXs ? 18 : 20 }} /> : <Mic sx={{ fontSize: isXs ? 18 : 20 }} />}
+                            </IconButton>
+                          </Tooltip>
+                          {isRecording && (
+                            <Box sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.5,
+                              bgcolor: '#EF4444',
+                              color: 'white',
+                              px: 1,
+                              py: 0.25,
+                              borderRadius: 1,
+                              fontSize: 9,
+                              fontWeight: 700,
+                              animation: 'pulse 1.5s infinite'
+                            }}>
+                              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'white' }} />
+                              Recording
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                      {!hasSpeechSupport && canUseAI && (
+                        <Tooltip title="Voice commands not supported in this browser (use Chrome or Edge)">
+                          <IconButton
+                            size="small"
+                            disabled
+                            sx={{ position: 'absolute', right: 8, top: 8, color: tokens.textMuted }}
+                          >
+                            <MicOff sx={{ fontSize: 20 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {/* Voice command tip */}
+                      {hasSpeechSupport && canUseAI && !prompt && (
+                        <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: 12 }}>
+                          🎙️ <strong>Voice Command:</strong> Click the microphone button to describe your exam verbally. Include subject, grade level, number of questions, and question types (e.g., "Create a Grade 10 math exam with 15 multiple-choice questions").
+                        </Alert>
+                      )}
+                      {/* Input validation hint */}
+                      {prompt.trim() && prompt.trim().length < 20 && (
+                        <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: 12 }}>
+                          💡 Tip: Add more details like subject, grade level, question types and counts for better results.
+                        </Alert>
+                      )}
+                      {prompt.trim() && prompt.trim().length >= 20 && (
+                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <CheckCircle sx={{ fontSize: 14, color: tokens.accent }} />
+                          <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
+                            Good! Ready to create a quality exam.
+                          </Typography>
+                        </Box>
+                      )}
                     </Box>
-                  )}
-                </Box>
+                  </Box>
                 ) : (
                   <Box>
                     <TextField 

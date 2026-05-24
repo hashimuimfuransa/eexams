@@ -168,6 +168,20 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Performance monitoring endpoint
+app.get('/api/performance', (req, res) => {
+  const cacheService = require('./utils/cacheService');
+  const cacheStats = cacheService.getStats();
+  
+  res.status(200).json({
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    cache: cacheStats,
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // SEO endpoints
 app.get('/sitemap.xml', seoController.generateSitemap);
 

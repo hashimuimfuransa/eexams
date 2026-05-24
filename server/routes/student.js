@@ -13,25 +13,26 @@ const {
 } = require('../controllers/studentController');
 const auth = require('../middleware/auth');
 const { isStudent } = require('../middleware/role');
+const { apiLimiter } = require('../middleware/rateLimiter');
 
 // Apply auth and student middleware to all routes
 router.use(auth, isStudent);
 
 // Exam routes
-router.get('/exams', getAvailableExams);
-router.get('/exams/:examId', getExamById); // Get specific exam by ID
-router.get('/exams/:examId/session', getCurrentExamSession);
+router.get('/exams', apiLimiter, getAvailableExams);
+router.get('/exams/:examId', apiLimiter, getExamById); // Get specific exam by ID
+router.get('/exams/:examId/session', apiLimiter, getCurrentExamSession);
 
 // Results routes
-router.get('/results', getStudentResults);
-router.get('/results/:resultId', getDetailedResult);
-router.get('/debug-results', debugStudentResults);
-router.get('/check-result/:resultId', checkSpecificResult);
+router.get('/results', apiLimiter, getStudentResults);
+router.get('/results/:resultId', apiLimiter, getDetailedResult);
+router.get('/debug-results', apiLimiter, debugStudentResults);
+router.get('/check-result/:resultId', apiLimiter, checkSpecificResult);
 
 // Scheduled exams route
-router.get('/scheduled-exams', getScheduledExams);
+router.get('/scheduled-exams', apiLimiter, getScheduledExams);
 
 // Leaderboard route
-router.get('/leaderboard', getClassLeaderboard);
+router.get('/leaderboard', apiLimiter, getClassLeaderboard);
 
 module.exports = router;

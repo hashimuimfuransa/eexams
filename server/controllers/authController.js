@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const sgMail = require('@sendgrid/mail');
 const User = require('../models/User');
 const emailService = require('../utils/emailService');
+const cacheService = require('../utils/cacheService');
+const { invalidateUserCache } = require('../middleware/auth');
 
 // Google OAuth client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -262,6 +264,9 @@ const changePassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
 
+    // Invalidate user cache
+    await invalidateUserCache(req.user._id);
+
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     console.error('Change password error:', error);
@@ -319,6 +324,9 @@ const updateProfile = async (req, res) => {
     }
 
     await user.save();
+
+    // Invalidate user cache
+    await invalidateUserCache(req.user._id);
 
     // Return updated user data
     res.json({

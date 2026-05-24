@@ -34,6 +34,8 @@ const {
   requireAIFeatures,
   requireAdvancedAI
 } = require('../middleware/planRestrictions');
+const { authLimiter, submissionLimiter, aiGradingLimiter, examCreationLimiter } = require('../middleware/rateLimiter');
+const { cacheExam, cacheExamList, invalidateExamCache } = require('../middleware/cacheMiddleware');
 const groqClient = require('../utils/groqClient');
 
 // In-memory lock map for handling concurrent requests
@@ -123,32 +125,43 @@ const upload = multer({
 // Apply auth middleware to all routes
 router.use(auth);
 
-// Admin routes
+// Admin routes with rate limiting and caching
 router.post(
   '/',
+  authLimiter,
+  examCreationLimiter,
   isAdmin,
   checkExamLimit,
   upload.fields([
     { name: 'examFile', maxCount: 1 },
     { name: 'answerFile', maxCount: 1 }
   ]),
+  invalidateExamCache,
   createExam
+);
+router.get('/', cacheExamList, getExams);
+router.get(
+  '/:id',
+  cacheExam,
+  getExamById
 );
 router.put(
   '/:id',
+  authLimiter,
   isAdmin,
   upload.fields([
     { name: 'examFile', maxCount: 1 },
     { name: 'answerFile', maxCount: 1 }
   ]),
+  invalidateExamCache,
   updateExam
 );
-router.delete('/:id', isAdmin, deleteExam);
-router.put('/:id/toggle-lock', isAdminOrTeacher, toggleExamLock);
-router.post('/grade/:resultId', isAdmin, gradeManually);
-router.post('/ai-grade/:resultId', isAdmin, triggerAIGrading);
+router.delete('/:id', authLimiter, isAdmin, invalidateExamCache, deleteExam);
+router.put('/:id/toggle-lock', authLimiter, isAdminOrTeacher, invalidateExamCache, toggleExamLock);
+router.post('/grade/:resultId', authLimiter, isAdmin, gradeManually);
+router.post('/ai-grade/:resultId', authLimiter, aiGradingLimiter, isAdmin, triggerAIGrading);
 router.get('/:id/debug', isAdmin, debugExamContent);
-router.post('/:id/reset-questions', isAdmin, resetExamQuestions);
+router.post('/:id/reset-questions', authLimiter, isAdmin, invalidateExamCache, resetExamQuestions);
 
 // Debug routes (must come before parameterized routes)
 router.get('/test-routes', (req, res) => {
@@ -164,6 +177,12 @@ router.get('/test-routes', (req, res) => {
     ]
   });
 });
+
+// Student routes with rate limiting
+router.post('/:id/start', submissionLimiter, isStudent, startExam);
+router.post('/:id/answer', submissionLimiter, isStudent, submitAnswer);
+router.post('/:id/complete', submissionLimiter, isStudent, completeExam);
+router.post('/:id/select-question', submissionLimiter, isStudent, selectQuestion);
 
 
 

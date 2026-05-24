@@ -61,6 +61,7 @@ const {
   requireAnalytics,
   requireTemplatesAccess
 } = require('../middleware/planRestrictions');
+const { authLimiter, apiLimiter, aiGradingLimiter } = require('../middleware/rateLimiter');
 
 // Apply auth and admin/teacher middleware to all routes
 // This allows both organization admins and their teachers to manage students and exams
@@ -70,20 +71,20 @@ router.use(auth, isAdminOrTeacher, attachOrgAdminId);
 router.get('/dashboard-stats', getDashboardStats);
 
 // Student management routes
-router.post('/students', checkStudentLimit, registerStudent);
-router.get('/students', getStudents);
-router.get('/recent-students', getRecentStudents);
-router.get('/students/:id', getStudentById);
-router.put('/students/:id', updateStudent);
-router.delete('/students/:id', deleteStudent);
-router.post('/students/:id/reset-password', resetStudentPassword);
+router.post('/students', authLimiter, checkStudentLimit, registerStudent);
+router.get('/students', apiLimiter, getStudents);
+router.get('/recent-students', apiLimiter, getRecentStudents);
+router.get('/students/:id', apiLimiter, getStudentById);
+router.put('/students/:id', authLimiter, updateStudent);
+router.delete('/students/:id', authLimiter, deleteStudent);
+router.post('/students/:id/reset-password', authLimiter, resetStudentPassword);
 
 // Teacher management routes (admin only)
-router.post('/teachers', isAdmin, checkTeacherLimit, registerTeacher);
-router.get('/teachers', getTeachers);
-router.get('/teachers/:id', getTeacherById);
-router.put('/teachers/:id', updateTeacher);
-router.delete('/teachers/:id', deleteTeacher);
+router.post('/teachers', authLimiter, isAdmin, checkTeacherLimit, registerTeacher);
+router.get('/teachers', apiLimiter, getTeachers);
+router.get('/teachers/:id', apiLimiter, getTeacherById);
+router.put('/teachers/:id', authLimiter, updateTeacher);
+router.delete('/teachers/:id', authLimiter, deleteTeacher);
 
 // Organization routes (admin only)
 router.get('/organization', getOrganizationDetails);
@@ -136,6 +137,7 @@ const upload = multer({
 // Exam management routes
 router.post(
   '/exams',
+  authLimiter,
   checkExamLimit,
   upload.fields([
     { name: 'examFile', maxCount: 1 },
@@ -144,14 +146,14 @@ router.post(
   ]),
   createExam
 );
-router.get('/exams', getAllExams);
-router.get('/exams/scheduled', getScheduledExams);
-router.get('/exams/:id', getExamById);
-router.get('/scheduled-exams', getScheduledExams); // Keep for backward compatibility
-router.get('/recent-exams', getRecentExams);
-router.put('/exams/:id/toggle-lock', toggleExamLock);
-router.post('/schedule-exam', scheduleExam);
-router.put('/exams/:id/schedule', updateScheduledExam);
+router.get('/exams', apiLimiter, getAllExams);
+router.get('/exams/scheduled', apiLimiter, getScheduledExams);
+router.get('/exams/:id', apiLimiter, getExamById);
+router.get('/scheduled-exams', apiLimiter, getScheduledExams); // Keep for backward compatibility
+router.get('/recent-exams', apiLimiter, getRecentExams);
+router.put('/exams/:id/toggle-lock', authLimiter, toggleExamLock);
+router.post('/schedule-exam', authLimiter, scheduleExam);
+router.put('/exams/:id/schedule', authLimiter, updateScheduledExam);
 
 // Exam results routes
 router.get('/exams/:examId/results', getExamResults);
@@ -168,8 +170,8 @@ router.get('/student-management', getStudentManagementData);
 router.get('/analytics/student-performance', requireAnalytics, getStudentPerformanceAnalytics);
 
 // Student results management for regrading
-router.get('/student-results', getStudentResultsForRegrade);
-router.post('/regrade-result/:resultId', regradeStudentResult);
+router.get('/student-results', apiLimiter, getStudentResultsForRegrade);
+router.post('/regrade-result/:resultId', authLimiter, aiGradingLimiter, regradeStudentResult);
 
 // Debug route
 router.get('/debug', debugAdminData);

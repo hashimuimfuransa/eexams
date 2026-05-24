@@ -139,4 +139,12 @@ const QuestionSchema = new mongoose.Schema({
   }
 });
 
+// Performance indexes for common query patterns
+QuestionSchema.index({ exam: 1, section: 1 }); // For getting questions by exam and section
+QuestionSchema.index({ exam: 1, type: 1 }); // For filtering by exam and question type
+QuestionSchema.index({ createdBy: 1, createdAt: -1 }); // For getting user's questions
+QuestionSchema.index({ type: 1, difficulty: 1 }); // For filtering by type and difficulty
+QuestionSchema.index({ tags: 1 }); // For tag-based searches
+QuestionSchema.index({ text: 'text' }); // For text search
+
 module.exports = mongoose.model('Question', QuestionSchema);

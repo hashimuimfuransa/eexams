@@ -184,4 +184,11 @@ const ResultSchema = new mongoose.Schema({
   }
 });
 
+// Performance indexes for common query patterns
+ResultSchema.index({ student: 1, exam: 1, isCompleted: 1 }); // For finding student's exam results
+ResultSchema.index({ exam: 1, isCompleted: 1 }); // For getting all results for an exam
+ResultSchema.index({ student: 1, createdAt: -1 }); // For student's result history
+ResultSchema.index({ aiGradingStatus: 1 }); // For AI grading queue processing
+ResultSchema.index({ createdAt: -1 }); // For recent results
+
 module.exports = mongoose.model('Result', ResultSchema);

@@ -155,6 +155,13 @@ const UserSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
+// Performance indexes for common query patterns
+UserSchema.index({ role: 1, isBlocked: 1 }); // For filtering by role and block status
+UserSchema.index({ parentAdmin: 1, role: 1 }); // For finding teachers under an admin
+UserSchema.index({ createdBy: 1, role: 1 }); // For finding users created by someone
+UserSchema.index({ subscriptionStatus: 1, subscriptionExpiresAt: 1 }); // For subscription management
+UserSchema.index({ lastLogin: -1 }); // For active user tracking
+
 // Hash password before saving - optimized for faster login
 UserSchema.pre('save', async function(next) {
   // Skip password hashing for Google OAuth users or if password not modified

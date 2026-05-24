@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Result = require('../models/Result');
+const { apiLimiter } = require('../middleware/rateLimiter');
 
 // Get result by ID (public - for exam result display)
-router.get('/:resultId', async (req, res) => {
+router.get('/:resultId', apiLimiter, async (req, res) => {
   try {
     const { resultId } = req.params;
 

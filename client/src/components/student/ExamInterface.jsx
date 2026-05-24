@@ -650,6 +650,11 @@ const ExamInterface = () => {
 
       setIsFullscreen(isDocFullscreen);
 
+      // Hide the fullscreen prompt when successfully entering fullscreen
+      if (isDocFullscreen) {
+        setShowFullscreenPrompt(false);
+      }
+
       // If user returns to fullscreen, clear any pending submit timers and hide the warning
       if (isDocFullscreen && window.examSubmitTimer) {
         clearTimeout(window.examSubmitTimer);

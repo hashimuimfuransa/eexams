@@ -135,4 +135,13 @@ const ExamSchema = new mongoose.Schema({
   }
 });
 
+// Performance indexes for common query patterns
+ExamSchema.index({ createdBy: 1, createdAt: -1 }); // For getting user's exams sorted by date
+ExamSchema.index({ status: 1, isLocked: 1 }); // For filtering by status and lock state
+ExamSchema.index({ assignedTo: 1 }); // For finding exams assigned to students
+ExamSchema.index({ isPubliclyListed: 1, status: 1 }); // For public exam listings
+ExamSchema.index({ level: 1, subLevel: 1 }); // For filtering by education level
+ExamSchema.index({ createdAt: -1 }); // For recent exams
+ExamSchema.index({ title: 'text', description: 'text' }); // For text search
+
 module.exports = mongoose.model('Exam', ExamSchema);

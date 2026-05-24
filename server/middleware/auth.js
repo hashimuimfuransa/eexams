@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const cacheService = require('../utils/cacheService');
 
-// Middleware to verify JWT token
+// Middleware to verify JWT token with caching
 const auth = async (req, res, next) => {
   try {
     // Get token from header
@@ -14,8 +15,19 @@ const auth = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Find user by id
-    const user = await User.findById(decoded.id).select('-password');
+    // Try to get user from cache first
+    const cacheKey = cacheService.generateKey('user', decoded.id);
+    let user = await cacheService.get(cacheKey);
+
+    if (!user) {
+      // Cache miss - fetch from database
+      user = await User.findById(decoded.id).select('-password');
+      
+      if (user) {
+        // Cache user for 5 minutes
+        await cacheService.set(cacheKey, user, 300);
+      }
+    }
 
     if (!user) {
       return res.status(401).json({ message: 'Token is not valid' });
@@ -40,8 +52,19 @@ const optionalAuth = async (req, res, next) => {
       // Verify token if provided
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Find user by id
-      const user = await User.findById(decoded.id).select('-password');
+      // Try to get user from cache first
+      const cacheKey = cacheService.generateKey('user', decoded.id);
+      let user = await cacheService.get(cacheKey);
+
+      if (!user) {
+        // Cache miss - fetch from database
+        user = await User.findById(decoded.id).select('-password');
+        
+        if (user) {
+          // Cache user for 5 minutes
+          await cacheService.set(cacheKey, user, 300);
+        }
+      }
 
       if (user) {
         // Add user to request object
@@ -58,5 +81,12 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
+// Helper function to invalidate user cache (call after user updates)
+const invalidateUserCache = async (userId) => {
+  const cacheKey = cacheService.generateKey('user', userId);
+  await cacheService.del(cacheKey);
+};
+
 module.exports = auth;
 module.exports.optionalAuth = optionalAuth;
+module.exports.invalidateUserCache = invalidateUserCache;

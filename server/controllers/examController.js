@@ -9,6 +9,8 @@ const emailService = require('../utils/emailService');
 const { parseExamFile } = require('../utils/fileParser');
 const { gradeOpenEndedAnswer, generateModelAnswers } = require('../utils/aiGrading');
 const { gradeQuestionByType } = require('../utils/enhancedGrading');
+const cacheService = require('../utils/cacheService');
+const { batchUpdateAnswers, batchGradeAnswers, bulkFetchQuestions } = require('../utils/batchOperations');
 
 /**
  * Check if an exam has extracted content
@@ -507,9 +509,20 @@ const createExam = async (req, res) => {
 // @access  Private
 const getExams = async (req, res) => {
   try {
+    // Try cache first
+    const cacheKey = cacheService.generateKey('exams', req.user?._id, JSON.stringify(req.query));
+    const cached = await cacheService.get(cacheKey);
+    
+    if (cached) {
+      return res.json(cached);
+    }
+
     const exams = await Exam.find({})
       .populate('createdBy', 'fullName')
       .select('-sections.questions');
+
+    // Cache for 5 minutes
+    await cacheService.set(cacheKey, exams, 300);
 
     res.json(exams);
   } catch (error) {
@@ -532,6 +545,15 @@ const getExamById = async (req, res) => {
         message: 'Invalid exam ID format',
         examId: examId
       });
+    }
+
+    // Try cache first (only for non-student requests to avoid caching exam questions)
+    const cacheKey = cacheService.generateKey('exam', examId, req.user?.role);
+    if (req.user?.role !== 'student') {
+      const cached = await cacheService.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
     }
 
     let exam = await Exam.findById(examId)
@@ -731,6 +753,11 @@ const getExamById = async (req, res) => {
       return res.json(examForStudent);
     }
 
+    // Cache the exam for non-student requests
+    if (req.user?.role !== 'student') {
+      await cacheService.set(cacheKey, exam, 600); // 10 minutes
+    }
+
     res.json(exam);
   } catch (error) {
     console.error('Get exam by ID error:', error);
@@ -833,6 +860,10 @@ const updateExam = async (req, res) => {
 
     const updatedExam = await exam.save();
 
+    // Invalidate cache for this exam
+    await cacheService.delPattern(`exam:${req.params.id}:*`);
+    await cacheService.delPattern('exams:*');
+
     // If no answer file is set after update, generate AI model answers
     if (!updatedExam.answerFile) {
       console.log('🤖 Exam has no answer file after update. Generating AI model answers for grading...');
@@ -927,6 +958,10 @@ const deleteExam = async (req, res) => {
 
     // Delete exam
     await exam.deleteOne();
+
+    // Invalidate cache for this exam and exam lists
+    await cacheService.delPattern(`exam:${req.params.id}:*`);
+    await cacheService.delPattern('exams:*');
 
     res.json({ message: 'Exam removed' });
   } catch (error) {

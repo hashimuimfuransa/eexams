@@ -529,7 +529,7 @@ IMPORTANT: Only return valid JSON, no additional text outside the JSON.`;
 
     // Use Groq client for grading without model answer
     const response = await groqClient.generateContent(prompt, {
-      model: 'balanced',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.2,
       maxTokens: 2048

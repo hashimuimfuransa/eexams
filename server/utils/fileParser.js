@@ -687,7 +687,7 @@ Make the options realistic and academically appropriate. Do not indicate which i
 `;
 
     const result = await groqClient.generateContent(prompt, {
-      model: 'fast',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.3,
       maxTokens: 1024
@@ -739,7 +739,7 @@ Only return the modified question text, no explanations.
 `;
 
     const result = await groqClient.generateContent(prompt, {
-      model: 'fast',
+      model: 'smart',
       jsonMode: false,
       temperature: 0.2,
       maxTokens: 512
@@ -793,7 +793,7 @@ If you cannot identify clear matching pairs, return null.
 `;
 
     const result = await groqClient.generateContent(prompt, {
-      model: 'balanced',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.2,
       maxTokens: 1024
@@ -880,7 +880,7 @@ If you cannot identify clear items to order, return null.
 `;
 
     const result = await groqClient.generateContent(prompt, {
-      model: 'balanced',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.2,
       maxTokens: 1024
@@ -961,7 +961,7 @@ Only respond with valid JSON containing the options for each question. Do not in
 
     // Generate content with the Groq AI
     const result = await groqClient.generateContent(prompt, {
-      model: 'balanced',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.2,
       maxTokens: 2048
@@ -2348,7 +2348,7 @@ ${text.substring(0, 4000)}`;
 
       console.log('Using AI to extract answers from answer file...');
       const result = await groqClient.generateContent(prompt, {
-        model: 'balanced',
+        model: 'smart',
         jsonMode: true,
         temperature: 0.2,
         maxTokens: 4096,

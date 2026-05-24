@@ -94,7 +94,7 @@ const extractKeyConcepts = async (modelAnswer, studentAnswer, questionText = '')
     }
 
     const result = await groqClient.generateContent(prompt, {
-      model: 'fast',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.1,
       maxTokens: 1024
@@ -282,7 +282,7 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
     }
 
     const result = await groqClient.generateContent(prompt, {
-      model: 'fast',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.1,
       maxTokens: 1024

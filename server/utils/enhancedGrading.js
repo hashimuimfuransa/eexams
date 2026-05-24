@@ -1051,7 +1051,7 @@ const checkAnswerWithAI = async (questionText, studentAnswer, modelAnswer, quest
 
     // Use the Groq generateContent function
     const response = await groqClient.generateContent(prompt, {
-      model: 'fast',
+      model: 'smart',
       jsonMode: false,
       temperature: 0.1,
       maxTokens: 256

@@ -909,7 +909,7 @@ CRITICAL RULES:
 
       try {
         const parseResponse = await groqClient.generateContent(parseExamPrompt, {
-          model: 'balanced',
+          model: 'smart',
           jsonMode: true,
           temperature: 0.1,
           maxTokens: 16384
@@ -1031,7 +1031,7 @@ CRITICAL RULES:
 
       try {
         const parseResponse = await groqClient.generateContent(parsePrompt, {
-          model: 'fast',
+          model: 'smart',
           jsonMode: true,
           temperature: 0.1,
           maxTokens: 1024
@@ -1225,7 +1225,7 @@ CRITICAL FOR ORDERING QUESTIONS:
 IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer must ALWAYS be a string for all question types.`;
 
     const aiResponse = await groqClient.generateContent(systemPrompt, {
-      model: 'balanced',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.2, // Lower temperature for more deterministic output
       maxTokens: 8192, // Increased to give AI more space for all questions

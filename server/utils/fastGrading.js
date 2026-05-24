@@ -183,7 +183,7 @@ Return JSON: {score,feedback,correctedAnswer}`;
     });
 
     const aiPromise = groqClient.generateContent(prompt, {
-      model: 'fast',
+      model: 'smart',
       jsonMode: true,
       temperature: 0.2,
       maxTokens: 1024
@@ -338,7 +338,7 @@ STRICT GRADING GUIDELINES (No Model Answer Available):
 Return JSON: {score,feedback,correctedAnswer}`;
 
       const response = await groqClient.generateContent(prompt, {
-        model: 'fast',
+        model: 'smart',
         jsonMode: true,
         temperature: 0.2,
         maxTokens: 1024

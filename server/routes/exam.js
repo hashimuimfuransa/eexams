@@ -237,9 +237,26 @@ function buildSectionsInstruction(questionTypes) {
   return questionTypes.map((qt, idx) => {
     const sectionName = String.fromCharCode(65 + idx);
     const schema = typeSchemas[qt.type] || typeSchemas['open-ended'];
+    
+    // Add contextual fields based on question type
+    let additionalFields = '';
+    if (qt.type === 'fill-in-blank' || qt.type === 'fill-blank') {
+      additionalFields = `,
+  "wordBank": ["word1", "word2", "word3"],
+  "instructions": "Fill in the blanks using the words from the box above."`;
+    } else if (qt.type === 'open-ended' || qt.type === 'essay') {
+      additionalFields = `,
+  "instructions": "Write a comprehensive answer to the question below."`;
+    } else if (qt.type === 'short-answer') {
+      additionalFields = `,
+  "instructions": "Provide a brief answer to each question."`;
+    }
+    
     return `{
   "name": "${sectionName}",
+  "title": "${qt.label || qt.type} Questions",
   "description": "${qt.label || qt.type}",
+  "instructions": "Read each question carefully and provide your answer."${additionalFields},
   "questions": [
     /* CRITICAL: Generate EXACTLY ${qt.count} questions */
     /* EVERY question in this section MUST have "type": "${qt.type}" */
@@ -329,12 +346,22 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
     });
     console.log('Questions grouped by section:', Object.keys(questionsBySection).map(k => `${k}: ${questionsBySection[k].length} questions`));
 
-    // Create sections array based on grouped questions
-    const sectionsArray = Object.keys(questionsBySection).map(sectionName => ({
-      name: sectionName,
-      description: `Section ${sectionName}`,
-      questions: []
-    }));
+    // Create sections array based on grouped questions and provided sections data
+    const sectionsArray = Object.keys(questionsBySection).map(sectionName => {
+      // Find the provided section data if available
+      const providedSection = sections?.find(s => s.name === sectionName);
+      
+      return {
+        name: sectionName,
+        title: providedSection?.title || `Section ${sectionName}`,
+        description: providedSection?.description || `Section ${sectionName}`,
+        passage: providedSection?.passage || '',
+        instructions: providedSection?.instructions || '',
+        wordBank: providedSection?.wordBank || [],
+        subsections: providedSection?.subsections || [],
+        questions: []
+      };
+    });
 
     let exam;
 

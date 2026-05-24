@@ -1432,6 +1432,42 @@ const ExamInterface = () => {
           severity: 'error'
         });
       }
+    } else if (currentAnswer && (currentAnswer.matchingAnswers || currentAnswer.orderingAnswer || currentAnswer.dragDropAnswer)) {
+      // Save interactive question answers
+      try {
+        let answerValue;
+        if (questionType === 'matching') {
+          answerValue = currentAnswer.matchingAnswers;
+        } else if (questionType === 'ordering') {
+          answerValue = currentAnswer.orderingAnswer;
+        } else if (questionType === 'drag-drop') {
+          answerValue = currentAnswer.dragDropAnswer;
+        }
+        
+        await saveAnswerToServer(currentQuestion._id, answerValue, questionType);
+        setAnswers(prev => ({
+          ...prev,
+          [currentQuestion._id]: {
+            ...prev[currentQuestion._id],
+            savedToServer: true,
+            hasChanges: false,
+            lastSaved: new Date().toISOString()
+          }
+        }));
+        setLastQuestionSaved(true);
+        setSnackbar({
+          open: true,
+          message: 'Question saved. Click Submit to finish.',
+          severity: 'success'
+        });
+      } catch (error) {
+        console.error('Save last question error:', error);
+        setSnackbar({
+          open: true,
+          message: 'Failed to save question. Please try again.',
+          severity: 'error'
+        });
+      }
     } else {
       setSnackbar({
         open: true,
@@ -1507,6 +1543,59 @@ const ExamInterface = () => {
           console.log(`✅ Saved fill-in-blank answer for question ${currentQuestion._id}`);
         } catch (saveError) {
           console.error(`❌ Failed to save fill-in-blank answer:`, saveError);
+        }
+      }
+
+      // Save interactive question answers (matching, ordering, drag-drop) when navigating
+      if (currentAnswer && currentAnswer.hasChanges) {
+        if (questionType === 'matching' && currentAnswer.matchingAnswers) {
+          try {
+            await saveAnswerToServer(currentQuestion._id, currentAnswer.matchingAnswers, 'matching');
+            console.log(`✅ Saved matching answer for question ${currentQuestion._id}`);
+            setAnswers(prev => ({
+              ...prev,
+              [currentQuestion._id]: {
+                ...prev[currentQuestion._id],
+                savedToServer: true,
+                hasChanges: false,
+                lastSaved: new Date().toISOString()
+              }
+            }));
+          } catch (saveError) {
+            console.error(`❌ Failed to save matching answer:`, saveError);
+          }
+        } else if (questionType === 'ordering' && currentAnswer.orderingAnswer) {
+          try {
+            await saveAnswerToServer(currentQuestion._id, currentAnswer.orderingAnswer, 'ordering');
+            console.log(`✅ Saved ordering answer for question ${currentQuestion._id}`);
+            setAnswers(prev => ({
+              ...prev,
+              [currentQuestion._id]: {
+                ...prev[currentQuestion._id],
+                savedToServer: true,
+                hasChanges: false,
+                lastSaved: new Date().toISOString()
+              }
+            }));
+          } catch (saveError) {
+            console.error(`❌ Failed to save ordering answer:`, saveError);
+          }
+        } else if (questionType === 'drag-drop' && currentAnswer.dragDropAnswer) {
+          try {
+            await saveAnswerToServer(currentQuestion._id, currentAnswer.dragDropAnswer, 'drag-drop');
+            console.log(`✅ Saved drag-drop answer for question ${currentQuestion._id}`);
+            setAnswers(prev => ({
+              ...prev,
+              [currentQuestion._id]: {
+                ...prev[currentQuestion._id],
+                savedToServer: true,
+                hasChanges: false,
+                lastSaved: new Date().toISOString()
+              }
+            }));
+          } catch (saveError) {
+            console.error(`❌ Failed to save drag-drop answer:`, saveError);
+          }
         }
       }
 
@@ -1660,8 +1749,10 @@ const ExamInterface = () => {
       return;
     }
 
-    // Don't allow changing already submitted answers
-    if (answers[questionId]?.answered && answers[questionId]?.savedToServer) {
+    // Only apply restriction to multiple-choice and true-false questions
+    // Interactive questions (matching, ordering, drag-drop) can be changed
+    if ((type === 'multiple-choice' || type === 'true-false') && 
+        answers[questionId]?.answered && answers[questionId]?.savedToServer) {
       return;
     }
 
@@ -1702,45 +1793,39 @@ const ExamInterface = () => {
         newAnswer.matchingAnswers = value.matchingAnswers || value;
         newAnswer.answered = true;
         newAnswer.savedToServer = false;
+        newAnswer.hasChanges = true;
 
-        // Update local state
+        // Update local state only - don't save immediately
         setAnswers(prev => ({
           ...prev,
           [questionId]: newAnswer
         }));
-
-        // Save immediately for interactive questions
-        saveAnswerToServer(questionId, newAnswer.matchingAnswers, type);
         return;
 
       case 'ordering':
         newAnswer.orderingAnswer = value.orderingAnswer || value;
         newAnswer.answered = true;
         newAnswer.savedToServer = false;
+        newAnswer.hasChanges = true;
 
-        // Update local state
+        // Update local state only - don't save immediately
         setAnswers(prev => ({
           ...prev,
           [questionId]: newAnswer
         }));
-
-        // Save immediately for interactive questions
-        saveAnswerToServer(questionId, newAnswer.orderingAnswer, type);
         return;
 
       case 'drag-drop':
         newAnswer.dragDropAnswer = value.dragDropAnswer || value;
         newAnswer.answered = true;
         newAnswer.savedToServer = false;
+        newAnswer.hasChanges = true;
 
-        // Update local state
+        // Update local state only - don't save immediately
         setAnswers(prev => ({
           ...prev,
           [questionId]: newAnswer
         }));
-
-        // Save immediately for interactive questions
-        saveAnswerToServer(questionId, newAnswer.dragDropAnswer, type);
         return;
 
       case 'fill-in-blank':
@@ -3557,7 +3642,7 @@ const ExamInterface = () => {
                   }}
                 >
                   <Typography variant="subtitle1" fontWeight="bold" color="primary.main" gutterBottom>
-                    Section {activeSection}: {exam.sections.find(s => s.name === activeSection)?.description || ''}
+                    Section {activeSection}: {exam.sections.find(s => s.name === activeSection)?.title || exam.sections.find(s => s.name === activeSection)?.description || ''}
                   </Typography>
 
                   {/* Display section information */}
@@ -3582,6 +3667,56 @@ const ExamInterface = () => {
                       'Provide your answer below.'
                     }
                   </Typography>
+
+                  {/* Section-level passage display */}
+                  {exam.sections.find(s => s.name === activeSection)?.passage && (
+                    <Box sx={{ mt: 2, p: 3, bgcolor: '#EFF6FF', borderRadius: 2, border: '2px solid #BFDBFE' }}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#1E40AF', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        📖 Section Passage
+                      </Typography>
+                      <Typography sx={{ fontSize: 14, color: '#1E3A8A', whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
+                        {exam.sections.find(s => s.name === activeSection).passage}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Section-level instructions display */}
+                  {exam.sections.find(s => s.name === activeSection)?.instructions && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: '#FEF3C7', borderRadius: 2, border: '2px solid #FDE68A' }}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#92400E', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        ℹ️ Section Instructions
+                      </Typography>
+                      <Typography sx={{ fontSize: 14, color: '#78350F', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                        {exam.sections.find(s => s.name === activeSection).instructions}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Section-level word bank display */}
+                  {exam.sections.find(s => s.name === activeSection)?.wordBank && exam.sections.find(s => s.name === activeSection).wordBank.length > 0 && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: '#F0FDF4', borderRadius: 2, border: '2px solid #BBF7D0' }}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#166534', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        📝 Section Word Bank
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {exam.sections.find(s => s.name === activeSection).wordBank.map((word, idx) => (
+                          <Chip 
+                            key={idx} 
+                            label={word} 
+                            size="medium" 
+                            sx={{ 
+                              bgcolor: '#DCFCE7', 
+                              color: '#166534', 
+                              fontSize: 13, 
+                              fontWeight: 600,
+                              border: '1px solid #86EFAC',
+                              '&:hover': { bgcolor: '#BBF7D0' }
+                            }} 
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
 
                   {/* Selective answering information banner */}
                   {selectiveAnswering && (
@@ -4209,7 +4344,7 @@ const ExamInterface = () => {
                           question={currentQuestion}
                           answer={answers[currentQuestion._id]}
                           onAnswerChange={handleAnswerChange}
-                          disabled={answers[currentQuestion._id]?.answered}
+                          disabled={false} // Allow changing matching answers
                         />
                           );
                         } else if (questionType === 'ordering') {
@@ -4218,7 +4353,7 @@ const ExamInterface = () => {
                               question={currentQuestion}
                               answer={answers[currentQuestion._id]}
                               onAnswerChange={handleAnswerChange}
-                              disabled={answers[currentQuestion._id]?.answered}
+                              disabled={false} // Allow changing ordering answers
                             />
                           );
                         } else if (questionType === 'drag-drop') {
@@ -4227,7 +4362,7 @@ const ExamInterface = () => {
                               question={currentQuestion}
                               answer={answers[currentQuestion._id]}
                               onAnswerChange={handleAnswerChange}
-                              disabled={answers[currentQuestion._id]?.answered}
+                              disabled={false} // Allow changing drag-drop answers
                             />
                           );
                         } else if (questionType === 'image-based' || questionType === 'image' || questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {

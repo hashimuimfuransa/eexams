@@ -115,6 +115,31 @@ const ExamSchema = new mongoose.Schema({
     description: {
       type: String
     },
+    title: {
+      type: String
+    },
+    passage: {
+      type: String
+    },
+    instructions: {
+      type: String
+    },
+    wordBank: [String],
+    subsections: [{
+      name: {
+        type: String
+      },
+      title: {
+        type: String
+      },
+      instructions: {
+        type: String
+      },
+      wordBank: [String],
+      passage: {
+        type: String
+      }
+    }],
     questionCount: {
       type: Number,
       default: 0

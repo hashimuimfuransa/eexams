@@ -148,6 +148,7 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [validationErrors, setValidationErrors] = useState({});
+  const [isMobile, setIsMobile] = useState(false);
 
   // Google OAuth states
   const [googleCredential, setGoogleCredential] = useState(null);
@@ -161,6 +162,16 @@ const Register = () => {
   const { register, setUser } = useAuth();
   const navigate = useNavigate();
   const { mode, toggleMode } = useThemeMode();
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Check if already logged in - redirect to dashboard or pending-approval
   // Skip this check when arriving via Google OAuth flow so new Google users
@@ -188,6 +199,30 @@ const Register = () => {
 
   const handleCreateExams = () => {
     setShowPurposeModal(false);
+  };
+
+  // Handle student registration redirect
+  const handleStudentRegister = () => {
+    setSnackbar({ 
+      open: true, 
+      message: 'Redirecting to student registration...', 
+      severity: 'info' 
+    });
+    setTimeout(() => {
+      navigate('/student-register');
+    }, 500);
+  };
+
+  // Handle student registration from purpose modal
+  const handleStudentRegisterFromModal = () => {
+    setSnackbar({ 
+      open: true, 
+      message: 'Redirecting to student registration...', 
+      severity: 'info' 
+    });
+    setTimeout(() => {
+      navigate('/student-register');
+    }, 500);
   };
 
   // Get steps based on account type
@@ -351,18 +386,19 @@ const Register = () => {
 
   // Render Google button when on step 0
   useEffect(() => {
-    if (activeStep === 0 && googleButtonRef.current && window.google && isGoogleFlow === false && !googleButtonRendered.current) {
-      googleButtonRendered.current = true;
+    if (activeStep === 0 && googleButtonRef.current && window.google && isGoogleFlow === false) {
+      // Clear previous button if exists
+      googleButtonRef.current.innerHTML = '';
       window.google.accounts.id.renderButton(googleButtonRef.current, {
         theme: isDark ? 'filled_black' : 'outline',
         size: 'large',
-        width: 400,
+        width: isMobile ? Math.min(280, googleButtonRef.current.offsetWidth || 280) : 400,
         text: 'continue_with',
         shape: 'rectangular',
         logo_alignment: 'left',
       });
     }
-  }, [activeStep, isDark, isGoogleFlow]);
+  }, [activeStep, isDark, isGoogleFlow, isMobile]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -493,20 +529,21 @@ const Register = () => {
             <div
               onClick={() => setAccountType('individual')}
               style={{
-                padding: '20px',
+                padding: isMobile ? '16px' : '20px',
                 borderRadius: 12,
-                border: `2px solid ${accountType === 'individual' ? tokens.accent : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                background: accountType === 'individual' ? `${tokens.accent}10` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                border: `3px solid ${accountType === 'individual' ? tokens.accent : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                background: accountType === 'individual' ? `${tokens.accent}15` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'flex-start',
-                gap: 16,
-                transition: 'all 0.2s ease'
+                gap: isMobile ? 12 : 16,
+                transition: 'all 0.2s ease',
+                boxShadow: accountType === 'individual' ? `0 0 0 4px ${tokens.accentGlow}` : 'none'
               }}
             >
               <div style={{
-                width: 48,
-                height: 48,
+                width: isMobile ? 40 : 48,
+                height: isMobile ? 40 : 48,
                 borderRadius: 12,
                 background: accountType === 'individual' ? tokens.accent : isDark ? tokens.dark.surface : tokens.surface,
                 display: 'flex',
@@ -514,18 +551,80 @@ const Register = () => {
                 justifyContent: 'center',
                 color: accountType === 'individual' ? 'white' : isDark ? tokens.dark.textSecondary : tokens.textSecondary
               }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width={isMobile ? 20 : 24} height={isMobile ? 20 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>Individual Teacher</span>
-                  {accountType === 'individual' && <Icon.Check s={16} />}
+                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>Individual Teacher</span>
+                  {accountType === 'individual' && (
+                    <div style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: tokens.accent,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Icon.Check s={12} style={{ color: 'white' }} />
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: 13, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5 }}>
+                <div style={{ fontSize: isMobile ? 12 : 13, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5 }}>
                   Perfect for individual educators. Create exams, share via links, and track student results. Free forever.
+                </div>
+              </div>
+            </div>
+
+            {/* Student Option - Redirect Button */}
+            <div
+              onClick={handleStudentRegister}
+              style={{
+                padding: isMobile ? '16px' : '20px',
+                borderRadius: 12,
+                border: `2px dashed ${tokens.accent}`,
+                background: isDark ? 'rgba(12,189,115,0.05)' : 'rgba(12,189,115,0.03)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: isMobile ? 12 : 16,
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)';
+                e.currentTarget.style.transform = 'translateX(4px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.05)' : 'rgba(12,189,115,0.03)';
+                e.currentTarget.style.transform = 'translateX(0)';
+              }}
+            >
+              <div style={{
+                width: isMobile ? 40 : 48,
+                height: isMobile ? 40 : 48,
+                borderRadius: 12,
+                background: isDark ? tokens.dark.surface : tokens.surface,
+                border: `2px solid ${tokens.accent}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: tokens.accent
+              }}>
+                <svg width={isMobile ? 20 : 24} height={isMobile ? 20 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+                  <path d="M6 12v5c3 3 9 3 12 0v-5" />
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, color: tokens.accent }}>Student</span>
+                  <Icon.Arrow s={16} style={{ color: tokens.accent }} />
+                </div>
+                <div style={{ fontSize: isMobile ? 12 : 13, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5 }}>
+                  Take exams, view results, and track your progress. <span style={{ color: tokens.accent, fontWeight: 600 }}>Click to register as student →</span>
                 </div>
               </div>
             </div>
@@ -534,20 +633,21 @@ const Register = () => {
             <div
               onClick={() => setAccountType('organization')}
               style={{
-                padding: '20px',
+                padding: isMobile ? '16px' : '20px',
                 borderRadius: 12,
-                border: `2px solid ${accountType === 'organization' ? '#0D406C' : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                background: accountType === 'organization' ? 'rgba(13, 64, 108, 0.1)' : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                border: `3px solid ${accountType === 'organization' ? '#0D406C' : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                background: accountType === 'organization' ? 'rgba(13, 64, 108, 0.15)' : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'flex-start',
-                gap: 16,
-                transition: 'all 0.2s ease'
+                gap: isMobile ? 12 : 16,
+                transition: 'all 0.2s ease',
+                boxShadow: accountType === 'organization' ? '0 0 0 4px rgba(13, 64, 108, 0.18)' : 'none'
               }}
             >
               <div style={{
-                width: 48,
-                height: 48,
+                width: isMobile ? 40 : 48,
+                height: isMobile ? 40 : 48,
                 borderRadius: 12,
                 background: accountType === 'organization' ? '#0D406C' : isDark ? tokens.dark.surface : tokens.surface,
                 display: 'flex',
@@ -555,17 +655,29 @@ const Register = () => {
                 justifyContent: 'center',
                 color: accountType === 'organization' ? 'white' : isDark ? tokens.dark.textSecondary : tokens.textSecondary
               }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width={isMobile ? 20 : 24} height={isMobile ? 20 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                   <polyline points="9 22 9 12 15 12 15 22" />
                 </svg>
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>School / Organization</span>
-                  {accountType === 'organization' && <Icon.Check s={16} />}
+                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>School / Organization</span>
+                  {accountType === 'organization' && (
+                    <div style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: '#0D406C',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Icon.Check s={12} style={{ color: 'white' }} />
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: 13, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5 }}>
+                <div style={{ fontSize: isMobile ? 12 : 13, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5 }}>
                   For schools and institutions. Manage multiple teachers, track progress across classes, and access advanced analytics.
                 </div>
               </div>
@@ -637,7 +749,7 @@ const Register = () => {
     if (activeStep === 2) {
       return (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
             <Input isDark={isDark} icon={<Icon.User />} label="First name" type="text" id="firstName" name="firstName"
               autoComplete="given-name" autoFocus required
               value={firstName} onChange={(e) => setFirstName(e.target.value)} error={validationErrors.firstName} />
@@ -977,6 +1089,65 @@ const Register = () => {
               </button>
 
               <button
+                onClick={handleStudentRegisterFromModal}
+                style={{
+                  padding: '16px 20px',
+                  borderRadius: 12,
+                  border: `2px solid ${tokens.accent}`,
+                  background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  transition: 'all 0.2s ease',
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = tokens.accent;
+                  e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.12)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = tokens.accent;
+                  e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)';
+                }}
+              >
+                <div style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  background: tokens.accent,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                    <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+                    <path d="M6 12v5c3 3 9 3 12 0v-5" />
+                  </svg>
+                </div>
+                <div style={{ textAlign: 'left', flex: 1 }}>
+                  <div style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
+                    marginBottom: 2,
+                  }}>
+                    Student Registration
+                  </div>
+                  <div style={{
+                    fontSize: 12,
+                    color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+                  }}>
+                    Sign up to take exams and track progress
+                  </div>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={tokens.accent} strokeWidth="2">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              <button
                 onClick={handleCreateExams}
                 style={{
                   padding: '16px 20px',
@@ -1096,15 +1267,15 @@ const Register = () => {
       <div style={{ position: 'absolute', top: '10%', left: '5%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(12,189,115,0.14) 0%, transparent 70%)', animation: 'float1 8s ease-in-out infinite', zIndex: 0 }} />
       <div style={{ position: 'absolute', bottom: '10%', right: '5%', width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(157,246,214,0.16) 0%, transparent 70%)', animation: 'float2 10s ease-in-out infinite', zIndex: 0 }} />
 
-      <header style={{ position: 'relative', zIndex: 2, padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <header style={{ position: 'relative', zIndex: 2, padding: isMobile ? '8px 16px' : '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 16 }}>
           <RouterLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
             <img
               src="/logo.png"
               alt="eexams"
               style={{
-                width: 60,
-                height: 60,
+                width: isMobile ? 48 : 60,
+                height: isMobile ? 48 : 60,
                 borderRadius: 12,
                 objectFit: 'cover',
                 backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent',
@@ -1113,25 +1284,27 @@ const Register = () => {
               }}
             />
           </RouterLink>
-          <RouterLink to="/" style={{
-            display: 'flex', alignItems: 'center',
-            padding: '8px 14px', borderRadius: 10,
-            fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14,
-            color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-            textDecoration: 'none', transition: 'all 0.2s',
-          }}
-            onMouseEnter={e => { e.target.style.color = tokens.accent; e.target.style.background = tokens.accentGlow; }}
-            onMouseLeave={e => { e.target.style.color = isDark ? tokens.dark.textSecondary : tokens.textSecondary; e.target.style.background = 'none'; }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-              <polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
-            Home
-          </RouterLink>
+          {!isMobile && (
+            <RouterLink to="/" style={{
+              display: 'flex', alignItems: 'center',
+              padding: '8px 14px', borderRadius: 10,
+              fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14,
+              color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+              textDecoration: 'none', transition: 'all 0.2s',
+            }}
+              onMouseEnter={e => { e.target.style.color = tokens.accent; e.target.style.background = tokens.accentGlow; }}
+              onMouseLeave={e => { e.target.style.color = isDark ? tokens.dark.textSecondary : tokens.textSecondary; e.target.style.background = 'none'; }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+              Home
+            </RouterLink>
+          )}
         </div>
         <button onClick={toggleMode} style={{
-          width: 38, height: 38, borderRadius: 10,
+          width: isMobile ? 34 : 38, height: isMobile ? 34 : 38, borderRadius: 10,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
           background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1139,12 +1312,12 @@ const Register = () => {
         }}>{isDark ? <Icon.Sun /> : <Icon.Moon />}</button>
       </header>
 
-      <main className="reg-main" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 24px 24px', position: 'relative', zIndex: 1 }}>
+      <main className="reg-main" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? '12px 16px 24px' : '12px 24px 24px', position: 'relative', zIndex: 1 }}>
         <div className="reg-card" style={{
           width: '100%', maxWidth: 520,
           background: isDark ? tokens.dark.surface : tokens.surface,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-          borderRadius: 24, padding: '40px 36px',
+          borderRadius: 24, padding: isMobile ? '24px 20px' : '40px 36px',
           boxShadow: isDark ? '0 32px 64px rgba(0,0,0,0.5)' : '0 32px 64px rgba(15,23,42,0.12)',
           animation: 'fadeInUp 0.6s ease',
         }}>
@@ -1165,12 +1338,12 @@ const Register = () => {
               </div>
 
               <h1 style={{
-                fontWeight: 800, fontSize: 30, letterSpacing: '-0.02em', lineHeight: 1.15,
+                fontWeight: 800, fontSize: isMobile ? 26 : 30, letterSpacing: '-0.02em', lineHeight: 1.15,
                 color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, marginBottom: 8,
               }}>
                 Join <span style={{ background: 'linear-gradient(135deg, #0D406C 0%, #5AD5A2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>eexams</span>
               </h1>
-              <p style={{ fontSize: 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 28, lineHeight: 1.6 }}>
+              <p style={{ fontSize: isMobile ? 14 : 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: isMobile ? 20 : 28, lineHeight: 1.6 }}>
                 AI-powered exams for Rwanda's schools and universities.
               </p>
 
@@ -1313,6 +1486,7 @@ const Register = () => {
                   width: '100%',
                   display: 'flex',
                   justifyContent: 'center',
+                  overflow: 'hidden',
                 }}
               />
             </>

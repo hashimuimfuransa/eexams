@@ -1128,7 +1128,11 @@ const getExamCompletionStatus = async (req, res) => {
       status: 'approved'
     }).select('exam');
 
-    const approvedExamIds = approvedRequests.map(r => r.exam.toString());
+    // Filter out completed exams from approved list
+    // Students should only see exams as "approved" if they haven't completed them yet
+    const approvedExamIds = approvedRequests
+      .map(r => r.exam.toString())
+      .filter(examId => !completedExamIds.includes(examId));
 
     // Get pending retake requests
     const pendingRetakeRequests = await ExamRequest.find({

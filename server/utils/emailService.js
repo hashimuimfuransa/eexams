@@ -1631,6 +1631,76 @@ const sendSuperAdminPendingRequestEmail = async (examRequest, exam, studentInfo)
   }
 };
 
+const sendTeacherRetakeRequestEmail = async (examRequest, exam, student) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, teacher retake request notification not sent');
+      return { success: false };
+    }
+
+    const User = require('../models/User');
+
+    // Get the teacher who created the exam
+    const teacher = await User.findById(exam.createdBy).select('email firstName lastName');
+
+    if (!teacher) {
+      console.log('[EmailService] Teacher not found for retake request notification');
+      return { success: false };
+    }
+
+    const content = `
+      <div style="font-family: 'DM Sans', sans-serif; max-width: 600px; margin: 0 auto; background: #f5fbf8; border-radius: 12px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #0D406C 0%, #0CBD73 100%); padding: 30px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Retake Request</h1>
+        </div>
+        <div style="padding: 30px;">
+          <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            Dear <strong>${teacher.firstName} ${teacher.lastName}</strong>,
+          </p>
+          <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            <strong>${student.firstName} ${student.lastName}</strong> (${student.email}) has requested a retake for the exam:
+          </p>
+          <div style="background: #fff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0CBD73;">
+            <h3 style="color: #0D406C; margin: 0 0 10px 0; font-size: 18px;">${exam.title}</h3>
+            <p style="color: #666; margin: 0; font-size: 14px;">Retake Fee: <strong>Free</strong></p>
+          </div>
+          <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            Please review this request and approve it.
+          </p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${CLIENT_URL}/teacher/dashboard" style="display: inline-block; background: linear-gradient(135deg, #0D406C 0%, #0CBD73 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 600;">
+              View Requests
+            </a>
+          </div>
+          <p style="color: #666; font-size: 14px; line-height: 1.6; margin: 0;">
+            If you have any questions, please contact support.
+          </p>
+        </div>
+        <div style="background: #f0f0f0; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
+          <p style="color: #666; margin: 0; font-size: 12px;">© 2024 Excellence Coaching Hub. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
+    const emailWrapper = {
+      from: FROM_EMAIL,
+      subject: `Retake Request: ${exam.title} - ${student.firstName} ${student.lastName}`,
+      html: content
+    };
+
+    await sgMail.send({
+      ...emailWrapper,
+      to: teacher.email
+    });
+
+    console.log(`[EmailService] Teacher retake request notification sent to ${teacher.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send teacher retake request notification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendWelcomeEmail,
   sendPendingApprovalEmail,
@@ -1648,6 +1718,7 @@ module.exports = {
   sendStudentExamApprovedEmail,
   sendStudentGradesEmail,
   sendSuperAdminPendingRequestEmail,
+  sendTeacherRetakeRequestEmail,
   FROM_EMAIL,
   CLIENT_URL,
 };

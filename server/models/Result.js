@@ -61,14 +61,16 @@ const ResultSchema = new mongoose.Schema({
     // For matching questions
     matchingAnswers: [{
       left: Number,
-      right: Number
+      right: Number,
+      _id: false
     }],
     // For ordering questions
     orderingAnswer: [Number],
     // For drag-drop questions
     dragDropAnswer: [{
       item: Number,
-      zone: Number
+      zone: Number,
+      _id: false
     }],
     // For multi-part questions
     subAnswers: [{
@@ -136,7 +138,10 @@ const ResultSchema = new mongoose.Schema({
         // Enhanced AI grading for sections (generic, works for any section)
         'enhanced_ai_grading_section',
         'letter_comparison_failed',
-        'letter_comparison'
+        'letter_comparison',
+        'matching_grading',
+        'ordering_grading',
+        'drag_drop_grading'
       ],
       default: 'enhanced_grading'
     },

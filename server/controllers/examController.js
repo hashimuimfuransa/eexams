@@ -799,7 +799,8 @@ const updateExam = async (req, res) => {
       allowSelectiveAnswering,
       sectionBRequiredQuestions,
       sectionCRequiredQuestions,
-      status
+      status,
+      questions
     } = req.body;
 
     const exam = await Exam.findById(req.params.id);
@@ -871,6 +872,73 @@ const updateExam = async (req, res) => {
         if (sectionIndex !== -1 && updatedSection.questionCount !== undefined) {
           exam.sections[sectionIndex].questionCount = parseInt(updatedSection.questionCount);
           console.log(`Updated questionCount for section ${updatedSection.name} to ${exam.sections[sectionIndex].questionCount}`);
+        }
+      }
+    }
+
+    // Update individual questions if provided (for editing matching questions, etc.)
+    if (questions && Array.isArray(questions)) {
+      console.log(`Updating ${questions.length} questions for exam ${exam._id}`);
+      
+      for (const q of questions) {
+        if (!q._id) {
+          console.warn('Skipping question without _id');
+          continue;
+        }
+
+        const updateData = {};
+        
+        // Update basic fields
+        if (q.text !== undefined) updateData.text = q.text;
+        if (q.type !== undefined) updateData.type = q.type;
+        if (q.points !== undefined) updateData.points = q.points;
+        if (q.marks !== undefined) updateData.marks = q.marks;
+        if (q.correctAnswer !== undefined) updateData.correctAnswer = q.correctAnswer;
+        if (q.explanation !== undefined) updateData.explanation = q.explanation;
+        
+        // Update matching question specific fields
+        if (q.matchingPairs !== undefined) {
+          updateData.matchingPairs = q.matchingPairs;
+          console.log(`Updating matchingPairs for question ${q._id}`);
+        }
+        if (q.leftItems !== undefined) {
+          updateData.leftItems = q.leftItems;
+          console.log(`Updating leftItems for question ${q._id}`);
+        }
+        if (q.rightItems !== undefined) {
+          updateData.rightItems = q.rightItems;
+          console.log(`Updating rightItems for question ${q._id}`);
+        }
+        if (q.correctMatches !== undefined) {
+          updateData.correctMatches = q.correctMatches;
+        }
+        
+        // Update ordering question specific fields
+        if (q.itemsToOrder !== undefined) {
+          updateData.itemsToOrder = q.itemsToOrder;
+        }
+        if (q.items !== undefined) {
+          updateData.items = q.items;
+        }
+        
+        // Update drag-drop question specific fields
+        if (q.dragDropData !== undefined) {
+          updateData.dragDropData = q.dragDropData;
+        }
+        
+        // Update options for multiple choice
+        if (q.options !== undefined) {
+          updateData.options = q.options;
+        }
+        
+        // Update other fields
+        if (q.keyPoints !== undefined) updateData.keyPoints = q.keyPoints;
+        if (q.acceptableAnswers !== undefined) updateData.acceptableAnswers = q.acceptableAnswers;
+        if (q.gradingCriteria !== undefined) updateData.gradingCriteria = q.gradingCriteria;
+        
+        if (Object.keys(updateData).length > 0) {
+          await Question.findByIdAndUpdate(q._id, updateData);
+          console.log(`Updated question ${q._id}`);
         }
       }
     }
@@ -1604,8 +1672,21 @@ const submitAnswer = async (req, res) => {
         console.log(`Processing matching answer for question ${sanitizedData.questionId}:`);
         console.log(`- Matching answers:`, cleanMatchingAnswers);
 
+        // Convert object format { '0': 1, '1': 0 } to array format [{left: 0, right: 1}, {left: 1, right: 0}]
+        let formattedMatchingAnswers = [];
+        if (typeof cleanMatchingAnswers === 'object' && !Array.isArray(cleanMatchingAnswers)) {
+          formattedMatchingAnswers = Object.entries(cleanMatchingAnswers).map(([left, right]) => ({
+            left: parseInt(left),
+            right: parseInt(right)
+          }));
+        } else if (Array.isArray(cleanMatchingAnswers)) {
+          formattedMatchingAnswers = cleanMatchingAnswers;
+        }
+
+        console.log(`- Formatted matching answers:`, JSON.stringify(formattedMatchingAnswers));
+
         // Store the matching answers (validation already done)
-        result.answers[answerIndex].matchingAnswers = cleanMatchingAnswers;
+        result.answers[answerIndex].matchingAnswers = formattedMatchingAnswers;
 
         // Provide immediate feedback
         result.answers[answerIndex].feedback = 'Your matching answer has been saved. It will be graded when you complete the exam.';
@@ -1843,7 +1924,7 @@ const completeExam = async (req, res) => {
     // Use the current result we already found and populate the necessary fields
     const result = await Result.findById(currentResult._id).populate({
       path: 'answers.question',
-      select: 'text type correctAnswer points section options'
+      select: 'text type correctAnswer points section options matchingPairs leftItems rightItems itemsToOrder dragDropData'
     });
 
     if (!result) {
@@ -1991,16 +2072,21 @@ const completeExam = async (req, res) => {
         // Continue anyway since the result is already saved
       }
 
-      // Delete the marketplace request if it exists (to clean up after completion)
+      // Update the marketplace request to mark access code as used (to track completion)
       try {
         const ExamRequest = require('../models/ExamRequest');
-        await ExamRequest.deleteMany({
-          exam: result.exam,
-          student: req.user._id
-        });
-        console.log(`✅ Deleted marketplace requests for student ${req.user._id}, exam ${result.exam}`);
-      } catch (requestDeleteError) {
-        console.error('⚠️ Error deleting marketplace requests:', requestDeleteError);
+        await ExamRequest.updateMany(
+          {
+            exam: result.exam,
+            student: req.user._id
+          },
+          {
+            accessCodeUsed: true
+          }
+        );
+        console.log(`✅ Marked marketplace requests as completed for student ${req.user._id}, exam ${result.exam}`);
+      } catch (requestUpdateError) {
+        console.error('⚠️ Error updating marketplace requests:', requestUpdateError);
         // Continue anyway since the result is already saved
       }
 

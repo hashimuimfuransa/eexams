@@ -2,6 +2,8 @@ const Exam = require('../models/Exam');
 const Result = require('../models/Result');
 const User = require('../models/User');
 const SharedExam = require('../models/SharedExam');
+const ExamRequest = require('../models/ExamRequest');
+const emailService = require('../utils/emailService');
 
 // @desc    Get available exams for student
 // @route   GET /api/student/exams
@@ -797,6 +799,81 @@ const getStudentProgress = async (req, res) => {
   }
 };
 
+// @desc    Request retake for an assigned exam
+// @route   POST /api/student/exams/:examId/retake-request
+// @access  Private/Student
+const requestExamRetake = async (req, res) => {
+  try {
+    const examId = req.params.examId;
+
+    // Check if exam exists and is assigned to the student
+    const exam = await Exam.findOne({
+      _id: examId,
+      assignedTo: req.user._id
+    }).populate('createdBy', 'fullName email');
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found or not assigned to you' });
+    }
+
+    // Check if student has completed this exam
+    const completedResult = await Result.findOne({
+      student: req.user._id,
+      exam: examId,
+      isCompleted: true
+    });
+
+    if (!completedResult) {
+      return res.status(400).json({ message: 'You must complete the exam before requesting a retake' });
+    }
+
+    // Check if there's already a pending retake request
+    const existingRequest = await ExamRequest.findOne({
+      exam: examId,
+      student: req.user._id,
+      status: 'pending',
+      isRetake: true
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({ message: 'You already have a pending retake request for this exam' });
+    }
+
+    // For assigned exams, retake is free (no fee)
+    const retakeFee = 0;
+
+    // Create the retake request
+    const examRequest = await ExamRequest.create({
+      exam: examId,
+      examTitle: exam.title,
+      teacher: exam.createdBy._id,
+      student: req.user._id,
+      userInfo: {
+        name: `${req.user.firstName} ${req.user.lastName}`,
+        email: req.user.email,
+        phone: req.user.phone || ''
+      },
+      amount: retakeFee,
+      isRetake: true,
+      status: 'pending'
+    });
+
+    // Send email notification to the teacher about the retake request
+    emailService.sendTeacherRetakeRequestEmail(examRequest, exam, req.user).catch(err => {
+      console.error('[Student] Failed to send teacher retake request email:', err);
+    });
+
+    res.status(201).json({
+      message: 'Retake request submitted successfully. The teacher will review your request.',
+      requestId: examRequest._id,
+      amount: retakeFee
+    });
+  } catch (error) {
+    console.error('Request exam retake error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAvailableExams,
   getExamById,
@@ -808,5 +885,6 @@ module.exports = {
   checkSpecificResult,
   getScheduledExams,
   getInProgressExams,
-  getStudentProgress
+  getStudentProgress,
+  requestExamRetake
 };

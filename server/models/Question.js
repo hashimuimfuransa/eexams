@@ -74,7 +74,8 @@ const QuestionSchema = new mongoose.Schema({
     }],
     correctPairs: [{
       left: mongoose.Schema.Types.Mixed,
-      right: mongoose.Schema.Types.Mixed
+      right: mongoose.Schema.Types.Mixed,
+      _id: false
     }]
   },
   // New structure for matching questions (from pasted exams) - support both strings and objects

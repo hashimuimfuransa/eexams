@@ -18,6 +18,7 @@ const Marketplace = () => {
   const [sortBy, setSortBy] = useState('newest');
   const [completedExamIds, setCompletedExamIds] = useState([]);
   const [approvedExamIds, setApprovedExamIds] = useState([]);
+  const [pendingRetakeExamIds, setPendingRetakeExamIds] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   
@@ -84,6 +85,7 @@ const Marketplace = () => {
       const response = await api.get('/marketplace/exam-completion-status');
       setCompletedExamIds(response.data.completedExamIds || []);
       setApprovedExamIds(response.data.approvedExamIds || []);
+      setPendingRetakeExamIds(response.data.pendingRetakeExamIds || []);
     } catch (err) {
       console.error('Error fetching exam completion status:', err);
     }
@@ -713,8 +715,27 @@ const Marketplace = () => {
                       {(() => {
                         const isCompleted = completedExamIds.includes(exam._id);
                         const isApproved = approvedExamIds.includes(exam._id);
+                        const hasPendingRetake = pendingRetakeExamIds.includes(exam._id);
                         
                         if (isCompleted) {
+                          if (hasPendingRetake) {
+                            return (
+                              <Button
+                                fullWidth
+                                variant="contained"
+                                disabled
+                                sx={{
+                                  borderRadius: 2,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  background: '#FEF3C7',
+                                  color: '#D97706'
+                                }}
+                              >
+                                Retake Pending
+                              </Button>
+                            );
+                          }
                           return (
                             <Button
                               fullWidth

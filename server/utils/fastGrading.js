@@ -469,9 +469,27 @@ Return JSON: {score,feedback,correctedAnswer}`;
  * Fast matching question grading
  */
 async function gradeMatchingFast(question, answer, modelAnswer) {
-  const matchingAnswers = answer.matchingAnswers || {};
+  const matchingAnswers = answer.matchingAnswers || [];
 
-  if (!matchingAnswers || Object.keys(matchingAnswers).length === 0) {
+  console.log(`🔍 Matching grading debug:`);
+  console.log(`- Student answers:`, JSON.stringify(matchingAnswers));
+  console.log(`- Question matchingPairs:`, JSON.stringify(question.matchingPairs));
+  console.log(`- Question leftItems:`, JSON.stringify(question.leftItems));
+  console.log(`- Question rightItems:`, JSON.stringify(question.rightItems));
+
+  // Handle both array format [{left, right}] and object format {0: 1, 1: 0}
+  let studentPairs = [];
+  if (Array.isArray(matchingAnswers)) {
+    studentPairs = matchingAnswers;
+  } else if (typeof matchingAnswers === 'object' && Object.keys(matchingAnswers).length > 0) {
+    // Convert object format to array
+    studentPairs = Object.entries(matchingAnswers).map(([left, right]) => ({
+      left: parseInt(left),
+      right: parseInt(right)
+    }));
+  }
+
+  if (!studentPairs || studentPairs.length === 0) {
     return {
       score: 0,
       feedback: 'No matching answers provided',
@@ -485,21 +503,28 @@ async function gradeMatchingFast(question, answer, modelAnswer) {
   const leftItems = question.leftItems || question.matchingPairs?.leftColumn || [];
   const rightItems = question.rightItems || question.matchingPairs?.rightColumn || [];
 
+  console.log(`- Correct pairs:`, JSON.stringify(correctPairs));
+  console.log(`- Left items count:`, leftItems.length);
+  console.log(`- Right items count:`, rightItems.length);
+  console.log(`- Student pairs:`, JSON.stringify(studentPairs));
+
   let correctCount = 0;
-  let totalPairs = Math.min(leftItems.length, rightItems.length);
+  let totalPairs = Math.max(studentPairs.length, leftItems.length, rightItems.length);
 
-  // Check each match
-  for (let i = 0; i < totalPairs; i++) {
-    const studentMatch = matchingAnswers[i];
-    if (!studentMatch) continue;
+  // Check each student match
+  for (const studentPair of studentPairs) {
+    if (!studentPair || studentPair.left === undefined || studentPair.right === undefined) continue;
 
-    // Find if this match is correct
+    // Find if this match is correct (ignore _id field if present)
     const isCorrect = correctPairs.some(pair => 
-      pair.left === i && pair.right === studentMatch
+      pair.left === studentPair.left && pair.right === studentPair.right
     );
+    console.log(`- Pair left=${studentPair.left}, right=${studentPair.right} correct: ${isCorrect}`);
 
     if (isCorrect) correctCount++;
   }
+
+  console.log(`- Total correct: ${correctCount}/${totalPairs}`);
 
   const score = Math.round((correctCount / totalPairs) * question.points);
   const feedback = score === question.points 

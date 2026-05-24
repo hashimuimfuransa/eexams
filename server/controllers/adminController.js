@@ -4659,7 +4659,75 @@ const updateExam = async (req, res) => {
     const exam = await Exam.findOne(query).lean();
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
 
-    const { title, description, timeLimit, passingScore, sections, status, isLocked } = req.body;
+    const { title, description, timeLimit, passingScore, sections, status, isLocked, questions } = req.body;
+
+    // Handle direct questions array update (for editing individual questions like matching)
+    if (questions && Array.isArray(questions)) {
+      const Question = require('../models/Question');
+      console.log(`Updating ${questions.length} individual questions for exam ${exam._id}`);
+      
+      for (const q of questions) {
+        if (!q._id) {
+          console.warn('Skipping question without _id');
+          continue;
+        }
+
+        const updateData = {};
+        
+        // Update basic fields
+        if (q.text !== undefined) updateData.text = q.text;
+        if (q.type !== undefined) updateData.type = q.type;
+        if (q.points !== undefined) updateData.points = q.points;
+        if (q.marks !== undefined) updateData.marks = q.marks;
+        if (q.correctAnswer !== undefined) updateData.correctAnswer = q.correctAnswer;
+        if (q.explanation !== undefined) updateData.explanation = q.explanation;
+        
+        // Update matching question specific fields
+        if (q.matchingPairs !== undefined) {
+          updateData.matchingPairs = q.matchingPairs;
+          console.log(`Updating matchingPairs for question ${q._id}`);
+        }
+        if (q.leftItems !== undefined) {
+          updateData.leftItems = q.leftItems;
+          console.log(`Updating leftItems for question ${q._id}`);
+        }
+        if (q.rightItems !== undefined) {
+          updateData.rightItems = q.rightItems;
+          console.log(`Updating rightItems for question ${q._id}`);
+        }
+        if (q.correctMatches !== undefined) {
+          updateData.correctMatches = q.correctMatches;
+        }
+        
+        // Update ordering question specific fields
+        if (q.itemsToOrder !== undefined) {
+          updateData.itemsToOrder = q.itemsToOrder;
+        }
+        if (q.items !== undefined) {
+          updateData.items = q.items;
+        }
+        
+        // Update drag-drop question specific fields
+        if (q.dragDropData !== undefined) {
+          updateData.dragDropData = q.dragDropData;
+        }
+        
+        // Update options for multiple choice
+        if (q.options !== undefined) {
+          updateData.options = q.options;
+        }
+        
+        // Update other fields
+        if (q.keyPoints !== undefined) updateData.keyPoints = q.keyPoints;
+        if (q.acceptableAnswers !== undefined) updateData.acceptableAnswers = q.acceptableAnswers;
+        if (q.gradingCriteria !== undefined) updateData.gradingCriteria = q.gradingCriteria;
+        
+        if (Object.keys(updateData).length > 0) {
+          await Question.findByIdAndUpdate(q._id, updateData);
+          console.log(`Updated question ${q._id}`);
+        }
+      }
+    }
 
     // Handle sections update if provided
     if (sections && Array.isArray(sections)) {

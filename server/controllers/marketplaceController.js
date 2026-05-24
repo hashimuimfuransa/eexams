@@ -1130,9 +1130,19 @@ const getExamCompletionStatus = async (req, res) => {
 
     const approvedExamIds = approvedRequests.map(r => r.exam.toString());
 
+    // Get pending retake requests
+    const pendingRetakeRequests = await ExamRequest.find({
+      student: studentId,
+      status: 'pending',
+      isRetake: true
+    }).select('exam');
+
+    const pendingRetakeExamIds = pendingRetakeRequests.map(r => r.exam.toString());
+
     res.json({
       completedExamIds,
       approvedExamIds,
+      pendingRetakeExamIds,
       canRetake: completedExamIds // Exams that can be retaken
     });
   } catch (error) {

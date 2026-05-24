@@ -716,35 +716,48 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         console.log('Matching question leftItems:', JSON.stringify(leftItems).substring(0, 200));
         console.log('Matching question rightItems:', JSON.stringify(rightItems).substring(0, 200));
 
-        // Handle different formats for correctAnswer
+        // Handle different formats for correctAnswer - prioritize teacher's edits
         let correctPairs = [];
-        if (typeof q.correctAnswer === 'string') {
-          // Try to parse as JSON first
-          try {
-            const parsed = JSON.parse(q.correctAnswer);
-            if (Array.isArray(parsed)) {
-              correctPairs = parsed;
-            }
-          } catch {
-            // If string, assume it's a fallback and generate default pairs
-            const leftCount = leftItems.length;
-            const rightCount = rightItems.length;
-            const count = Math.min(leftCount, rightCount);
-            correctPairs = Array.from({ length: count }, (_, i) => ({ left: i, right: i }));
-          }
-        } else if (Array.isArray(q.correctAnswer)) {
+
+        // First priority: matchingPairs.correctPairs (teacher's edited format)
+        if (q.matchingPairs?.correctPairs && Array.isArray(q.matchingPairs.correctPairs)) {
+          correctPairs = q.matchingPairs.correctPairs;
+          console.log('Using teacher-edited correctPairs from matchingPairs');
+        }
+        // Second priority: correctAnswer as array
+        else if (Array.isArray(q.correctAnswer)) {
           correctPairs = q.correctAnswer;
-        } else if (typeof q.correctAnswer === 'object') {
+          console.log('Using correctAnswer as array');
+        }
+        // Third priority: correctAnswer as object
+        else if (typeof q.correctAnswer === 'object' && q.correctAnswer !== null) {
           // Convert object format to array format
           correctPairs = Object.entries(q.correctAnswer).map(([left, right]) => ({
             left: parseInt(left),
             right: parseInt(right)
           }));
+          console.log('Converted correctAnswer object to array');
+        }
+        // Fourth priority: correctAnswer as string (try to parse JSON)
+        else if (typeof q.correctAnswer === 'string') {
+          try {
+            const parsed = JSON.parse(q.correctAnswer);
+            if (Array.isArray(parsed)) {
+              correctPairs = parsed;
+              console.log('Parsed correctAnswer string as JSON array');
+            }
+          } catch {
+            console.log('Could not parse correctAnswer as JSON, will use fallback');
+          }
         }
 
-        // Fallback to existing correctPairs if available
-        if (correctPairs.length === 0 && q.matchingPairs?.correctPairs) {
-          correctPairs = q.matchingPairs.correctPairs;
+        // Only generate default pairs as last resort if no pairs found
+        if (correctPairs.length === 0) {
+          const leftCount = leftItems.length;
+          const rightCount = rightItems.length;
+          const count = Math.min(leftCount, rightCount);
+          correctPairs = Array.from({ length: count }, (_, i) => ({ left: i, right: i }));
+          console.log('Generated default correct pairs (teacher edits not found)');
         }
 
         questionData.matchingPairs = {

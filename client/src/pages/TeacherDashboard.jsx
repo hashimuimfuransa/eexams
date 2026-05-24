@@ -2685,16 +2685,9 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   const handleSaveQuestionEdit = async () => {
     if (!editingQuestion || !exam) return;
     try {
-      // Update the question via the exam update endpoint
-      const updatedSections = [...exam.sections];
-      updatedSections[editingSectionIndex].questions[editingQuestionIndex] = editingQuestion;
-
+      // Update the question via the exam update endpoint using questions array
       await api.put(`/admin/exams/${exam._id}`, {
-        title: exam.title,
-        description: exam.description,
-        timeLimit: exam.timeLimit,
-        passingScore: exam.passingScore,
-        sections: updatedSections
+        questions: [{ ...editingQuestion, _id: editingQuestion._id }]
       }, { timeout: 30000 }); // 30 second timeout for exam updates
 
       // Refresh the preview
@@ -3673,7 +3666,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
 
           {editingQuestion?.type === 'matching' && editingQuestion?.matchingPairs && (
             <Box>
-              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Matching Pairs</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Matching Items</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {editingQuestion.matchingPairs.leftColumn.map((item, idx) => (
                   <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -3681,7 +3674,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                       fullWidth
                       size="small"
                       label={`Left ${idx + 1}`}
-                      value={item || ''}
+                      value={typeof item === 'string' ? item : item?.text || ''}
                       onChange={(e) => {
                         const newLeft = [...editingQuestion.matchingPairs.leftColumn];
                         newLeft[idx] = e.target.value;
@@ -3697,7 +3690,9 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                       fullWidth
                       size="small"
                       label={`Right ${idx + 1}`}
-                      value={editingQuestion.matchingPairs.rightColumn?.[idx] || ''}
+                      value={typeof editingQuestion.matchingPairs.rightColumn?.[idx] === 'string' 
+                        ? editingQuestion.matchingPairs.rightColumn[idx] 
+                        : editingQuestion.matchingPairs.rightColumn?.[idx]?.text || ''}
                       onChange={(e) => {
                         const newRight = [...(editingQuestion.matchingPairs.rightColumn || [])];
                         newRight[idx] = e.target.value;
@@ -3710,6 +3705,69 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                     />
                   </Box>
                 ))}
+              </Box>
+
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1, mt: 2 }}>Correct Matches (Left Index → Right Index)</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {(editingQuestion.matchingPairs.correctPairs || []).map((pair, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Typography sx={{ minWidth: 80, fontSize: 12, fontWeight: 600 }}>Pair {idx + 1}:</Typography>
+                    <TextField
+                      size="small"
+                      label="Left Index"
+                      type="number"
+                      value={pair.left}
+                      onChange={(e) => {
+                        const newPairs = [...(editingQuestion.matchingPairs.correctPairs || [])];
+                        newPairs[idx] = { ...newPairs[idx], left: parseInt(e.target.value) || 0 };
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          matchingPairs: { ...editingQuestion.matchingPairs, correctPairs: newPairs }
+                        });
+                      }}
+                      sx={{ width: 100, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                    <Typography sx={{ color: tokens.textSecondary }}>→</Typography>
+                    <TextField
+                      size="small"
+                      label="Right Index"
+                      type="number"
+                      value={pair.right}
+                      onChange={(e) => {
+                        const newPairs = [...(editingQuestion.matchingPairs.correctPairs || [])];
+                        newPairs[idx] = { ...newPairs[idx], right: parseInt(e.target.value) || 0 };
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          matchingPairs: { ...editingQuestion.matchingPairs, correctPairs: newPairs }
+                        });
+                      }}
+                      sx={{ width: 100, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                    <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
+                      ({typeof editingQuestion.matchingPairs.leftColumn?.[pair.left] === 'string' 
+                        ? editingQuestion.matchingPairs.leftColumn[pair.left] 
+                        : editingQuestion.matchingPairs.leftColumn?.[pair.left]?.text || 'N/A'} → 
+                        {typeof editingQuestion.matchingPairs.rightColumn?.[pair.right] === 'string'
+                        ? editingQuestion.matchingPairs.rightColumn[pair.right]
+                        : editingQuestion.matchingPairs.rightColumn?.[pair.right]?.text || 'N/A'})
+                    </Typography>
+                  </Box>
+                ))}
+                <Button
+                  size="small"
+                  startIcon={<Add />}
+                  onClick={() => {
+                    const newPairs = [...(editingQuestion.matchingPairs.correctPairs || [])];
+                    newPairs.push({ left: newPairs.length, right: newPairs.length });
+                    setEditingQuestion({
+                      ...editingQuestion,
+                      matchingPairs: { ...editingQuestion.matchingPairs, correctPairs: newPairs }
+                    });
+                  }}
+                  sx={{ mt: 1, borderRadius: 2, textTransform: 'none', fontSize: 12 }}
+                >
+                  Add Correct Pair
+                </Button>
               </Box>
             </Box>
           )}

@@ -11,7 +11,8 @@ const {
   checkSpecificResult,
   getScheduledExams,
   getInProgressExams,
-  getStudentProgress
+  getStudentProgress,
+  requestExamRetake
 } = require('../controllers/studentController');
 const auth = require('../middleware/auth');
 const { isStudent } = require('../middleware/role');
@@ -25,6 +26,7 @@ router.get('/exams', apiLimiter, getAvailableExams);
 router.get('/exams/in-progress', apiLimiter, getInProgressExams);
 router.get('/exams/:examId', apiLimiter, getExamById); // Get specific exam by ID
 router.get('/exams/:examId/session', apiLimiter, getCurrentExamSession);
+router.post('/exams/:examId/retake-request', apiLimiter, requestExamRetake);
 
 // Results routes
 router.get('/results', apiLimiter, getStudentResults);

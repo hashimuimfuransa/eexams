@@ -212,6 +212,26 @@ const Dashboard = () => {
     }
   };
 
+  const handleRetakeRequest = async (examId, examTitle) => {
+    try {
+      setRequestingExam(examId);
+      const response = await api.post(`/student/exams/${examId}/retake-request`);
+      // Refresh the data to update the pending requests list
+      await fetchData(true);
+      // Show success message
+      alert(`Retake request for "${examTitle}" submitted successfully! The teacher will review your request.`);
+    } catch (err) {
+      console.error('Error requesting retake:', err);
+      if (err.response?.data?.message) {
+        alert(err.response.data.message);
+      } else {
+        alert('Failed to submit retake request. Please try again.');
+      }
+    } finally {
+      setRequestingExam(null);
+    }
+  };
+
   const calculatePercentage = (score, maxScore) => {
     if (!score || !maxScore || maxScore === 0) return 0;
     return Math.round((score / maxScore) * 100);
@@ -424,14 +444,20 @@ const Dashboard = () => {
         )}
 
         {/* In-Progress Exams Section */}
-        {inProgressExams.length > 0 && (
+        {inProgressExams.filter(exam => {
+          const timeRemaining = timeRemainingMap[exam._id] || exam.timeRemaining || 0;
+          return timeRemaining > 0;
+        }).length > 0 && (
           <Box sx={{ mt: 4 }}>
             <Typography variant="h5" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <AccessTime color="error" />
               In-Progress Exams
             </Typography>
             <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'error.light', border: '2px solid', borderColor: 'error.main' }}>
-              {inProgressExams.map((exam) => {
+              {inProgressExams.filter(exam => {
+                const timeRemaining = timeRemainingMap[exam._id] || exam.timeRemaining || 0;
+                return timeRemaining > 0;
+              }).map((exam) => {
                 const timeRemaining = timeRemainingMap[exam._id] || exam.timeRemaining || 0;
                 const isUrgent = timeRemaining < 5 * 60 * 1000; // Less than 5 minutes
 
@@ -553,9 +579,20 @@ const Dashboard = () => {
           ) : (
             <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
               {availableExams.map((exam) => {
-                const canStart = !exam.isLocked && exam.status !== 'in-progress';
+                // Check if there's an approved or pending retake request for this exam
+                const approvedRetakeRequest = pendingRequests.find(
+                  r => r.exam?._id === exam._id && r.status === 'approved' && r.isRetake
+                );
+                const pendingRetakeRequest = pendingRequests.find(
+                  r => r.exam?._id === exam._id && r.status === 'pending' && r.isRetake
+                );
+
+                const canStart = !exam.isLocked && exam.status !== 'in-progress' && (exam.status !== 'completed' || approvedRetakeRequest);
+                const canRequestRetake = exam.status === 'completed' && !exam.isLocked && !approvedRetakeRequest && !pendingRetakeRequest;
                 const getStatusLabel = () => {
-                  if (exam.status === 'completed') return 'Retake Available';
+                  if (approvedRetakeRequest) return 'Retake Approved';
+                  if (pendingRetakeRequest) return 'Retake Pending';
+                  if (exam.status === 'completed') return 'Completed';
                   if (exam.status === 'in-progress') return 'In Progress';
                   if (exam.isLocked) return 'Locked';
                   if (exam.availability === 'upcoming') return 'Upcoming';
@@ -563,6 +600,8 @@ const Dashboard = () => {
                   return 'Available';
                 };
                 const getStatusColor = () => {
+                  if (approvedRetakeRequest) return 'success';
+                  if (pendingRetakeRequest) return 'warning';
                   if (exam.status === 'completed') return 'success';
                   if (exam.status === 'in-progress') return 'warning';
                   if (exam.isLocked || exam.availability === 'expired') return 'error';
@@ -631,6 +670,23 @@ const Dashboard = () => {
                               }}
                             >
                               Start Exam
+                            </Button>
+                          ) : canRequestRetake ? (
+                            <Button
+                              variant="outlined"
+                              onClick={() => handleRetakeRequest(exam._id, exam.title)}
+                              disabled={requestingExam === exam._id}
+                              size={isMobile ? 'medium' : 'large'}
+                              startIcon={<AddCircle />}
+                              fullWidth={isMobile}
+                              sx={{
+                                fontWeight: 'bold',
+                                px: { xs: 2, sm: 3 },
+                                py: { xs: 1.2, sm: 1.5 },
+                                textTransform: 'none'
+                              }}
+                            >
+                              {requestingExam === exam._id ? 'Requesting...' : 'Request Retake'}
                             </Button>
                           ) : (
                             <Button

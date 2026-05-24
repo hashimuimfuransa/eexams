@@ -732,6 +732,54 @@ const getScheduledExams = async (req, res) => {
   }
 };
 
+// @desc    Get student progress statistics
+// @route   GET /api/student/progress
+// @access  Private/Student
+const getStudentProgress = async (req, res) => {
+  try {
+    const studentId = req.user._id;
+
+    // Get all exams assigned to this student
+    const assignedExams = await Exam.find({
+      assignedTo: studentId,
+      status: 'active'
+    }).select('_id');
+
+    const totalExams = assignedExams.length;
+
+    // Get completed results for this student
+    const completedResults = await Result.find({
+      student: studentId,
+      isCompleted: true
+    }).select('exam');
+
+    const completedExams = completedResults.length;
+
+    // Calculate progress percentage
+    const progressPercentage = totalExams > 0
+      ? Math.round((completedExams / totalExams) * 100)
+      : 0;
+
+    // Get in-progress exams
+    const inProgressResults = await Result.find({
+      student: studentId,
+      isCompleted: false
+    }).select('exam');
+
+    const inProgressExams = inProgressResults.length;
+
+    res.json({
+      totalExams,
+      completedExams,
+      inProgressExams,
+      progressPercentage
+    });
+  } catch (error) {
+    console.error('Get student progress error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAvailableExams,
   getExamById,
@@ -742,5 +790,6 @@ module.exports = {
   debugStudentResults,
   checkSpecificResult,
   getScheduledExams,
-  getInProgressExams
+  getInProgressExams,
+  getStudentProgress
 };

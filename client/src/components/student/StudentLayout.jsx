@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -71,6 +71,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
+import { getStudentProgress } from '../../services/studentService';
 
 const drawerWidth = 260;
 
@@ -86,6 +87,13 @@ const StudentLayout = ({ children }) => {
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
   const [examSubmenuOpen, setExamSubmenuOpen] = useState(true);
   const [helpDialogOpen, setHelpDialogOpen] = useState(false);
+  const [progressData, setProgressData] = useState({
+    totalExams: 0,
+    completedExams: 0,
+    inProgressExams: 0,
+    progressPercentage: 0
+  });
+  const [loadingProgress, setLoadingProgress] = useState(true);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -126,6 +134,44 @@ const StudentLayout = ({ children }) => {
 
   const isActive = (path) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
+
+  // Fetch student progress data
+  useEffect(() => {
+    const fetchProgress = async () => {
+      if (user && user.role === 'student') {
+        try {
+          setLoadingProgress(true);
+          const data = await getStudentProgress();
+          setProgressData(data);
+        } catch (error) {
+          console.error('Error fetching progress:', error);
+        } finally {
+          setLoadingProgress(false);
+        }
+      }
+    };
+
+    fetchProgress();
+  }, [user]);
+
+  // Get motivational message based on progress
+  const getMotivationalMessage = () => {
+    const { progressPercentage } = progressData;
+    if (progressPercentage === 0) return 'Start your journey!';
+    if (progressPercentage < 25) return 'Keep learning!';
+    if (progressPercentage < 50) return 'Great progress!';
+    if (progressPercentage < 75) return 'Almost there!';
+    if (progressPercentage < 100) return 'Excellent work!';
+    return 'Congratulations!';
+  };
+
+  // Get role label based on user role
+  const getRoleLabel = () => {
+    if (user?.role === 'student') return 'Student';
+    if (user?.role === 'teacher') return 'Teacher';
+    if (user?.role === 'admin') return 'Admin';
+    return 'User';
   };
 
   const drawer = (
@@ -345,11 +391,26 @@ const StudentLayout = ({ children }) => {
               >
                 {user?.firstName ? `${user.firstName} ${user.lastName}` : user?.email || 'Student'}
               </Typography>
+              {user?.organization && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    fontSize: '0.7rem',
+                    mb: 0.5,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {user.organization}
+                </Typography>
+              )}
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                 <Chip
                   icon={<WorkspacePremium sx={{ fontSize: '0.8rem' }} />}
-                  label="Student"
+                  label={getRoleLabel()}
                   size="small"
                   sx={{
                     bgcolor: alpha(theme.palette.primary.main, 0.1),
@@ -388,12 +449,12 @@ const StudentLayout = ({ children }) => {
                     Progress
                   </Typography>
                   <Typography variant="caption" color="primary.main" fontWeight="bold" sx={{ fontSize: '0.7rem' }}>
-                    75%
+                    {loadingProgress ? '...' : `${progressData.progressPercentage}%`}
                   </Typography>
                 </Box>
                 <LinearProgress
-                  variant="determinate"
-                  value={75}
+                  variant={loadingProgress ? 'indeterminate' : 'determinate'}
+                  value={progressData.progressPercentage}
                   sx={{
                     height: 4,
                     borderRadius: 2,
@@ -405,7 +466,7 @@ const StudentLayout = ({ children }) => {
                   }}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', mt: 0.5 }}>
-                  Keep learning!
+                  {loadingProgress ? 'Loading...' : getMotivationalMessage()}
                 </Typography>
               </Box>
             </Box>

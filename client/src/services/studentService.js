@@ -102,3 +102,17 @@ export const getClassLeaderboard = async () => {
     throw error;
   }
 };
+
+/**
+ * Get student progress statistics
+ * @returns {Promise} - Promise with progress data (totalExams, completedExams, inProgressExams, progressPercentage)
+ */
+export const getStudentProgress = async () => {
+  try {
+    const response = await api.get('/student/progress');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching student progress:', error);
+    throw error;
+  }
+};

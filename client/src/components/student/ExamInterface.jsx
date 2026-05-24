@@ -63,7 +63,10 @@ import {
   DragIndicator,
   SwapVert,
   Calculate,
-  Close
+  Close,
+  PlaylistAddCheck,
+  PlayArrow,
+  Assessment
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
 import { useThemeMode } from '../../context/ThemeContext';
@@ -264,6 +267,7 @@ const ExamInterface = () => {
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [lastActiveTime, setLastActiveTime] = useState(Date.now());
   const [calculatorDisplay, setCalculatorDisplay] = useState('');
+  const [showInstructions, setShowInstructions] = useState(true);
 
   // Reset lastQuestionSaved when exam loads or when switching questions
   useEffect(() => {
@@ -443,6 +447,9 @@ const ExamInterface = () => {
           // Set time remaining
           const remainingTime = sessionRes.data.timeRemaining || 0;
           setTimeRemaining(remainingTime);
+
+          // Don't show instructions if session already exists (user is returning)
+          setShowInstructions(false);
 
           // Check if time has already expired - auto-submit immediately
           if (remainingTime <= 0) {
@@ -3004,6 +3011,174 @@ const ExamInterface = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Exam Instructions Dialog */}
+      <Dialog
+        open={showInstructions}
+        onClose={() => {}}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            p: { xs: 2, sm: 3, md: 4 }
+          }
+        }}
+      >
+        <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+            <Assessment sx={{ fontSize: 40, color: 'primary.main' }} />
+            <Typography variant="h4" fontWeight="bold" color="primary">
+              Exam Instructions
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <Typography variant="body1" fontWeight="bold">
+                Please read these instructions carefully before starting your exam.
+              </Typography>
+            </Alert>
+
+            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Timer color="primary" />
+              Time Management
+            </Typography>
+            <Box component="ul" sx={{ pl: 2, mb: 3 }}>
+              <Box component="li" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  You have <strong>{exam?.timeLimit || '?'} minutes</strong> to complete this exam
+                </Typography>
+              </Box>
+              <Box component="li" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  The timer starts when you click "Start Exam" below
+                </Typography>
+              </Box>
+              <Box component="li" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  If time runs out, your exam will be <strong>automatically submitted</strong>
+                </Typography>
+              </Box>
+              <Box component="li">
+                <Typography variant="body2">
+                  Leaving the exam for more than 1 minute will trigger auto-submit
+                </Typography>
+              </Box>
+            </Box>
+
+            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Security color="warning" />
+              Security Rules
+            </Typography>
+            <Box component="ul" sx={{ pl: 2, mb: 3 }}>
+              <Box component="li" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  <strong>Fullscreen mode</strong> is required during the exam
+                </Typography>
+              </Box>
+              <Box component="li" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  Do not switch tabs or windows during the exam
+                </Typography>
+              </Box>
+              <Box component="li" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  Do not copy or paste content from outside sources
+                </Typography>
+              </Box>
+              <Box component="li">
+                <Typography variant="body2">
+                  Violations may result in exam cancellation
+                </Typography>
+              </Box>
+            </Box>
+
+            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Calculate color="success" />
+              Tools Available
+            </Typography>
+            <Box component="ul" sx={{ pl: 2, mb: 3 }}>
+              <Box component="li" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  A <strong>calculator</strong> is available for all question types
+                </Typography>
+              </Box>
+              <Box component="li">
+                <Typography variant="body2">
+                  Click the calculator button to access mathematical functions
+                </Typography>
+              </Box>
+            </Box>
+
+            {selectiveAnswering && (
+              <>
+                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PlaylistAddCheck color="info" />
+                  Selective Answering
+                </Typography>
+                <Box component="ul" sx={{ pl: 2, mb: 3 }}>
+                  <Box component="li" sx={{ mb: 1 }}>
+                    <Typography variant="body2">
+                      <strong>Section B:</strong> Select any {exam?.sectionBRequiredQuestions || '?'} questions to answer
+                    </Typography>
+                  </Box>
+                  <Box component="li">
+                    <Typography variant="body2">
+                      <strong>Section C:</strong> Select any {exam?.sectionCRequiredQuestions || '?'} questions to answer
+                    </Typography>
+                  </Box>
+                </Box>
+              </>
+            )}
+
+            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CheckCircle color="success" />
+              Submission
+            </Typography>
+            <Box component="ul" sx={{ pl: 2, mb: 3 }}>
+              <Box component="li" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  Click the "Submit Exam" button when you're finished
+                </Typography>
+              </Box>
+              <Box component="li">
+                <Typography variant="body2">
+                  You will be asked to confirm before final submission
+                </Typography>
+              </Box>
+            </Box>
+
+            <Alert severity="warning" sx={{ mt: 3 }}>
+              <Typography variant="body2" fontWeight="bold">
+                ⚠️ Once you start the exam, you cannot pause or restart. Make sure you're ready!
+              </Typography>
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: { xs: 2, sm: 3 }, pt: 0 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            onClick={() => setShowInstructions(false)}
+            fullWidth
+            sx={{
+              py: 1.5,
+              fontSize: '1.1rem',
+              fontWeight: 'bold',
+              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #0A2E4D 0%, #0A9E5E 100%)'
+              }
+            }}
+            startIcon={<PlayArrow />}
+          >
+            Start Exam
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Selective Answering Banner */}
       {selectiveAnswering && (

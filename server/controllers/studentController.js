@@ -109,6 +109,49 @@ const getAvailableExams = async (req, res) => {
   }
 };
 
+// @desc    Get in-progress exams for student
+// @route   GET /api/student/exams/in-progress
+// @access  Private/Student
+const getInProgressExams = async (req, res) => {
+  try {
+    console.log('Fetching in-progress exams for student:', req.user._id);
+
+    // Get results for this student that are not completed
+    const inProgressResults = await Result.find({
+      student: req.user._id,
+      isCompleted: false
+    }).populate('exam', 'title description timeLimit');
+
+    console.log('Found in-progress results:', inProgressResults.length);
+
+    // Calculate time remaining for each in-progress exam
+    const inProgressExams = inProgressResults.map(result => {
+      const exam = result.exam;
+      const timeLimit = exam?.timeLimit || 0;
+      const startTime = result.startTime || new Date();
+      const endTime = new Date(startTime.getTime() + timeLimit * 60 * 1000);
+      const now = new Date();
+      const timeRemaining = Math.max(0, endTime.getTime() - now.getTime());
+
+      console.log('Exam:', exam?.title, 'Time remaining:', timeRemaining);
+
+      return {
+        _id: result._id,
+        exam: exam,
+        startTime: result.startTime,
+        timeRemaining: timeRemaining,
+        isCompleted: result.isCompleted
+      };
+    });
+
+    console.log('Returning in-progress exams:', inProgressExams);
+    res.json(inProgressExams);
+  } catch (error) {
+    console.error('Get in-progress exams error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get specific exam by ID for student
 // @route   GET /api/student/exams/:examId
 // @access  Private/Student
@@ -698,5 +741,6 @@ module.exports = {
   getClassLeaderboard,
   debugStudentResults,
   checkSpecificResult,
-  getScheduledExams
+  getScheduledExams,
+  getInProgressExams
 };

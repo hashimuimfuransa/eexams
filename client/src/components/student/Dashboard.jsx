@@ -58,6 +58,7 @@ const Dashboard = () => {
   const [availableExams, setAvailableExams] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [marketplaceExams, setMarketplaceExams] = useState([]);
+  const [inProgressExams, setInProgressExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -72,12 +73,13 @@ const Dashboard = () => {
       }
 
       // Fetch all data in parallel for faster loading
-      const [resultsRes, examsRes, scheduledRes, requestsRes, marketplaceRes] = await Promise.allSettled([
+      const [resultsRes, examsRes, scheduledRes, requestsRes, marketplaceRes, inProgressRes] = await Promise.allSettled([
         api.get('/student/results'),
         api.get('/student/exams'),
         api.get('/student/scheduled-exams'),
         api.get('/marketplace/student/requests'),
-        api.get('/marketplace/exams')
+        api.get('/marketplace/exams'),
+        api.get('/student/exams/in-progress')
       ]);
 
       // Process results
@@ -120,6 +122,15 @@ const Dashboard = () => {
         setMarketplaceExams(uniqueMarketplaceExams);
       } else {
         setMarketplaceExams([]);
+      }
+
+      // Process in-progress exams
+      if (inProgressRes.status === 'fulfilled') {
+        console.log('In-progress exams data:', inProgressRes.value.data);
+        setInProgressExams(inProgressRes.value.data || []);
+      } else {
+        console.log('In-progress exams request failed:', inProgressRes.reason);
+        setInProgressExams([]);
       }
 
     } catch (err) {
@@ -194,6 +205,21 @@ const Dashboard = () => {
       minute: '2-digit'
     };
     return new Date(dateString).toLocaleDateString(undefined, options);
+  };
+
+  const formatTimeRemaining = (milliseconds) => {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    } else {
+      return `${seconds}s`;
+    }
   };
 
   if (loading) {
@@ -360,6 +386,78 @@ const Dashboard = () => {
                   </CardContent>
                 </Card>
               ))}
+            </Paper>
+          </Box>
+        )}
+
+        {/* In-Progress Exams Section */}
+        {inProgressExams.length > 0 && (
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h5" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AccessTime color="error" />
+              In-Progress Exams
+            </Typography>
+            <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'error.light', border: '2px solid', borderColor: 'error.main' }}>
+              {inProgressExams.map((exam) => {
+                const timeRemaining = exam.timeRemaining || 0;
+                const isUrgent = timeRemaining < 5 * 60 * 1000; // Less than 5 minutes
+
+                return (
+                  <Card key={exam._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper', border: isUrgent ? '2px solid' : 'none', borderColor: isUrgent ? 'error.main' : 'transparent' }}>
+                    <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                        <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
+                          <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">
+                            {exam.exam?.title || 'Exam'}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Started: {formatDate(exam.startTime)}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="caption" color="text.secondary" gutterBottom display="block">
+                            Time Remaining
+                          </Typography>
+                          <Typography
+                            variant={isUrgent ? 'h4' : 'h5'}
+                            fontWeight="bold"
+                            color={isUrgent ? 'error' : 'warning'}
+                            sx={{ fontFamily: 'monospace' }}
+                          >
+                            {formatTimeRemaining(timeRemaining)}
+                          </Typography>
+                          {isUrgent && (
+                            <Typography variant="caption" color="error" fontWeight="bold" sx={{ display: 'block', mt: 0.5 }}>
+                              ⚠️ Auto-submit soon!
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                      <Alert severity={isUrgent ? 'error' : 'warning'} sx={{ mt: 2 }}>
+                        <Typography variant="body2" fontWeight="bold">
+                          Your exam is in progress. Return to complete it before time expires or it will be auto-submitted.
+                        </Typography>
+                      </Alert>
+                      <Button
+                        variant="contained"
+                        component={RouterLink}
+                        to={`/student/exam/${exam.exam?._id}`}
+                        fullWidth
+                        sx={{
+                          mt: 2,
+                          background: isUrgent ? 'error.main' : 'warning.main',
+                          '&:hover': {
+                            background: isUrgent ? 'error.dark' : 'warning.dark'
+                          }
+                        }}
+                        startIcon={<PlayArrow />}
+                      >
+                        Return to Exam
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </Paper>
           </Box>
         )}

@@ -34,6 +34,15 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
       case 'fill-in-blank':
         return await gradeShortAnswerFast(question, answer, modelAnswer);
 
+      case 'matching':
+        return await gradeMatchingFast(question, answer, modelAnswer);
+
+      case 'ordering':
+        return await gradeOrderingFast(question, answer, modelAnswer);
+
+      case 'drag-drop':
+        return await gradeDragDropFast(question, answer, modelAnswer);
+
       default:
         return {
           score: 0,
@@ -453,6 +462,136 @@ Return JSON: {score,feedback,correctedAnswer}`;
     feedback,
     correctedAnswer: modelAnswer,
     gradingMethod: 'keyword_matching' // Use existing enum value
+  };
+}
+
+/**
+ * Fast matching question grading
+ */
+async function gradeMatchingFast(question, answer, modelAnswer) {
+  const matchingAnswers = answer.matchingAnswers || {};
+
+  if (!matchingAnswers || Object.keys(matchingAnswers).length === 0) {
+    return {
+      score: 0,
+      feedback: 'No matching answers provided',
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'no_answer'
+    };
+  }
+
+  // Get correct pairs from question
+  const correctPairs = question.matchingPairs?.correctPairs || [];
+  const leftItems = question.leftItems || question.matchingPairs?.leftColumn || [];
+  const rightItems = question.rightItems || question.matchingPairs?.rightColumn || [];
+
+  let correctCount = 0;
+  let totalPairs = Math.min(leftItems.length, rightItems.length);
+
+  // Check each match
+  for (let i = 0; i < totalPairs; i++) {
+    const studentMatch = matchingAnswers[i];
+    if (!studentMatch) continue;
+
+    // Find if this match is correct
+    const isCorrect = correctPairs.some(pair => 
+      pair.left === i && pair.right === studentMatch
+    );
+
+    if (isCorrect) correctCount++;
+  }
+
+  const score = Math.round((correctCount / totalPairs) * question.points);
+  const feedback = score === question.points 
+    ? `All ${totalPairs} matches correct!`
+    : `${correctCount}/${totalPairs} matches correct`;
+
+  return {
+    score,
+    feedback,
+    correctedAnswer: modelAnswer,
+    gradingMethod: 'matching_grading',
+    isCorrect: score >= question.points
+  };
+}
+
+/**
+ * Fast ordering question grading
+ */
+async function gradeOrderingFast(question, answer, modelAnswer) {
+  const orderingAnswer = answer.orderingAnswer || [];
+
+  if (!orderingAnswer || orderingAnswer.length === 0) {
+    return {
+      score: 0,
+      feedback: 'No ordering answer provided',
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'no_answer'
+    };
+  }
+
+  const correctOrder = question.itemsToOrder?.correctOrder || [];
+  const items = question.items || question.itemsToOrder?.items || [];
+
+  let correctCount = 0;
+  for (let i = 0; i < orderingAnswer.length; i++) {
+    if (orderingAnswer[i] === correctOrder[i]) {
+      correctCount++;
+    }
+  }
+
+  const score = Math.round((correctCount / orderingAnswer.length) * question.points);
+  const feedback = score === question.points
+    ? 'All items in correct order!'
+    : `${correctCount}/${orderingAnswer.length} items in correct order`;
+
+  return {
+    score,
+    feedback,
+    correctedAnswer: modelAnswer,
+    gradingMethod: 'ordering_grading',
+    isCorrect: score >= question.points
+  };
+}
+
+/**
+ * Fast drag-drop question grading
+ */
+async function gradeDragDropFast(question, answer, modelAnswer) {
+  const dragDropAnswers = answer.dragDropAnswers || {};
+
+  if (!dragDropAnswers || Object.keys(dragDropAnswers).length === 0) {
+    return {
+      score: 0,
+      feedback: 'No drag-drop answers provided',
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'no_answer'
+    };
+  }
+
+  const correctPlacements = question.dragDropData?.correctPlacements || [];
+  let correctCount = 0;
+  let totalPlacements = correctPlacements.length;
+
+  // Check each placement
+  for (const placement of correctPlacements) {
+    const studentPlacement = dragDropAnswers[placement.item];
+    if (studentPlacement === placement.zone) {
+      correctCount++;
+    }
+  }
+
+  const score = totalPlacements > 0 ? Math.round((correctCount / totalPlacements) * question.points) : 0;
+  const feedback = score === question.points
+    ? 'All items placed correctly!'
+    : `${correctCount}/${totalPlacements} items placed correctly`;
+
+  return {
+    score,
+    feedback,
+    correctedAnswer: modelAnswer,
+    gradingMethod: 'drag_drop_grading',
+    isCorrect: score >= question.points
   };
 }
 

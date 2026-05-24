@@ -62,18 +62,30 @@ const QuestionSchema = new mongoose.Schema({
       message: 'Section must be uppercase letters (A-Z)'
     }
   },
-  // For matching questions
+  // For matching questions - support both strings and objects
   matchingPairs: {
-    leftColumn: [String],
-    rightColumn: [String],
+    leftColumn: [{
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    }],
+    rightColumn: [{
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    }],
     correctPairs: [{
-      left: String,
-      right: String
+      left: mongoose.Schema.Types.Mixed,
+      right: mongoose.Schema.Types.Mixed
     }]
   },
-  // New structure for matching questions (from pasted exams)
-  leftItems: [String],
-  rightItems: [String],
+  // New structure for matching questions (from pasted exams) - support both strings and objects
+  leftItems: [{
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  }],
+  rightItems: [{
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  }],
   correctMatches: {
     type: Map,
     of: Number

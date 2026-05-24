@@ -412,16 +412,29 @@ const createExam = async (req, res) => {
             section: sec.name,
           };
 
-          // Add matching-specific fields
+          // Add matching-specific fields - preserve original structure if provided
           if (qType === 'matching') {
-            questionData.matchingPairs = {
-              leftColumn: qd.leftItems || qd.matchingPairs?.leftColumn || [],
-              rightColumn: qd.rightItems || qd.matchingPairs?.rightColumn || [],
-              correctPairs: qd.matchingPairs?.correctPairs || qd.correctAnswer || []
-            };
-            // Also store leftItems and rightItems for new structure
-            questionData.leftItems = qd.leftItems || [];
-            questionData.rightItems = qd.rightItems || [];
+            // If the question already has a complete structure, preserve it exactly
+            if (qd.matchingPairs && (qd.matchingPairs.leftColumn || qd.matchingPairs.rightColumn || qd.matchingPairs.correctPairs)) {
+              questionData.matchingPairs = qd.matchingPairs;
+            } else if (qd.leftItems && qd.rightItems) {
+              // Use new structure if available
+              questionData.matchingPairs = {
+                leftColumn: qd.leftItems,
+                rightColumn: qd.rightItems,
+                correctPairs: qd.correctMatches ? Object.values(qd.correctMatches) : []
+              };
+            } else {
+              // Fallback to combining available fields
+              questionData.matchingPairs = {
+                leftColumn: qd.leftItems || qd.matchingPairs?.leftColumn || [],
+                rightColumn: qd.rightItems || qd.matchingPairs?.rightColumn || [],
+                correctPairs: qd.matchingPairs?.correctPairs || qd.correctAnswer || []
+              };
+            }
+            // Store leftItems and rightItems for new structure
+            questionData.leftItems = qd.leftItems || qd.matchingPairs?.leftColumn || [];
+            questionData.rightItems = qd.rightItems || qd.matchingPairs?.rightColumn || [];
             questionData.correctMatches = qd.correctMatches || {};
           }
 

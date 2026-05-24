@@ -193,6 +193,23 @@ const getExamById = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found or not assigned to you' });
     }
 
+    // Log section data to check if passage is present
+    console.log('Exam sections data:', exam.sections?.map(s => ({
+      name: s.name,
+      hasPassage: !!s.passage,
+      passageLength: s.passage?.length || 0,
+      hasInstructions: !!s.instructions,
+      hasWordBank: s.wordBank?.length > 0
+    })));
+
+    // Also check if questions have passage field
+    console.log('Questions with passage:', exam.sections?.flatMap(s => s.questions || []).filter(q => q.passage).map(q => ({
+      id: q._id,
+      section: q.section,
+      hasPassage: !!q.passage,
+      passageLength: q.passage?.length || 0
+    })));
+
     const examObj = exam.toObject();
 
     // Calculate total questions from all sections

@@ -5180,8 +5180,23 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   };
 
   // Get left items (questions/prompts) and right items (answers/choices)
-  const leftItems = question.leftItems || question.options?.filter((_, i) => i % 2 === 0) || [];
-  const rightItems = question.rightItems || question.options?.filter((_, i) => i % 2 === 1) || [];
+  // Support multiple data structures for matching questions
+  let leftItems = [];
+  let rightItems = [];
+
+  if (question.leftItems && question.rightItems) {
+    // New structure with explicit leftItems and rightItems
+    leftItems = question.leftItems;
+    rightItems = question.rightItems;
+  } else if (question.matchingPairs?.leftColumn && question.matchingPairs?.rightColumn) {
+    // Old structure with matchingPairs
+    leftItems = question.matchingPairs.leftColumn;
+    rightItems = question.matchingPairs.rightColumn;
+  } else if (question.options && Array.isArray(question.options)) {
+    // Fallback to options array (even/odd split)
+    leftItems = question.options.filter((_, i) => i % 2 === 0);
+    rightItems = question.options.filter((_, i) => i % 2 === 1);
+  }
 
   // Initialize matching answers if not set
   const [matches, setMatches] = useState(() => {

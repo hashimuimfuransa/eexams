@@ -187,7 +187,7 @@ const requestMarketplaceExam = async (req, res) => {
   try {
     // Check if user is authenticated
     const isAuthenticated = req.user && req.user._id;
-    const isRetake = req.body.isRetake === true;
+    const isRetake = req.body?.isRetake === true;
     
     let name, phone, email;
 
@@ -198,7 +198,7 @@ const requestMarketplaceExam = async (req, res) => {
       email = req.user.email;
     } else {
       // Use provided info for guest users (deprecated)
-      const { name: providedName, phone: providedPhone, email: providedEmail } = req.body;
+      const { name: providedName, phone: providedPhone, email: providedEmail } = req.body || {};
       name = providedName;
       phone = providedPhone;
       email = providedEmail;

@@ -646,8 +646,9 @@ const enhanceQuestionByType = async (question, answerData) => {
         break;
 
       case 'matching':
-        // Structure matching questions properly
-        if (!question.matchingPairs) {
+        // Structure matching questions properly - only if not already structured
+        // Preserve original structure if matchingPairs or leftItems/rightItems already exist
+        if (!question.matchingPairs && !question.leftItems && !question.rightItems) {
           question.matchingPairs = await extractMatchingPairs(question.text);
         }
         break;

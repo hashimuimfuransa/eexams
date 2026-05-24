@@ -323,6 +323,23 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
     console.log('Save draft - req.user.role:', req.user.role);
     const { title, description, timeLimit, passingScore, questions, totalMarks, examId, sections } = req.body;
 
+    // Log incoming sections data to check if passage is present
+    console.log('Incoming sections data:', sections?.map(s => ({
+      name: s.name,
+      hasPassage: !!s.passage,
+      passageLength: s.passage?.length || 0,
+      hasInstructions: !!s.instructions,
+      hasWordBank: s.wordBank?.length > 0
+    })));
+
+    // Log incoming questions data to check if passage is present
+    console.log('Questions with passage in request:', questions?.filter(q => q.passage).map(q => ({
+      id: q._id,
+      section: q.section,
+      hasPassage: !!q.passage,
+      passageLength: q.passage?.length || 0
+    })));
+
     if (!title || !questions || questions.length === 0) {
       return res.status(400).json({ message: 'Title and at least one question are required' });
     }
@@ -351,16 +368,32 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
       // Find the provided section data if available
       const providedSection = sections?.find(s => s.name === sectionName);
       
-      return {
+      // Extract passage/instructions/wordBank from questions if not provided in sections
+      const sectionQuestions = questionsBySection[sectionName] || [];
+      const firstQuestionWithPassage = sectionQuestions.find(q => q.passage);
+      const firstQuestionWithInstructions = sectionQuestions.find(q => q.instructions);
+      const firstQuestionWithWordBank = sectionQuestions.find(q => q.wordBank && q.wordBank.length > 0);
+      
+      const sectionData = {
         name: sectionName,
         title: providedSection?.title || `Section ${sectionName}`,
         description: providedSection?.description || `Section ${sectionName}`,
-        passage: providedSection?.passage || '',
-        instructions: providedSection?.instructions || '',
-        wordBank: providedSection?.wordBank || [],
+        passage: providedSection?.passage || firstQuestionWithPassage?.passage || '',
+        instructions: providedSection?.instructions || firstQuestionWithInstructions?.instructions || '',
+        wordBank: providedSection?.wordBank || firstQuestionWithWordBank?.wordBank || [],
         subsections: providedSection?.subsections || [],
         questions: []
       };
+
+      console.log(`Section ${sectionName} data:`, {
+        hasProvidedSection: !!providedSection,
+        providedHasPassage: !!providedSection?.passage,
+        questionHasPassage: !!firstQuestionWithPassage,
+        finalHasPassage: !!sectionData.passage,
+        passageLength: sectionData.passage?.length || 0
+      });
+
+      return sectionData;
     });
 
     let exam;
@@ -376,7 +409,28 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam.timeLimit = timeLimit || 60;
         exam.passingScore = passingScore || 70;
         exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
-        exam.sections = sectionsArray;
+        
+        // Merge existing section data with new sections to preserve passage/instructions/wordBank
+        exam.sections = sectionsArray.map(newSection => {
+          const existingSection = exam.sections?.find(s => s.name === newSection.name);
+          return {
+            ...newSection,
+            // Preserve existing passage/instructions/wordBank if not provided in new data
+            passage: newSection.passage || existingSection?.passage || '',
+            instructions: newSection.instructions || existingSection?.instructions || '',
+            wordBank: newSection.wordBank?.length > 0 ? newSection.wordBank : (existingSection?.wordBank || []),
+            subsections: newSection.subsections?.length > 0 ? newSection.subsections : (existingSection?.subsections || [])
+          };
+        });
+        
+        console.log('Merged sections data:', exam.sections?.map(s => ({
+          name: s.name,
+          hasPassage: !!s.passage,
+          passageLength: s.passage?.length || 0,
+          hasInstructions: !!s.instructions,
+          hasWordBank: s.wordBank?.length > 0
+        })));
+        
         // Don't save here - will save after creating questions
 
         // Delete existing questions for this exam
@@ -404,7 +458,28 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam.timeLimit = timeLimit || 60;
         exam.passingScore = passingScore || 70;
         exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
-        exam.sections = sectionsArray;
+        
+        // Merge existing section data with new sections to preserve passage/instructions/wordBank
+        exam.sections = sectionsArray.map(newSection => {
+          const existingSection = exam.sections?.find(s => s.name === newSection.name);
+          return {
+            ...newSection,
+            // Preserve existing passage/instructions/wordBank if not provided in new data
+            passage: newSection.passage || existingSection?.passage || '',
+            instructions: newSection.instructions || existingSection?.instructions || '',
+            wordBank: newSection.wordBank?.length > 0 ? newSection.wordBank : (existingSection?.wordBank || []),
+            subsections: newSection.subsections?.length > 0 ? newSection.subsections : (existingSection?.subsections || [])
+          };
+        });
+        
+        console.log('Merged sections data (existing draft):', exam.sections?.map(s => ({
+          name: s.name,
+          hasPassage: !!s.passage,
+          passageLength: s.passage?.length || 0,
+          hasInstructions: !!s.instructions,
+          hasWordBank: s.wordBank?.length > 0
+        })));
+        
         // Don't save here - will save after creating questions
 
         // Delete existing questions for this exam
@@ -426,10 +501,71 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
       }
     }
 
+    // Sanitize all array fields in questions to handle stringified arrays from AI
+    const sanitizeQuestions = (questionsArray) => {
+      if (!Array.isArray(questionsArray)) return questionsArray;
+      
+      return questionsArray.map((q, idx) => {
+        const sanitizeField = (value, fieldName) => {
+          if (Array.isArray(value)) {
+            // Check if array contains a single string that is actually a stringified array
+            if (value.length === 1 && typeof value[0] === 'string' && value[0].startsWith('[')) {
+              try {
+                const parsed = JSON.parse(value[0]);
+                if (Array.isArray(parsed)) {
+                  console.log(`Sanitized ${fieldName} for question ${idx}: parsed stringified array`);
+                  return parsed;
+                }
+              } catch (e) {
+                console.log(`Failed to parse ${fieldName} for question ${idx}: ${e.message}`);
+              }
+            }
+            return value;
+          }
+          if (typeof value === 'string' && value.startsWith('[')) {
+            // Parse stringified arrays
+            try {
+              const parsed = JSON.parse(value);
+              if (Array.isArray(parsed)) {
+                console.log(`Sanitized ${fieldName} for question ${idx}: parsed stringified array from string`);
+                return parsed;
+              }
+            } catch (e) {
+              console.log(`Failed to parse ${fieldName} string for question ${idx}: ${e.message}`);
+            }
+          }
+          return value;
+        };
+        
+        // Sanitize all array fields
+        if (q.leftItems) {
+          q.leftItems = sanitizeField(q.leftItems, 'leftItems');
+          console.log(`Question ${idx} leftItems after sanitization:`, JSON.stringify(q.leftItems).substring(0, 200));
+        }
+        if (q.rightItems) {
+          q.rightItems = sanitizeField(q.rightItems, 'rightItems');
+          console.log(`Question ${idx} rightItems after sanitization:`, JSON.stringify(q.rightItems).substring(0, 200));
+        }
+        if (q.wordBank) q.wordBank = sanitizeField(q.wordBank, 'wordBank');
+        if (q.items) q.items = sanitizeField(q.items, 'items');
+        if (q.options) q.options = sanitizeField(q.options, 'options');
+        if (q.matchingPairs?.leftColumn) q.matchingPairs.leftColumn = sanitizeField(q.matchingPairs.leftColumn, 'matchingPairs.leftColumn');
+        if (q.matchingPairs?.rightColumn) q.matchingPairs.rightColumn = sanitizeField(q.matchingPairs.rightColumn, 'matchingPairs.rightColumn');
+        if (q.itemsToOrder?.items) q.itemsToOrder.items = sanitizeField(q.itemsToOrder.items, 'itemsToOrder.items');
+        if (q.dragDropData?.dropZones) q.dragDropData.dropZones = sanitizeField(q.dragDropData.dropZones, 'dragDropData.dropZones');
+        if (q.dragDropData?.draggableItems) q.dragDropData.draggableItems = sanitizeField(q.dragDropData.draggableItems, 'dragDropData.draggableItems');
+        
+        return q;
+      });
+    };
+    
+    const sanitizedQuestions = sanitizeQuestions(questions);
+    console.log('Sanitized questions array');
+    
     // Create questions with exam ID and section
     const createdQuestions = {};
     
-    for (const q of questions) {
+    for (const q of sanitizedQuestions) {
       // Skip questions with empty text
       if (!q.text || !q.text.trim()) {
         console.warn('Skipping question with empty text');
@@ -484,6 +620,31 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         }
       }
 
+      // Helper function to parse stringified arrays from AI
+      const parseArrayField = (value) => {
+        if (Array.isArray(value)) {
+          // Check if the array contains a single string that is actually a stringified array
+          if (value.length === 1 && typeof value[0] === 'string' && value[0].startsWith('[')) {
+            try {
+              const parsed = JSON.parse(value[0]);
+              if (Array.isArray(parsed)) return parsed;
+            } catch {
+              // If parsing fails, return the original array
+            }
+          }
+          return value;
+        }
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) return parsed;
+          } catch {
+            // If parsing fails, return empty array
+          }
+        }
+        return [];
+      };
+
       const questionData = {
         text: q.text,
         type: q.type || 'multiple-choice',
@@ -504,11 +665,9 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam: exam._id,
         section: section,
         createdBy: req.user._id,
-        // Preserve new structure fields from pasted exams
-        leftItems: q.leftItems || [],
-        rightItems: q.rightItems || [],
+        // Preserve new structure fields from pasted exams - will be set in type-specific sections
         correctMatches: q.correctMatches || {},
-        wordBank: q.wordBank || [],
+        wordBank: parseArrayField(q.wordBank),
         passage: q.passage || '',
         subsectionTitle: q.subsectionTitle || '',
         subsection: q.subsection || '',
@@ -550,6 +709,13 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
 
       // Add matching-specific fields
       if (q.type === 'matching') {
+        // Sanitize leftItems and rightItems - they might be stringified by AI
+        const leftItems = parseArrayField(q.leftItems || q.matchingPairs?.leftColumn);
+        const rightItems = parseArrayField(q.rightItems || q.matchingPairs?.rightColumn);
+
+        console.log('Matching question leftItems:', JSON.stringify(leftItems).substring(0, 200));
+        console.log('Matching question rightItems:', JSON.stringify(rightItems).substring(0, 200));
+
         // Handle different formats for correctAnswer
         let correctPairs = [];
         if (typeof q.correctAnswer === 'string') {
@@ -561,8 +727,8 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
             }
           } catch {
             // If string, assume it's a fallback and generate default pairs
-            const leftCount = (q.leftItems || q.matchingPairs?.leftColumn || []).length;
-            const rightCount = (q.rightItems || q.matchingPairs?.rightColumn || []).length;
+            const leftCount = leftItems.length;
+            const rightCount = rightItems.length;
             const count = Math.min(leftCount, rightCount);
             correctPairs = Array.from({ length: count }, (_, i) => ({ left: i, right: i }));
           }
@@ -582,10 +748,14 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         }
 
         questionData.matchingPairs = {
-          leftColumn: q.leftItems || q.matchingPairs?.leftColumn || [],
-          rightColumn: q.rightItems || q.matchingPairs?.rightColumn || [],
+          leftColumn: leftItems,
+          rightColumn: rightItems,
           correctPairs
         };
+
+        // Also set leftItems and rightItems for new structure
+        questionData.leftItems = leftItems;
+        questionData.rightItems = rightItems;
 
         // Set correctAnswer to default string for matching questions
         questionData.correctAnswer = 'Not provided';
@@ -593,6 +763,9 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
 
       // Add ordering-specific fields
       if (q.type === 'ordering') {
+        // Sanitize items array - might be stringified by AI
+        const items = parseArrayField(q.items || q.itemsToOrder?.items);
+
         // Handle different formats for correctAnswer
         let correctOrder = [];
         if (typeof q.correctAnswer === 'string') {
@@ -609,7 +782,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
               correctOrder = parsed;
             } else {
               // Fallback: generate default order based on items count
-              const itemCount = (q.items || q.itemsToOrder?.items || []).length;
+              const itemCount = items.length;
               correctOrder = Array.from({ length: itemCount }, (_, i) => i);
             }
           }
@@ -623,7 +796,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         }
 
         questionData.itemsToOrder = {
-          items: q.items || q.itemsToOrder?.items || [],
+          items: items,
           correctOrder
         };
 
@@ -633,6 +806,10 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
 
       // Add drag-drop-specific fields
       if (q.type === 'drag-drop') {
+        // Sanitize arrays - might be stringified by AI
+        const dropZones = parseArrayField(q.dropZones || q.dragDropData?.dropZones);
+        const draggableItems = parseArrayField(q.draggableItems || q.dragDropData?.draggableItems);
+
         // Handle different formats for correctAnswer
         let correctPlacements = [];
         if (typeof q.correctAnswer === 'string') {
@@ -644,8 +821,8 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
             }
           } catch {
             // If string, assume it's a fallback and generate default placements
-            const dropZoneCount = (q.dropZones || q.dragDropData?.dropZones || []).length;
-            const itemCount = (q.draggableItems || q.dragDropData?.draggableItems || []).length;
+            const dropZoneCount = dropZones.length;
+            const itemCount = draggableItems.length;
             const count = Math.min(dropZoneCount, itemCount);
             correctPlacements = Array.from({ length: count }, (_, i) => ({ item: i, zone: i }));
           }
@@ -659,8 +836,8 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         }
 
         questionData.dragDropData = {
-          dropZones: q.dropZones || q.dragDropData?.dropZones || [],
-          draggableItems: q.draggableItems || q.dragDropData?.draggableItems || [],
+          dropZones: dropZones,
+          draggableItems: draggableItems,
           correctPlacements
         };
 
@@ -843,7 +1020,7 @@ router.post('/ai-generate', auth, isAdminOrTeacher, requireAIFeatures, async (re
 
     // If pasted exam is provided, parse it to extract the actual questions
     if (pastedExam && pastedExam.trim()) {
-      const parseExamPrompt = `You are extracting the FULL structure of a pasted exam including passages, instructions, word banks, examples, and ALL questions. Preserve the hierarchical structure exactly as it appears.
+      const parseExamPrompt = `You are extracting the FULL structure of a pasted exam including passages, instructions, word banks, examples, and ALL questions. PRESERVE EVERYTHING EXACTLY AS IT APPEARS - DO NOT CORRECT, RESTRUCTURE, OR MODIFY ANYTHING.
 
 PASTED EXAM:
 "${pastedExam.trim()}"
@@ -897,34 +1074,49 @@ Return ONLY a JSON object with this structure:
             {"text": "am", "isCorrect": false, "letter": "c"}
           ],
           "correctAnswer": "b"
+        },
+        {
+          "text": "Match the words with their meanings",
+          "type": "matching",
+          "points": 5,
+          "leftItems": ["Doctor", "School", "Market", "Library", "Farmer"],
+          "rightItems": ["A person who treats sick people", "A place where children learn", "A place where people buy and sell things", "A place with books", "A person who grows crops"],
+          "correctMatches": {"Doctor": 0, "School": 1, "Market": 2, "Library": 3, "Farmer": 4},
+          "correctAnswer": "0-0, 1-1, 2-2, 3-3, 4-4"
         }
       ]
     }
   ]
 }
 
-CRITICAL RULES:
-- PRESERVE the full exam structure including passages, instructions, word banks, examples
-- Extract passages (like comprehension passages) into the "passage" field
-- Extract section titles with marks (e.g., "COMPREHENSION (20 Marks)")
-- Extract subsections (A, B, C within a section) with their own titles and instructions
-- Extract word banks/boxes into the "wordBank" array
-- Extract examples into the "examples" array if present
-- Extract ALL questions as individual items
-- For matching exercises: Create ONE question with type "matching" that contains ALL matching pairs. Use this structure:
-  {
-    "text": "Match the words with their meanings",
-    "type": "matching",
-    "points": 5,
-    "leftItems": ["Doctor", "School", "Market", "Library", "Farmer"],
-    "rightItems": ["A person who treats sick people", "A place where children learn", "A place where people buy and sell things", "A place with books", "A person who grows crops"],
-    "correctMatches": {"Doctor": 1, "School": 0, "Market": 2, "Library": 3, "Farmer": 4},
-    "correctAnswer": "1-b, 2-a, 3-c, 4-d, 5-e"
-  }
+CRITICAL RULES - PRESERVE EXACT STRUCTURE:
+- PRESERVE the full exam structure EXACTLY as it appears - DO NOT CORRECT OR MODIFY ANYTHING
+- Extract passages (like comprehension passages) into the "passage" field EXACTLY as written
+- Extract section titles with marks (e.g., "COMPREHENSION (20 Marks)") EXACTLY as written
+- Extract subsections (A, B, C within a section) with their own titles and instructions EXACTLY as written
+- Extract word banks/boxes into the "wordBank" array EXACTLY as listed
+- Extract examples into the "examples" array if present EXACTLY as written
+- Extract ALL questions as individual items EXACTLY as they appear
+- QUESTION TYPE DETECTION RULES:
+  - **Matching questions**: Identify by keywords like "Match", "match the", "match each", "pair the", "connect", "link", or when there are two columns of items to be paired. Set type to "matching" and include leftItems and rightItems arrays. CRITICAL: leftItems and rightItems MUST be actual JSON arrays, NOT stringified arrays.
+  - **Multiple-choice**: Identify by options (a, b, c, d) or lettered choices. Set type to "multiple-choice".
+  - **True-false**: Identify by True/False options. Set type to "true-false".
+  - **Fill-in-blank**: Identify by blanks (_____, ....) or "fill in". Set type to "fill-in-blank".
+  - **Short-answer**: Brief factual questions requiring 1-2 sentence answers. Set type to "short-answer".
+  - **Open-ended/Essay**: Questions requiring detailed explanations or longer answers. Set type to "open-ended".
+- For matching exercises: 
+  - CRITICAL: PRESERVE THE EXACT leftItems AND rightItems ARRAYS EXACTLY AS THEY APPEAR
+  - If the pasted exam has a matching question with leftItems and rightItems, copy them EXACTLY without modification
+  - DO NOT restructure, reorganize, or interpret matching items differently
+  - If matching items are listed as separate questions (1a, 1b, 1c, etc.), keep them as separate questions with their exact text
+  - DO NOT consolidate separate matching items into one question unless they are already structured that way in the pasted exam
+  - The leftItems array should contain the left column items EXACTLY as listed
+  - The rightItems array should contain the right column items EXACTLY as listed
+  - Extract correctMatches from the marking guide if available
 - For fill-in-blank: each blank is a separate question with type "fill-in-blank". Extract the exact word from the marking guide as correctAnswer.
 - For grammar exercises: each sentence/item is a separate question. Extract the model answer from the marking guide as correctAnswer.
 - For multiple-choice: each MCQ is a separate question. Mark the correct option with isCorrect: true and set correctAnswer to the letter (e.g., "b").
-- Extract the exact text from the pasted exam
+- Extract the exact text from the pasted exam - DO NOT CORRECT GRAMMAR OR SPELLING
 - CRITICAL: Use the TEACHER'S MARKING GUIDE to find ALL correct answers. The marking guide is at the end of the pasted exam.
 - For short-answer questions: extract the exact answer from the marking guide
 - For open-ended questions: extract the model answer or key points from the marking guide
@@ -932,7 +1124,9 @@ CRITICAL RULES:
 - If a section has subsections (A, B, C), use the "subsections" array
 - If a section has no subsections, put questions directly in "questions" array
 - Keep the hierarchical structure intact - this is a professional exam format
-- EVERY question MUST have a correctAnswer field populated from the marking guide`;
+- EVERY question MUST have a correctAnswer field populated from the marking guide
+- DO NOT RESTRUCTURE OR CONSOLIDATE QUESTIONS - KEEP THEM EXACTLY AS THEY APPEAR IN THE PASTED EXAM
+- ABSOLUTELY DO NOT INTERPRET OR REORGANIZE MATCHING QUESTIONS - COPY leftItems AND rightItems EXACTLY AS PROVIDED`;
 
       try {
         const parseResponse = await groqClient.generateContent(parseExamPrompt, {
@@ -949,6 +1143,48 @@ CRITICAL RULES:
         
         const parsed = JSON.parse(parseText);
         console.log('Parsed exam structure:', JSON.stringify(parsed, null, 2).substring(0, 500));
+        
+        // Sanitize all array fields in the parsed exam to handle stringified arrays from AI
+        const sanitizeParsedExam = (obj) => {
+          if (!obj || typeof obj !== 'object') return obj;
+          
+          for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+              const value = obj[key];
+              
+              if (Array.isArray(value)) {
+                // Check if array contains a single string that is actually a stringified array
+                if (value.length === 1 && typeof value[0] === 'string' && value[0].startsWith('[')) {
+                  try {
+                    const parsed = JSON.parse(value[0]);
+                    if (Array.isArray(parsed)) {
+                      obj[key] = parsed;
+                    }
+                  } catch {
+                    // If parsing fails, keep original
+                  }
+                }
+              } else if (typeof value === 'string' && value.startsWith('[')) {
+                // Parse stringified arrays
+                try {
+                  const parsed = JSON.parse(value);
+                  if (Array.isArray(parsed)) {
+                    obj[key] = parsed;
+                  }
+                } catch {
+                  // If parsing fails, keep original
+                }
+              } else if (typeof value === 'object' && value !== null) {
+                // Recursively sanitize nested objects
+                sanitizeParsedExam(value);
+              }
+            }
+          }
+          return obj;
+        };
+        
+        sanitizeParsedExam(parsed);
+        console.log('Sanitized parsed exam structure');
         
         // Extract question types from the parsed exam for plan limits
         const extractedTypes = {};

@@ -18,7 +18,7 @@ import {
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
-  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset
+  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -1286,12 +1286,16 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     
     setSavingDraft(true);
     try {
+      // Build sections array from generated data
+      const sectionsArray = generated.sections || [];
+      
       const draftData = {
         title: generated.title,
         description: generated.description || generated.title,
         timeLimit: generated.timeLimit || 60,
         passingScore: generated.passingScore || 70,
         totalMarks: generated.totalMarks || generated.questions.reduce((s, q) => s + (q.marks || 1), 0),
+        sections: sectionsArray,
         questions: generated.questions.map(q => ({
           text: q.text,
           type: q.type || 'multiple-choice',
@@ -1309,7 +1313,10 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           rightItems: q.rightItems,
           items: q.items,
           matchingPairs: q.matchingPairs,
-          itemsToOrder: q.itemsToOrder
+          itemsToOrder: q.itemsToOrder,
+          passage: q.passage,
+          instructions: q.instructions,
+          wordBank: q.wordBank
         }))
       };
       
@@ -1907,7 +1914,6 @@ SECTION B: Short Answer (10 marks)
                 sx={{ color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 2, textTransform: 'none', fontSize: isXs ? 11 : 13 }}>
                 {savingDraft ? 'Saving...' : ' Save Draft'}
               </Button>
-              <Button size={isXs ? "small" : "small"} variant="contained" onClick={handlePublish} sx={{ bgcolor: 'white', color: tokens.accentDark, fontWeight: 700, borderRadius: 2, textTransform: 'none', fontSize: isXs ? 11 : 13 }}>Publish</Button>
             </Box>
           </Box>
           <Box sx={{ p: isXs ? 2 : 3, bgcolor: 'white' }}>
@@ -2153,6 +2159,9 @@ function ExamPreviewPanel({ exam }) {
   const isFill = q && (q.type === 'fill-in-blank' || q.type === 'fill-blank');
   const isTF   = q && q.type === 'true-false';
   const isMC   = q && q.type === 'multiple-choice';
+  const isMatching = q && q.type === 'matching';
+  const isOrdering = q && q.type === 'ordering';
+  const isDragDrop = q && q.type === 'drag-drop';
 
   return (
     <Box sx={{ bgcolor: '#F1F5F9', minHeight: 480 }}>
@@ -2215,6 +2224,35 @@ function ExamPreviewPanel({ exam }) {
                   <Chip label={q.difficulty || 'medium'} size="small" sx={{ bgcolor: q.difficulty === 'hard' ? 'rgba(239,68,68,0.1)' : q.difficulty === 'easy' ? 'rgba(12,189,115,0.1)' : 'rgba(245,158,11,0.1)', color: q.difficulty === 'hard' ? '#EF4444' : q.difficulty === 'easy' ? tokens.accent : tokens.warning, fontWeight: 700, textTransform: 'capitalize' }} />
                 </Box>
 
+                {/* Section-level passage, instructions, and word bank */}
+                {curSection?.passage && (
+                  <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.primary}`, bgcolor: 'rgba(59,130,246,0.03)', mb: 2.5 }}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.primary, mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>Passage</Typography>
+                    <Typography sx={{ fontSize: 14, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{curSection.passage}</Typography>
+                  </Paper>
+                )}
+
+                {curSection?.instructions && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: `1px solid ${tokens.warning}`, bgcolor: 'rgba(245,158,11,0.05)', mb: 2.5 }}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.warning, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Info sx={{ fontSize: 16 }} />
+                      Instructions
+                    </Typography>
+                    <Typography sx={{ fontSize: 13, color: tokens.textPrimary, mt: 1, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6 }}>{curSection.instructions}</Typography>
+                  </Paper>
+                )}
+
+                {curSection?.wordBank && curSection.wordBank.length > 0 && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: `1px solid ${tokens.accent}`, bgcolor: 'rgba(12,189,115,0.05)', mb: 2.5 }}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.accent, mb: 1 }}>Word Bank</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                      {curSection.wordBank.map((word, i) => (
+                        <Chip key={i} label={word} size="small" sx={{ bgcolor: 'white', border: `1px solid ${tokens.accent}`, color: tokens.textPrimary, fontSize: 12 }} />
+                      ))}
+                    </Box>
+                  </Paper>
+                )}
+
                 <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
                   <Typography sx={{ fontSize: 15, fontWeight: 600, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6 }}>{q.text}</Typography>
                 </Paper>
@@ -2265,6 +2303,85 @@ function ExamPreviewPanel({ exam }) {
                   <TextField fullWidth multiline minRows={4} placeholder="Write your answer here…" value={answers[q._id] || ''}
                     onChange={e => setAnswer(q._id, e.target.value)}
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 14, bgcolor: 'white' } }} />
+                )}
+
+                {/* Matching */}
+                {isMatching && (
+                  <Box>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textSecondary, mb: 2 }}>
+                      Drag items from the right to match with items on the left
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.primary, mb: 1.5 }}>Match These:</Typography>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                          {(q.leftItems || []).map((item, i) => (
+                            <Paper key={i} sx={{ p: 1.5, borderRadius: 1.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                              <Typography sx={{ fontSize: 13, color: tokens.textPrimary }}>{typeof item === 'string' ? item : item.text}</Typography>
+                            </Paper>
+                          ))}
+                        </Box>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.accent, mb: 1.5 }}>Items to Match:</Typography>
+                        <Paper sx={{ p: 1.5, borderRadius: 1.5, bgcolor: '#F8FAFC', minHeight: 100 }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {(q.rightItems || []).map((item, i) => (
+                              <Chip key={i} label={typeof item === 'string' ? item : item.text} size="small" sx={{ bgcolor: 'white', border: `1px solid ${tokens.accent}`, fontSize: 12 }} />
+                            ))}
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                )}
+
+                {/* Ordering */}
+                {isOrdering && (
+                  <Box>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textSecondary, mb: 2 }}>
+                      Drag to reorder the items in the correct sequence
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {(q.items || q.itemsToOrder?.items || []).map((item, i) => (
+                        <Paper key={i} sx={{ p: 1.5, borderRadius: 1.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, minWidth: 24 }}>{i + 1}.</Typography>
+                          <Typography sx={{ fontSize: 13, color: tokens.textPrimary }}>{typeof item === 'string' ? item : item.text}</Typography>
+                        </Paper>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Drag-Drop */}
+                {isDragDrop && (
+                  <Box>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textSecondary, mb: 2 }}>
+                      Drag items to their correct drop zones
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.primary, mb: 1.5 }}>Drop Zones:</Typography>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                          {(q.dropZones || q.dragDropData?.dropZones || []).map((zone, i) => (
+                            <Paper key={i} sx={{ p: 2, borderRadius: 1.5, border: `2px dashed ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC', minHeight: 60 }}>
+                              <Typography sx={{ fontSize: 13, color: tokens.textSecondary, fontStyle: 'italic' }}>{typeof zone === 'string' ? zone : zone.label || `Zone ${i + 1}`}</Typography>
+                            </Paper>
+                          ))}
+                        </Box>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.accent, mb: 1.5 }}>Draggable Items:</Typography>
+                        <Paper sx={{ p: 1.5, borderRadius: 1.5, bgcolor: '#F8FAFC', minHeight: 100 }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {(q.draggableItems || q.dragDropData?.draggableItems || []).map((item, i) => (
+                              <Chip key={i} label={typeof item === 'string' ? item : item.text} size="small" sx={{ bgcolor: 'white', border: `1px solid ${tokens.accent}`, fontSize: 12 }} />
+                            ))}
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    </Grid>
+                  </Box>
                 )}
 
                 {/* Navigation */}
@@ -4404,14 +4521,6 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
       ))}
 
       {error && <Box sx={{ mb: 1.5, p: 1.5, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: 13 }}>{error}</Box>}
-
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 0.5 }}>
-        <Button variant="contained" startIcon={publishing ? <CircularProgress size={16} color="inherit" /> : <Publish />}
-          onClick={onPublish} disabled={publishing}
-          sx={{ borderRadius: 2.5, fontWeight: 700, px: 3, textTransform: 'none', background: gradients.brand, boxShadow: 'none', fontSize: 14 }}>
-          {publishing ? 'Publishing…' : `Publish Exam (${totalQ} questions)`}
-        </Button>
-      </Box>
     </Box>
   );
 }

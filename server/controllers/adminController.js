@@ -2272,8 +2272,8 @@ const createExam = async (req, res) => {
                     }
                   }
 
-                  // Create the question with validated data
-                  const question = await Question.create({
+                  // Create the question with validated data - preserve original structure
+                  const questionDataToSave = {
                     text: questionData.text || 'Sample question',
                     type: questionType,
                     options: options,
@@ -2284,11 +2284,31 @@ const createExam = async (req, res) => {
                     explanation: questionData.explanation || '',
                     gradingCriteria: questionData.gradingCriteria || [],
                     keyPoints: questionData.keyPoints || [],
-                    leftItems: questionData.leftItems || [],
-                    rightItems: questionData.rightItems || [],
-                    items: questionData.items || [],
                     subQuestions: subQuestions.length > 0 ? subQuestions : (questionData.subQuestions || [])
-                  });
+                  };
+
+                  // Preserve matching question structure if already provided
+                  if (questionType === 'matching') {
+                    if (questionData.matchingPairs && (questionData.matchingPairs.leftColumn || questionData.matchingPairs.rightColumn || questionData.matchingPairs.correctPairs)) {
+                      questionDataToSave.matchingPairs = questionData.matchingPairs;
+                    }
+                    if (questionData.leftItems) questionDataToSave.leftItems = questionData.leftItems;
+                    if (questionData.rightItems) questionDataToSave.rightItems = questionData.rightItems;
+                    if (questionData.correctMatches) questionDataToSave.correctMatches = questionData.correctMatches;
+                  }
+
+                  // Preserve ordering question structure if already provided
+                  if (questionType === 'ordering') {
+                    if (questionData.itemsToOrder) questionDataToSave.itemsToOrder = questionData.itemsToOrder;
+                    if (questionData.items) questionDataToSave.items = questionData.items;
+                  }
+
+                  // Preserve drag-drop question structure if already provided
+                  if (questionType === 'drag-drop') {
+                    if (questionData.dragDropData) questionDataToSave.dragDropData = questionData.dragDropData;
+                  }
+
+                  const question = await Question.create(questionDataToSave);
 
                   // Add question to the appropriate section
                   const sectionIndex = exam.sections.findIndex(s => s.name === section.name);

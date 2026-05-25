@@ -2163,6 +2163,7 @@ function ExamPreviewPanel({ exam }) {
   const isMatching = q && q.type === 'matching';
   const isOrdering = q && q.type === 'ordering';
   const isDragDrop = q && q.type === 'drag-drop';
+  const isImage = q && (q.type === 'image' || q.type === 'image-based');
 
   return (
     <Box sx={{ bgcolor: '#F1F5F9', minHeight: 480 }}>
@@ -2255,14 +2256,21 @@ function ExamPreviewPanel({ exam }) {
                 )}
 
                 <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
-                  <Typography sx={{ fontSize: 15, fontWeight: 600, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6 }}>{q.text}</Typography>
+                  {q.text && (
+                    <Typography sx={{ fontSize: 15, fontWeight: 600, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6, mb: (q.imageUrl || q.image) ? 2 : 0 }}>{q.text}</Typography>
+                  )}
                   {(q.imageUrl || q.image) && (
                     <Box
                       component="img"
                       src={getImageUrl(q.imageUrl || q.image)}
                       alt="Question image"
-                      sx={{ display: 'block', maxWidth: '100%', maxHeight: 320, borderRadius: 2, mt: 2, objectFit: 'contain' }}
+                      sx={{ display: 'block', maxWidth: '100%', maxHeight: isImage ? 480 : 320, borderRadius: 2, objectFit: 'contain', mx: isImage ? 'auto' : 0 }}
                     />
+                  )}
+                  {isImage && !(q.imageUrl || q.image) && (
+                    <Box sx={{ p: 4, textAlign: 'center', border: `2px dashed ${tokens.surfaceBorder}`, borderRadius: 2, bgcolor: '#F8FAFC' }}>
+                      <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>No image attached to this question.</Typography>
+                    </Box>
                   )}
                 </Paper>
 
@@ -2359,6 +2367,24 @@ function ExamPreviewPanel({ exam }) {
                         </Paper>
                       ))}
                     </Box>
+                  </Box>
+                )}
+
+                {/* Image / Image-based */}
+                {isImage && (
+                  <Box>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textSecondary, mb: 1.5 }}>
+                      Study the image above and write your answer below.
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={4}
+                      placeholder="Write your answer here…"
+                      value={answers[q._id] || ''}
+                      onChange={e => setAnswer(q._id, e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 14, bgcolor: 'white' } }}
+                    />
                   </Box>
                 )}
 
@@ -2705,6 +2731,9 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
           timeout: 30000
         });
         finalImageUrl = uploadRes.data.url;
+      } else if (finalImageUrl.startsWith('data:')) {
+        // base64 preview without a File — shouldn't be stored; clear it
+        finalImageUrl = '';
       }
 
       // Update the question via the exam update endpoint using questions array

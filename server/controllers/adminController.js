@@ -4721,6 +4721,7 @@ const updateExam = async (req, res) => {
         if (q.keyPoints !== undefined) updateData.keyPoints = q.keyPoints;
         if (q.acceptableAnswers !== undefined) updateData.acceptableAnswers = q.acceptableAnswers;
         if (q.gradingCriteria !== undefined) updateData.gradingCriteria = q.gradingCriteria;
+        if (q.imageUrl !== undefined) updateData.imageUrl = q.imageUrl;
         
         if (Object.keys(updateData).length > 0) {
           await Question.findByIdAndUpdate(q._id, updateData);

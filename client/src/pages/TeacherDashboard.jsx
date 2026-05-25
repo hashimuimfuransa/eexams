@@ -2126,6 +2126,14 @@ SECTION B: Short Answer (10 marks)
   );
 }
 
+/* ── helper: resolve relative /uploads/... image paths to absolute URLs ── */
+function getImageUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '');
+  return base + url;
+}
+
 /* ── EXAM PREVIEW PANEL ── */
 function ExamPreviewPanel({ exam }) {
   const [activeSection, setActiveSection] = useState(null);
@@ -2255,6 +2263,14 @@ function ExamPreviewPanel({ exam }) {
 
                 <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
                   <Typography sx={{ fontSize: 15, fontWeight: 600, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6 }}>{q.text}</Typography>
+                  {(q.imageUrl || q.image) && (
+                    <Box
+                      component="img"
+                      src={getImageUrl(q.imageUrl || q.image)}
+                      alt="Question image"
+                      sx={{ display: 'block', maxWidth: '100%', maxHeight: 320, borderRadius: 2, mt: 2, objectFit: 'contain' }}
+                    />
+                  )}
                 </Paper>
 
                 {/* Multiple choice */}
@@ -3023,10 +3039,10 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                                 <Chip label={`${q.points}pt`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning, fontWeight: 700, fontSize: 11 }} />
                               </Box>
                               <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.5 }}>{q.text}</Typography>
-                              {q.imageUrl && (
+                              {(q.imageUrl || q.image) && (
                                 <Box
                                   component="img"
-                                  src={q.imageUrl}
+                                  src={getImageUrl(q.imageUrl || q.image)}
                                   alt="Question image"
                                   sx={{ maxWidth: 200, maxHeight: 150, borderRadius: 1, mt: 1, objectFit: 'contain' }}
                                 />
@@ -3507,7 +3523,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
                 <Box
                   component="img"
-                  src={editingQuestion?.imageUrl || editingQuestion?.image}
+                  src={getImageUrl(editingQuestion?.imageUrl || editingQuestion?.image)}
                   alt="Question image"
                   sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
                 />

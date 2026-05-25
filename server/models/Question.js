@@ -31,7 +31,7 @@ const QuestionSchema = new mongoose.Schema({
     },
     letter: {
       type: String,
-      enum: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+      enum: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii']
     },
     value: {
       type: String

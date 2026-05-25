@@ -57,7 +57,7 @@ const aiGradingLimiter = createRateLimiter({
 // Rate limiter for file uploads
 const uploadLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // 20 uploads per hour
+  max: 1000, // 1000 uploads per hour
   message: 'Too many file uploads, please try again later.'
 });
 

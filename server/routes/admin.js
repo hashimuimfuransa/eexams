@@ -61,7 +61,7 @@ const {
   requireAnalytics,
   requireTemplatesAccess
 } = require('../middleware/planRestrictions');
-const { authLimiter, apiLimiter, aiGradingLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, apiLimiter, aiGradingLimiter, uploadLimiter } = require('../middleware/rateLimiter');
 
 // Apply auth and admin/teacher middleware to all routes
 // This allows both organization admins and their teachers to manage students and exams
@@ -200,7 +200,7 @@ router.get('/reports/summary', getReportsSummary);
 // Single question image upload → returns Cloudinary URL
 router.post(
   '/upload-image',
-  authLimiter,
+  uploadLimiter,
   uploadImages.single('image'),
   (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No image file provided' });

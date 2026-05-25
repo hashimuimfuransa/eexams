@@ -17,6 +17,7 @@ import {
   CheckCircleOutline,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
+import { getImageUrl } from '../../utils/getImageUrl';
 
 const TOKEN = {
   radius: '6px',
@@ -126,7 +127,7 @@ const ImageAnswer = ({ question, answer, onAnswerChange, disabled }) => {
               Question Image:
             </Typography>
             <img
-              src={questionImageUrl}
+              src={getImageUrl(questionImageUrl)}
               alt="Question"
               style={{
                 width: '100%',

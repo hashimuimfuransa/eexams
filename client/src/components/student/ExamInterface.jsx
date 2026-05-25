@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getImageUrl } from '../../utils/getImageUrl';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -4063,7 +4064,7 @@ const ExamInterface = () => {
                         <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
                           <Box
                             component="img"
-                            src={currentQuestion.imageUrl || currentQuestion.image}
+                            src={getImageUrl(currentQuestion.imageUrl || currentQuestion.image)}
                             alt="Question image"
                             sx={{
                               maxWidth: '100%',

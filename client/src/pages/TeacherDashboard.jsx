@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
+import { getImageUrl } from '../utils/getImageUrl';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Chip, Button, Paper, Grid, TextField,
@@ -2124,15 +2125,6 @@ SECTION B: Short Answer (10 marks)
       {publishExamId && <PublishDialog examId={publishExamId} onClose={() => setPublishExamId(null)} setActiveSection={setActiveSection} />}
     </Box>
   );
-}
-
-/* ── helper: resolve image paths to absolute URLs ── */
-function getImageUrl(url) {
-  if (!url) return '';
-  if (typeof url !== 'string') return '';
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
-  const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '');
-  return base + url;
 }
 
 /* ── EXAM PREVIEW PANEL ── */

@@ -219,6 +219,13 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
   const [mathReady, setMathReady] = useState(false);
   const mathfieldRef = useRef(null);
 
+  // Reset local state when the question changes
+  useEffect(() => {
+    setTextValue(answer?.textAnswer || '');
+    setMathValue('');
+    setActiveTab(0);
+  }, [question._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Expose a method to get the current combined answer
   useEffect(() => {
     if (answerRef) {

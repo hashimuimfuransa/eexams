@@ -1479,6 +1479,40 @@ const ExamInterface = () => {
     }
   };
 
+  // Detect question type from content if database type is missing or clearly wrong
+  const detectQuestionTypeFromContent = (question) => {
+    const type = question.type;
+    const text = question.text?.toLowerCase() || '';
+    const hasOptions = question.options && question.options.length > 0;
+    const hasImage = question.imageUrl || question.image;
+
+    // If type is already set and valid, use it
+    if (type && type !== 'multiple-choice') return type;
+
+    // Check for image-based questions
+    if (hasImage) {
+      return 'image-based';
+    }
+
+    // Check for fill-in-blank patterns
+    if (text.includes('___') || text.includes('....') || text.includes('_____') ||
+        text.includes('fill in') || text.includes('blank')) {
+      return 'fill-in-blank';
+    }
+    // Check for true-false
+    if (hasOptions && question.options.length === 2 &&
+        (question.options.some(o => o.text?.toLowerCase()?.includes('true')) ||
+         question.options.some(o => o.text?.toLowerCase()?.includes('false')))) {
+      return 'true-false';
+    }
+    // Keep as multiple-choice if it has 3+ options
+    if (hasOptions && question.options.length >= 3) {
+      return 'multiple-choice';
+    }
+    // Default based on section
+    return question.section === 'B' ? 'short-answer' : 'open-ended';
+  };
+
   // Handle question navigation with enhanced error handling
   const handleNextQuestion = async () => {
     try {
@@ -4146,40 +4180,6 @@ const ExamInterface = () => {
                       </Box>
 
                       {(() => {
-                        // Detect question type from content if database type is missing or clearly wrong
-                        const detectQuestionTypeFromContent = (question) => {
-                          const type = question.type;
-                          const text = question.text?.toLowerCase() || '';
-                          const hasOptions = question.options && question.options.length > 0;
-                          const hasImage = question.imageUrl || question.image;
-
-                          // If type is already set and valid, use it
-                          if (type && type !== 'multiple-choice') return type;
-
-                          // Check for image-based questions
-                          if (hasImage) {
-                            return 'image-based';
-                          }
-
-                          // Check for fill-in-blank patterns
-                          if (text.includes('___') || text.includes('....') || text.includes('_____') ||
-                              text.includes('fill in') || text.includes('blank')) {
-                            return 'fill-in-blank';
-                          }
-                          // Check for true-false
-                          if (hasOptions && question.options.length === 2 &&
-                              (question.options.some(o => o.text?.toLowerCase()?.includes('true')) ||
-                               question.options.some(o => o.text?.toLowerCase()?.includes('false')))) {
-                            return 'true-false';
-                          }
-                          // Keep as multiple-choice if it has 3+ options
-                          if (hasOptions && question.options.length >= 3) {
-                            return 'multiple-choice';
-                          }
-                          // Default based on section
-                          return question.section === 'B' ? 'short-answer' : 'open-ended';
-                        };
-
                         const questionType = detectQuestionTypeFromContent(currentQuestion);
 
                         if (questionType === 'multiple-choice') {

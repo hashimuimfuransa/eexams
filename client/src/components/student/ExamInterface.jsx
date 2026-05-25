@@ -1357,9 +1357,10 @@ const ExamInterface = () => {
 
     // For open-ended/image questions, get the current answer from ref and save directly (same as handleNextQuestion)
     if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image') {
-      if (openAnswerRef.current) {
-        const currentTextAnswer = openAnswerRef.current();
-        console.log(`🔍 Last question save: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
+      const refAnswer = openAnswerRef.current ? openAnswerRef.current() : '';
+      const currentTextAnswer = (refAnswer && refAnswer.trim()) ? refAnswer : (currentAnswer?.textAnswer || '');
+      console.log(`🔍 Last question save: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
+      if (true) {
         if (currentTextAnswer && currentTextAnswer.trim()) {
           try {
             // Save directly using the current answer from ref
@@ -1503,37 +1504,36 @@ const ExamInterface = () => {
       console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
 
       // For open-ended questions, get the current answer from ref and save directly
-      if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based') {
-        if (openAnswerRef.current) {
-          const currentTextAnswer = openAnswerRef.current();
-          console.log(`🔍 Open-ended question: ref textAnswer=${currentTextAnswer}, state textAnswer=${currentAnswer?.textAnswer}`);
-          if (currentTextAnswer && currentTextAnswer.trim()) {
-            try {
-              // Save directly using the current answer from ref
-              await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
-              console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
-              // Sync to state after successful save with answered=true and savedToServer=true
-              setAnswers(prev => ({
-                ...prev,
-                [currentQuestion._id]: {
-                  ...prev[currentQuestion._id],
-                  textAnswer: currentTextAnswer,
-                  answered: true,
-                  savedToServer: true,
-                  hasChanges: false,
-                  lastSaved: new Date().toISOString()
-                }
-              }));
-              // Set lastQuestionSaved to true if this is the last question
-              if (isLastQuestion()) {
-                setLastQuestionSaved(true);
+      if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image') {
+        const refAnswer = openAnswerRef.current ? openAnswerRef.current() : '';
+        const currentTextAnswer = (refAnswer && refAnswer.trim()) ? refAnswer : (currentAnswer?.textAnswer || '');
+        console.log(`🔍 Open-ended question: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
+        if (currentTextAnswer && currentTextAnswer.trim()) {
+          try {
+            // Save directly using the current answer from ref or state
+            await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
+            console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
+            // Sync to state after successful save with answered=true and savedToServer=true
+            setAnswers(prev => ({
+              ...prev,
+              [currentQuestion._id]: {
+                ...prev[currentQuestion._id],
+                textAnswer: currentTextAnswer,
+                answered: true,
+                savedToServer: true,
+                hasChanges: false,
+                lastSaved: new Date().toISOString()
               }
-            } catch (saveError) {
-              console.error(`❌ Failed to save ${questionType} answer:`, saveError);
+            }));
+            // Set lastQuestionSaved to true if this is the last question
+            if (isLastQuestion()) {
+              setLastQuestionSaved(true);
             }
-          } else {
-            console.log(`⚠️ Skipping save: ref textAnswer is empty`);
+          } catch (saveError) {
+            console.error(`❌ Failed to save ${questionType} answer:`, saveError);
           }
+        } else {
+          console.log(`⚠️ Skipping save: no answer found in ref or state`);
         }
       }
 

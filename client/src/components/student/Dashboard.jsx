@@ -743,55 +743,6 @@ const Dashboard = () => {
           </Box>
         </Box>
 
-        {/* Approved Exam Requests Section - Only show when no available exams */}
-        {!hasAvailableExams && pendingRequests.filter(r => r.status === 'approved').length > 0 && (
-          <Box sx={{ mt: 4 }}>
-            <Typography variant="h5" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CheckCircle color="success" />
-              Approved Exam Requests
-            </Typography>
-            <Paper elevation={3} sx={{ p: 3, mb: 4, bgcolor: 'success.light', border: '2px solid', borderColor: 'success.main' }}>
-              {pendingRequests.filter(r => r.status === 'approved').map((request) => (
-                <Card key={request._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper' }}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                      <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
-                        <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">
-                          {request.exam?.title || request.examTitle || 'Exam'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Approved: {formatDate(request.updatedAt)}
-                        </Typography>
-                        {request.amount > 0 && (
-                          <Typography variant="body2" color="success.main" fontWeight="bold">
-                            Price: RWF {request.amount.toLocaleString()}
-                          </Typography>
-                        )}
-                      </Box>
-                      <Chip
-                        label="Approved"
-                        color="success"
-                        size="medium"
-                        sx={{ fontWeight: 'bold' }}
-                      />
-                    </Box>
-                    <Button
-                      variant="contained"
-                      component={RouterLink}
-                      to={`/student/exam/${request.exam?._id}`}
-                      sx={{ mt: 2 }}
-                      startIcon={<PlayArrow />}
-                      fullWidth={isMobile}
-                    >
-                      Start Exam Now
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </Paper>
-          </Box>
-        )}
-
         {/* Marketplace Exams Section - Only show when no available exams */}
         {!hasAvailableExams && (
           <Box sx={{ mt: 4 }}>

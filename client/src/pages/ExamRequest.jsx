@@ -126,9 +126,20 @@ const ExamRequest = () => {
       setSubmitting(true);
       const response = await api.post(`/marketplace/exams/${examId}/request`, formData);
       setSuccess(true);
+      
+      // For free exams, backend returns autoApproved: true with shareToken
+      // Redirect directly to the exam instead of dashboard
+      const { shareToken, autoApproved } = response.data;
+      
       setTimeout(() => {
-        navigate('/student/dashboard');
-      }, 2000);
+        if (autoApproved && shareToken) {
+          // Redirect directly to exam for instant access
+          navigate(`/exam/${shareToken}`);
+        } else {
+          // Fallback to dashboard if something went wrong
+          navigate('/student/dashboard');
+        }
+      }, 1500);
     } catch (err) {
       console.error('Error auto-granting access:', err);
       setError(err.response?.data?.message || 'Failed to grant access. Please try again.');
@@ -212,8 +223,8 @@ const ExamRequest = () => {
               sx={{ mb: 3 }}
               icon={<CheckCircle />}
             >
-              {exam?.publicPrice === 0 
-                ? 'Access granted successfully! Redirecting to dashboard...'
+              {exam?.publicPrice === 0 && !isRetake
+                ? 'Access granted! Redirecting to exam...'
                 : 'Request submitted successfully! The teacher will review your request. Redirecting to dashboard...'}
             </Alert>
           )}
@@ -401,12 +412,14 @@ const ExamRequest = () => {
                       </form>
                     )}
 
-                    <Box sx={{ mt: 3, p: 2, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
-                      <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.6 }}>
-                        <strong>Note:</strong> The teacher will review your request and approve or reject it.
-                        You will be notified once a decision is made. If approved, you'll receive access to take the exam.
-                      </Typography>
-                    </Box>
+                    {getEffectivePrice() > 0 && (
+                      <Box sx={{ mt: 3, p: 2, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
+                        <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.6 }}>
+                          <strong>Note:</strong> The teacher will review your request and approve or reject it.
+                          You will be notified once a decision is made. If approved, you'll receive access to take the exam.
+                        </Typography>
+                      </Box>
+                    )}
                   </CardContent>
                 </Card>
               </Grid>

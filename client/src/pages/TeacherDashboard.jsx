@@ -2126,10 +2126,11 @@ SECTION B: Short Answer (10 marks)
   );
 }
 
-/* ── helper: resolve relative /uploads/... image paths to absolute URLs ── */
+/* ── helper: resolve image paths to absolute URLs ── */
 function getImageUrl(url) {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
+  if (typeof url !== 'string') return '';
+  if (url.startsWith('http') || url.startsWith('data:')) return url;
   const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '');
   return base + url;
 }
@@ -2701,10 +2702,23 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   const handleSaveQuestionEdit = async () => {
     if (!editingQuestion || !exam) return;
     try {
+      let finalImageUrl = editingQuestion.imageUrl || '';
+
+      // If a new File was selected (not yet uploaded), upload it to Cloudinary first
+      if (editingQuestion.image instanceof File) {
+        const formData = new FormData();
+        formData.append('image', editingQuestion.image);
+        const uploadRes = await api.post('/admin/upload-image', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 30000
+        });
+        finalImageUrl = uploadRes.data.url;
+      }
+
       // Update the question via the exam update endpoint using questions array
       await api.put(`/admin/exams/${exam._id}`, {
-        questions: [{ ...editingQuestion, _id: editingQuestion._id }]
-      }, { timeout: 30000 }); // 30 second timeout for exam updates
+        questions: [{ ...editingQuestion, image: undefined, imageUrl: finalImageUrl, _id: editingQuestion._id }]
+      }, { timeout: 30000 });
 
       // Refresh the preview
       const r = await api.get(`/admin/exams/${examId}/preview`);

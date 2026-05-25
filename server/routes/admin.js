@@ -93,46 +93,42 @@ router.get('/organization', getOrganizationDetails);
 router.put('/system-lock', toggleSystemLock);
 router.get('/system-lock', getSystemLockStatus);
 
-// Configure multer for file uploads
+// Configure multer with Cloudinary storage
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { questionImageStorage, examFileStorage } = require('../config/cloudinary');
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads');
-
-    // Create the directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-      console.log('Created uploads directory:', uploadDir);
-    }
-
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({
-  storage,
+const uploadImages = multer({
+  storage: questionImageStorage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    // Accept PDF, Word documents, and images for question images
-    const filetypes = /pdf|doc|docx|jpeg|jpg|png|gif|webp/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype);
-
-    if (extname && mimetype) {
-      return cb(null, true);
-    } else {
-      cb(new Error('Only PDF, Word documents, and images are allowed'));
-    }
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    if (allowed.test(file.mimetype)) return cb(null, true);
+    cb(new Error('Only image files are allowed for question images'));
   }
 });
+
+const uploadDocs = multer({
+  storage: examFileStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (req, file, cb) => {
+    const allowed = /pdf|doc|docx/;
+    if (allowed.test(file.mimetype) || /pdf|msword|officedocument/.test(file.mimetype)) return cb(null, true);
+    cb(new Error('Only PDF and Word documents are allowed'));
+  }
+});
+
+// Combined upload: exam/answer files go to Cloudinary raw, question images go to Cloudinary images
+const upload = {
+  fields: (fields) => (req, res, next) => {
+    const imageFields = fields.filter(f => f.name === 'questionImages');
+    const docFields = fields.filter(f => f.name !== 'questionImages');
+    uploadDocs.fields(docFields)(req, res, (err) => {
+      if (err) return next(err);
+      if (imageFields.length === 0) return next();
+      uploadImages.fields(imageFields)(req, res, next);
+    });
+  }
+};
 
 // Exam management routes
 router.post(
@@ -200,6 +196,17 @@ router.delete('/templates/:id', requireTemplatesAccess, deleteTemplate);
 
 // Reports routes
 router.get('/reports/summary', getReportsSummary);
+
+// Single question image upload → returns Cloudinary URL
+router.post(
+  '/upload-image',
+  authLimiter,
+  uploadImages.single('image'),
+  (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'No image file provided' });
+    res.json({ url: req.file.path }); // Cloudinary returns full https URL in file.path
+  }
+);
 
 // Exam publish/share routes
 router.get('/exams/:examId/preview', getExamPreview);

@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const mammoth = require('mammoth');
+const { examFileStorage } = require('../config/cloudinary');
 const pdf = require('pdf-parse');
 const {
   createExam,
@@ -107,38 +107,16 @@ const saveWithRetry = async (exam, maxRetries = 3) => {
   return { success: false };
 };
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads');
-
-    // Create the directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-      console.log('Created uploads directory:', uploadDir);
-    }
-
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// Configure multer with Cloudinary storage for exam/answer file uploads
 const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  storage: examFileStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
   fileFilter: (req, file, cb) => {
-    const filetypes = /pdf|doc|docx/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype);
-
-    if (extname && mimetype) {
+    if (/pdf|msword|officedocument/.test(file.mimetype) ||
+        /pdf|doc|docx/.test(path.extname(file.originalname).toLowerCase())) {
       return cb(null, true);
-    } else {
-      cb(new Error('Only PDF and Word documents are allowed'));
     }
+    cb(new Error('Only PDF and Word documents are allowed'));
   }
 });
 

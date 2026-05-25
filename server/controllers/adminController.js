@@ -1931,9 +1931,9 @@ const createExam = async (req, res) => {
       if (req.files.questionImages) {
         questionImageUrls = req.files.questionImages.map(file => ({
           originalName: file.originalname,
-          filename: file.filename,
+          filename: file.filename || file.public_id,
           path: file.path,
-          url: `/uploads/${file.filename}`
+          url: file.path // Cloudinary returns full https URL in file.path
         }));
         console.log('Question images uploaded:', questionImageUrls.length);
       }

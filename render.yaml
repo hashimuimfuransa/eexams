@@ -34,3 +34,9 @@ services:
         value: https://www.eexams.net
       - key: UPLOADS_PATH
         value: /app/tmp/uploads
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false # Set manually in Render dashboard
+      - key: CLOUDINARY_API_KEY
+        sync: false # Set manually in Render dashboard
+      - key: CLOUDINARY_API_SECRET
+        sync: false # Set manually in Render dashboard

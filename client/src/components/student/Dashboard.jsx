@@ -105,10 +105,10 @@ const Dashboard = () => {
         setScheduledExams([]);
       }
 
-      // Process pending requests (remove duplicates)
+      // Process pending requests (remove duplicates, but keep retake requests separate)
       if (requestsRes.status === 'fulfilled') {
         const uniqueRequests = Array.isArray(requestsRes.value.data) ? requestsRes.value.data.filter((request, index, self) =>
-          index === self.findIndex((r) => r.exam?._id === request.exam?._id)
+          index === self.findIndex((r) => r.exam?._id === request.exam?._id && r.isRetake === request.isRetake)
         ) : [];
         setPendingRequests(uniqueRequests);
       } else {

@@ -261,7 +261,7 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
             {/* Show correct answer indicator */}
             {localQ.correctAnswer && (
               <Chip 
-                label={`Answer: ${localQ.correctAnswer.slice(0, 15)}${localQ.correctAnswer.length > 15 ? '...' : ''}`} 
+                label={`Answer: ${String(localQ.correctAnswer).slice(0, 15)}${String(localQ.correctAnswer).length > 15 ? '...' : ''}`} 
                 size="small" 
                 sx={{ height: 16, fontSize: 9, bgcolor: '#DBEAFE', color: '#1E40AF', fontWeight: 600 }} 
               />

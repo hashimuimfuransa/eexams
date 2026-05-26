@@ -6,6 +6,77 @@ const groqClient = require('./groqClient');
  */
 
 /**
+ * Grade sub-questions
+ * @param {Object} question - The parent question object
+ * @param {Object} answer - The student's answer with subQuestionAnswers
+ * @param {string} modelAnswer - The correct answer (for parent)
+ * @returns {Promise<Object>} - Grading result for all sub-questions
+ */
+async function gradeSubQuestionsFast(question, answer, modelAnswer) {
+  console.log(`📝 Grading ${answer.subQuestionAnswers.length} sub-questions for question ${question._id}`);
+  
+  const subQuestions = question.subQuestions || [];
+  const subAnswers = answer.subQuestionAnswers || [];
+  
+  let totalScore = 0;
+  let totalMaxPoints = 0;
+  const subQuestionResults = [];
+  
+  for (let i = 0; i < subQuestions.length; i++) {
+    const subQ = subQuestions[i];
+    const subAnswer = subAnswers[i];
+    
+    if (!subAnswer || !subAnswer.answered) {
+      subQuestionResults.push({
+        subIndex: i,
+        score: 0,
+        maxPoints: subQ.points || 1,
+        feedback: 'No answer provided',
+        isCorrect: false
+      });
+      totalMaxPoints += (subQ.points || 1);
+      continue;
+    }
+    
+    // Create a temporary answer object for grading
+    const tempAnswer = {
+      selectedOption: subAnswer.selectedOption,
+      textAnswer: subAnswer.textAnswer,
+      matchingAnswers: subAnswer.matchingAnswers,
+      orderingAnswer: subAnswer.orderingAnswer
+    };
+    
+    // Grade this sub-question
+    const subGrading = await gradeQuestionFast(subQ, tempAnswer, subQ.correctAnswer || '');
+    
+    subQuestionResults.push({
+      subIndex: i,
+      score: subGrading.score,
+      maxPoints: subQ.points || 1,
+      feedback: subGrading.feedback,
+      isCorrect: subGrading.isCorrect,
+      correctedAnswer: subGrading.correctedAnswer
+    });
+    
+    totalScore += subGrading.score;
+    totalMaxPoints += (subQ.points || 1);
+  }
+  
+  const overallFeedback = subQuestionResults.map(r => 
+    `Sub-question ${r.subIndex + 1}: ${r.score}/${r.maxPoints} - ${r.feedback}`
+  ).join('\n');
+  
+  return {
+    score: totalScore,
+    feedback: overallFeedback,
+    correctedAnswer: modelAnswer,
+    gradingMethod: 'sub_question_grading',
+    subQuestionResults,
+    totalMaxPoints
+  };
+}
+
+/**
  * Grade a single question with fast AI processing
  * @param {Object} question - The question object
  * @param {Object} answer - The student's answer
@@ -799,6 +870,17 @@ async function fastChunkedGrading(result, exam) {
       const actualIndex = i + index;
       const question = answer.question;
 
+      console.log(`🔍 Checking answer ${actualIndex}:`, {
+        questionId: question._id,
+        hasTextAnswer: !!answer.textAnswer,
+        hasSelectedOption: !!answer.selectedOption,
+        hasMatchingAnswers: !!answer.matchingAnswers,
+        hasOrderingAnswer: !!answer.orderingAnswer,
+        hasSubQuestionAnswers: !!(answer.subQuestionAnswers && answer.subQuestionAnswers.length > 0),
+        subQuestionAnswersCount: answer.subQuestionAnswers?.length || 0,
+        isSelected: answer.isSelected
+      });
+
       // Skip if not selected (for selective answering)
       if (answer.isSelected === false) {
         return {
@@ -814,9 +896,11 @@ async function fastChunkedGrading(result, exam) {
       }
 
       const hasAnswer = answer.textAnswer || answer.selectedOption ||
-                       answer.matchingAnswers || answer.orderingAnswer;
+                       answer.matchingAnswers || answer.orderingAnswer ||
+                       (answer.subQuestionAnswers && answer.subQuestionAnswers.length > 0);
 
       if (!hasAnswer) {
+        console.log(`⚠️ No answer detected for question ${actualIndex}`);
         return {
           index: actualIndex,
           grading: {
@@ -830,7 +914,15 @@ async function fastChunkedGrading(result, exam) {
       }
 
       try {
-        const grading = await gradeQuestionFast(question, answer, question.correctAnswer);
+        let grading;
+        
+        // Handle sub-questions if present
+        if (answer.subQuestionAnswers && answer.subQuestionAnswers.length > 0 && question.subQuestions) {
+          console.log(`📝 Grading question with ${answer.subQuestionAnswers.length} sub-questions`);
+          grading = await gradeSubQuestionsFast(question, answer, question.correctAnswer);
+        } else {
+          grading = await gradeQuestionFast(question, answer, question.correctAnswer);
+        }
 
         if (grading.gradingMethod?.includes('ai')) {
           aiGradedCount++;
@@ -862,13 +954,18 @@ async function fastChunkedGrading(result, exam) {
     // Apply results
     chunkResults.forEach(({ index, grading, skipped }) => {
       if (grading) {
-        const maxPoints = result.answers[index].question.points || 1;
+        const maxPoints = grading.totalMaxPoints || result.answers[index].question.points || 1;
         const cappedScore = Math.min(Math.max(0, grading.score || 0), maxPoints);
         result.answers[index].score = cappedScore;
         result.answers[index].feedback = grading.feedback || 'No feedback';
         result.answers[index].isCorrect = grading.isCorrect !== undefined ? grading.isCorrect : (cappedScore >= maxPoints);
         result.answers[index].correctedAnswer = grading.correctedAnswer || result.answers[index].question.correctAnswer;
         result.answers[index].gradingMethod = grading.gradingMethod || 'enhanced_grading';
+
+        // Store sub-question results if present
+        if (grading.subQuestionResults) {
+          result.answers[index].subQuestionResults = grading.subQuestionResults;
+        }
 
         // Store AI analysis data for sections B & C
         if (grading.aiAnalysis) {

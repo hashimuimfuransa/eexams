@@ -1763,12 +1763,42 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       alert('Please add a title and at least one question before saving.');
       return;
     }
-    
+
     setSavingDraft(true);
     try {
+      // Upload images for questions that have them
+      const questionsWithImages = await Promise.all(generated.questions.map(async (q) => {
+        let finalImageUrl = q.imageUrl || '';
+
+        // If a new File was selected (not yet uploaded), upload it to Cloudinary first
+        if (q.image instanceof File) {
+          const formData = new FormData();
+          formData.append('image', q.image);
+          try {
+            const uploadRes = await api.post('/admin/upload-image', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+              timeout: 30000
+            });
+            finalImageUrl = uploadRes.data.url;
+          } catch (uploadError) {
+            console.error('Failed to upload image for question:', uploadError);
+            // Continue without image if upload fails
+          }
+        } else if (finalImageUrl.startsWith('data:')) {
+          // base64 preview without a File — shouldn't be stored; clear it
+          finalImageUrl = '';
+        }
+
+        return {
+          ...q,
+          imageUrl: finalImageUrl,
+          image: undefined // Remove the File object
+        };
+      }));
+
       // Build sections array from generated data
       const sectionsArray = generated.sections || [];
-      
+
       const draftData = {
         title: generated.title,
         description: generated.description || generated.title,
@@ -1776,7 +1806,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
         passingScore: generated.passingScore || 70,
         totalMarks: generated.totalMarks || generated.questions.reduce((s, q) => s + (q.marks || 1), 0),
         sections: sectionsArray,
-        questions: generated.questions.map(q => ({
+        questions: questionsWithImages.map(q => ({
           text: q.text,
           type: q.type || 'multiple-choice',
           marks: q.marks || q.points || 1,
@@ -1798,13 +1828,14 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           instructions: q.instructions,
           wordBank: q.wordBank,
           subQuestions: q.subQuestions || [],
-          subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' }
+          subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' },
+          imageUrl: q.imageUrl || ''
         }))
       };
-      
+
       const res = await api.post('/exam/save-draft', draftData, { timeout: 120000 }); // 2 minutes for long exams
       alert(`Draft saved successfully! You can find it in the "My Exams" section.`);
-      
+
       // Refresh the exams list to show the newly saved draft
       api.get('/admin/exams')
         .then(r => {
@@ -1855,16 +1886,47 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       alert('Please enter an exam title before saving as draft.');
       return;
     }
-    
+
     setSavingDraft(true);
     try {
+      // Upload images for questions that have them
+      const allQuestions = manualExam.sections.flatMap(sec => sec.questions || []);
+      const questionsWithImages = await Promise.all(allQuestions.map(async (q) => {
+        let finalImageUrl = q.imageUrl || '';
+
+        // If a new File was selected (not yet uploaded), upload it to Cloudinary first
+        if (q.image instanceof File) {
+          const formData = new FormData();
+          formData.append('image', q.image);
+          try {
+            const uploadRes = await api.post('/admin/upload-image', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+              timeout: 30000
+            });
+            finalImageUrl = uploadRes.data.url;
+          } catch (uploadError) {
+            console.error('Failed to upload image for question:', uploadError);
+            // Continue without image if upload fails
+          }
+        } else if (finalImageUrl.startsWith('data:')) {
+          // base64 preview without a File — shouldn't be stored; clear it
+          finalImageUrl = '';
+        }
+
+        return {
+          ...q,
+          imageUrl: finalImageUrl,
+          image: undefined // Remove the File object
+        };
+      }));
+
       const draftData = {
         title: manualExam.title,
         description: manualExam.description || 'Exam',
         timeLimit: manualExam.timeLimit || 60,
         passingScore: manualExam.passingScore || 70,
         sections: manualExam.sections,
-        questions: manualExam.sections.flatMap(sec => sec.questions || []).map(q => ({
+        questions: questionsWithImages.map(q => ({
           text: q.text,
           type: q.type || 'multiple-choice',
           marks: q.points || 1,
@@ -1881,13 +1943,14 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           instructions: q.instructions,
           wordBank: q.wordBank,
           subQuestions: q.subQuestions || [],
-          subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' }
+          subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' },
+          imageUrl: q.imageUrl || ''
         }))
       };
-      
+
       const res = await api.post('/exam/save-draft', draftData, { timeout: 120000 });
       alert(`Draft saved successfully! You can find it in the "My Exams" section.`);
-      
+
       api.get('/admin/exams')
         .then(r => {
           setExams(r.data || []);
@@ -5217,6 +5280,81 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
         <TextField fullWidth size="small" label="Question Text *" multiline minRows={2}
           value={question.text} onChange={e => setQuestion(p => ({ ...p, text: e.target.value }))}
           sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
+
+        {/* Image Upload */}
+        <Box sx={{ mb: 1.5 }}>
+          <Typography sx={{ fontSize: 11, fontWeight: 700, color: tokens.textSecondary, mb: 0.75, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Question Image (Optional)
+          </Typography>
+          {question.imageUrl || question.image ? (
+            <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
+              <Box
+                component="img"
+                src={question.imageUrl || (question.image instanceof File ? URL.createObjectURL(question.image) : question.image)}
+                alt="Question image"
+                sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
+              />
+              <Button
+                size="small"
+                variant="contained"
+                color="error"
+                onClick={() => setQuestion(p => ({ ...p, image: null, imageUrl: '' }))}
+                sx={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  borderRadius: 2,
+                  minWidth: 'auto',
+                  px: 1
+                }}
+              >
+                <Delete fontSize="small" />
+              </Button>
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                border: `1px dashed ${tokens.surfaceBorder}`,
+                borderRadius: 2,
+                p: 3,
+                textAlign: 'center',
+                cursor: 'pointer',
+                '&:hover': {
+                  borderColor: tokens.primary,
+                  backgroundColor: 'rgba(12,189,115,0.02)'
+                }
+              }}
+              component="label"
+            >
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setQuestion({
+                        ...question,
+                        image: file,
+                        imageUrl: reader.result
+                      });
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                style={{ display: 'none' }}
+              />
+              <Add sx={{ fontSize: 32, color: tokens.textMuted, mb: 1 }} />
+              <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>
+                Click to upload image
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
+                PNG, JPG, GIF up to 10MB
+              </Typography>
+            </Box>
+          )}
+        </Box>
 
         {/* Multiple choice options */}
         {question.type === 'multiple-choice' && (

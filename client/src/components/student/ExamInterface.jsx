@@ -2003,7 +2003,7 @@ const ExamInterface = () => {
   };
 
   // Enhanced function to save answer to server with better validation and error handling
-  const saveAnswerToServer = async (questionId, value, type) => {
+  const saveAnswerToServer = async (questionId, value, type, options = {}) => {
     try {
       // Validate inputs
       if (!questionId) {
@@ -2011,9 +2011,18 @@ const ExamInterface = () => {
       }
 
       // Get the current question
-      const question = exam.sections
-        .flatMap(section => section.questions)
-        .find(q => q._id === questionId);
+      let question;
+      if (options.isSubQuestion && options.parentQuestionId) {
+        // For sub-questions, find the parent question
+        question = exam.sections
+          .flatMap(section => section.questions)
+          .find(q => q._id === options.parentQuestionId);
+      } else {
+        // For regular questions, find by questionId
+        question = exam.sections
+          .flatMap(section => section.questions)
+          .find(q => q._id === questionId);
+      }
 
       if (!question) {
         throw new Error('Question not found');

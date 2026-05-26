@@ -722,6 +722,14 @@ const Results = () => {
                                       const rightItems = answer.question.rightItems || answer.question.matchingPairs?.rightColumn || [];
                                       const correctPairs = answer.question.matchingPairs?.correctPairs || [];
                                       const studentPairs = answer.matchingAnswers || [];
+
+                                      // Helper to get label from item (handles both string and object formats)
+                                      const getLabel = (item) => {
+                                        if (typeof item === 'string') return item;
+                                        if (item && typeof item === 'object') return item.text || item.label || item.value || String(item);
+                                        return String(item);
+                                      };
+
                                       return (
                                         <>
                                           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
@@ -730,8 +738,10 @@ const Results = () => {
                                           {studentPairs.length > 0 ? (
                                             <Box sx={{ mt: 1, mb: 2 }}>
                                               {studentPairs.map((pair, pi) => {
-                                                const leftLabel = leftItems[pair.left] || `Item ${pair.left + 1}`;
-                                                const rightLabel = rightItems[pair.right] || `Item ${pair.right + 1}`;
+                                                const leftItem = leftItems[pair.left];
+                                                const rightItem = rightItems[pair.right];
+                                                const leftLabel = leftItem ? getLabel(leftItem) : `Item ${pair.left + 1}`;
+                                                const rightLabel = rightItem ? getLabel(rightItem) : `Item ${pair.right + 1}`;
                                                 const isMatchCorrect = correctPairs.some(cp => cp.left === pair.left && cp.right === pair.right);
                                                 return (
                                                   <Box key={pi} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -755,8 +765,10 @@ const Results = () => {
                                           {correctPairs.length > 0 ? (
                                             <Box sx={{ mt: 1, mb: 2 }}>
                                               {correctPairs.map((pair, pi) => {
-                                                const leftLabel = leftItems[pair.left] ?? `Item ${pair.left + 1}`;
-                                                const rightLabel = rightItems[pair.right] ?? `Item ${pair.right + 1}`;
+                                                const leftItem = leftItems[pair.left];
+                                                const rightItem = rightItems[pair.right];
+                                                const leftLabel = leftItem ? getLabel(leftItem) : `Item ${pair.left + 1}`;
+                                                const rightLabel = rightItem ? getLabel(rightItem) : `Item ${pair.right + 1}`;
                                                 return (
                                                   <Typography key={pi} variant="body2" color="success.main">
                                                     <strong>{leftLabel}</strong> → {rightLabel}

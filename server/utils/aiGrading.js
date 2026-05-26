@@ -134,8 +134,67 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
     }
   } catch (error) {
     console.error('Error using AI grading:', error);
-    return generateFallbackScore(studentAnswer, modelAnswer, maxPoints, error.message);
+    return generateFallbackScore(studentAnswer, modelAnswer, maxPoints, error.message, questionText);
   }
+};
+
+/**
+ * Detect if question has multiple parts
+ * @param {string} questionText - The question text
+ * @returns {Object} - Detection result
+ */
+const detectMultiPartQuestion = (questionText) => {
+  if (!questionText) return { isMultiPart: false, expectedParts: 1 };
+
+  const letterParts = questionText.match(/\b[\(\[]?[a-z][\)\]]?[\s\.:]/gi);
+  const romanParts = questionText.match(/\b[\(\[]?i{1,3}[\)\]]?[\s\.:]/gi);
+
+  const allParts = [...(letterParts || []), ...(romanParts || [])];
+  const uniqueParts = new Set(allParts.map(p => p.toLowerCase().replace(/[\(\)\[\]\s\.:]/g, '')));
+
+  const marksPattern = questionText.match(/\(\s*\d+\s*(?:mark|marks)\s*\)/gi);
+  const totalMarks = marksPattern ? marksPattern.reduce((sum, m) => {
+    const num = parseInt(m.match(/\d+/)[0]);
+    return sum + num;
+  }, 0) : 0;
+
+  return {
+    isMultiPart: uniqueParts.size > 1 || totalMarks > 1,
+    expectedParts: Math.max(uniqueParts.size, 1),
+    totalMarks: totalMarks,
+    detectedParts: Array.from(uniqueParts)
+  };
+};
+
+/**
+ * Validate multi-part answer completeness
+ * @param {string} studentAnswer - Student's answer
+ * @param {Object} multiPartInfo - Multi-part question info
+ * @returns {Object} - Validation result
+ */
+const validateMultiPartAnswer = (studentAnswer, multiPartInfo) => {
+  if (!multiPartInfo.isMultiPart || !studentAnswer) {
+    return { isValid: true, partsFound: 1, partsMissing: 0, completeness: 1 };
+  }
+
+  const answer = studentAnswer.toLowerCase();
+  const partsFound = multiPartInfo.detectedParts.filter(part => {
+    const partPatterns = [
+      new RegExp(`\\b${part}\\s*[\.\),:=-]`, 'i'),
+      new RegExp(`\\(${part}\\)`, 'i'),
+      new RegExp(`\\[${part}\\]`, 'i')
+    ];
+    return partPatterns.some(pattern => pattern.test(answer));
+  }).length;
+
+  const completeness = partsFound / multiPartInfo.expectedParts;
+
+  return {
+    isValid: completeness >= 0.5,
+    partsFound,
+    partsMissing: multiPartInfo.expectedParts - partsFound,
+    completeness
+  };
 };
 
 /**
@@ -144,10 +203,30 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
  * @param {string} modelAnswer - The model answer
  * @param {number} maxPoints - Maximum points
  * @param {string} errorReason - Reason for fallback
+ * @param {string} questionText - The question text
  * @returns {Object} - Fallback grading result
  */
-const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReason) => {
+const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReason, questionText = '') => {
   console.log('Generating enhanced fallback score...');
+
+  // Check for multi-part questions
+  const multiPartInfo = detectMultiPartQuestion(questionText);
+  const multiPartValidation = validateMultiPartAnswer(studentAnswer, multiPartInfo);
+
+  // Only reject severely incomplete answers (< 25%)
+  if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
+    return {
+      score: 0,
+      feedback: `Incomplete answer. You addressed only ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts. Please answer all parts of the question.`,
+      correctedAnswer: modelAnswer || '',
+      details: {
+        gradingMethod: 'incomplete_multipart',
+        partsFound: multiPartValidation.partsFound,
+        partsExpected: multiPartInfo.expectedParts,
+        errorReason: errorReason
+      }
+    };
+  }
 
   // Parse answer content to extract actual text from special formats
   const parsedAnswer = parseAnswerContent(studentAnswer || '');
@@ -188,11 +267,10 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
   // Handle empty model answer - be much stricter
   if (!modelAns) {
     // When no model answer is available, only give credit if the answer shows substantial effort
-    // Check if the answer is too short or appears to be just random numbers
     const answerLength = cleanStudentAns.length;
-    
-    // For very short answers (less than 10 chars), give 0 marks
-    if (answerLength < 10) {
+
+    // For very short answers (less than 20 chars), give 0 marks
+    if (answerLength < 20) {
       return {
         score: 0,
         feedback: 'Your answer is too brief. Please provide a complete answer with working shown.',
@@ -203,13 +281,12 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
         }
       };
     }
-    
-    // For answers that appear to be just numbers without context (like the example "a, 45327 38946")
-    // Check if the answer is mostly just numbers and letters without explanatory text
-    const hasExplanatoryText = /[a-zA-Z]{3,}/.test(cleanStudentAns) && 
+
+    // For answers that are mostly just numbers/labels without explanation
+    const hasExplanatoryText = /[a-zA-Z]{3,}/.test(cleanStudentAns) &&
                                (cleanStudentAns.includes(' ') || cleanStudentAns.includes(','));
     const isJustNumbers = /^\d+[\s,]*\d*[\s,]*\d*$/.test(cleanStudentAns.replace(/[a-j]\s*/g, ''));
-    
+
     if (isJustNumbers || !hasExplanatoryText) {
       return {
         score: 0,
@@ -221,12 +298,13 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
         }
       };
     }
-    
-    // For substantial answers without model answer, give minimal credit (20% instead of 50%)
-    const score = Math.round(maxPoints * 0.2);
+
+    // For substantial answers without model answer, give minimal credit (10% max for effort)
+    // But cap it very low since we can't verify correctness
+    const score = Math.min(Math.round(maxPoints * 0.1), 1);
     return {
       score: score,
-      feedback: 'Answer provided but cannot be fully evaluated due to missing model answer. Partial credit given for effort.',
+      feedback: 'Answer provided but cannot be fully evaluated due to missing model answer. Minimal credit given for effort only.',
       correctedAnswer: '',
       details: {
         gradingMethod: 'fallback_no_model',
@@ -376,14 +454,24 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
     }
   }
 
-  // Calculate match percentage with stricter scoring
-  // Removed the minimum 40% floor - now allow 0% for clearly incorrect answers
+  // Calculate match percentage with stricter scoring - NO minimum floor
   const matchPercentage = modelKeywords.length > 0
     ? matchCount / modelKeywords.length
     : 0;
 
-  // For very poor matches (less than 30%), give 0 marks - increased threshold for stricter grading
-  if (matchPercentage < 0.3) {
+  // Assign base score
+  let score = Math.round(matchPercentage * maxPoints);
+
+  // Apply multi-part scaling - cap at proportional limit for answered parts
+  if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0 && multiPartValidation.completeness >= 0.25) {
+    const proportionalScore = Math.round(maxPoints * multiPartValidation.completeness);
+    const cappedScore = Math.min(score, proportionalScore);
+    console.log(`Fallback multi-part scaling: ${score} -> ${cappedScore} (max ${Math.round(multiPartValidation.completeness * 100)}% for ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts)`);
+    score = cappedScore;
+  }
+
+  // For very poor matches (less than 20%), give 0 marks
+  if (score === 0 && matchPercentage < 0.2) {
     return {
       score: 0,
       feedback: 'Your answer does not contain the key concepts expected for this question. Please review the question and provide a more complete answer.',
@@ -393,13 +481,12 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
         keywordsFound: matchCount,
         totalKeywords: modelKeywords.length,
         gradingMethod: 'fallback_keyword_matching_poor',
-        errorReason: errorReason
+        errorReason: errorReason,
+        multiPartInfo,
+        multiPartValidation
       }
     };
   }
-
-  // Assign score based on keyword match percentage
-  const score = Math.round(matchPercentage * maxPoints);
 
   // Generate appropriate feedback based on score
   let feedback;
@@ -553,9 +640,21 @@ IMPORTANT: Only return valid JSON, no additional text outside the JSON.`;
     }
 
     try {
+      // Apply multi-part validation for gradeWithoutModelAnswer
+      const multiPartInfo = detectMultiPartQuestion(questionText);
+      const multiPartValidation = validateMultiPartAnswer(studentAnswer, multiPartInfo);
+
+      let finalScore = Math.round(grading.score * 100) / 100;
+
+      // Apply multi-part scaling - cap at proportional limit
+      if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0 && multiPartValidation.completeness >= 0.25) {
+        const proportionalScore = Math.round(maxPoints * multiPartValidation.completeness);
+        finalScore = Math.min(finalScore, proportionalScore);
+        console.log(`gradeWithoutModelAnswer multi-part scaling: ${grading.score} -> ${finalScore} (max ${Math.round(multiPartValidation.completeness * 100)}% for ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts)`);
+      }
 
       return {
-        score: Math.round(grading.score * 100) / 100,
+        score: finalScore,
         feedback: grading.feedback || 'AI analysis completed',
         correctedAnswer: grading.correctedAnswer || 'Model answer generated by AI analysis',
         details: {
@@ -566,7 +665,9 @@ IMPORTANT: Only return valid JSON, no additional text outside the JSON.`;
           improvementSuggestions: grading.improvementSuggestions || [],
           questionType: questionType,
           gradingMethod: 'ai_without_model_answer',
-          aiGraded: true
+          aiGraded: true,
+          multiPartInfo,
+          multiPartValidation
         }
       };
     } catch (parseError) {
@@ -606,11 +707,11 @@ IMPORTANT: Only return valid JSON, no additional text outside the JSON.`;
   } catch (error) {
     console.error('Error in AI grading without model answer:', error);
 
-    // Final fallback
-    const score = Math.min(Math.round(maxPoints * 0.5), maxPoints);
+    // Final fallback - minimal score since we can't verify
+    const score = 0;
     return {
       score: score,
-      feedback: 'Answer provided but detailed analysis unavailable. Please review with instructor.',
+      feedback: 'Unable to grade answer automatically. Please ensure you provide complete answers with all required parts addressed.',
       correctedAnswer: 'Model answer not available',
       details: {
         questionType: questionType,

@@ -125,6 +125,92 @@ async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
 }
 
 /**
+ * Detect if question has multiple parts
+ * @param {string} questionText - The question text
+ * @returns {Object} - Detection result
+ */
+function detectMultiPartQuestionFast(questionText) {
+  if (!questionText) return { isMultiPart: false, expectedParts: 1 };
+
+  const letterParts = questionText.match(/\b[\(\[]?[a-z][\)\]]?[\s\.]/gi);
+  const romanParts = questionText.match(/\b[\(\[]?i{1,3}[\)\]]?[\s\.]/gi);
+
+  const allParts = [...(letterParts || []), ...(romanParts || [])];
+  const uniqueParts = new Set(allParts.map(p => p.toLowerCase().replace(/[\(\)\[\]\s\.]/g, '')));
+
+  const marksPattern = questionText.match(/\(\s*\d+\s*(?:mark|marks)\s*\)/gi);
+  const totalMarks = marksPattern ? marksPattern.reduce((sum, m) => {
+    const num = parseInt(m.match(/\d+/)[0]);
+    return sum + num;
+  }, 0) : 0;
+
+  return {
+    isMultiPart: uniqueParts.size > 1 || totalMarks > 1,
+    expectedParts: Math.max(uniqueParts.size, 1),
+    totalMarks: totalMarks,
+    detectedParts: Array.from(uniqueParts)
+  };
+}
+
+/**
+ * Validate multi-part answer completeness
+ * @param {string} studentAnswer - Student's answer
+ * @param {Object} multiPartInfo - Multi-part question info
+ * @returns {Object} - Validation result
+ */
+function validateMultiPartAnswerFast(studentAnswer, multiPartInfo) {
+  if (!multiPartInfo.isMultiPart || !studentAnswer) {
+    return { isValid: true, partsFound: 1, partsMissing: 0, completeness: 1 };
+  }
+
+  const answer = studentAnswer.toLowerCase();
+  const partsFound = multiPartInfo.detectedParts.filter(part => {
+    const partPatterns = [
+      new RegExp(`\\b${part}\\s*[\.\),:=-]`, 'i'),
+      new RegExp(`\\(${part}\\)`, 'i'),
+      new RegExp(`\\[${part}\]`, 'i')
+    ];
+    return partPatterns.some(pattern => pattern.test(answer));
+  }).length;
+
+  const completeness = partsFound / multiPartInfo.expectedParts;
+
+  return {
+    isValid: completeness >= 0.25,
+    partsFound,
+    partsMissing: multiPartInfo.expectedParts - partsFound,
+    completeness
+  };
+}
+
+/**
+ * Apply multi-part scaling to score
+ * @param {number} score - The calculated score
+ * @param {number} maxPoints - Maximum points
+ * @param {Object} multiPartInfo - Multi-part info
+ * @param {Object} multiPartValidation - Validation result
+ * @returns {number} - Scaled score
+ */
+function applyMultiPartScaling(score, maxPoints, multiPartInfo, multiPartValidation) {
+  if (!multiPartInfo.isMultiPart || multiPartValidation.completeness >= 1.0) {
+    return score;
+  }
+
+  // Severely incomplete (< 25%) - already rejected before this function
+  if (multiPartValidation.completeness < 0.25) {
+    return 0;
+  }
+
+  // Proportional scoring: cap at the percentage of parts answered
+  const proportionalMax = Math.round(maxPoints * multiPartValidation.completeness);
+  const scaledScore = Math.min(score, proportionalMax);
+
+  console.log(`Fast grading multi-part scaling: ${score} -> ${scaledScore} (max ${Math.round(multiPartValidation.completeness * 100)}% for ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts)`);
+
+  return scaledScore;
+}
+
+/**
  * Fast open-ended grading using AI
  */
 async function gradeOpenEndedFast(question, answer, modelAnswer) {
@@ -160,10 +246,34 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
     }
   }
 
+  // Check for multi-part questions
+  const multiPartInfo = detectMultiPartQuestionFast(question.text);
+  const multiPartValidation = validateMultiPartAnswerFast(studentAnswer, multiPartInfo);
+
+  // Reject severely incomplete multi-part answers (< 25%)
+  if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
+    console.log(`Fast grading: Multi-part question severely incomplete - ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts`);
+    return {
+      score: 0,
+      feedback: `Incomplete answer. You only addressed ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts. Please answer all parts of the question.`,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'incomplete_multipart',
+      multiPartInfo,
+      multiPartValidation
+    };
+  }
+
   // For very short answers (less than 10 characters), use keyword matching for speed
   if (studentAnswer.length < 10) {
     console.log(`Using fast keyword matching for short answer: "${studentAnswer}"`);
-    return gradeWithKeywordsFast(studentAnswer, modelAnswer, question.points);
+    const keywordResult = await gradeWithKeywordsFast(studentAnswer, modelAnswer, question.points, question.text);
+    // Apply multi-part scaling to keyword result
+    if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0) {
+      keywordResult.score = applyMultiPartScaling(keywordResult.score, question.points, multiPartInfo, multiPartValidation);
+      keywordResult.multiPartInfo = multiPartInfo;
+      keywordResult.multiPartValidation = multiPartValidation;
+    }
+    return keywordResult;
   }
 
   // Use AI for grading with enhanced processing for sections B and C
@@ -203,8 +313,12 @@ Return JSON: {score,feedback,correctedAnswer}`;
 
     const result = response.parsedContent || JSON.parse(cleanText);
 
-    const finalScore = Math.min(Math.max(0, result.score || 0), question.points);
-    // isEssayQuestion already declared above
+    let finalScore = Math.min(Math.max(0, result.score || 0), question.points);
+
+    // Apply multi-part scaling for proportional marks
+    if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0) {
+      finalScore = applyMultiPartScaling(finalScore, question.points, multiPartInfo, multiPartValidation);
+    }
 
     return {
       score: finalScore,
@@ -225,8 +339,16 @@ Return JSON: {score,feedback,correctedAnswer}`;
     console.error(`AI grading failed for question ${question._id}:`, error.message);
 
     // Fast keyword fallback
-    const fallbackResult = gradeWithKeywordsFast(studentAnswer, modelAnswer, question.points);
+    const fallbackResult = await gradeWithKeywordsFast(studentAnswer, modelAnswer, question.points, question.text);
     console.log(`Using keyword fallback for question ${question._id}, score: ${fallbackResult.score}`);
+
+    // Apply multi-part scaling to fallback result
+    if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0) {
+      fallbackResult.score = applyMultiPartScaling(fallbackResult.score, question.points, multiPartInfo, multiPartValidation);
+      fallbackResult.multiPartInfo = multiPartInfo;
+      fallbackResult.multiPartValidation = multiPartValidation;
+    }
+
     return fallbackResult;
   }
 }
@@ -300,9 +422,25 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
 /**
  * Fast keyword-based grading fallback with enhanced feedback
  */
-async function gradeWithKeywordsFast(studentAnswer, modelAnswer, maxPoints) {
+async function gradeWithKeywordsFast(studentAnswer, modelAnswer, maxPoints, questionText = '') {
   const student = studentAnswer.toLowerCase();
   const model = (modelAnswer || '').toLowerCase();
+
+  // Check for multi-part questions if question text provided
+  let multiPartInfo, multiPartValidation;
+  if (questionText) {
+    multiPartInfo = detectMultiPartQuestionFast(questionText);
+    multiPartValidation = validateMultiPartAnswerFast(studentAnswer, multiPartInfo);
+
+    if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
+      return {
+        score: 0,
+        feedback: `Incomplete answer. You only addressed ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts.`,
+        correctedAnswer: modelAnswer,
+        gradingMethod: 'incomplete_multipart_fallback'
+      };
+    }
+  }
 
   // Check for meaningless answers like "I don't know", "no idea", etc.
   const meaninglessPatterns = [
@@ -443,7 +581,12 @@ Return JSON: {score,feedback,correctedAnswer}`;
     };
   }
 
-  const score = Math.round(matchRatio * maxPoints);
+  let score = Math.round(matchRatio * maxPoints);
+
+  // Apply multi-part scaling if applicable
+  if (multiPartInfo && multiPartValidation && multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0) {
+    score = applyMultiPartScaling(score, maxPoints, multiPartInfo, multiPartValidation);
+  }
 
   // Enhanced feedback based on score
   let feedback;

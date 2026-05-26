@@ -702,10 +702,10 @@ Only respond with the letter of the correct option (A, B, C, or D).
           }
         }
 
-        // Calculate match percentage with a minimum score to avoid zero scores
+        // Calculate match percentage - NO minimum score guarantee
         const matchPercentage = modelKeywords.length > 0
-          ? Math.max(0.2, matchCount / modelKeywords.length) // Minimum 20% score
-          : 0.2;
+          ? matchCount / modelKeywords.length
+          : 0;
 
         // Assign score based on keyword match percentage
         const score = Math.round(matchPercentage * question.points);
@@ -1450,10 +1450,10 @@ Only respond with the letter of the correct option (A, B, C, or D).
           }
         }
 
-        // Calculate match percentage with a minimum score to avoid zero scores
+        // Calculate match percentage - NO minimum score guarantee
         const matchPercentage = modelKeywords.length > 0
-          ? Math.max(0.2, matchCount / modelKeywords.length) // Minimum 20% score
-          : 0.2;
+          ? matchCount / modelKeywords.length
+          : 0;
 
         // Assign score based on keyword match percentage
         const score = Math.round(matchPercentage * question.points);

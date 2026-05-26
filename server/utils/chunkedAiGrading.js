@@ -156,6 +156,69 @@ const extractTechnicalTerms = (text) => {
 };
 
 /**
+ * Detect if question has multiple parts (a, b, c, etc. or i, ii, iii, etc.)
+ * @param {string} questionText - The question text
+ * @returns {Object} - Detection result with isMultiPart and expectedParts count
+ */
+const detectMultiPartQuestion = (questionText) => {
+  if (!questionText) return { isMultiPart: false, expectedParts: 1 };
+
+  // Look for patterns like a), b), c) or i), ii), iii) or (a), (b), (c)
+  const letterParts = questionText.match(/\b[\(\[]?[a-z][\)\]]?[\s\.:]/gi);
+  const romanParts = questionText.match(/\b[\(\[]?i{1,3}[\)\]]?[\s\.:]/gi);
+  const numberParts = questionText.match(/\b[\(\[]?\d+[\)\]]?[\s\.:]/gi);
+
+  const allParts = [...(letterParts || []), ...(romanParts || []), ...(numberParts || [])];
+  const uniqueParts = new Set(allParts.map(p => p.toLowerCase().replace(/[\(\)\[\]\s\.:]/g, '')));
+
+  // Check for multiple marks indicators like (1 mark), (2 marks), (4 marks)
+  const marksPattern = questionText.match(/\(\s*\d+\s*(?:mark|marks)\s*\)/gi);
+  const totalMarks = marksPattern ? marksPattern.reduce((sum, m) => {
+    const num = parseInt(m.match(/\d+/)[0]);
+    return sum + num;
+  }, 0) : 0;
+
+  return {
+    isMultiPart: uniqueParts.size > 1 || totalMarks > 1,
+    expectedParts: Math.max(uniqueParts.size, 1),
+    totalMarks: totalMarks,
+    detectedParts: Array.from(uniqueParts)
+  };
+};
+
+/**
+ * Validate that a multi-part question has been fully answered
+ * @param {string} studentAnswer - The student's answer
+ * @param {Object} multiPartInfo - Info from detectMultiPartQuestion
+ * @returns {Object} - Validation result
+ */
+const validateMultiPartAnswer = (studentAnswer, multiPartInfo) => {
+  if (!multiPartInfo.isMultiPart || !studentAnswer) {
+    return { isValid: true, partsFound: 1, partsMissing: 0 };
+  }
+
+  const answer = studentAnswer.toLowerCase();
+  const partsFound = multiPartInfo.detectedParts.filter(part => {
+    // Check if this part label appears in the answer
+    const partPatterns = [
+      new RegExp(`\\b${part}\\s*[\.\),:=-]`, 'i'),
+      new RegExp(`\\(${part}\\)`, 'i'),
+      new RegExp(`\\[${part}\\]`, 'i')
+    ];
+    return partPatterns.some(pattern => pattern.test(answer));
+  }).length;
+
+  const partsMissing = multiPartInfo.expectedParts - partsFound;
+
+  return {
+    isValid: partsFound >= multiPartInfo.expectedParts * 0.5, // At least 50% of parts
+    partsFound,
+    partsMissing,
+    completeness: partsFound / multiPartInfo.expectedParts
+  };
+};
+
+/**
  * Analyze student answer against key concepts
  * @param {string} studentAnswer - The student's answer
  * @param {Array} keyConcepts - Key concepts from the model answer
@@ -167,6 +230,23 @@ const extractTechnicalTerms = (text) => {
 const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isModelAnswerMissing = false, questionText = '') => {
   try {
     console.log('Analyzing student answer against key concepts...');
+
+    // Check for multi-part questions first
+    const multiPartInfo = detectMultiPartQuestion(questionText);
+    const multiPartValidation = validateMultiPartAnswer(studentAnswer, multiPartInfo);
+
+    // If multi-part question has very low completeness (< 25%), reject it
+    if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
+      console.log(`Multi-part question severely incomplete: ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts found`);
+      return {
+        conceptsPresent: [],
+        conceptsMissing: keyConcepts,
+        score: 0,
+        technicalMerit: `Incomplete answer - only ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts addressed`,
+        multiPartInfo,
+        multiPartValidation
+      };
+    }
 
     // Use fast model for better performance and to avoid timeouts
 
@@ -206,15 +286,23 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       - Reward depth of understanding over mere keyword matching
 
       Scoring Guidelines:
-      - 90-100% of points: Comprehensive answer that demonstrates mastery of all key concepts
-      - 80-89% of points: Strong answer with minor omissions or inaccuracies
-      - 70-79% of points: Good answer that covers most key concepts but lacks some depth
+      - 90-100% of points: Comprehensive answer that demonstrates mastery of ALL key concepts
+      - 80-89% of points: Strong answer addressing most key concepts with minor omissions
+      - 70-79% of points: Good answer covering most key concepts but lacking depth
       - 60-69% of points: Adequate answer with some key concepts but significant gaps
-      - 50-59% of points: Basic answer that shows limited understanding
-      - Below 50%: Insufficient answer with major gaps or inaccuracies
+      - 50-59% of points: Basic answer showing limited understanding
+      - 30-49%: Poor answer with major gaps
+      - 10-29%: Very poor answer, minimal understanding shown
+      - 0-9%: Insufficient or completely incorrect answer
+
+      CRITICAL RULES:
+      1. For multi-part questions, ALL parts must be addressed for full marks
+      2. Very short answers (under 20 characters) should receive 0 marks
+      3. Single keyword answers without explanation should receive minimal marks
+      4. Do NOT give automatic partial credit - evaluate actual content quality
 
       Assign a precise score between 0 and ${maxPoints} based on how well the answer addresses the specific question.
-      Be fair and consistent in your evaluation, providing the exact score the answer deserves.
+      Be STRICT and fair - incomplete answers should receive proportionally lower scores.
 
       Format your response as a JSON object:
       {
@@ -255,19 +343,29 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       - Reward depth of understanding over mere keyword matching
 
       Scoring Guidelines:
-      - 90-100% of points: Comprehensive answer that demonstrates mastery of all key concepts
-      - 80-89% of points: Strong answer with minor omissions or inaccuracies
-      - 70-79% of points: Good answer that covers most key concepts but lacks some depth
+      - 90-100% of points: Comprehensive answer that demonstrates mastery of ALL key concepts
+      - 80-89% of points: Strong answer addressing most key concepts with minor omissions
+      - 70-79% of points: Good answer covering most key concepts but lacking depth
       - 60-69% of points: Adequate answer with some key concepts but significant gaps
-      - 50-59% of points: Basic answer that shows limited understanding
-      - Below 50%: Insufficient answer with major gaps or inaccuracies
+      - 50-59% of points: Basic answer showing limited understanding
+      - 30-49%: Poor answer with major gaps
+      - 10-29%: Very poor answer, minimal understanding shown
+      - 0-9%: Insufficient or completely incorrect answer
+
+      CRITICAL RULES:
+      1. For multi-part questions, ALL parts must be addressed for full marks
+      2. Very short answers (under 20 characters) should receive 0 marks
+      3. Single keyword answers without explanation should receive minimal marks
+      4. Do NOT give automatic partial credit - evaluate actual content quality
 
       For each key concept, determine if it is present in the student's answer.
       Then assign a precise score between 0 and ${maxPoints} based on:
       1. How many key concepts are covered (both quantity and quality of coverage)
-      2. How well the answer addresses the specific question asked
+      2. How well the answer addresses ALL parts of the specific question asked
       3. Technical accuracy and clarity of the explanation
       4. Depth of understanding demonstrated
+
+      Be STRICT - an incomplete answer to a multi-part question should receive a score proportional to parts answered.
 
       Format your response as a JSON object:
       {
@@ -306,17 +404,24 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       analysis = JSON.parse(jsonText);
     }
 
-    // If the model answer is missing and the student provided technical terms,
-    // ensure a minimum score based on the number of technical terms
-    if (isModelAnswerMissing && technicalTerms.length > 0) {
-      // Calculate a minimum score based on technical terms (at least 30% of max points if they used technical terms)
-      const minScore = Math.ceil(maxPoints * Math.min(0.3 + (technicalTerms.length * 0.1), 0.7));
+    // REMOVED: Automatic score boosting based on technical terms
+    // Score should reflect actual answer quality, not just presence of keywords
 
-      // Ensure the score is at least the minimum score
-      if (analysis.score < minScore) {
-        console.log(`Adjusting score from ${analysis.score} to ${minScore} based on technical terms`);
-        analysis.score = minScore;
-      }
+    // Apply multi-part scaling - award proportional marks for answered parts
+    // If student answered 1 of 4 parts correctly, they get 25% of the total points
+    if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0) {
+      const proportionalScore = Math.round(maxPoints * multiPartValidation.completeness);
+      // Cap the score at the proportional limit based on parts answered
+      // This ensures if they answer 1/4 parts, max they can get is 25% of total
+      const cappedScore = Math.min(analysis.score, proportionalScore);
+      console.log(`Multi-part scaling applied: ${analysis.score} -> ${cappedScore} (max ${Math.round(multiPartValidation.completeness * 100)}% for ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts)`);
+      analysis.score = cappedScore;
+      analysis.multiPartScaling = {
+        maxPossibleForAnsweredParts: proportionalScore,
+        completeness: multiPartValidation.completeness,
+        partsFound: multiPartValidation.partsFound,
+        partsExpected: multiPartInfo.expectedParts
+      };
     }
 
     console.log(`Analysis complete. Score: ${analysis.score}/${maxPoints}`);
@@ -325,24 +430,22 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
   } catch (error) {
     console.error('Error analyzing student answer:', error);
 
-    // If there was an error but we have technical terms, use them for grading
-    const technicalTerms = extractTechnicalTerms(studentAnswer);
-    if (technicalTerms.length > 0) {
-      // Calculate a score based on the number of technical terms (at least 30% of max points)
-      const score = Math.ceil(maxPoints * Math.min(0.3 + (technicalTerms.length * 0.1), 0.7));
+    // Fallback: Check multi-part validation even on error
+    const multiPartInfo = detectMultiPartQuestion(questionText);
+    const multiPartValidation = validateMultiPartAnswer(studentAnswer, multiPartInfo);
 
-      console.log(`Using technical terms for fallback grading. Found ${technicalTerms.length} terms, score: ${score}/${maxPoints}`);
-
+    if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
       return {
-        conceptsPresent: technicalTerms,
-        conceptsMissing: keyConcepts.filter(c => !technicalTerms.includes(c.toLowerCase())),
-        score: score,
-        technicalMerit: "Graded based on technical terminology used"
+        conceptsPresent: [],
+        conceptsMissing: keyConcepts,
+        score: 0,
+        technicalMerit: `Incomplete answer - not all parts addressed`,
+        error: error.message
       };
     }
 
-    // If no technical terms, fall back to keyword matching
-    return fallbackKeywordGrading(studentAnswer, keyConcepts.join(' '), maxPoints, error);
+    // If no technical terms or error, fall back to keyword matching
+    return fallbackKeywordGrading(studentAnswer, keyConcepts.join(' '), maxPoints, error, questionText);
   }
 };
 
@@ -469,7 +572,7 @@ const generateFallbackFeedback = (score, maxPoints, conceptsPresent, conceptsMis
 /**
  * Fallback grading using keyword matching when AI grading fails
  */
-const fallbackKeywordGrading = (studentAnswer, modelAnswer, maxPoints, error) => {
+const fallbackKeywordGrading = (studentAnswer, modelAnswer, maxPoints, error, questionText = '') => {
   console.log('Using fallback keyword grading...');
 
   const studentAns = studentAnswer.toLowerCase().trim();
@@ -529,13 +632,27 @@ const fallbackKeywordGrading = (studentAnswer, modelAnswer, maxPoints, error) =>
     }
   }
 
-  // Calculate match percentage with a minimum score to avoid zero scores
+  // Calculate match percentage - NO minimum score guarantee
+  // Answers must actually match to receive points
   const matchPercentage = modelKeywords.length > 0
-    ? Math.max(0.2, matchCount / modelKeywords.length) // Minimum 20% score
-    : 0.2;
+    ? matchCount / modelKeywords.length
+    : 0;
 
   // Assign score based on keyword match percentage
-  const score = Math.round(matchPercentage * maxPoints);
+  let score = Math.round(matchPercentage * maxPoints);
+
+  // Apply multi-part scaling for proportional marks
+  if (questionText) {
+    const multiPartInfo = detectMultiPartQuestion(questionText);
+    const multiPartValidation = validateMultiPartAnswer(studentAnswer, multiPartInfo);
+
+    if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0 && multiPartValidation.completeness >= 0.25) {
+      const proportionalScore = Math.round(maxPoints * multiPartValidation.completeness);
+      const cappedScore = Math.min(score, proportionalScore);
+      console.log(`Fallback multi-part scaling: ${score} -> ${cappedScore} (max ${Math.round(multiPartValidation.completeness * 100)}% for ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts)`);
+      score = cappedScore;
+    }
+  }
 
   // Generate appropriate feedback based on score
   let feedback;

@@ -194,34 +194,57 @@ SPECIAL HANDLING FOR FILL-IN-THE-BLANK QUESTIONS:
 - For geometric shapes: triangle (3), square (4), pentagon (5), hexagon (6), heptagon (7), octagon (8), nonagon (9), decagon (10)
 - For other contexts, use the surrounding text to infer the missing information
 
-SPECIAL HANDLING FOR QUESTIONS WITH SUBQUESTIONS (a, b, c, etc.):
-- Many questions in Section C have subquestions labeled a), b), c) or a., b., c.
-- When you detect subquestions, structure them in the "subQuestions" array
-- Example structure for a question with subquestions:
+CRITICAL - MULTI-PART QUESTIONS MUST BE SINGLE QUESTIONS:
+- Questions with parts labeled a), b), c) or i), ii), iii) MUST be extracted as ONE SINGLE question
+- DO NOT create separate questions for each part - they belong together
+- Use the "subQuestions" array to store each part
+- Example: "Question 15: The diagram shows a brick... a) i) The brick does not move sideways... ii) The weight of the brick... b) i) Does linear momentum... ii) State ONE thing..." is ONE question with 4 subquestions
+
+CORRECT STRUCTURE FOR MULTI-PART QUESTIONS:
 {
-  "questionNumber": 1,
-  "text": "A farmer harvested 245 bags of maize. He sold 123 bags and kept the rest.",
+  "questionNumber": 15,
+  "text": "The diagram (Figure 4) shows a brick being pushed by a force F on an unsmooth horizontal table.",
   "type": "open-ended",
   "subQuestions": [
     {
-      "text": "How many bags did he keep?",
+      "label": "a) i)",
+      "text": "The pushing force does not make the brick move. Explain why: The brick does not move sideways:",
       "type": "open-ended",
-      "correctAnswer": "122 bags",
-      "points": 5
+      "correctAnswer": "The pushing force is equal to or less than the friction force",
+      "points": 1
     },
     {
-      "text": "If each bag weighs 50kg, what was the total weight of the harvested maize?",
+      "label": "a) ii)",
+      "text": "The weight of the brick does not make it move downwards:",
       "type": "open-ended",
-      "correctAnswer": "12,250 kg",
-      "points": 5
+      "correctAnswer": "The weight is balanced by the normal reaction force from the table",
+      "points": 1
+    },
+    {
+      "label": "b) i)",
+      "text": "Does the linear momentum P of the brick increase, decrease, or remain constant? Explain.",
+      "type": "open-ended",
+      "correctAnswer": "Linear momentum increases because the constant resultant force causes constant acceleration",
+      "points": 1
+    },
+    {
+      "label": "b) ii)",
+      "text": "State ONE thing that the sliding brick does to the unsmooth table surface.",
+      "type": "open-ended",
+      "correctAnswer": "Generates heat / produces sound / causes friction",
+      "points": 1
     }
   ],
-  "points": 10
+  "points": 4
 }
-- Extract the main question text separately from subquestions
-- Each subquestion should have its own text, type, correctAnswer, and points
-- The main question's points should be the sum of all subquestion points
-- If subquestions have letter answers (a, b, c), include them in the correctAnswer field
+
+SUBQUESTION EXTRACTION RULES:
+1. ALWAYS extract multi-part questions as ONE question with subQuestions array
+2. Include the "label" field for each subquestion (a, b, c, i, ii, iii)
+3. The main question text should be the common stem/scenario
+4. Each subquestion has its own text, correctAnswer, and points
+5. Total points = sum of all subquestion points
+6. NEVER split a multi-part question into separate question entries
 
 Return valid JSON with this exact structure:
 {
@@ -411,9 +434,49 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
           console.log(`Using pre-loaded answer for question ${questionNumber}: ${question.correctAnswer}`);
         }
 
-        // Generate model answer using AI if not provided (for open-ended questions)
-        if ((question.correctAnswer === 'Not provided' || !question.correctAnswer || question.correctAnswer.trim() === '') && 
-            (question.type === 'open-ended' || question.type === 'short-answer' || question.type === 'essay')) {
+        // Handle subQuestions - generate model answers for each subquestion if missing
+        if (question.subQuestions && Array.isArray(question.subQuestions) && question.subQuestions.length > 0) {
+          console.log(`Processing ${question.subQuestions.length} subquestions for question ${questionNumber}`);
+
+          let totalSubPoints = 0;
+          for (let j = 0; j < question.subQuestions.length; j++) {
+            const subQ = question.subQuestions[j];
+
+            // Ensure subquestion has required fields
+            subQ.type = subQ.type || 'open-ended';
+            subQ.points = subQ.points || Math.ceil(question.points / question.subQuestions.length);
+            subQ.label = subQ.label || String.fromCharCode(97 + j); // a, b, c, etc.
+
+            // Generate model answer for subquestion if not provided
+            if (!subQ.correctAnswer || subQ.correctAnswer === 'Not provided' || subQ.correctAnswer.trim() === '') {
+              console.log(`Generating model answer for subquestion ${questionNumber}.${subQ.label}`);
+              // For individual subquestion generation, we'll use the main generateModelAnswer
+              // but we should enhance this to handle subquestions better
+              subQ.correctAnswer = await generateModelAnswer(
+                `${question.text}\n${subQ.text}`,
+                subQ.type,
+                section.name
+              );
+            }
+
+            totalSubPoints += subQ.points;
+          }
+
+          // Update main question points to match sum of subquestion points
+          question.points = totalSubPoints;
+          console.log(`Updated question ${questionNumber} points to ${totalSubPoints} (sum of subquestions)`);
+
+          // Generate combined model answer for the whole question if main correctAnswer is empty
+          if (!question.correctAnswer || question.correctAnswer === 'Not provided' || question.correctAnswer.trim() === '') {
+            console.log(`Generating combined model answer for question ${questionNumber} with ${question.subQuestions.length} subquestions`);
+            question.correctAnswer = await generateModelAnswer(question.text, question.type, section.name, question.subQuestions);
+          }
+        }
+
+        // Generate model answer using AI if not provided (for open-ended questions without subQuestions)
+        if ((question.correctAnswer === 'Not provided' || !question.correctAnswer || question.correctAnswer.trim() === '') &&
+            (question.type === 'open-ended' || question.type === 'short-answer' || question.type === 'essay') &&
+            (!question.subQuestions || question.subQuestions.length === 0)) {
           console.log(`Generating AI model answer for question ${questionNumber} in section ${section.name}`);
           question.correctAnswer = await generateModelAnswer(question.text, question.type, section.name);
         }
@@ -473,11 +536,47 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
  * @param {string} section - The section (A, B, C)
  * @returns {Promise<string>} - Generated model answer
  */
-const generateModelAnswer = async (questionText, questionType, section) => {
+const generateModelAnswer = async (questionText, questionType, section, subQuestions = null) => {
   try {
+    // If subQuestions are provided, generate answers for each subquestion
+    if (subQuestions && Array.isArray(subQuestions) && subQuestions.length > 0) {
+      const prompt = `You are an expert educator. Generate comprehensive and accurate model answers for these subquestions:
+
+Main Question Context: "${questionText}"
+Section: ${section}
+
+Subquestions:
+${subQuestions.map((sq, idx) => `${sq.label || String.fromCharCode(97 + idx)}) ${sq.text}`).join('\n')}
+
+CRITICAL REQUIREMENTS:
+- Provide detailed, accurate answers for EACH subquestion separately
+- For mathematical questions: Show ALL working/steps clearly
+- For conceptual questions: Provide clear explanations with key points
+- Label each answer with the corresponding letter (a), b), c), etc.)
+- Keep answers comprehensive but well-structured
+- Do not include any meta-commentary
+
+Format your answer as:
+${subQuestions.map((sq, idx) => `${sq.label || String.fromCharCode(97 + idx) + ')'} [answer for this part]`).join('\n')}
+
+Return only the model answers, no additional text.`;
+
+      const result = await groqClient.generateContent(prompt, {
+        model: 'smart',
+        jsonMode: false,
+        temperature: 0.2,
+        maxTokens: 3072,
+        systemPrompt: 'You are an expert educator who generates accurate, comprehensive model answers for exam questions.'
+      });
+
+      const answer = result.text.trim();
+      console.log(`Generated model answers for ${subQuestions.length} subquestions: ${answer.substring(0, 100)}...`);
+      return answer;
+    }
+
     // Detect if question has subquestions
     const hasSubquestions = /[a-c]\)[.\s]/.test(questionText) || /[a-c]\.[.\s]/.test(questionText);
-    
+
     const prompt = `You are an expert educator. Generate a comprehensive and accurate model answer for this OPEN-ENDED question:
 
 Question: "${questionText}"

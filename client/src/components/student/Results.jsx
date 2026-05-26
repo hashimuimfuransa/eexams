@@ -716,6 +716,73 @@ const Results = () => {
                                         </>
                                       )}
                                     </>
+                                  ) : answer.question.type === 'matching' ? (
+                                    (() => {
+                                      const leftItems = answer.question.leftItems || answer.question.matchingPairs?.leftColumn || [];
+                                      const rightItems = answer.question.rightItems || answer.question.matchingPairs?.rightColumn || [];
+                                      const correctPairs = answer.question.matchingPairs?.correctPairs || [];
+                                      const studentPairs = answer.matchingAnswers || [];
+                                      return (
+                                        <>
+                                          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                                            <strong>Your Answer:</strong>
+                                          </Typography>
+                                          {studentPairs.length > 0 ? (
+                                            <Box sx={{ mt: 1, mb: 2 }}>
+                                              {studentPairs.map((pair, pi) => {
+                                                const leftLabel = leftItems[pair.left] || `Item ${pair.left + 1}`;
+                                                const rightLabel = rightItems[pair.right] || `Item ${pair.right + 1}`;
+                                                const isMatchCorrect = correctPairs.some(cp => cp.left === pair.left && cp.right === pair.right);
+                                                return (
+                                                  <Box key={pi} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                                    <Typography variant="body2" sx={{ color: isMatchCorrect ? 'success.main' : 'error.main', fontWeight: 'medium' }}>
+                                                      {isMatchCorrect ? '✓' : '✗'}
+                                                    </Typography>
+                                                    <Typography variant="body2">
+                                                      <strong>{leftLabel}</strong> → {rightLabel}
+                                                    </Typography>
+                                                  </Box>
+                                                );
+                                              })}
+                                            </Box>
+                                          ) : (
+                                            <Typography variant="body1" sx={{ mb: 2 }}>No answer provided</Typography>
+                                          )}
+
+                                          <Typography variant="body2" color="text.secondary">
+                                            <strong>Model Answer (Correct Pairs):</strong>
+                                          </Typography>
+                                          {correctPairs.length > 0 ? (
+                                            <Box sx={{ mt: 1, mb: 2 }}>
+                                              {correctPairs.map((pair, pi) => {
+                                                const leftLabel = leftItems[pair.left] ?? `Item ${pair.left + 1}`;
+                                                const rightLabel = rightItems[pair.right] ?? `Item ${pair.right + 1}`;
+                                                return (
+                                                  <Typography key={pi} variant="body2" color="success.main">
+                                                    <strong>{leftLabel}</strong> → {rightLabel}
+                                                  </Typography>
+                                                );
+                                              })}
+                                            </Box>
+                                          ) : answer.correctedAnswer ? (
+                                            <Typography variant="body1" sx={{ mb: 2 }}>{answer.correctedAnswer}</Typography>
+                                          ) : (
+                                            <Typography variant="body1" sx={{ mb: 2 }} color="text.secondary">Not provided</Typography>
+                                          )}
+
+                                          {answer.feedback && (
+                                            <>
+                                              <Typography variant="body2" color="text.secondary">
+                                                <strong>Feedback:</strong>
+                                              </Typography>
+                                              <Typography variant="body1">
+                                                {answer.feedback}
+                                              </Typography>
+                                            </>
+                                          )}
+                                        </>
+                                      );
+                                    })()
                                   ) : (
                                     <>
                                       <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
@@ -729,7 +796,7 @@ const Results = () => {
                                         <strong>Model Answer:</strong>
                                       </Typography>
                                       <Typography variant="body1" sx={{ mb: 2 }}>
-                                        {answer.question.correctAnswer}
+                                        {answer.correctedAnswer || answer.question.correctAnswer || 'Not provided'}
                                       </Typography>
 
                                       {answer.feedback && (

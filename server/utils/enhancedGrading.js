@@ -3,6 +3,65 @@ const { gradeOpenEndedAnswer } = require('./aiGrading');
 const groqClient = require('./groqClient');
 
 /**
+ * Detect if question has multiple parts (a, b, c or i, ii, iii)
+ * @param {string} questionText - The question text
+ * @returns {Object} - Detection result
+ */
+const detectMultiPartQuestion = (questionText) => {
+  if (!questionText) return { isMultiPart: false, expectedParts: 1 };
+
+  const letterParts = questionText.match(/\b[\(\[]?[a-z][\)\]]?[\s\.:]/gi);
+  const romanParts = questionText.match(/\b[\(\[]?i{1,3}[\)\]]?[\s\.:]/gi);
+
+  const allParts = [...(letterParts || []), ...(romanParts || [])];
+  const uniqueParts = new Set(allParts.map(p => p.toLowerCase().replace(/[\(\)\[\]\s\.:]/g, '')));
+
+  const marksPattern = questionText.match(/\(\s*\d+\s*(?:mark|marks)\s*\)/gi);
+  const totalMarks = marksPattern ? marksPattern.reduce((sum, m) => {
+    const num = parseInt(m.match(/\d+/)[0]);
+    return sum + num;
+  }, 0) : 0;
+
+  return {
+    isMultiPart: uniqueParts.size > 1 || totalMarks > 1,
+    expectedParts: Math.max(uniqueParts.size, 1),
+    totalMarks: totalMarks,
+    detectedParts: Array.from(uniqueParts)
+  };
+};
+
+/**
+ * Validate multi-part answer completeness
+ * @param {string} studentAnswer - Student's answer
+ * @param {Object} multiPartInfo - Multi-part question info
+ * @returns {Object} - Validation result
+ */
+const validateMultiPartAnswer = (studentAnswer, multiPartInfo) => {
+  if (!multiPartInfo.isMultiPart || !studentAnswer) {
+    return { isValid: true, partsFound: 1, partsMissing: 0, completeness: 1 };
+  }
+
+  const answer = studentAnswer.toLowerCase();
+  const partsFound = multiPartInfo.detectedParts.filter(part => {
+    const partPatterns = [
+      new RegExp(`\\b${part}\\s*[\.\),:=-]`, 'i'),
+      new RegExp(`\\(${part}\\)`, 'i'),
+      new RegExp(`\\[${part}\\]`, 'i')
+    ];
+    return partPatterns.some(pattern => pattern.test(answer));
+  }).length;
+
+  const completeness = partsFound / multiPartInfo.expectedParts;
+
+  return {
+    isValid: completeness >= 0.5,
+    partsFound,
+    partsMissing: multiPartInfo.expectedParts - partsFound,
+    completeness
+  };
+};
+
+/**
  * Parse answer to extract actual content from special formats
  * Handles [MATH: ...], [DRAWING: ...], and other formats
  * @param {string} answer - The raw answer string
@@ -255,7 +314,29 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
 
         // Parse answer content to extract actual text from [MATH: ...] and [DRAWING: ...] formats
         const parsedAnswer = parseAnswerContent(answer.textAnswer || '');
-        
+
+        // Check for multi-part questions
+        const multiPartInfo = detectMultiPartQuestion(question.text);
+        const multiPartValidation = validateMultiPartAnswer(parsedAnswer, multiPartInfo);
+
+        // Reject only severely incomplete answers (< 25%)
+        if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
+          console.log(`❌ Multi-part question severely incomplete: ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts found`);
+          return {
+            score: 0,
+            feedback: `Incomplete answer. You only addressed ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts. Please answer all parts of the question: ${question.text.substring(0, 100)}...`,
+            correctedAnswer: modelAnswer || question.correctAnswer || 'Model answer not available',
+            details: {
+              section: question.section,
+              questionType: 'open-ended',
+              gradingMethod: 'incomplete_multipart',
+              partsFound: multiPartValidation.partsFound,
+              partsExpected: multiPartInfo.expectedParts,
+              completeness: multiPartValidation.completeness
+            }
+          };
+        }
+
         // Validate answer relevance before grading
         const relevanceCheck = validateAnswerRelevance(parsedAnswer, question.text);
         if (!relevanceCheck.isValid) {
@@ -268,7 +349,9 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
               section: question.section,
               questionType: 'open-ended',
               gradingMethod: 'answer_validation_failed',
-              validationReason: relevanceCheck.reason
+              validationReason: relevanceCheck.reason,
+              multiPartInfo,
+              multiPartValidation
             }
           };
         }
@@ -286,9 +369,19 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
           question.section // Pass section for optimized grading
         );
 
+        // Apply multi-part scaling for proportional marks
+        // If student answers 1 of 4 parts correctly, max they can get is 25% of total
+        let finalScore = openEndedResult.score;
+        if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0 && multiPartValidation.completeness >= 0.25) {
+          const proportionalScore = Math.round(question.points * multiPartValidation.completeness);
+          finalScore = Math.min(finalScore, proportionalScore);
+          console.log(`Multi-part scaling applied: ${openEndedResult.score} -> ${finalScore} (max ${Math.round(multiPartValidation.completeness * 100)}% for ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts)`);
+        }
+
         // Enhance the result with section information and better feedback
         return {
           ...openEndedResult,
+          score: finalScore,
           details: {
             ...openEndedResult.details,
             section: question.section,
@@ -296,7 +389,9 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
             questionType: 'open-ended',
             aiGraded: true,
             gradingMethod: 'enhanced_ai_grading_section',
-            processingOptimized: true
+            processingOptimized: true,
+            multiPartInfo,
+            multiPartValidation
           },
           // Ensure we have a proper corrected answer
           correctedAnswer: openEndedResult.correctedAnswer || modelAnswer || question.correctAnswer || 'Model answer not available'

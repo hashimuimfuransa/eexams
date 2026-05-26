@@ -391,7 +391,7 @@ const getDetailedResult = async (req, res) => {
     })
     .populate({
       path: 'answers.question',
-      select: 'text type options correctAnswer points section',
+      select: 'text type options correctAnswer points section matchingPairs leftItems rightItems',
       options: { lean: true } // Use lean for better performance
     })
     .populate({

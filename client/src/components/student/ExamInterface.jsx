@@ -1733,16 +1733,6 @@ const ExamInterface = () => {
                   isSubQuestion: true
                 });
                 console.log(`✅ Saved sub-question ${subIdx} answer for question ${currentQuestion._id}`);
-                setAnswers(prev => ({
-                  ...prev,
-                  [subAnswerKey]: {
-                    ...prev[subAnswerKey],
-                    answered: true,
-                    savedToServer: true,
-                    hasChanges: false,
-                    lastSaved: new Date().toISOString()
-                  }
-                }));
               }
             } catch (saveError) {
               console.error(`❌ Failed to save sub-question ${subIdx} answer:`, saveError);
@@ -2973,9 +2963,21 @@ const ExamInterface = () => {
         if (!selectiveAnswering ||
             section.name === 'A' ||
             selectedQuestions[question._id]) {
-          totalCount++;
-          if (answers[question._id]?.answered) {
-            answeredCount++;
+          // If question has sub-questions, count them individually
+          if (question.subQuestions && Array.isArray(question.subQuestions) && question.subQuestions.length > 0) {
+            question.subQuestions.forEach((subQ, subIdx) => {
+              const subAnswerKey = `${question._id}_sub_${subIdx}`;
+              totalCount++;
+              if (answers[subAnswerKey]?.answered) {
+                answeredCount++;
+              }
+            });
+          } else {
+            // Regular question without sub-questions
+            totalCount++;
+            if (answers[question._id]?.answered) {
+              answeredCount++;
+            }
           }
         }
       });

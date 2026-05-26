@@ -1737,6 +1737,7 @@ const ExamInterface = () => {
                   ...prev,
                   [subAnswerKey]: {
                     ...prev[subAnswerKey],
+                    answered: true,
                     savedToServer: true,
                     hasChanges: false,
                     lastSaved: new Date().toISOString()

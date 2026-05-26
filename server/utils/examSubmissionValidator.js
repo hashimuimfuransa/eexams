@@ -50,8 +50,12 @@ const validateExamSubmission = (result, exam) => {
     const hasDragDropAnswer = answer.dragDropAnswer &&
       (Array.isArray(answer.dragDropAnswer) ? answer.dragDropAnswer.length > 0 :
        typeof answer.dragDropAnswer === 'object' && Object.keys(answer.dragDropAnswer).length > 0);
+    const hasSubQuestionAnswers = answer.subQuestionAnswers &&
+      Array.isArray(answer.subQuestionAnswers) &&
+      answer.subQuestionAnswers.length > 0 &&
+      answer.subQuestionAnswers.some(sub => sub.answered);
 
-    return hasTextAnswer || hasSelectedOption || hasMatchingAnswers || hasOrderingAnswer || hasDragDropAnswer;
+    return hasTextAnswer || hasSelectedOption || hasMatchingAnswers || hasOrderingAnswer || hasDragDropAnswer || hasSubQuestionAnswers;
   });
 
   console.log(`📊 Submission validation: ${answeredQuestions.length}/${result.answers.length} questions have valid answers`);

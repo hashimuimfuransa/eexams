@@ -669,6 +669,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam: exam._id,
         section: section,
         createdBy: req.user._id,
+        imageUrl: q.imageUrl || '',
         // Preserve new structure fields from pasted exams - will be set in type-specific sections
         correctMatches: q.correctMatches || {},
         wordBank: parseArrayField(q.wordBank),

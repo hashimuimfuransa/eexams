@@ -26,7 +26,7 @@ const Marketplace = () => {
   const [levels, setLevels] = useState([]);
   const [levelFilter, setLevelFilter] = useState('all');
   const [subLevelFilter, setSubLevelFilter] = useState('all');
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
   const { mode, toggleMode } = useThemeMode();

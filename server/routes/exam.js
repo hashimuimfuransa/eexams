@@ -650,7 +650,16 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         subsectionTitle: q.subsectionTitle || '',
         subsection: q.subsection || '',
         instructions: q.instructions || '',
-        sectionTitle: q.sectionTitle || ''
+        sectionTitle: q.sectionTitle || '',
+        // Handle multi-part questions with subQuestions
+        subQuestions: q.subQuestions && Array.isArray(q.subQuestions) ? q.subQuestions.map(sq => ({
+          label: sq.label || '',
+          text: sq.text || '',
+          type: sq.type || 'open-ended',
+          points: sq.points || 1,
+          correctAnswer: sq.correctAnswer || '',
+          options: sq.options || []
+        })) : []
       };
 
       // Handle options - preserve user's options but ensure correct structure
@@ -1020,6 +1029,11 @@ TEACHER INSTRUCTIONS: "${prompt.trim()}"
 
 IMPORTANT: The pasted exam includes a TEACHER'S MARKING GUIDE at the end. You MUST extract ALL answers from this marking guide and include them in the correctAnswer field for each question.
 
+CRITICAL - MULTI-PART QUESTIONS MUST BE SINGLE QUESTIONS:
+- Questions with parts labeled a), b), c), i), ii), iii) MUST be extracted as ONE SINGLE question with subQuestions array
+- DO NOT create separate questions for each part - they belong together as one question
+- Example: "Question 7: The diagram shows... a) Why is... b) Explain why... c) Identify... d) State ONE..." is ONE question with 4 subquestions
+
 Return ONLY a JSON object with this structure:
 {
   "title": "exam title from pasted exam or based on instructions",
@@ -1074,6 +1088,43 @@ Return ONLY a JSON object with this structure:
           "rightItems": ["A person who treats sick people", "A place where children learn", "A place where people buy and sell things", "A place with books", "A person who grows crops"],
           "correctMatches": {"Doctor": 0, "School": 1, "Market": 2, "Library": 3, "Farmer": 4},
           "correctAnswer": "0-0, 1-1, 2-2, 3-3, 4-4"
+        },
+        {
+          "questionNumber": 7,
+          "text": "The diagram (Figure 3) represents electricity generation, transmission, and distribution.",
+          "type": "open-ended",
+          "points": 4,
+          "subQuestions": [
+            {
+              "label": "a)",
+              "text": "Why is the efficiency of a real transformer less than 100%?",
+              "type": "open-ended",
+              "points": 1,
+              "correctAnswer": "Due to energy losses (heat, eddy currents, hysteresis)"
+            },
+            {
+              "label": "b)",
+              "text": "Explain why thicker electric wires are preferable for long-distance electricity transmission.",
+              "type": "open-ended",
+              "points": 1,
+              "correctAnswer": "Thicker wires have lower resistance, reducing power loss"
+            },
+            {
+              "label": "c)",
+              "text": "Identify the type of transformers on the poles shown in Figure 3.",
+              "type": "open-ended",
+              "points": 1,
+              "correctAnswer": "Step-down transformer"
+            },
+            {
+              "label": "d)",
+              "text": "State ONE reason why electricity is very important at home.",
+              "type": "open-ended",
+              "points": 1,
+              "correctAnswer": "For lighting, cooking, powering appliances, etc."
+            }
+          ],
+          "correctAnswer": "a) Due to energy losses b) Thicker wires reduce resistance c) Step-down transformer d) For lighting/cooking"
         }
       ]
     }
@@ -1095,6 +1146,12 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
   - **Fill-in-blank**: Identify by blanks (_____, ....) or "fill in". Set type to "fill-in-blank".
   - **Short-answer**: Brief factual questions requiring 1-2 sentence answers. Set type to "short-answer".
   - **Open-ended/Essay**: Questions requiring detailed explanations or longer answers. Set type to "open-ended".
+- **MULTI-PART QUESTIONS (CRITICAL)**:
+  - Questions with parts a), b), c), i), ii), iii) MUST be ONE question with subQuestions array
+  - Each subquestion gets: label (e.g., "a)", "b)", "i)"), text, type, points, correctAnswer
+  - The main question's points = sum of all subquestion points
+  - The main question's correctAnswer = combined answers of all subquestions
+  - Example: A 4-part question with (1 mark) each becomes ONE question with points:4 and 4 subQuestions
 - For matching exercises: 
   - CRITICAL: PRESERVE THE EXACT leftItems AND rightItems ARRAYS EXACTLY AS THEY APPEAR
   - If the pasted exam has a matching question with leftItems and rightItems, copy them EXACTLY without modification
@@ -1116,7 +1173,7 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
 - If a section has no subsections, put questions directly in "questions" array
 - Keep the hierarchical structure intact - this is a professional exam format
 - EVERY question MUST have a correctAnswer field populated from the marking guide
-- DO NOT RESTRUCTURE OR CONSOLIDATE QUESTIONS - KEEP THEM EXACTLY AS THEY APPEAR IN THE PASTED EXAM
+- DO NOT RESTRUCTURE OR CONSOLIDATE QUESTIONS - EXCEPT for multi-part questions which MUST be consolidated into ONE question with subQuestions
 - ABSOLUTELY DO NOT INTERPRET OR REORGANIZE MATCHING QUESTIONS - COPY leftItems AND rightItems EXACTLY AS PROVIDED`;
 
       try {

@@ -116,6 +116,7 @@ const QuestionSchema = new mongoose.Schema({
   },
   // For multi-part questions
   subQuestions: [{
+    label: String, // e.g., "a)", "b)", "i)", "ii)"
     text: String,
     type: {
       type: String,

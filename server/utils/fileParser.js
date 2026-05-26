@@ -514,6 +514,48 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
           console.warn(`subQuestions is not an array for question ${questionNumber}, converting to array`);
           question.subQuestions = [];
         }
+
+        // FINAL SAFEGUARD: Ensure correctAnswer is ALWAYS a string
+        if (typeof question.correctAnswer !== 'string') {
+          console.warn(`correctAnswer is not a string for question ${questionNumber}, converting...`);
+
+          if (question.correctAnswer && typeof question.correctAnswer === 'object') {
+            // If it has subQuestions, format them nicely
+            if (question.subQuestions && Array.isArray(question.subQuestions) && question.subQuestions.length > 0) {
+              question.correctAnswer = question.subQuestions.map(sq => {
+                const label = sq.label || '';
+                const text = sq.correctAnswer || sq.text || '';
+                return label ? `${label}) ${text}` : text;
+              }).join('\n');
+            } else {
+              // Check if keys are letters (a, b, c)
+              const keys = Object.keys(question.correctAnswer);
+              const hasLetterKeys = keys.some(k => /^[a-z]$/i.test(k));
+
+              if (hasLetterKeys) {
+                question.correctAnswer = keys.map(key => {
+                  const val = question.correctAnswer[key];
+                  if (typeof val === 'string') {
+                    return `${key}) ${val}`;
+                  }
+                  return `${key}) ${JSON.stringify(val)}`;
+                }).join('\n');
+              } else {
+                try {
+                  question.correctAnswer = JSON.stringify(question.correctAnswer);
+                } catch (e) {
+                  question.correctAnswer = 'See question details';
+                }
+              }
+            }
+          } else if (question.correctAnswer === null || question.correctAnswer === undefined) {
+            question.correctAnswer = 'Not provided';
+          } else {
+            question.correctAnswer = String(question.correctAnswer);
+          }
+
+          console.log(`Converted correctAnswer to string for question ${questionNumber}: ${question.correctAnswer.substring(0, 100)}...`);
+        }
       }
     }
 

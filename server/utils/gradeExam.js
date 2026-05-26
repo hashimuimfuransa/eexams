@@ -48,6 +48,66 @@ function levenshteinDistance(a, b) {
 // Use the chunked grading method by default to avoid rate limits
 const gradeEssay = chunkedGradeEssay;
 const Result = require('../models/Result');
+
+/**
+ * Helper function to convert correctAnswer to a string
+ * Handles multi-part questions where correctAnswer might be an object
+ * @param {any} correctAnswer - The correct answer (string or object)
+ * @param {string} fallback - Fallback text if answer is empty
+ * @returns {string} - String representation of the answer
+ */
+function formatCorrectAnswer(correctAnswer, fallback = 'Not provided') {
+  if (!correctAnswer) {
+    return fallback;
+  }
+
+  // If it's already a string, return it
+  if (typeof correctAnswer === 'string') {
+    return correctAnswer;
+  }
+
+  // If it's an object, check if it has subQuestions
+  if (typeof correctAnswer === 'object') {
+    // If it has subQuestions array, format them
+    if (correctAnswer.subQuestions && Array.isArray(correctAnswer.subQuestions)) {
+      return correctAnswer.subQuestions.map(sq => {
+        const label = sq.label || sq.questionNumber || '';
+        const text = sq.correctAnswer || sq.text || '';
+        return label ? `${label}) ${text}` : text;
+      }).join('\n');
+    }
+
+    // If the object has text property (matching pairs, etc.)
+    if (correctAnswer.text) {
+      return correctAnswer.text;
+    }
+
+    // For other objects, try to convert to a readable format
+    // Check if keys are letters (a, b, c) - subquestion format
+    const keys = Object.keys(correctAnswer);
+    const hasLetterKeys = keys.some(k => /^[a-z]$/i.test(k));
+
+    if (hasLetterKeys) {
+      return keys.map(key => {
+        const val = correctAnswer[key];
+        if (typeof val === 'string') {
+          return `${key}) ${val}`;
+        }
+        return `${key}) ${JSON.stringify(val)}`;
+      }).join('\n');
+    }
+
+    // Last resort: stringify
+    try {
+      return JSON.stringify(correctAnswer);
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  // For any other type, convert to string
+  return String(correctAnswer);
+}
 const Question = require('../models/Question');
 const Exam = require('../models/Exam');
 const mongoose = require('mongoose');
@@ -562,7 +622,7 @@ Only respond with the letter of the correct option (A, B, C, or D).
           }
 
           // Store the correct answer for reference
-          answer.correctedAnswer = question.correctAnswer || "Graded by AI";
+          answer.correctedAnswer = formatCorrectAnswer(question.correctAnswer, "Graded by AI");
 
           // Add to total score
           totalScore += answer.score;
@@ -573,7 +633,7 @@ Only respond with the letter of the correct option (A, B, C, or D).
           console.log(`  Student did not provide an answer for question ${questionNumber}`);
           answer.score = 0;
           answer.feedback = "No answer provided.";
-          answer.correctedAnswer = question.correctAnswer || "";
+          answer.correctedAnswer = formatCorrectAnswer(question.correctAnswer, "");
           answer.isCorrect = false;
         }
 
@@ -645,7 +705,7 @@ Only respond with the letter of the correct option (A, B, C, or D).
         result.answers[i].score = cappedScore;
         result.answers[i].feedback = grading.feedback;
         result.answers[i].isCorrect = cappedScore >= question.points; // Full points required for "correct"
-        result.answers[i].correctedAnswer = grading.correctedAnswer || question.correctAnswer;
+        result.answers[i].correctedAnswer = grading.correctedAnswer || formatCorrectAnswer(question.correctAnswer);
         result.answers[i].gradingMethod = grading.details?.gradingMethod || 'ai_grading'; // Track grading method
 
         // Add to total score
@@ -737,7 +797,7 @@ Only respond with the letter of the correct option (A, B, C, or D).
         result.answers[i].score = cappedScore;
         result.answers[i].feedback = `${feedback} (Note: This was graded using keyword matching due to AI unavailability)`;
         result.answers[i].isCorrect = cappedScore >= question.points * 0.7; // 70% threshold
-        result.answers[i].correctedAnswer = question.correctAnswer;
+        result.answers[i].correctedAnswer = formatCorrectAnswer(question.correctAnswer);
 
         // Add to total score
         totalScore += cappedScore;
@@ -1393,7 +1453,7 @@ Only respond with the letter of the correct option (A, B, C, or D).
         result.answers[i].score = cappedScore;
         result.answers[i].feedback = grading.feedback;
         result.answers[i].isCorrect = cappedScore >= question.points; // Full points required for "correct"
-        result.answers[i].correctedAnswer = grading.correctedAnswer || question.correctAnswer;
+        result.answers[i].correctedAnswer = grading.correctedAnswer || formatCorrectAnswer(question.correctAnswer);
         result.answers[i].gradingMethod = grading.details?.gradingMethod || 'regrade_ai_grading'; // Track grading method
 
         // Add to total score
@@ -1485,7 +1545,7 @@ Only respond with the letter of the correct option (A, B, C, or D).
         result.answers[i].score = cappedScore;
         result.answers[i].feedback = `${feedback} (Note: This was graded using keyword matching due to AI unavailability)`;
         result.answers[i].isCorrect = cappedScore >= question.points * 0.7; // 70% threshold
-        result.answers[i].correctedAnswer = question.correctAnswer;
+        result.answers[i].correctedAnswer = formatCorrectAnswer(question.correctAnswer);
 
         // Add to total score
         totalScore += cappedScore;

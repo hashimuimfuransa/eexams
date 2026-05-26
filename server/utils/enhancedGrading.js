@@ -3,6 +3,56 @@ const { gradeOpenEndedAnswer } = require('./aiGrading');
 const groqClient = require('./groqClient');
 
 /**
+ * Helper function to convert correctAnswer to a string
+ * Handles multi-part questions where correctAnswer might be an object
+ * @param {any} correctAnswer - The correct answer (string or object)
+ * @param {string} fallback - Fallback text if answer is empty
+ * @returns {string} - String representation of the answer
+ */
+function formatCorrectAnswer(correctAnswer, fallback = 'Not provided') {
+  if (!correctAnswer) {
+    return fallback;
+  }
+
+  if (typeof correctAnswer === 'string') {
+    return correctAnswer;
+  }
+
+  if (typeof correctAnswer === 'object') {
+    // If it has subQuestions array, format them
+    if (correctAnswer.subQuestions && Array.isArray(correctAnswer.subQuestions)) {
+      return correctAnswer.subQuestions.map(sq => {
+        const label = sq.label || sq.questionNumber || '';
+        const text = sq.correctAnswer || sq.text || '';
+        return label ? `${label}) ${text}` : text;
+      }).join('\n');
+    }
+
+    // Check if keys are letters (a, b, c) - subquestion format
+    const keys = Object.keys(correctAnswer);
+    const hasLetterKeys = keys.some(k => /^[a-z]$/i.test(k));
+
+    if (hasLetterKeys) {
+      return keys.map(key => {
+        const val = correctAnswer[key];
+        if (typeof val === 'string') {
+          return `${key}) ${val}`;
+        }
+        return `${key}) ${JSON.stringify(val)}`;
+      }).join('\n');
+    }
+
+    try {
+      return JSON.stringify(correctAnswer);
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  return String(correctAnswer);
+}
+
+/**
  * Detect if question has multiple parts (a, b, c or i, ii, iii)
  * @param {string} questionText - The question text
  * @returns {Object} - Detection result
@@ -325,7 +375,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
           return {
             score: 0,
             feedback: `Incomplete answer. You only addressed ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts. Please answer all parts of the question: ${question.text.substring(0, 100)}...`,
-            correctedAnswer: modelAnswer || question.correctAnswer || 'Model answer not available',
+            correctedAnswer: modelAnswer || formatCorrectAnswer(question.correctAnswer, 'Model answer not available'),
             details: {
               section: question.section,
               questionType: 'open-ended',
@@ -344,7 +394,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
           return {
             score: 0,
             feedback: `Your answer appears to be invalid: ${relevanceCheck.reason}. Please provide a proper answer to the question.`,
-            correctedAnswer: modelAnswer || question.correctAnswer || 'Model answer not available',
+            correctedAnswer: modelAnswer || formatCorrectAnswer(question.correctAnswer, 'Model answer not available'),
             details: {
               section: question.section,
               questionType: 'open-ended',
@@ -362,7 +412,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
 
         const openEndedResult = await gradeOpenEndedAnswer(
           parsedAnswer,
-          modelAnswer || question.correctAnswer,
+          modelAnswer || formatCorrectAnswer(question.correctAnswer, ''),
           question.points,
           question.text,
           question.type,
@@ -394,7 +444,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
             multiPartValidation
           },
           // Ensure we have a proper corrected answer
-          correctedAnswer: openEndedResult.correctedAnswer || modelAnswer || question.correctAnswer || 'Model answer not available'
+          correctedAnswer: openEndedResult.correctedAnswer || modelAnswer || formatCorrectAnswer(question.correctAnswer, 'Model answer not available')
         };
 
       default:
@@ -824,17 +874,12 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
         score: 0,
         feedback: 'No answer provided',
         details: { answerType: 'unanswered' },
-        correctedAnswer: modelAnswer || question.correctAnswer || 'No correct answer available'
+        correctedAnswer: modelAnswer || formatCorrectAnswer(question.correctAnswer, 'No correct answer available')
       };
     }
 
     // Get the model answer
-    let correctAnswer = modelAnswer || question.correctAnswer || '';
-    if (typeof correctAnswer === 'object') {
-      correctAnswer = String(correctAnswer).trim();
-    } else {
-      correctAnswer = String(correctAnswer || '').trim();
-    }
+    let correctAnswer = formatCorrectAnswer(modelAnswer || question.correctAnswer, '');
 
     console.log(`Model answer: "${correctAnswer}"`);
 
@@ -898,7 +943,7 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
 
     // Fallback grading
     const studentAnswer = String(answer.textAnswer || answer.selectedOption || '').trim();
-    const correctAnswer = String(modelAnswer || question.correctAnswer || '').trim();
+    const correctAnswer = formatCorrectAnswer(modelAnswer || question.correctAnswer, '');
 
     let score = 0;
     let feedback = 'Error occurred during grading';

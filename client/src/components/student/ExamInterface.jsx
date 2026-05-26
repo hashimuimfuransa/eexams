@@ -3822,7 +3822,7 @@ const ExamInterface = () => {
                   }}
                 >
                   <Typography variant="subtitle1" fontWeight="bold" color="primary.main" gutterBottom>
-                    Section {activeSection}: {exam.sections.find(s => s.name === activeSection)?.title || exam.sections.find(s => s.name === activeSection)?.description || ''}
+                    Section {activeSection}
                   </Typography>
 
                   {/* Display section information */}
@@ -3859,19 +3859,6 @@ const ExamInterface = () => {
                       </Typography>
                     </Box>
                   )}
-
-                  {/* Section-level instructions display */}
-                  {exam.sections.find(s => s.name === activeSection)?.instructions && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: '#FEF3C7', borderRadius: 2, border: '2px solid #FDE68A' }}>
-                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#92400E', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        ℹ️ Section Instructions
-                      </Typography>
-                      <Typography sx={{ fontSize: 14, color: '#78350F', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                        {exam.sections.find(s => s.name === activeSection).instructions}
-                      </Typography>
-                    </Box>
-                  )}
-
 
                 </Box>
 

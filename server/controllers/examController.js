@@ -1564,6 +1564,7 @@ const submitAnswer = async (req, res) => {
       });
     }
 
+
     // Find the question with better error handling
     const question = await Question.findById(sanitizedData.questionId);
 
@@ -1619,7 +1620,8 @@ const submitAnswer = async (req, res) => {
     // Handle sub-question answers
     if (isSubQuestion) {
       console.log(`Processing sub-question answer for parent question ${parentQuestionId}, sub-index ${subQuestionIndex}`);
-      
+      console.log(`📝 Saving sub-answer to result ID: ${result._id} (isCompleted: ${result.isCompleted})`);
+
       // Initialize subQuestionAnswers array if not exists
       if (!result.answers[answerIndex].subQuestionAnswers) {
         result.answers[answerIndex].subQuestionAnswers = [];
@@ -2065,7 +2067,7 @@ const completeExam = async (req, res) => {
     // Use the current result we already found and populate the necessary fields
     const result = await Result.findById(currentResult._id).populate({
       path: 'answers.question',
-      select: 'text type correctAnswer points section options matchingPairs leftItems rightItems itemsToOrder dragDropData'
+      select: 'text type correctAnswer points section options matchingPairs leftItems rightItems itemsToOrder dragDropData wordBank subQuestions'
     });
 
     if (!result) {
@@ -2075,6 +2077,7 @@ const completeExam = async (req, res) => {
         success: false
       });
     }
+
 
     // Validate that the result has answers
     if (!result.answers || result.answers.length === 0) {

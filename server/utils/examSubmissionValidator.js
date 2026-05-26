@@ -37,7 +37,7 @@ const validateExamSubmission = (result, exam) => {
   }
 
   // Enhanced answer completeness validation
-  const answeredQuestions = result.answers.filter(answer => {
+  const answeredQuestions = result.answers.filter((answer) => {
     // Check for any type of answer content
     const hasTextAnswer = answer.textAnswer && answer.textAnswer.trim().length > 0;
     const hasSelectedOption = answer.selectedOption && answer.selectedOption.trim().length > 0;

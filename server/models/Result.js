@@ -79,6 +79,22 @@ const ResultSchema = new mongoose.Schema({
       isCorrect: Boolean,
       score: Number
     }],
+    // For sub-question answers (fill-in-blank, multiple-choice within a question)
+    subQuestionAnswers: [{
+      answered: Boolean,
+      answeredAt: Date,
+      selectedOption: String,
+      textAnswer: String,
+      questionType: String
+    }],
+    hasSubQuestionAnswers: {
+      type: Boolean,
+      default: false
+    },
+    answered: {
+      type: Boolean,
+      default: false
+    },
     // Answer metadata
     timeSpent: {
       type: Number, // in seconds
@@ -141,7 +157,9 @@ const ResultSchema = new mongoose.Schema({
         'letter_comparison',
         'matching_grading',
         'ordering_grading',
-        'drag_drop_grading'
+        'drag_drop_grading',
+        // Sub-question grading
+        'sub_question_grading'
       ],
       default: 'enhanced_grading'
     },

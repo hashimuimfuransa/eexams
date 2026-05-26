@@ -14,18 +14,21 @@ const groqClient = require('./groqClient');
  */
 async function gradeSubQuestionsFast(question, answer, modelAnswer) {
   console.log(`📝 Grading ${answer.subQuestionAnswers.length} sub-questions for question ${question._id}`);
-  
+
   const subQuestions = question.subQuestions || [];
   const subAnswers = answer.subQuestionAnswers || [];
-  
+
   let totalScore = 0;
   let totalMaxPoints = 0;
   const subQuestionResults = [];
-  
-  for (let i = 0; i < subQuestions.length; i++) {
-    const subQ = subQuestions[i];
+
+  // Iterate over sub-answers (if question.subQuestions is empty, use subAnswers length)
+  const iterationCount = subQuestions.length > 0 ? subQuestions.length : subAnswers.length;
+
+  for (let i = 0; i < iterationCount; i++) {
+    const subQ = subQuestions[i] || question; // Fall back to parent question if no sub-questions defined
     const subAnswer = subAnswers[i];
-    
+
     if (!subAnswer || !subAnswer.answered) {
       subQuestionResults.push({
         subIndex: i,
@@ -37,40 +40,127 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
       totalMaxPoints += (subQ.points || 1);
       continue;
     }
-    
-    // Create a temporary answer object for grading
-    const tempAnswer = {
-      selectedOption: subAnswer.selectedOption,
-      textAnswer: subAnswer.textAnswer,
-      matchingAnswers: subAnswer.matchingAnswers,
-      orderingAnswer: subAnswer.orderingAnswer
-    };
-    
-    // Grade this sub-question
-    const subGrading = await gradeQuestionFast(subQ, tempAnswer, subQ.correctAnswer || '');
-    
+
+    let subScore = 0;
+    let isCorrect = false;
+    let feedback = '';
+    let correctedAnswer = '';
+
+    // If question has subQuestions defined, use normal grading
+    if (subQuestions.length > 0) {
+      const tempAnswer = {
+        selectedOption: subAnswer.selectedOption,
+        textAnswer: subAnswer.textAnswer,
+        matchingAnswers: subAnswer.matchingAnswers,
+        orderingAnswer: subAnswer.orderingAnswer
+      };
+      const subModelAnswer = subQ.correctAnswer || modelAnswer || '';
+      const subGrading = await gradeQuestionFast(subQ, tempAnswer, subModelAnswer);
+      subScore = subGrading.score;
+      isCorrect = subGrading.isCorrect;
+      feedback = subGrading.feedback;
+      correctedAnswer = subGrading.correctedAnswer;
+    } else {
+      // Otherwise, grade based on parent question's options/wordBank
+      if (subAnswer.questionType === 'multiple-choice' || subAnswer.questionType === 'true-false') {
+        // Check if selected option matches any correct option in parent question
+        const correctOptions = question.options ? question.options.filter(opt => opt.isCorrect).map(opt => opt.text) : [];
+        console.log(`🔍 Sub-question ${i} MC grading:`, {
+          selectedOption: subAnswer.selectedOption,
+          correctOptions,
+          questionOptions: question.options?.map(o => ({ text: o.text, isCorrect: o.isCorrect }))
+        });
+        if (correctOptions.length > 0 && correctOptions.includes(subAnswer.selectedOption)) {
+          subScore = subQ.points || 1;
+          isCorrect = true;
+          feedback = 'Correct';
+          correctedAnswer = correctOptions.join(', ');
+        } else if (correctOptions.length === 0) {
+          // No correct options defined - fall back to AI grading
+          console.log(`⚠️ No correct options defined for sub-question ${i}, falling back to AI grading`);
+          const tempAnswer = {
+            selectedOption: subAnswer.selectedOption,
+            textAnswer: subAnswer.textAnswer
+          };
+          const subGrading = await gradeQuestionFast(question, tempAnswer, modelAnswer || '');
+          subScore = subGrading.score;
+          isCorrect = subGrading.isCorrect;
+          feedback = subGrading.feedback;
+          correctedAnswer = subGrading.correctedAnswer;
+        } else {
+          subScore = 0;
+          isCorrect = false;
+          feedback = `Incorrect. Correct answer: ${correctOptions.join(', ')}`;
+          correctedAnswer = correctOptions.join(', ');
+        }
+      } else if (subAnswer.questionType === 'fill-in-blank') {
+        // Check if answer matches any word in wordBank
+        const wordBank = question.wordBank || [];
+        const studentAnswer = subAnswer.textAnswer?.trim().toLowerCase();
+        console.log(`🔍 Sub-question ${i} fill-in-blank grading:`, {
+          studentAnswer,
+          wordBank
+        });
+        if (wordBank.length > 0 && studentAnswer && wordBank.some(word => word.toLowerCase() === studentAnswer)) {
+          subScore = subQ.points || 1;
+          isCorrect = true;
+          feedback = 'Correct';
+          correctedAnswer = studentAnswer;
+        } else if (wordBank.length === 0) {
+          // No wordBank defined - fall back to AI grading
+          console.log(`⚠️ No wordBank defined for sub-question ${i}, falling back to AI grading`);
+          const tempAnswer = {
+            selectedOption: subAnswer.selectedOption,
+            textAnswer: subAnswer.textAnswer
+          };
+          const subGrading = await gradeQuestionFast(question, tempAnswer, modelAnswer || '');
+          subScore = subGrading.score;
+          isCorrect = subGrading.isCorrect;
+          feedback = subGrading.feedback;
+          correctedAnswer = subGrading.correctedAnswer;
+        } else {
+          subScore = 0;
+          isCorrect = false;
+          feedback = `Incorrect. Valid answers: ${wordBank.join(', ')}`;
+          correctedAnswer = wordBank.join(', ');
+        }
+      } else {
+        // For other types, use the parent question's correctAnswer
+        const subModelAnswer = modelAnswer || '';
+        const tempAnswer = {
+          selectedOption: subAnswer.selectedOption,
+          textAnswer: subAnswer.textAnswer
+        };
+        const subGrading = await gradeQuestionFast(question, tempAnswer, subModelAnswer);
+        subScore = subGrading.score;
+        isCorrect = subGrading.isCorrect;
+        feedback = subGrading.feedback;
+        correctedAnswer = subGrading.correctedAnswer;
+      }
+    }
+
     subQuestionResults.push({
       subIndex: i,
-      score: subGrading.score,
+      score: subScore,
       maxPoints: subQ.points || 1,
-      feedback: subGrading.feedback,
-      isCorrect: subGrading.isCorrect,
-      correctedAnswer: subGrading.correctedAnswer
+      feedback,
+      isCorrect,
+      correctedAnswer
     });
-    
-    totalScore += subGrading.score;
+
+    totalScore += subScore;
     totalMaxPoints += (subQ.points || 1);
   }
-  
-  const overallFeedback = subQuestionResults.map(r => 
+
+  const overallFeedback = subQuestionResults.map(r =>
     `Sub-question ${r.subIndex + 1}: ${r.score}/${r.maxPoints} - ${r.feedback}`
   ).join('\n');
-  
+
   return {
     score: totalScore,
     feedback: overallFeedback,
     correctedAnswer: modelAnswer,
-    gradingMethod: 'sub_question_grading',
+    gradingMethod: 'fast_grading',
     subQuestionResults,
     totalMaxPoints
   };
@@ -915,10 +1005,11 @@ async function fastChunkedGrading(result, exam) {
 
       try {
         let grading;
-        
+
         // Handle sub-questions if present
-        if (answer.subQuestionAnswers && answer.subQuestionAnswers.length > 0 && question.subQuestions) {
+        if (answer.subQuestionAnswers && answer.subQuestionAnswers.length > 0) {
           console.log(`📝 Grading question with ${answer.subQuestionAnswers.length} sub-questions`);
+          // Grade sub-questions even if question.subQuestions doesn't exist
           grading = await gradeSubQuestionsFast(question, answer, question.correctAnswer);
         } else {
           grading = await gradeQuestionFast(question, answer, question.correctAnswer);

@@ -726,7 +726,14 @@ const Results = () => {
                                       // Helper to get label from item (handles both string and object formats)
                                       const getLabel = (item) => {
                                         if (typeof item === 'string') return item;
-                                        if (item && typeof item === 'object') return item.text || item.label || item.value || String(item);
+                                        if (item && typeof item === 'object') {
+                                          // Check for common label properties
+                                          if (item.text) return item.text;
+                                          if (item.label) return item.label;
+                                          if (item.value) return item.value;
+                                          // For complex objects, convert to JSON string
+                                          return JSON.stringify(item);
+                                        }
                                         return String(item);
                                       };
 

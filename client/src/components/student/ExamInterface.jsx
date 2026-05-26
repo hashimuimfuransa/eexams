@@ -3872,32 +3872,6 @@ const ExamInterface = () => {
                     </Box>
                   )}
 
-                  {/* Section-level word bank display */}
-                  {exam.sections.find(s => s.name === activeSection)?.wordBank && exam.sections.find(s => s.name === activeSection).wordBank.length > 0 && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: '#F0FDF4', borderRadius: 2, border: '2px solid #BBF7D0' }}>
-                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#166534', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        📝 Section Word Bank
-                      </Typography>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {exam.sections.find(s => s.name === activeSection).wordBank.map((word, idx) => (
-                          <Chip 
-                            key={idx} 
-                            label={word} 
-                            size="medium" 
-                            sx={{ 
-                              bgcolor: '#DCFCE7', 
-                              color: '#166534', 
-                              fontSize: 13, 
-                              fontWeight: 600,
-                              border: '1px solid #86EFAC',
-                              '&:hover': { bgcolor: '#BBF7D0' }
-                            }} 
-                          />
-                        ))}
-                      </Box>
-                    </Box>
-                  )}
-
                   {/* Selective answering information banner */}
                   {selectiveAnswering && (
                     <Box sx={{

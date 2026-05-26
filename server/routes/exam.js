@@ -12,6 +12,7 @@ const {
   updateExam,
   deleteExam,
   toggleExamLock,
+  allowStudentRetake,
   startExam,
   submitAnswer,
   completeExam,
@@ -180,6 +181,7 @@ router.put(
 );
 router.delete('/:id', authLimiter, isAdmin, invalidateExamCache, deleteExam);
 router.put('/:id/toggle-lock', authLimiter, isAdminOrTeacher, invalidateExamCache, toggleExamLock);
+router.post('/:examId/allow-retake/:studentId', authLimiter, isAdminOrTeacher, allowStudentRetake);
 router.post('/grade/:resultId', authLimiter, isAdmin, gradeManually);
 router.post('/ai-grade/:resultId', authLimiter, aiGradingLimiter, isAdmin, triggerAIGrading);
 router.get('/:id/debug', isAdmin, debugExamContent);

@@ -1067,7 +1067,7 @@ const toggleExamLock = async (req, res) => {
     }
 
     // Check if user is admin or the creator of the exam
-    if (req.user.role === 'admin' || req.user.role === 'superadmin' || 
+    if (req.user.role === 'admin' || req.user.role === 'superadmin' ||
         exam.createdBy.toString() === req.user._id.toString()) {
       exam.isLocked = !exam.isLocked;
       const updatedExam = await exam.save();
@@ -1082,6 +1082,53 @@ const toggleExamLock = async (req, res) => {
     }
   } catch (error) {
     console.error('Toggle exam lock error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Allow student to retake an assigned exam
+// @route   POST /api/exam/:examId/allow-retake/:studentId
+// @access  Private/Admin/Teacher
+const allowStudentRetake = async (req, res) => {
+  try {
+    const { examId, studentId } = req.params;
+
+    const exam = await Exam.findById(examId);
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Check if user is admin or the creator of the exam
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin' &&
+        exam.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Access denied. You can only manage your own exams.' });
+    }
+
+    // Check if student is assigned to this exam
+    if (!exam.assignedTo.includes(studentId)) {
+      return res.status(400).json({ message: 'Student is not assigned to this exam' });
+    }
+
+    // Find and delete the student's completed result to allow retake
+    const completedResult = await Result.findOne({
+      student: studentId,
+      exam: examId,
+      isCompleted: true
+    });
+
+    if (completedResult) {
+      console.log(`[AllowRetake] Deleting completed result for student ${studentId} on exam ${examId}`);
+      await Result.deleteOne({ _id: completedResult._id });
+    }
+
+    res.json({
+      success: true,
+      message: 'Student can now retake this exam'
+    });
+
+  } catch (error) {
+    console.error('Allow student retake error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -3772,6 +3819,7 @@ module.exports = {
   updateExam,
   deleteExam,
   toggleExamLock,
+  allowStudentRetake,
   startExam,
   submitAnswer,
   completeExam,

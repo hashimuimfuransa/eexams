@@ -1470,12 +1470,19 @@ const submitSharedExam = async (req, res) => {
 
 // @desc    Unlock a student's exam (allow retaking)
 // @route   POST /api/share/:shareToken/unlock/:studentId
+// @route   POST /api/share/:shareId/unlock-student/:studentId
 // @access  Private (Teacher)
 const unlockStudentExam = async (req, res) => {
   try {
-    const { shareToken, studentId } = req.params;
+    const { shareToken, shareId, studentId } = req.params;
 
-    const sharedExam = await SharedExam.findOne({ shareToken });
+    // Find by shareToken or shareId
+    const sharedExam = await SharedExam.findOne({
+      $or: [
+        { shareToken: shareToken },
+        { _id: shareId }
+      ]
+    });
 
     if (!sharedExam) {
       return res.status(404).json({ message: 'Share link not found' });

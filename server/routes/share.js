@@ -48,6 +48,7 @@ router.delete('/:shareId', isAdminOrTeacher, deleteShare);
 
 // Unlock student exam (allow retaking)
 router.post('/:shareId/unlock-student/:studentId', isAdminOrTeacher, unlockStudentExam);
+router.post('/:shareToken/unlock/:studentId', isAdminOrTeacher, unlockStudentExam);
 
 // Get share statistics
 router.get('/:shareId/stats', isAdminOrTeacher, getShareStats);

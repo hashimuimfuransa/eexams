@@ -3684,7 +3684,17 @@ const ExamInterface = () => {
                 let chipColor = 'default';
                 let chipVariant = 'outlined';
 
-                if (answers[question._id]?.answered) {
+                // Check if question is answered (either directly or via sub-questions)
+                let isAnswered = answers[question._id]?.answered;
+                if (!isAnswered && question.subQuestions && Array.isArray(question.subQuestions)) {
+                  // Check if any sub-questions are answered
+                  isAnswered = question.subQuestions.some((_, subIdx) => {
+                    const subAnswerKey = `${question._id}_sub_${subIdx}`;
+                    return answers[subAnswerKey]?.answered;
+                  });
+                }
+
+                if (isAnswered) {
                   // Question has been answered
                   chipColor = 'success';
                   chipVariant = 'filled';
@@ -3707,7 +3717,7 @@ const ExamInterface = () => {
                   <Tooltip
                     key={question._id}
                     title={
-                      answers[question._id]?.answered
+                      isAnswered
                         ? "✅ Question answered"
                         : isSelectiveSection
                         ? isSelected
@@ -3743,7 +3753,7 @@ const ExamInterface = () => {
                         ? isSelected
                           ? <CheckCircle fontSize="small" />
                           : <RadioButtonUnchecked fontSize="small" />
-                        : answers[question._id]?.answered
+                        : isAnswered
                         ? <CheckCircle fontSize="small" />
                         : null}
                       sx={{
@@ -3766,7 +3776,7 @@ const ExamInterface = () => {
                           }
                         }),
                         // Add visual emphasis for answered questions
-                        ...(answers[question._id]?.answered && {
+                        ...(isAnswered && {
                           boxShadow: '0 2px 8px rgba(76, 175, 80, 0.3)',
                         })
                       }}

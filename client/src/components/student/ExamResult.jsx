@@ -549,6 +549,83 @@ const ExamResult = () => {
                           </Alert>
                         )}
 
+                        {/* Sub-questions display */}
+                        {question.subQuestions && question.subQuestions.length > 0 && (
+                          <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                              Sub-Questions:
+                              {question.subQuestionConfig?.mode === 'choose-n' && (
+                                <Chip
+                                  label={`Choose ${question.subQuestionConfig.requiredCount || 1}`}
+                                  size="small"
+                                  color="warning"
+                                  sx={{ ml: 1 }}
+                                />
+                              )}
+                            </Typography>
+
+                            {/* Show selected sub-questions for choose-n mode */}
+                            {question.subQuestionConfig?.mode === 'choose-n' && answer.selectedSubQuestionIndices && (
+                              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                                Selected: {answer.selectedSubQuestionIndices.map(idx =>
+                                  question.subQuestions[idx]?.label || String.fromCharCode(65 + idx)
+                                ).join(', ')}
+                              </Typography>
+                            )}
+
+                            {question.subQuestions.map((subQ, subIdx) => {
+                              const isSelected = question.subQuestionConfig?.mode === 'choose-n'
+                                ? (answer.selectedSubQuestionIndices || []).includes(subIdx)
+                                : true; // In 'all' mode, all are shown
+
+                              if (!isSelected) return null;
+
+                              const subAnswer = answer.subQuestionAnswers?.[subIdx];
+                              const subResult = answer.subQuestionResults?.[subIdx];
+
+                              return (
+                                <Box key={subIdx} sx={{ p: 1.5, mb: 1, bgcolor: 'white', borderRadius: 1, borderLeft: '3px solid', borderColor: subResult?.isCorrect ? 'success.main' : 'error.main' }}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <Typography variant="body2" fontWeight="medium" sx={{ flex: 1 }}>
+                                      {subQ.label || `Part ${String.fromCharCode(65 + subIdx)}`}: {subQ.text}
+                                    </Typography>
+                                    {subResult && (
+                                      <Chip
+                                        icon={subResult.isCorrect ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
+                                        label={`${subResult.score}/${subResult.maxPoints || subQ.points || 1}`}
+                                        color={subResult.isCorrect ? 'success' : 'error'}
+                                        size="small"
+                                        sx={{ ml: 1 }}
+                                      />
+                                    )}
+                                  </Box>
+                                  {subAnswer?.answered ? (
+                                    <Box sx={{ mt: 1 }}>
+                                      <Typography variant="body2" color="text.secondary">
+                                        <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                      </Typography>
+                                      {subResult && !subResult.isCorrect && subResult.correctedAnswer && (
+                                        <Typography variant="body2" color="success.main" sx={{ mt: 0.5 }}>
+                                          <strong>Correct answer:</strong> {subResult.correctedAnswer}
+                                        </Typography>
+                                      )}
+                                      {subResult && subResult.feedback && (
+                                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                          <strong>Feedback:</strong> {subResult.feedback}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  ) : (
+                                    <Typography variant="body2" color="error.main" sx={{ mt: 1 }}>
+                                      Not answered
+                                    </Typography>
+                                  )}
+                                </Box>
+                              );
+                            })}
+                          </Box>
+                        )}
+
                         {/* App Recommendation for Failed Questions */}
                         {!isCorrect && (
                           <Box

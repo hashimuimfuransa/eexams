@@ -722,7 +722,7 @@ const Results = () => {
                                           <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                                             Sub-Questions:
                                             {answer.question.subQuestionConfig?.mode === 'choose-n' && (
-                                              <Chip 
+                                              <Chip
                                                 label={`Choose ${answer.question.subQuestionConfig.requiredCount || 1}`}
                                                 size="small"
                                                 color="warning"
@@ -730,35 +730,57 @@ const Results = () => {
                                               />
                                             )}
                                           </Typography>
-                                          
+
                                           {/* Show selected sub-questions for choose-n mode */}
                                           {answer.question.subQuestionConfig?.mode === 'choose-n' && answer.selectedSubQuestionIndices && (
                                             <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                                              Selected: {answer.selectedSubQuestionIndices.map(idx => 
+                                              Selected: {answer.selectedSubQuestionIndices.map(idx =>
                                                 answer.question.subQuestions[idx]?.label || String.fromCharCode(65 + idx)
                                               ).join(', ')}
                                             </Typography>
                                           )}
-                                          
+
                                           {answer.question.subQuestions.map((subQ, subIdx) => {
-                                            const isSelected = answer.question.subQuestionConfig?.mode === 'choose-n' 
+                                            const isSelected = answer.question.subQuestionConfig?.mode === 'choose-n'
                                               ? (answer.selectedSubQuestionIndices || []).includes(subIdx)
                                               : true; // In 'all' mode, all are shown
-                                            
+
                                             if (!isSelected) return null;
-                                            
+
                                             const subAnswer = answer.subQuestionAnswers?.[subIdx];
-                                            
+                                            const subResult = answer.subQuestionResults?.[subIdx];
+
                                             return (
-                                              <Paper key={subIdx} elevation={0} sx={{ p: 1.5, mb: 1, bgcolor: 'white' }}>
-                                                <Typography variant="body2" fontWeight="medium">
-                                                  {subQ.label || `Part ${String.fromCharCode(65 + subIdx)}`}: {subQ.text}
-                                                </Typography>
+                                              <Paper key={subIdx} elevation={0} sx={{ p: 1.5, mb: 1, bgcolor: 'white', borderLeft: '3px solid', borderColor: subResult?.isCorrect ? 'success.main' : 'error.main' }}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                  <Typography variant="body2" fontWeight="medium" sx={{ flex: 1 }}>
+                                                    {subQ.label || `Part ${String.fromCharCode(65 + subIdx)}`}: {subQ.text}
+                                                  </Typography>
+                                                  {subResult && (
+                                                    <Chip
+                                                      icon={subResult.isCorrect ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
+                                                      label={`${subResult.score}/${subResult.maxPoints || subQ.points || 1}`}
+                                                      color={subResult.isCorrect ? 'success' : 'error'}
+                                                      size="small"
+                                                      sx={{ ml: 1 }}
+                                                    />
+                                                  )}
+                                                </Box>
                                                 {subAnswer?.answered ? (
                                                   <Box sx={{ mt: 1 }}>
                                                     <Typography variant="body2" color="text.secondary">
-                                                      Your answer: {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                                      <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
                                                     </Typography>
+                                                    {subResult && !subResult.isCorrect && subResult.correctedAnswer && (
+                                                      <Typography variant="body2" color="success.main" sx={{ mt: 0.5 }}>
+                                                        <strong>Correct answer:</strong> {subResult.correctedAnswer}
+                                                      </Typography>
+                                                    )}
+                                                    {subResult && subResult.feedback && (
+                                                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                        <strong>Feedback:</strong> {subResult.feedback}
+                                                      </Typography>
+                                                    )}
                                                   </Box>
                                                 ) : (
                                                   <Typography variant="body2" color="error.main" sx={{ mt: 1 }}>

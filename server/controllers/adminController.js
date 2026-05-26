@@ -1889,11 +1889,33 @@ const getActivityLogs = async (req, res) => {
 // @access  Private/Admin
 const createExam = async (req, res) => {
   try {
-    console.log('Create exam request received:', req.body);
+    console.log('=== SERVER UPLOAD DEBUG START ===');
+    console.log('Request headers:', {
+      'content-type': req.headers['content-type'],
+      'content-length': req.headers['content-length']
+    });
+    console.log('Request body:', req.body);
     console.log('Files received:', req.files);
     console.log('createExam - req.orgAdminId:', req.orgAdminId);
     console.log('createExam - req.user._id:', req.user?._id);
     console.log('createExam - req.user.role:', req.user?.role);
+    
+    if (req.files) {
+      console.log('File details:');
+      Object.keys(req.files).forEach(key => {
+        const files = req.files[key];
+        if (Array.isArray(files)) {
+          files.forEach((file, idx) => {
+            console.log(`  ${key}[${idx}]:`, {
+              originalname: file.originalname,
+              size: file.size,
+              mimetype: file.mimetype,
+              path: file.path
+            });
+          });
+        }
+      });
+    }
 
     // Ensure we have a valid createdBy ID
     const createdById = req.orgAdminId || req.user?._id;
@@ -1911,7 +1933,9 @@ const createExam = async (req, res) => {
 
     // Initialize file variables
     let examFilePath = null;
+    let examFileOriginalName = null;
     let answerFilePath = null;
+    let answerFileOriginalName = null;
     let questionImageUrls = [];
 
     // Check if files are uploaded
@@ -1919,12 +1943,15 @@ const createExam = async (req, res) => {
       if (req.files.examFile) {
         const examFile = req.files.examFile[0];
         examFilePath = examFile.path;
+        examFileOriginalName = examFile.originalname; // Store original filename for extension detection
         console.log('Exam file uploaded:', examFilePath);
+        console.log('Exam file original name:', examFileOriginalName);
       }
 
       if (req.files.answerFile) {
         const answerFile = req.files.answerFile[0];
         answerFilePath = answerFile.path;
+        answerFileOriginalName = answerFile.originalname; // Store original filename for extension detection
         console.log('Answer file uploaded:', answerFilePath);
       }
 
@@ -2134,8 +2161,9 @@ const createExam = async (req, res) => {
       try {
         const { parseFile } = require('../utils/fileParser');
         console.log('Attempting to parse exam file:', examFilePath);
+        console.log('Using original filename for extension:', examFileOriginalName);
 
-        const parsedExam = await parseFile(examFilePath, answerData);
+        const parsedExam = await parseFile(examFilePath, answerData, examFileOriginalName);
         console.log('Exam file parsed successfully');
 
         // Create questions for each section
@@ -4016,13 +4044,18 @@ const updateQuestion = async (req, res) => {
     if (!q) return res.status(404).json({ message: 'Question not found' });
     if (q.exam.createdBy.toString() !== req.orgAdminId.toString())
       return res.status(403).json({ message: 'Not authorized' });
-    const { text, type, points, difficulty, correctAnswer, options } = req.body;
+    const { text, type, points, difficulty, correctAnswer, options, subQuestions, subQuestionConfig, subQuestionMode, explanation, answerKey } = req.body;
     if (text !== undefined) q.text = text;
     if (type !== undefined) q.type = type;
     if (points !== undefined) q.points = points;
     if (difficulty !== undefined) q.difficulty = difficulty;
     if (correctAnswer !== undefined) q.correctAnswer = correctAnswer;
     if (options !== undefined) q.options = options;
+    if (subQuestions !== undefined) q.subQuestions = subQuestions;
+    if (subQuestionConfig !== undefined) q.subQuestionConfig = subQuestionConfig;
+    if (subQuestionMode !== undefined) q.subQuestionMode = subQuestionMode; // Backward compatibility
+    if (explanation !== undefined) q.explanation = explanation;
+    if (answerKey !== undefined) q.answerKey = answerKey;
     await q.save();
     res.json(q);
   } catch (err) {
@@ -4711,12 +4744,22 @@ const updateExam = async (req, res) => {
         if (q.dragDropData !== undefined) {
           updateData.dragDropData = q.dragDropData;
         }
-        
+
         // Update options for multiple choice
         if (q.options !== undefined) {
           updateData.options = q.options;
         }
-        
+
+        // Update sub-questions
+        if (q.subQuestions !== undefined) {
+          updateData.subQuestions = q.subQuestions;
+          console.log(`Updating subQuestions for question ${q._id}`);
+        }
+        if (q.subQuestionConfig !== undefined) {
+          updateData.subQuestionConfig = q.subQuestionConfig;
+          console.log(`Updating subQuestionConfig for question ${q._id}`);
+        }
+
         // Update other fields
         if (q.keyPoints !== undefined) updateData.keyPoints = q.keyPoints;
         if (q.acceptableAnswers !== undefined) updateData.acceptableAnswers = q.acceptableAnswers;
@@ -4763,7 +4806,9 @@ const updateExam = async (req, res) => {
                   matchingPairs: q.matchingPairs,
                   itemsToOrder: q.itemsToOrder,
                   dragDropData: q.dragDropData,
-                  imageUrl: q.imageUrl || q.image || ''
+                  imageUrl: q.imageUrl || q.image || '',
+                  subQuestions: q.subQuestions,
+                  subQuestionConfig: q.subQuestionConfig
                 }
               }
             });

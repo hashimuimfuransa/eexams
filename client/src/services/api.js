@@ -6,7 +6,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 8000 // 8 seconds default timeout - reduced for faster feedback
+  timeout: 60000 // 60 seconds default timeout
 });
 
 // Add a request interceptor to add auth token to requests
@@ -31,6 +31,16 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // For file uploads (FormData), let browser set Content-Type with correct boundary
+    if (config.data && config.data instanceof FormData) {
+      config.timeout = 600000; // 10 minutes for file uploads
+      delete config.headers['Content-Type']; // Browser will set with boundary
+      console.log('API Interceptor: FormData detected, deleted Content-Type header');
+      console.log('API Interceptor: Request URL:', config.url);
+      console.log('API Interceptor: FormData entries count:', Array.from(config.data.entries()).length);
+    }
+
     return config;
   },
   (error) => {

@@ -159,6 +159,41 @@ console.log('- /api/marketplace/* (Marketplace routes)');
 console.log('- /api/exam/test-routes (Debug route)');
 console.log('- /api/exam/:id/select-question (Question selection route)');
 
+// Global error handler for uncaught errors (including multipart parsing errors)
+app.use((err, req, res, next) => {
+  console.error('Global error handler caught:', err.message);
+  
+  // Handle multer/busboy errors
+  if (err.message && err.message.includes('Unexpected end of form')) {
+    return res.status(400).json({ 
+      message: 'Upload was interrupted. Please check your connection and try again.',
+      error: 'UPLOAD_INTERRUPTED'
+    });
+  }
+  
+  // Handle file size errors
+  if (err.code === 'LIMIT_FILE_SIZE' || err.message.includes('file too large')) {
+    return res.status(413).json({ 
+      message: 'File too large. Maximum size is 50MB.',
+      error: 'FILE_TOO_LARGE'
+    });
+  }
+  
+  // Handle unexpected file field errors
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({ 
+      message: 'Unexpected file field. Please use the correct file upload field.',
+      error: 'UNEXPECTED_FILE'
+    });
+  }
+  
+  // Generic error response
+  res.status(err.status || 500).json({
+    message: err.message || 'An unexpected error occurred',
+    error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -188,24 +223,75 @@ app.get('/sitemap.xml', seoController.generateSitemap);
 // Optimize mongoose settings for faster performance
 mongoose.set('bufferCommands', false); // Disable mongoose buffering for faster responses
 
-// Connect to MongoDB with optimized settings for faster performance
-mongoose.connect(process.env.MONGODB_URI, {
-  // Connection pool settings for better performance
-  maxPoolSize: 20, // Increased from 10 to 20 for better concurrent processing
-  serverSelectionTimeoutMS: 10000, // Increased from 5000 to 10000 for slower connections
-  socketTimeoutMS: 120000, // Increased from 45000 to 120000 (2 minutes) for long grading operations
-  // Optimize for faster authentication
-  connectTimeoutMS: 15000, // Increased from 10000 to 15000
-})
-  .then(() => {
-    console.log('Connected to MongoDB with optimized settings');
+// Process-level error handling to prevent server crashes
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err.message);
+  console.error(err.stack);
+  // Don't exit immediately - let the global error handler deal with it
+  if (err.message && err.message.includes('Unexpected end of form')) {
+    console.log('Form parsing error caught at process level - server continuing');
+    return; // Don't crash for this specific error
+  }
+  // For other uncaught exceptions, exit gracefully after a delay
+  setTimeout(() => process.exit(1), 1000);
+});
 
-    // Start server
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Continue running - don't crash
+});
+
+// Robust MongoDB connection with retry logic
+const MAX_DB_RETRIES = 5;
+const DB_RETRY_DELAY = 3000;
+
+const connectWithRetry = async (retries = 0) => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      maxPoolSize: 20,
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 120000,
+      connectTimeoutMS: 15000,
+      // Add heartbeat to detect stale connections
+      heartbeatFrequencyMS: 10000,
+      // Retry writes for better resilience
+      retryWrites: true,
+      w: 'majority'
+    });
+    
+    console.log('Connected to MongoDB with optimized settings');
+    
+    // Start server only after successful connection
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT} with performance optimizations`);
     });
-  })
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
-  });
+    
+  } catch (err) {
+    console.error(`MongoDB connection attempt ${retries + 1} failed:`, err.message);
+    
+    if (retries < MAX_DB_RETRIES) {
+      console.log(`Retrying in ${DB_RETRY_DELAY}ms... (${retries + 1}/${MAX_DB_RETRIES})`);
+      setTimeout(() => connectWithRetry(retries + 1), DB_RETRY_DELAY);
+    } else {
+      console.error('Max retries reached. Could not connect to MongoDB.');
+      process.exit(1);
+    }
+  }
+};
+
+// Handle MongoDB connection events
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB runtime error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB disconnected. Will attempt to reconnect...');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('MongoDB reconnected successfully');
+});
+
+// Initial connection
+connectWithRetry();

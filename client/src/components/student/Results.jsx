@@ -715,6 +715,61 @@ const Results = () => {
                                           </Typography>
                                         </>
                                       )}
+                                      
+                                      {/* Sub-questions display */}
+                                      {answer.question.subQuestions && answer.question.subQuestions.length > 0 && (
+                                        <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
+                                          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                                            Sub-Questions:
+                                            {answer.question.subQuestionConfig?.mode === 'choose-n' && (
+                                              <Chip 
+                                                label={`Choose ${answer.question.subQuestionConfig.requiredCount || 1}`}
+                                                size="small"
+                                                color="warning"
+                                                sx={{ ml: 1 }}
+                                              />
+                                            )}
+                                          </Typography>
+                                          
+                                          {/* Show selected sub-questions for choose-n mode */}
+                                          {answer.question.subQuestionConfig?.mode === 'choose-n' && answer.selectedSubQuestionIndices && (
+                                            <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                                              Selected: {answer.selectedSubQuestionIndices.map(idx => 
+                                                answer.question.subQuestions[idx]?.label || String.fromCharCode(65 + idx)
+                                              ).join(', ')}
+                                            </Typography>
+                                          )}
+                                          
+                                          {answer.question.subQuestions.map((subQ, subIdx) => {
+                                            const isSelected = answer.question.subQuestionConfig?.mode === 'choose-n' 
+                                              ? (answer.selectedSubQuestionIndices || []).includes(subIdx)
+                                              : true; // In 'all' mode, all are shown
+                                            
+                                            if (!isSelected) return null;
+                                            
+                                            const subAnswer = answer.subQuestionAnswers?.[subIdx];
+                                            
+                                            return (
+                                              <Paper key={subIdx} elevation={0} sx={{ p: 1.5, mb: 1, bgcolor: 'white' }}>
+                                                <Typography variant="body2" fontWeight="medium">
+                                                  {subQ.label || `Part ${String.fromCharCode(65 + subIdx)}`}: {subQ.text}
+                                                </Typography>
+                                                {subAnswer?.answered ? (
+                                                  <Box sx={{ mt: 1 }}>
+                                                    <Typography variant="body2" color="text.secondary">
+                                                      Your answer: {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                                    </Typography>
+                                                  </Box>
+                                                ) : (
+                                                  <Typography variant="body2" color="error.main" sx={{ mt: 1 }}>
+                                                    Not answered
+                                                  </Typography>
+                                                )}
+                                              </Paper>
+                                            );
+                                          })}
+                                        </Box>
+                                      )}
                                     </>
                                   ) : answer.question.type === 'matching' ? (
                                     (() => {

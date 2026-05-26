@@ -1468,12 +1468,25 @@ const submitAnswer = async (req, res) => {
       hasDragDropAnswer: !!dragDropAnswer
     });
 
+    // Check if this is a sub-question answer (format: "parentId_sub_index")
+    const subQuestionMatch = questionId && questionId.match(/^(.+)_sub_(\d+)$/);
+    let isSubQuestion = false;
+    let parentQuestionId = questionId;
+    let subQuestionIndex = null;
+    
+    if (subQuestionMatch) {
+      isSubQuestion = true;
+      parentQuestionId = subQuestionMatch[1];
+      subQuestionIndex = parseInt(subQuestionMatch[2]);
+      console.log(`Detected sub-question answer: parent=${parentQuestionId}, index=${subQuestionIndex}`);
+    }
+
     // Import validation utilities
     const { validateAnswerSubmission, sanitizeAnswerData } = require('../utils/examSubmissionValidator');
 
     // Sanitize input data
     const sanitizedData = sanitizeAnswerData({
-      questionId,
+      questionId: parentQuestionId,
       selectedOption,
       textAnswer,
       questionType,
@@ -1555,6 +1568,87 @@ const submitAnswer = async (req, res) => {
       orderingAnswer: cleanOrderingAnswer,
       dragDropAnswer: cleanDragDropAnswer
     } = sanitizedData;
+
+    // Handle sub-question answers
+    if (isSubQuestion) {
+      console.log(`Processing sub-question answer for parent question ${parentQuestionId}, sub-index ${subQuestionIndex}`);
+      
+      // Initialize subQuestionAnswers array if not exists
+      if (!result.answers[answerIndex].subQuestionAnswers) {
+        result.answers[answerIndex].subQuestionAnswers = [];
+      }
+      
+      // Ensure the array has the correct length
+      while (result.answers[answerIndex].subQuestionAnswers.length <= subQuestionIndex) {
+        result.answers[answerIndex].subQuestionAnswers.push({});
+      }
+      
+      // Save the sub-question answer based on type
+      const subAnswerData = {
+        answered: true,
+        answeredAt: new Date()
+      };
+      
+      if (questionType === 'multiple-choice' || questionType === 'true-false') {
+        subAnswerData.selectedOption = cleanSelectedOption;
+        subAnswerData.questionType = questionType;
+      } else if (questionType === 'clear') {
+        // Clear this sub-question answer
+        subAnswerData.answered = false;
+        subAnswerData.selectedOption = null;
+        subAnswerData.textAnswer = null;
+      } else {
+        subAnswerData.textAnswer = cleanTextAnswer;
+        subAnswerData.questionType = questionType || 'open-ended';
+      }
+      
+      result.answers[answerIndex].subQuestionAnswers[subQuestionIndex] = subAnswerData;
+      
+      // Mark parent question as having sub-answers
+      result.answers[answerIndex].hasSubQuestionAnswers = true;
+      result.answers[answerIndex].answered = true;
+      
+      await result.save();
+      
+      console.log(`Saved sub-question answer for parent ${parentQuestionId}, sub-index ${subQuestionIndex}`);
+      
+      return res.json({
+        success: true,
+        message: 'Sub-question answer saved successfully',
+        isSubQuestion: true,
+        parentQuestionId,
+        subQuestionIndex
+      });
+    }
+    
+    // Handle sub-question selection (choose-n mode)
+    if (req.body.isSubQuestionSelection) {
+      console.log(`Processing sub-question selection for question ${parentQuestionId}`);
+      
+      const { selectedSubQuestionIndex, selectedSubQuestionIndices } = req.body;
+      
+      // Support both old single-index format and new array format
+      if (selectedSubQuestionIndices !== undefined) {
+        result.answers[answerIndex].selectedSubQuestionIndices = selectedSubQuestionIndices;
+      } else if (selectedSubQuestionIndex !== undefined) {
+        result.answers[answerIndex].selectedSubQuestionIndex = selectedSubQuestionIndex;
+        result.answers[answerIndex].selectedSubQuestionIndices = [selectedSubQuestionIndex];
+      }
+      
+      result.answers[answerIndex].answered = true;
+      
+      await result.save();
+      
+      console.log(`Saved sub-question selection for question ${parentQuestionId}`);
+      
+      return res.json({
+        success: true,
+        message: 'Sub-question selection saved successfully',
+        isSubQuestionSelection: true,
+        parentQuestionId,
+        selectedSubQuestionIndices: result.answers[answerIndex].selectedSubQuestionIndices
+      });
+    }
 
     // Update the answer based on the actual question type
     if (actualQuestionType === 'multiple-choice' && !actualQuestionType.includes('fill-in')) {

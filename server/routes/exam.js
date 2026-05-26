@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const mammoth = require('mammoth');
-const { examFileStorage } = require('../config/cloudinary');
+const { examFileStorage, referenceFileStorage } = require('../config/cloudinary');
 const pdf = require('pdf-parse');
 const {
   createExam,
@@ -40,10 +40,9 @@ const { authLimiter, submissionLimiter, aiGradingLimiter, examCreationLimiter } 
 const { cacheExam, cacheExamList, invalidateExamCache } = require('../middleware/cacheMiddleware');
 const groqClient = require('../utils/groqClient');
 
-// Configure multer for reference file uploads (memory storage)
-const memoryStorage = multer.memoryStorage();
-const memoryUpload = multer({
-  storage: memoryStorage,
+// Configure multer for reference file uploads using Cloudinary
+const referenceUpload = multer({
+  storage: referenceFileStorage,
   limits: {
     fileSize: 50 * 1024 * 1024 // 50MB limit for larger files
   },
@@ -120,6 +119,29 @@ const upload = multer({
   }
 });
 
+// Multer error handling middleware
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    // A Multer error occurred when uploading
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ message: 'Unexpected file field. Only examFile and answerFile are allowed.' });
+    }
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ message: 'File too large. Maximum size is 50MB.' });
+    }
+    return res.status(400).json({ message: `Upload error: ${err.message}` });
+  } else if (err) {
+    // An unknown error occurred
+    if (err.message && err.message.includes('Unexpected end of form')) {
+      console.error('Form parsing error - client may have disconnected:', err.message);
+      return res.status(400).json({ message: 'Upload was interrupted. Please try again with a stable connection.' });
+    }
+    // Pass other errors to default error handler
+    return res.status(500).json({ message: err.message || 'Server error during upload' });
+  }
+  next();
+};
+
 // Apply auth middleware to all routes
 router.use(auth);
 
@@ -134,6 +156,7 @@ router.post(
     { name: 'examFile', maxCount: 1 },
     { name: 'answerFile', maxCount: 1 }
   ]),
+  handleMulterError,
   invalidateExamCache,
   createExam
 );
@@ -151,6 +174,7 @@ router.put(
     { name: 'examFile', maxCount: 1 },
     { name: 'answerFile', maxCount: 1 }
   ]),
+  handleMulterError,
   invalidateExamCache,
   updateExam
 );
@@ -659,7 +683,13 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
           points: sq.points || 1,
           correctAnswer: sq.correctAnswer || '',
           options: sq.options || []
-        })) : []
+        })) : [],
+        // Sub-question configuration: mode ('all' or 'choose-n'), requiredCount, scoringType
+        subQuestionConfig: q.subQuestionConfig || {
+          mode: q.subQuestionMode || 'all', // Backward compatibility
+          requiredCount: 1,
+          scoringType: 'partial'
+        }
       };
 
       // Handle options - preserve user's options but ensure correct structure
@@ -949,32 +979,47 @@ router.get('/drafts', auth, isAdminOrTeacher, async (req, res) => {
 });
 
 // Upload reference material (exam, textbook, study guide) for AI to reference
-router.post('/upload-reference', auth, isAdminOrTeacher, memoryUpload.single('file'), async (req, res) => {
+router.post('/upload-reference', auth, isAdminOrTeacher, referenceUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    const { buffer, originalname, mimetype, size } = req.file;
+    const { path: cloudinaryUrl, originalname, mimetype, size } = req.file;
     const ext = path.extname(originalname).toLowerCase();
-    let content = '';
-
+    
+    console.log(`File uploaded to Cloudinary: ${cloudinaryUrl}`);
     console.log(`Processing file: ${originalname}, size: ${(size / 1024 / 1024).toFixed(2)}MB, type: ${mimetype}`);
 
-    // Parse file based on type
-    if (ext === '.pdf') {
-      const data = await pdf(buffer);
-      content = data.text;
-      console.log(`PDF extracted: ${content.length} characters`);
-    } else if (ext === '.doc' || ext === '.docx') {
-      const result = await mammoth.extractRawText({ buffer });
-      content = result.value;
-      console.log(`DOCX extracted: ${content.length} characters`);
-    } else if (ext === '.txt') {
-      content = buffer.toString('utf-8');
-      console.log(`TXT extracted: ${content.length} characters`);
-    } else {
-      return res.status(400).json({ message: 'Unsupported file type' });
+    // Download file from Cloudinary for text extraction
+    const axios = require('axios');
+    let content = '';
+    
+    try {
+      const response = await axios.get(cloudinaryUrl, { 
+        responseType: 'arraybuffer',
+        timeout: 30000 // 30 second timeout
+      });
+      const buffer = Buffer.from(response.data);
+      
+      // Parse file based on type
+      if (ext === '.pdf') {
+        const data = await pdf(buffer);
+        content = data.text;
+        console.log(`PDF extracted: ${content.length} characters`);
+      } else if (ext === '.doc' || ext === '.docx') {
+        const result = await mammoth.extractRawText({ buffer });
+        content = result.value;
+        console.log(`DOCX extracted: ${content.length} characters`);
+      } else if (ext === '.txt') {
+        content = buffer.toString('utf-8');
+        console.log(`TXT extracted: ${content.length} characters`);
+      } else {
+        return res.status(400).json({ message: 'Unsupported file type' });
+      }
+    } catch (downloadError) {
+      console.error('Error downloading/processing file from Cloudinary:', downloadError);
+      return res.status(500).json({ message: 'Failed to process uploaded file from storage' });
     }
 
     // Clean up the content more efficiently
@@ -994,12 +1039,16 @@ router.post('/upload-reference', auth, isAdminOrTeacher, memoryUpload.single('fi
       filename: originalname,
       type: mimetype,
       size: size,
-      contentLength: content.length
+      contentLength: content.length,
+      cloudinaryUrl: cloudinaryUrl // Return the Cloudinary URL for reference
     });
   } catch (error) {
     console.error('Error uploading reference file:', error);
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({ message: 'File too large. Maximum size is 50MB.' });
+    }
+    if (error.message && error.message.includes('Unexpected end of form')) {
+      return res.status(400).json({ message: 'Upload was interrupted. Please check your connection and try again.' });
     }
     res.status(500).json({ message: 'Failed to process file: ' + error.message });
   }
@@ -1125,6 +1174,139 @@ Return ONLY a JSON object with this structure:
             }
           ],
           "correctAnswer": "a) Due to energy losses b) Thicker wires reduce resistance c) Step-down transformer d) For lighting/cooking"
+        },
+        {
+          "questionNumber": 12,
+          "text": "Choose the best option from the given alternatives to fill the blank space.",
+          "type": "open-ended",
+          "points": 4,
+          "subQuestions": [
+            {
+              "label": "a)",
+              "text": "_____ how hard she tried, her boss always complained about her work.",
+              "type": "multiple-choice",
+              "points": 1,
+              "options": [
+                {"letter": "i", "text": "No matter", "isCorrect": true},
+                {"letter": "ii", "text": "As much as", "isCorrect": false},
+                {"letter": "iii", "text": "Nonetheless", "isCorrect": false},
+                {"letter": "iv", "text": "Although", "isCorrect": false},
+                {"letter": "v", "text": "As though", "isCorrect": false}
+              ],
+              "correctAnswer": "i"
+            },
+            {
+              "label": "b)",
+              "text": "He consistently refused to take his medicine and _____ his illness has gotten worse.",
+              "type": "multiple-choice",
+              "points": 1,
+              "options": [
+                {"letter": "i", "text": "otherwise", "isCorrect": false},
+                {"letter": "ii", "text": "on the other hand", "isCorrect": false},
+                {"letter": "iii", "text": "unless", "isCorrect": false},
+                {"letter": "iv", "text": "as long as", "isCorrect": false},
+                {"letter": "v", "text": "consequently", "isCorrect": true}
+              ],
+              "correctAnswer": "v"
+            },
+            {
+              "label": "c)",
+              "text": "When Sir Richard Burton set out on his pilgrimage to Mecca in 1854, no one knew _____ he would return alive.",
+              "type": "multiple-choice",
+              "points": 1,
+              "options": [
+                {"letter": "i", "text": "unless", "isCorrect": false},
+                {"letter": "ii", "text": "whether", "isCorrect": true},
+                {"letter": "iii", "text": "in case", "isCorrect": false},
+                {"letter": "iv", "text": "however", "isCorrect": false},
+                {"letter": "v", "text": "until", "isCorrect": false}
+              ],
+              "correctAnswer": "ii"
+            },
+            {
+              "label": "d)",
+              "text": "On the other hand, I have never understood _____ people have to rely on the leisure industry, instead of using their imaginations.",
+              "type": "multiple-choice",
+              "points": 1,
+              "options": [
+                {"letter": "i", "text": "why", "isCorrect": true},
+                {"letter": "ii", "text": "how", "isCorrect": false},
+                {"letter": "iii", "text": "when", "isCorrect": false},
+                {"letter": "iv", "text": "where", "isCorrect": false}
+              ],
+              "correctAnswer": "i"
+            }
+          ],
+          "correctAnswer": "a) i) No matter; b) v) consequently; c) ii) whether; d) i) why"
+        },
+        {
+          "questionNumber": 15,
+          "text": "Choose ONE of the following questions and write a detailed essay. (20 marks)",
+          "type": "open-ended",
+          "points": 20,
+          "subQuestionConfig": { "mode": "choose-n", "requiredCount": 1, "scoringType": "partial" },
+          "subQuestions": [
+            {
+              "label": "a)",
+              "text": "Discuss the causes and consequences of World War I in detail.",
+              "type": "essay",
+              "points": 20,
+              "correctAnswer": "A comprehensive essay covering: militarism, alliances, imperialism, nationalism as causes; and political, economic, social consequences including Treaty of Versailles and League of Nations."
+            },
+            {
+              "label": "b)",
+              "text": "Analyze the effects of the Industrial Revolution on European society.",
+              "type": "essay",
+              "points": 20,
+              "correctAnswer": "Detailed analysis of: urbanization, working class conditions, technological innovations, economic changes, social reforms, environmental impacts, and long-term societal transformations."
+            },
+            {
+              "label": "c)",
+              "text": "Evaluate the impact of colonialism on African nations.",
+              "type": "essay",
+              "points": 20,
+              "correctAnswer": "Critical evaluation of: resource extraction, cultural disruption, political boundaries drawn by Europeans, economic dependency, resistance movements, and post-colonial challenges."
+            }
+          ],
+          "correctAnswer": "Student chooses ONE of a), b), or c) and receives marks for their chosen essay"
+        },
+        {
+          "questionNumber": 16,
+          "text": "Answer any TWO of the following questions. Each question carries 5 marks.",
+          "type": "short-answer",
+          "points": 10,
+          "subQuestionConfig": { "mode": "choose-n", "requiredCount": 2, "scoringType": "partial" },
+          "subQuestions": [
+            {
+              "label": "a)",
+              "text": "Define photosynthesis and state its importance.",
+              "type": "short-answer",
+              "points": 5,
+              "correctAnswer": "Photosynthesis is the process by which plants convert light energy into chemical energy (glucose). Importance: produces oxygen, forms base of food chain, removes CO2 from atmosphere."
+            },
+            {
+              "label": "b)",
+              "text": "Explain the water cycle in brief.",
+              "type": "short-answer",
+              "points": 5,
+              "correctAnswer": "Water cycle involves evaporation (water turns to vapor), condensation (forms clouds), precipitation (rain/snow), and collection (in oceans, lakes, groundwater)."
+            },
+            {
+              "label": "c)",
+              "text": "What are the states of matter? Give examples.",
+              "type": "short-answer",
+              "points": 5,
+              "correctAnswer": "Solid (ice, rock), Liquid (water, oil), Gas (oxygen, CO2), Plasma (lightning, stars)."
+            },
+            {
+              "label": "d)",
+              "text": "Describe the human digestive system.",
+              "type": "short-answer",
+              "points": 5,
+              "correctAnswer": "Mouth (chewing), esophagus (swallowing), stomach (acid digestion), small intestine (nutrient absorption), large intestine (water absorption), rectum (waste elimination)."
+            }
+          ],
+          "correctAnswer": "Student answers any 2 of the 4 questions, earns 5 marks for each correct answer"
         }
       ]
     }
@@ -1152,6 +1334,26 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
   - The main question's points = sum of all subquestion points
   - The main question's correctAnswer = combined answers of all subquestions
   - Example: A 4-part question with (1 mark) each becomes ONE question with points:4 and 4 subQuestions
+  - **DISTINGUISH REGULAR MCQ FROM SUB-QUESTION MCQ**:
+    - REGULAR MCQ: Single question with options labeled A, B, C, D → type: "multiple-choice", options array at question level, NO subQuestions
+    - SUB-QUESTION MCQ: Only when question has parts labeled a), b), c) and EACH part has options i, ii, iii, iv → subQuestions array with MCQ type inside
+    - CRITICAL: Regular MCQs like "1. What is 2+2? A) 3 B) 4 C) 5 D) 6" are NOT sub-questions - they are standalone multiple-choice
+    - Example standalone MCQ: { text: "What is 2+2?", type: "multiple-choice", options: [{letter:"A", text:"3"}, {letter:"B", text:"4", isCorrect:true}] }
+    - Example sub-question MCQ: { text: "Choose the best option...", subQuestions: [{label:"a)", text:"_____ how hard...", type:"multiple-choice", options:[{letter:"i", text:"No matter"}]}] }
+  - **MCQ SUBQUESTIONS**: ONLY when the question has multi-part structure (a, b, c). Subquestions can be multiple-choice with their own options array (i, ii, iii, iv, v). Mark correct option with isCorrect: true.
+  - **MIXED TYPES**: A question can have subquestions of different types (e.g., a) MCQ, b) open-ended, c) MCQ)
+  - **CHOOSE N DETECTION**: Look for phrases like "Choose ONE", "Select ONE", "Answer ONE", "Answer any ONE", "Choose TWO", "Answer any 3"
+    - Extract the number N from the phrase
+    - Set "subQuestionConfig": { "mode": "choose-n", "requiredCount": N, "scoringType": "partial" }
+    - Student picks N sub-questions to answer and each is graded independently
+    - Example: "Answer any TWO" → requiredCount: 2, "Choose ONE" → requiredCount: 1
+    - scoringType "partial" means each correct answer earns its marks (default)
+    - scoringType "all-or-nothing" means all selected must be correct for any marks (use sparingly)
+- **subQuestionConfig FIELD**: Always include this for multi-part questions:
+    - "all" mode: student answers ALL sub-questions (default)
+    - "choose-n" mode: student selects N sub-questions to answer
+    - requiredCount: number of questions to select (1, 2, 3, etc.)
+    - scoringType: "partial" (independent grading) or "all-or-nothing" (strict)
 - For matching exercises: 
   - CRITICAL: PRESERVE THE EXACT leftItems AND rightItems ARRAYS EXACTLY AS THEY APPEAR
   - If the pasted exam has a matching question with leftItems and rightItems, copy them EXACTLY without modification
@@ -1174,6 +1376,11 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
 - Keep the hierarchical structure intact - this is a professional exam format
 - EVERY question MUST have a correctAnswer field populated from the marking guide
 - DO NOT RESTRUCTURE OR CONSOLIDATE QUESTIONS - EXCEPT for multi-part questions which MUST be consolidated into ONE question with subQuestions
+- DO NOT CONFUSE REGULAR MCQ WITH SUB-QUESTION MCQ:
+  - Standalone MCQs with options A, B, C, D stay as regular "multiple-choice" questions
+  - Only questions with parts a), b), c) that each have sub-options (i, ii, iii) become sub-questions
+  - When in doubt: If it has "Question X" followed by a single stem and A/B/C/D options, it's a REGULAR MCQ
+  - If it has "Question X" followed by a)..., b)..., c)... where each has multiple options, it's SUB-QUESTIONS
 - ABSOLUTELY DO NOT INTERPRET OR REORGANIZE MATCHING QUESTIONS - COPY leftItems AND rightItems EXACTLY AS PROVIDED`;
 
       try {

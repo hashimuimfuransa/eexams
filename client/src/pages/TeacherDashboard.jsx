@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { getImageUrl } from '../utils/getImageUrl';
 import { useNavigate } from 'react-router-dom';
+import useUpload from '../hooks/useUpload';
+import UploadProgress from '../components/UploadProgress';
 import {
   Box, Typography, Chip, Button, Paper, Grid, TextField,
   CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -8,7 +10,7 @@ import {
   TableContainer, TableHead, TableRow, LinearProgress,
   IconButton, Tooltip, Avatar, Select, MenuItem, FormControl, InputLabel, FormHelperText,
   Tabs, Tab, Alert, Snackbar, Accordion, AccordionSummary, AccordionDetails,
-  Divider, Checkbox, ListItemText
+  Divider, Checkbox, ListItemText, Radio, FormControlLabel, RadioGroup
 } from '@mui/material';
 import {
   AutoAwesome, CloudUpload, Assignment, People, BarChart, Settings,
@@ -19,7 +21,7 @@ import {
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
-  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info
+  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info, Article
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -79,9 +81,10 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
     'fill-blank': '#F59E0B',
     'fill-in-blank': '#F59E0B',
     'open-ended': '#EC4899',
+    'short-answer': '#8B5CF6',
+    'essay': '#F59E0B',
     'matching': '#10B981',
-    'ordering': '#6366F1',
-    'short-answer': '#8B5CF6'
+    'ordering': '#6366F1'
   };
   const typeIcons = {
     'multiple-choice': <RadioButtonChecked sx={{ fontSize: 14 }} />,
@@ -89,9 +92,10 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
     'fill-blank': <ShortText sx={{ fontSize: 14 }} />,
     'fill-in-blank': <ShortText sx={{ fontSize: 14 }} />,
     'open-ended': <FormatListNumbered sx={{ fontSize: 14 }} />,
+    'short-answer': <ShortText sx={{ fontSize: 14 }} />,
+    'essay': <Article sx={{ fontSize: 14 }} />,
     'matching': <FormatListNumbered sx={{ fontSize: 14 }} />,
-    'ordering': <FormatListNumbered sx={{ fontSize: 14 }} />,
-    'short-answer': <ShortText sx={{ fontSize: 14 }} />
+    'ordering': <FormatListNumbered sx={{ fontSize: 14 }} />
   };
 
   const handleSave = () => {
@@ -204,6 +208,9 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
             )}
             {localQ.passage && (
               <Chip label="Passage" size="small" sx={{ height: 16, fontSize: 9, bgcolor: '#DBEAFE', color: '#1E40AF', fontWeight: 600 }} />
+            )}
+            {localQ.subQuestions && Array.isArray(localQ.subQuestions) && localQ.subQuestions.length > 0 && (
+              <Chip label={`${localQ.subQuestions.length} Sub-Q${localQ.subQuestions.length > 1 ? 's' : ''}`} size="small" sx={{ height: 16, fontSize: 9, bgcolor: '#DCFCE7', color: '#166534', fontWeight: 600 }} />
             )}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: tokens.textMuted, fontSize: isMobile ? 10 : 11 }}>
               {typeIcons[qType]}
@@ -378,6 +385,7 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
                   <MenuItem value="true-false" sx={{ fontSize: isMobile ? 12 : 14 }}>True / False</MenuItem>
                   <MenuItem value="fill-blank" sx={{ fontSize: isMobile ? 12 : 14 }}>Fill in Blank</MenuItem>
                   <MenuItem value="short-answer" sx={{ fontSize: isMobile ? 12 : 14 }}>Short Answer</MenuItem>
+                  <MenuItem value="essay" sx={{ fontSize: isMobile ? 12 : 14 }}>Essay</MenuItem>
                   <MenuItem value="open-ended" sx={{ fontSize: isMobile ? 12 : 14 }}>Open Ended</MenuItem>
                   <MenuItem value="matching" sx={{ fontSize: isMobile ? 12 : 14 }}>Matching</MenuItem>
                   <MenuItem value="ordering" sx={{ fontSize: isMobile ? 12 : 14 }}>Ordering</MenuItem>
@@ -722,24 +730,364 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
                     ? (isMobile ? 'Explain correct answer and why others are wrong.' : 'Explain why the correct answer is right and why each distractor is wrong. This helps the AI provide feedback on wrong answers.')
                     : (isMobile ? 'Provide correct answer and variations.' : 'Provide the correct answer and any acceptable variations.')}
               </Typography>
-              
-              {/* Display subquestions if they exist */}
+
+              {/* Add Sub-Questions Button (for questions without sub-questions) */}
+              {(!localQ.subQuestions || !Array.isArray(localQ.subQuestions) || localQ.subQuestions.length === 0) && (
+                <Box sx={{ mb: 2 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<Add />}
+                    onClick={() => {
+                      setLocalQ({
+                        ...localQ,
+                        subQuestions: [
+                          {
+                            label: 'a)',
+                            text: '',
+                            type: 'open-ended',
+                            points: 1,
+                            correctAnswer: '',
+                            options: []
+                          }
+                        ],
+                        subQuestionConfig: {
+                          mode: 'all',
+                          requiredCount: 1,
+                          scoringType: 'partial'
+                        }
+                      });
+                      setEdited(true);
+                    }}
+                    sx={{
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontSize: 12,
+                      borderStyle: 'dashed',
+                      borderColor: tokens.accent,
+                      color: tokens.accent,
+                      '&:hover': { bgcolor: 'rgba(12,189,115,0.05)', borderStyle: 'solid' }
+                    }}
+                  >
+                    + Add Sub-Questions
+                  </Button>
+                  <Typography sx={{ fontSize: 11, color: tokens.textMuted, mt: 0.5 }}>
+                    Break this question into multiple sub-questions for students to answer
+                  </Typography>
+                </Box>
+              )}
+
+              {/* Display and edit subquestions if they exist */}
               {localQ.subQuestions && Array.isArray(localQ.subQuestions) && localQ.subQuestions.length > 0 ? (
                 <Box sx={{ mb: 1.5 }}>
-                  <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textPrimary, mb: 1 }}>
-                    Subquestions ({localQ.subQuestions.length})
-                  </Typography>
+                  {/* Sub-question Configuration */}
+                  <Paper elevation={0} sx={{ p: 1.5, mb: 2, bgcolor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 2 }}>
+                    <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#F57C00', mb: 1 }}>
+                      Sub-Question Configuration
+                    </Typography>
+                    
+                    {/* Mode Selection */}
+                    <FormControl component="fieldset" fullWidth sx={{ mb: 2 }}>
+                      <RadioGroup
+                        row
+                        value={localQ.subQuestionConfig?.mode || localQ.subQuestionMode || 'all'}
+                        onChange={(e) => {
+                          const newMode = e.target.value;
+                          setLocalQ({ 
+                            ...localQ, 
+                            subQuestionConfig: { 
+                              ...(localQ.subQuestionConfig || {}), 
+                              mode: newMode,
+                              requiredCount: localQ.subQuestionConfig?.requiredCount || 1
+                            },
+                            subQuestionMode: undefined // Clear old field
+                          });
+                          setEdited(true);
+                        }}
+                      >
+                        <FormControlLabel
+                          value="all"
+                          control={<Radio size="small" />}
+                          label={
+                            <Box>
+                              <Typography sx={{ fontSize: 11, fontWeight: 500 }}>Answer ALL</Typography>
+                              <Typography sx={{ fontSize: 10, color: '#666' }}>Student must answer every sub-question</Typography>
+                            </Box>
+                          }
+                        />
+                        <FormControlLabel
+                          value="choose-n"
+                          control={<Radio size="small" />}
+                          label={
+                            <Box>
+                              <Typography sx={{ fontSize: 11, fontWeight: 500 }}>Choose N</Typography>
+                              <Typography sx={{ fontSize: 10, color: '#666' }}>Student picks N sub-questions to answer</Typography>
+                            </Box>
+                          }
+                        />
+                      </RadioGroup>
+                    </FormControl>
+                    
+                    {/* Choose-N Configuration */}
+                    {(localQ.subQuestionConfig?.mode === 'choose-n' || localQ.subQuestionMode === 'choose-one') && (
+                      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <TextField
+                          size="small"
+                          type="number"
+                          label="Required Count"
+                          value={localQ.subQuestionConfig?.requiredCount || 1}
+                          onChange={(e) => {
+                            const count = Math.max(1, Math.min(localQ.subQuestions.length, parseInt(e.target.value) || 1));
+                            setLocalQ({ 
+                              ...localQ, 
+                              subQuestionConfig: { 
+                                ...(localQ.subQuestionConfig || {}), 
+                                mode: 'choose-n',
+                                requiredCount: count 
+                              }
+                            });
+                            setEdited(true);
+                          }}
+                          inputProps={{ min: 1, max: localQ.subQuestions.length }}
+                          sx={{ width: 100, '& .MuiInputBase-root': { fontSize: 12 } }}
+                        />
+                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                          <InputLabel sx={{ fontSize: 11 }}>Scoring Type</InputLabel>
+                          <Select
+                            value={localQ.subQuestionConfig?.scoringType || 'partial'}
+                            onChange={(e) => {
+                              setLocalQ({ 
+                                ...localQ, 
+                                subQuestionConfig: { 
+                                  ...(localQ.subQuestionConfig || {}), 
+                                  mode: 'choose-n',
+                                  scoringType: e.target.value 
+                                }
+                              });
+                              setEdited(true);
+                            }}
+                            sx={{ fontSize: 12 }}
+                          >
+                            <MenuItem value="partial" sx={{ fontSize: 12 }}>Independent (Each question graded separately)</MenuItem>
+                            <MenuItem value="all-or-nothing" sx={{ fontSize: 12 }}>All-or-Nothing (All must be correct)</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Box>
+                    )}
+                    
+                    {(localQ.subQuestionConfig?.mode === 'choose-n' || localQ.subQuestionMode === 'choose-one') && (
+                      <Alert severity="warning" sx={{ mt: 2, py: 0.5, '& .MuiAlert-message': { fontSize: 10 } }}>
+                        Student selects <strong>{localQ.subQuestionConfig?.requiredCount || 1}</strong> from {localQ.subQuestions.length} options. 
+                        {localQ.subQuestionConfig?.scoringType === 'all-or-nothing' 
+                          ? 'All-or-Nothing: Must get ALL selected questions correct for full marks.'
+                          : 'Independent Grading: Each selected question earns its own marks (not required to get all correct).'
+                        }
+                      </Alert>
+                    )}
+                  </Paper>
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textPrimary }}>
+                      Subquestions ({localQ.subQuestions.length})
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        const newSubQ = {
+                          label: `${String.fromCharCode(97 + localQ.subQuestions.length)})`,
+                          text: '',
+                          type: 'open-ended',
+                          points: localQ.subQuestionMode === 'choose-one' ? (localQ.points || 1) : 1,
+                          correctAnswer: '',
+                          options: []
+                        };
+                        setLocalQ({ ...localQ, subQuestions: [...localQ.subQuestions, newSubQ] });
+                        setEdited(true);
+                      }}
+                      sx={{ fontSize: 10, minWidth: 'auto', py: 0.3, px: 1 }}
+                    >
+                      + Add Subquestion
+                    </Button>
+                  </Box>
                   {localQ.subQuestions.map((subQ, idx) => (
-                    <Paper key={idx} elevation={0} sx={{ p: 1.5, mb: 1, bgcolor: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 2 }}>
-                      <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#0369A1', mb: 0.5 }}>
-                        {subQ.text || `Subquestion ${idx + 1}`}
-                      </Typography>
-                      <Typography sx={{ fontSize: 11, color: '#0C4A6E' }}>
-                        <strong>Answer:</strong> {subQ.correctAnswer || 'Not provided'}
-                      </Typography>
-                      {subQ.points && (
+                    <Paper key={idx} elevation={0} sx={{ p: 1.5, mb: 1.5, bgcolor: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 2 }}>
+                      {/* Subquestion header with label and type */}
+                      <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                        <TextField
+                          size="small"
+                          placeholder="Label (e.g., a), b), i))"
+                          value={subQ.label || ''}
+                          onChange={(e) => {
+                            const updated = [...localQ.subQuestions];
+                            updated[idx] = { ...subQ, label: e.target.value };
+                            setLocalQ({ ...localQ, subQuestions: updated });
+                            setEdited(true);
+                          }}
+                          sx={{ width: 70, '& .MuiInputBase-root': { fontSize: 11, height: 28 } }}
+                        />
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                          <Select
+                            value={subQ.type || 'open-ended'}
+                            onChange={(e) => {
+                              const updated = [...localQ.subQuestions];
+                              updated[idx] = { ...subQ, type: e.target.value, options: e.target.value === 'multiple-choice' ? [{ letter: 'i', text: '', isCorrect: false }] : [] };
+                              setLocalQ({ ...localQ, subQuestions: updated });
+                              setEdited(true);
+                            }}
+                            sx={{ fontSize: 11, height: 28 }}
+                          >
+                            <MenuItem value="open-ended">Open-ended</MenuItem>
+                            <MenuItem value="short-answer">Short Answer</MenuItem>
+                            <MenuItem value="essay">Essay</MenuItem>
+                            <MenuItem value="multiple-choice">Multiple Choice</MenuItem>
+                            <MenuItem value="true-false">True/False</MenuItem>
+                            <MenuItem value="fill-in-blank">Fill in blank</MenuItem>
+                          </Select>
+                        </FormControl>
+                        <TextField
+                          size="small"
+                          type="number"
+                          placeholder="Points"
+                          value={subQ.points || 1}
+                          onChange={(e) => {
+                            const updated = [...localQ.subQuestions];
+                            updated[idx] = { ...subQ, points: parseInt(e.target.value) || 1 };
+                            setLocalQ({ ...localQ, subQuestions: updated });
+                            setEdited(true);
+                          }}
+                          sx={{ width: 70, '& .MuiInputBase-root': { fontSize: 11, height: 28 } }}
+                        />
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            const updated = localQ.subQuestions.filter((_, i) => i !== idx);
+                            setLocalQ({ ...localQ, subQuestions: updated });
+                            setEdited(true);
+                          }}
+                          sx={{ color: '#DC2626', p: 0.3 }}
+                        >
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Box>
+
+                      {/* Subquestion text */}
+                      <TextField
+                        fullWidth
+                        size="small"
+                        placeholder="Subquestion text..."
+                        value={subQ.text || ''}
+                        onChange={(e) => {
+                          const updated = [...localQ.subQuestions];
+                          updated[idx] = { ...subQ, text: e.target.value };
+                          setLocalQ({ ...localQ, subQuestions: updated });
+                          setEdited(true);
+                        }}
+                        sx={{ mb: 1, '& .MuiInputBase-root': { fontSize: 11, minHeight: 32 } }}
+                      />
+
+                      {/* MCQ Options for subquestion */}
+                      {subQ.type === 'multiple-choice' && (
+                        <Box sx={{ mb: 1, pl: 1, borderLeft: '2px solid #BAE6FD' }}>
+                          <Typography sx={{ fontSize: 10, color: '#0369A1', mb: 0.5 }}>Options:</Typography>
+                          {(subQ.options || []).map((opt, optIdx) => (
+                            <Box key={optIdx} sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 0.5 }}>
+                              <TextField
+                                size="small"
+                                placeholder={`${optIdx + 1}`}
+                                value={opt.letter || ''}
+                                onChange={(e) => {
+                                  const updated = [...localQ.subQuestions];
+                                  const updatedOptions = [...(subQ.options || [])];
+                                  updatedOptions[optIdx] = { ...opt, letter: e.target.value };
+                                  updated[idx] = { ...subQ, options: updatedOptions };
+                                  setLocalQ({ ...localQ, subQuestions: updated });
+                                  setEdited(true);
+                                }}
+                                sx={{ width: 40, '& .MuiInputBase-root': { fontSize: 10, height: 24 } }}
+                              />
+                              <TextField
+                                fullWidth
+                                size="small"
+                                placeholder={`Option ${optIdx + 1} text`}
+                                value={opt.text || ''}
+                                onChange={(e) => {
+                                  const updated = [...localQ.subQuestions];
+                                  const updatedOptions = [...(subQ.options || [])];
+                                  updatedOptions[optIdx] = { ...opt, text: e.target.value };
+                                  updated[idx] = { ...subQ, options: updatedOptions };
+                                  setLocalQ({ ...localQ, subQuestions: updated });
+                                  setEdited(true);
+                                }}
+                                sx={{ '& .MuiInputBase-root': { fontSize: 11, height: 24 } }}
+                              />
+                              <FormControlLabel
+                                control={
+                                  <Radio
+                                    size="small"
+                                    checked={opt.isCorrect || false}
+                                    onChange={() => {
+                                      const updated = [...localQ.subQuestions];
+                                      const updatedOptions = (subQ.options || []).map((o, i) => ({ ...o, isCorrect: i === optIdx }));
+                                      updated[idx] = { ...subQ, options: updatedOptions, correctAnswer: opt.letter || '' };
+                                      setLocalQ({ ...localQ, subQuestions: updated });
+                                      setEdited(true);
+                                    }}
+                                  />
+                                }
+                                label={<Typography sx={{ fontSize: 9 }}>Correct</Typography>}
+                              />
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  const updated = [...localQ.subQuestions];
+                                  const updatedOptions = (subQ.options || []).filter((_, i) => i !== optIdx);
+                                  updated[idx] = { ...subQ, options: updatedOptions };
+                                  setLocalQ({ ...localQ, subQuestions: updated });
+                                  setEdited(true);
+                                }}
+                                sx={{ p: 0.2 }}
+                              >
+                                <Delete fontSize="small" sx={{ fontSize: 14 }} />
+                              </IconButton>
+                            </Box>
+                          ))}
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => {
+                              const updated = [...localQ.subQuestions];
+                              const newLetter = String.fromCharCode(105 + (subQ.options || []).length);
+                              updated[idx] = { ...subQ, options: [...(subQ.options || []), { letter: newLetter, text: '', isCorrect: false }] };
+                              setLocalQ({ ...localQ, subQuestions: updated });
+                              setEdited(true);
+                            }}
+                            sx={{ fontSize: 9, mt: 0.5 }}
+                          >
+                            + Add Option
+                          </Button>
+                        </Box>
+                      )}
+
+                      {/* Correct Answer */}
+                      {subQ.type !== 'multiple-choice' && (
+                        <TextField
+                          fullWidth
+                          size="small"
+                          placeholder="Correct answer..."
+                          value={subQ.correctAnswer || ''}
+                          onChange={(e) => {
+                            const updated = [...localQ.subQuestions];
+                            updated[idx] = { ...subQ, correctAnswer: e.target.value };
+                            setLocalQ({ ...localQ, subQuestions: updated });
+                            setEdited(true);
+                          }}
+                          sx={{ '& .MuiInputBase-root': { fontSize: 11, minHeight: 32 } }}
+                        />
+                      )}
+                      {subQ.type === 'multiple-choice' && (
                         <Typography sx={{ fontSize: 10, color: '#075985', mt: 0.5 }}>
-                          Points: {subQ.points}
+                          Correct Answer Letter: <strong>{subQ.correctAnswer || 'Not set'}</strong>
                         </Typography>
                       )}
                     </Paper>
@@ -980,6 +1328,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [publishExamId, setPublishExamId] = useState(null);
   const fileRef = useRef();
   const ansRef = useRef();
+  const referenceFileRef = useRef();
   // AI chat assistant - Enhanced with smart guidance
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([{ role: 'assistant', text: 'Hi! I\'m your AI teaching assistant. I can help you create exams, design assessment strategies, or answer questions about pedagogy.\n\n**Quick tips:**\n• Be specific about subject, grade level, and topics\n• Tell me how many questions you need and what types (e.g., "10 multiple-choice, 5 short-answer")\n• Include all requirements in your prompt for best results', suggestions: ['Create a math exam for Grade 10 with 15 multiple-choice questions', 'How to assess critical thinking?', 'Design a science quiz with 20 questions: 10 multiple-choice, 5 true-false, 5 short-answer'] }]);
@@ -1184,9 +1533,43 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     finally { setAiLoading(false); }
   };
 
+  // Use the new upload hook for reference file uploads
+  const {
+    upload,
+    progress: uploadProgress,
+    uploading: isUploading,
+    error: uploadError,
+    retryCount: uploadRetryCount,
+    connectionStatus: uploadConnectionStatus,
+    reset: resetUpload
+  } = useUpload({
+    maxRetries: 3,
+    onSuccess: (data) => {
+      setUploadedFileContent(data.content);
+      setAiLoading(false);
+    },
+    onError: (err) => {
+      if (err.response?.status === 413) {
+        setAiError('File too large. Maximum size is 50MB.');
+      } else {
+        setAiError(err.response?.data?.message || err.message || 'Failed to upload file');
+      }
+      setUploadedFile(null);
+      setAiLoading(false);
+    }
+  });
+
   const handleFileUpload = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file) {
+      console.log('No file selected');
+      return;
+    }
+
+    console.log('File selected:', file.name, 'Size:', file.size, 'Type:', file.type);
 
     // Validate file size (50MB limit)
     const maxSize = 50 * 1024 * 1024; // 50MB
@@ -1200,25 +1583,19 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     setAiError('');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await api.post('/exam/upload-reference', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 60000 // 60 second timeout for larger files
-      });
-
-      setUploadedFileContent(res.data.content);
+      console.log('Starting upload to /exam/upload-reference');
+      await upload('/exam/upload-reference', file);
+      console.log('Upload completed successfully');
     } catch (err) {
-      if (err.response?.status === 413) {
-        setAiError('File too large. Maximum size is 50MB.');
-      } else {
-        setAiError(err.response?.data?.message || 'Failed to upload file');
-      }
-      setUploadedFile(null);
-    } finally {
-      setAiLoading(false);
+      // Error is handled by onError callback
+      console.error('Upload failed:', err);
     }
+  };
+
+  const handleCancelUpload = () => {
+    resetUpload();
+    setUploadedFile(null);
+    setAiLoading(false);
   };
 
   const handleUpload = async () => {
@@ -1228,19 +1605,45 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       return;
     }
     setAiLoading(true); setAiError('');
+    console.log('=== UPLOAD DEBUG START ===');
+    console.log('uploadFile:', uploadFile ? { name: uploadFile.name, size: uploadFile.size, type: uploadFile.type } : null);
+    console.log('examTitle:', examTitle);
+    console.log('examTimeLimit:', examTimeLimit);
+    console.log('uploadAnswer:', uploadAnswer ? { name: uploadAnswer.name, size: uploadAnswer.size } : null);
     try {
       const fd = new FormData();
       fd.append('examFile', uploadFile);
       fd.append('title', examTitle);
       fd.append('timeLimit', examTimeLimit);
       if (uploadAnswer) fd.append('answerFile', uploadAnswer);
-      const res = await api.post('/admin/exams', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 90000 });
+      
+      // Debug: Log FormData entries
+      console.log('FormData entries:');
+      for (let [key, value] of fd.entries()) {
+        if (value instanceof File) {
+          console.log(`  ${key}: File { name: ${value.name}, size: ${value.size}, type: ${value.type} }`);
+        } else {
+          console.log(`  ${key}: ${value}`);
+        }
+      }
+      
+      console.log('Sending POST to /admin/exams...');
+      const res = await api.post('/admin/exams', fd, { timeout: 300000 });
+      console.log('Upload success:', res.data);
       setGenerated(res.data);
       if (res.data.parsingFailed) {
         setAiError('PDF parsing failed due to file corruption. You can manually add questions using the editor below.');
       }
-    } catch (err) { setAiError(err.response?.data?.message || 'Upload failed.'); }
-    finally { setAiLoading(false); }
+    } catch (err) { 
+      console.error('Upload error:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      setAiError(err.response?.data?.message || 'Upload failed.'); 
+    }
+    finally { 
+      console.log('=== UPLOAD DEBUG END ===');
+      setAiLoading(false); 
+    }
   };
 
   const [savingDraft, setSavingDraft] = useState(false);
@@ -1369,6 +1772,57 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     finally { setManualPublishing(false); }
   };
 
+  const handleManualSaveDraft = async () => {
+    if (!manualExam.title.trim()) {
+      alert('Please enter an exam title before saving as draft.');
+      return;
+    }
+    
+    setSavingDraft(true);
+    try {
+      const draftData = {
+        title: manualExam.title,
+        description: manualExam.description || 'Exam',
+        timeLimit: manualExam.timeLimit || 60,
+        passingScore: manualExam.passingScore || 70,
+        sections: manualExam.sections,
+        questions: manualExam.sections.flatMap(sec => sec.questions || []).map(q => ({
+          text: q.text,
+          type: q.type || 'multiple-choice',
+          marks: q.points || 1,
+          difficulty: q.difficulty || 'medium',
+          correctAnswer: q.correctAnswer || '',
+          options: q.options || [],
+          section: q.section || 'A',
+          leftItems: q.leftItems,
+          rightItems: q.rightItems,
+          items: q.items,
+          matchingPairs: q.matchingPairs,
+          itemsToOrder: q.itemsToOrder,
+          passage: q.passage,
+          instructions: q.instructions,
+          wordBank: q.wordBank
+        }))
+      };
+      
+      const res = await api.post('/exam/save-draft', draftData, { timeout: 120000 });
+      alert(`Draft saved successfully! You can find it in the "My Exams" section.`);
+      
+      api.get('/admin/exams')
+        .then(r => {
+          setExams(r.data || []);
+        })
+        .catch(err => {
+          console.error('Error refreshing exams after saving draft:', err);
+        });
+    } catch (err) {
+      console.error('Save draft error:', err);
+      alert(err.response?.data?.message || 'Failed to save draft. Please try again.');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   const statCards = [
     { label: 'Exams Created',  value: stats?.totalExams    ?? 0,    sub: '+3 this week',  subColor: tokens.accent,  iconBg: 'rgba(12,189,115,0.1)',  icon: <Assignment sx={{ color: tokens.accent, fontSize: { xs: 20, sm: 24 } }} />,  spark: [5,8,6,10,9,12,10] },
     { label: 'Total Students', value: stats?.totalStudents ?? 0,    sub: '+18 this week', subColor: '#6366F1',       iconBg: 'rgba(99,102,241,0.1)',  icon: <People sx={{ color: '#6366F1', fontSize: { xs: 20, sm: 24 } }} />,           spark: [200,220,230,240,244,246,248] },
@@ -1435,6 +1889,8 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
               onPublish={handleManualPublish}
               publishing={manualPublishing}
               error={manualError}
+              onSaveDraft={handleManualSaveDraft}
+              savingDraft={savingDraft}
             />
           ) : aiMode === 'describe' ? (
             <>
@@ -1631,6 +2087,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
                         <input
                           type="file"
                           accept=".pdf,.doc,.docx,.txt"
+                          ref={referenceFileRef}
                           onChange={handleFileUpload}
                           disabled={!canUseAI || aiLoading}
                           style={{ display: 'none' }}
@@ -1647,25 +2104,32 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
                             Choose File
                           </Button>
                         </label>
-                        {uploadedFile && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Chip
-                              label={`${uploadedFile.name} (${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)`}
-                              size="small"
-                              onDelete={() => { setUploadedFile(null); setUploadedFileContent(''); }}
-                              sx={{ bgcolor: '#DCFCE7', color: '#166534', fontWeight: 600 }}
-                            />
+                        {/* Upload Progress Indicator */}
+                        <Box sx={{ width: '100%', mt: 1 }}>
+                          <UploadProgress
+                            progress={uploadProgress}
+                            uploading={isUploading}
+                            error={uploadError}
+                            retryCount={uploadRetryCount}
+                            maxRetries={3}
+                            connectionStatus={uploadConnectionStatus}
+                            fileName={uploadedFile?.name}
+                            fileSize={uploadedFile?.size}
+                            onCancel={handleCancelUpload}
+                            onRetry={() => uploadedFile && upload('/exam/upload-reference', uploadedFile)}
+                            success={!!uploadedFileContent}
+                          />
+                        </Box>
+                        
+                        {/* Success message */}
+                        {uploadedFileContent && (
+                          <Box sx={{ mt: 1, p: 1, bgcolor: '#DBEAFE', borderRadius: 1 }}>
+                            <Typography sx={{ fontSize: 11, color: '#1E40AF', fontWeight: 600 }}>
+                              ✓ File uploaded successfully - AI will use this as reference
+                            </Typography>
                           </Box>
                         )}
-                        {aiLoading && <CircularProgress size={16} />}
                       </Box>
-                      {uploadedFileContent && (
-                        <Box sx={{ mt: 1, p: 1, bgcolor: '#DBEAFE', borderRadius: 1 }}>
-                          <Typography sx={{ fontSize: 11, color: '#1E40AF', fontWeight: 600 }}>
-                            ✓ File uploaded successfully - AI will use this as reference
-                          </Typography>
-                        </Box>
-                      )}
                     </Box>
 
                     <Box sx={{ position: 'relative' }}>
@@ -2164,6 +2628,7 @@ function ExamPreviewPanel({ exam }) {
   const isOrdering = q && q.type === 'ordering';
   const isDragDrop = q && q.type === 'drag-drop';
   const isImage = q && (q.type === 'image' || q.type === 'image-based');
+  const hasSubQuestions = q && q.subQuestions && Array.isArray(q.subQuestions) && q.subQuestions.length > 0;
 
   return (
     <Box sx={{ bgcolor: '#F1F5F9', minHeight: 480 }}>
@@ -2417,6 +2882,113 @@ function ExamPreviewPanel({ exam }) {
                       </Grid>
                     </Grid>
                   </Box>
+                )}
+
+                {/* Sub-Questions */}
+                {hasSubQuestions && (
+                  <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.accent}`, bgcolor: 'rgba(12,189,115,0.03)', mt: 2.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                      <Typography sx={{ fontSize: 14, fontWeight: 700, color: tokens.accentDark, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Sub-Questions ({q.subQuestions.length})
+                      </Typography>
+                      {q.subQuestionConfig && (
+                        <Chip 
+                          label={q.subQuestionConfig.mode === 'all' ? 'Answer All' : `Choose ${q.subQuestionConfig.requiredCount || 1}`}
+                          size="small"
+                          sx={{ bgcolor: tokens.warning, color: 'white', fontWeight: 700, fontSize: 11 }}
+                        />
+                      )}
+                    </Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {q.subQuestions.map((subQ, subIdx) => {
+                        const subQId = `${q._id}_sub_${subIdx}`;
+                        const isSubMC = subQ.type === 'multiple-choice';
+                        const isSubOpen = subQ.type === 'open-ended' || subQ.type === 'short-answer';
+                        const isSubTF = subQ.type === 'true-false';
+                        const isSubFill = subQ.type === 'fill-in-blank' || subQ.type === 'fill-blank';
+                        
+                        return (
+                          <Paper key={subIdx} elevation={0} sx={{ p: 2, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1.5 }}>
+                              <Chip 
+                                label={subQ.label || String.fromCharCode(97 + subIdx) + ')'} 
+                                size="small" 
+                                sx={{ bgcolor: tokens.primary, color: 'white', fontWeight: 700, fontSize: 11, minWidth: 32 }}
+                              />
+                              <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textPrimary, flex: 1 }}>
+                                {subQ.text}
+                              </Typography>
+                              <Chip 
+                                label={`${subQ.points || 1} pt`} 
+                                size="small" 
+                                sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning, fontWeight: 700, fontSize: 10 }}
+                              />
+                            </Box>
+                            
+                            {/* Sub-question MCQ */}
+                            {isSubMC && subQ.options && (
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, pl: 4 }}>
+                                {subQ.options.map((opt, optIdx) => {
+                                  const letter = opt.letter || String.fromCharCode(97 + optIdx);
+                                  const selected = answers[subQId] === letter;
+                                  return (
+                                    <Box key={optIdx} onClick={() => setAnswer(subQId, letter)}
+                                      sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, borderRadius: 1.5, cursor: 'pointer', border: `1px solid ${selected ? tokens.accent : tokens.surfaceBorder}`, bgcolor: selected ? 'rgba(12,189,115,0.06)' : '#F8FAFC', transition: 'all 0.15s', '&:hover': { borderColor: tokens.accent } }}>
+                                      <Box sx={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${selected ? tokens.accent : tokens.surfaceBorder}`, bgcolor: selected ? tokens.accent : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                        {selected ? <CheckCircle sx={{ fontSize: 12, color: 'white' }} /> : <Typography sx={{ fontSize: 10, fontWeight: 700, color: tokens.textSecondary }}>{letter}</Typography>}
+                                      </Box>
+                                      <Typography sx={{ fontSize: 12, color: tokens.textPrimary }}>{opt.text}</Typography>
+                                    </Box>
+                                  );
+                                })}
+                              </Box>
+                            )}
+                            
+                            {/* Sub-question True/False */}
+                            {isSubTF && (
+                              <Box sx={{ display: 'flex', gap: 1.5, pl: 4 }}>
+                                {['True', 'False'].map(val => {
+                                  const sel = answers[subQId] === val;
+                                  return (
+                                    <Box key={val} onClick={() => setAnswer(subQId, val)}
+                                      sx={{ flex: 1, p: 1.5, borderRadius: 1.5, textAlign: 'center', cursor: 'pointer', border: `1px solid ${sel ? tokens.accent : tokens.surfaceBorder}`, bgcolor: sel ? 'rgba(12,189,115,0.07)' : '#F8FAFC', fontWeight: 700, fontSize: 13, color: sel ? tokens.accentDark : tokens.textSecondary }}>
+                                      {val}
+                                    </Box>
+                                  );
+                                })}
+                              </Box>
+                            )}
+                            
+                            {/* Sub-question Fill-in-blank */}
+                            {isSubFill && (
+                              <TextField 
+                                fullWidth 
+                                size="small"
+                                placeholder="Type your answer..." 
+                                value={answers[subQId] || ''}
+                                onChange={e => setAnswer(subQId, e.target.value)}
+                                sx={{ pl: 4, '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 12, bgcolor: '#F8FAFC' } }} 
+                              />
+                            )}
+                            
+                            {/* Sub-question Open-ended */}
+                            {isSubOpen && (
+                              <TextField 
+                                fullWidth 
+                                multiline 
+                                minRows={2}
+                                size="small"
+                                placeholder="Write your answer..." 
+                                value={answers[subQId] || ''}
+                                onChange={e => setAnswer(subQId, e.target.value)}
+                                sx={{ pl: 4, '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 12, bgcolor: '#F8FAFC' } }} 
+                              />
+                            )}
+                          </Paper>
+                        );
+                      })}
+                    </Box>
+                  </Paper>
                 )}
 
                 {/* Navigation */}
@@ -4167,7 +4739,7 @@ const Q_TYPES = [
 const DIFFS = ['easy', 'medium', 'hard'];
 const LETTERS = ['A', 'B', 'C', 'D'];
 
-function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question, setQuestion, onAddQuestion, onRemoveQuestion, onPublish, publishing, error }) {
+function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question, setQuestion, onAddQuestion, onRemoveQuestion, onPublish, publishing, error, onSaveDraft, savingDraft }) {
   const totalQ = exam.sections.reduce((s, sec) => s + (sec.questions?.length || 0), 0);
 
   const updateOption = (idx, field, val) => {
@@ -4630,6 +5202,26 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
       ))}
 
       {error && <Box sx={{ mb: 1.5, p: 1.5, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: 13 }}>{error}</Box>}
+
+      {/* Action buttons */}
+      <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+        <Button 
+          variant="outlined" 
+          onClick={onSaveDraft} 
+          disabled={savingDraft}
+          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, borderColor: tokens.warning, color: tokens.warning, '&:hover': { bgcolor: 'rgba(245,158,11,0.07)' } }}
+        >
+          {savingDraft ? 'Saving...' : ' Save Draft'}
+        </Button>
+        <Button 
+          variant="contained" 
+          onClick={onPublish} 
+          disabled={publishing}
+          sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none' }}
+        >
+          {publishing ? 'Publishing...' : 'Publish Exam'}
+        </Button>
+      </Box>
     </Box>
   );
 }

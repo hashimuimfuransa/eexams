@@ -10,7 +10,7 @@ const QuestionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'matching', 'ordering', 'drag-drop', 'image-based', 'image'],
+    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'image-based', 'image'],
     required: true
   },
   imageUrl: {
@@ -120,7 +120,7 @@ const QuestionSchema = new mongoose.Schema({
     text: String,
     type: {
       type: String,
-      enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-in-blank']
+      enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'matching', 'ordering', 'drag-drop', 'image-based', 'image']
     },
     options: [{
       text: String,
@@ -128,8 +128,30 @@ const QuestionSchema = new mongoose.Schema({
       letter: String
     }],
     correctAnswer: String,
-    points: Number
+    points: Number,
+    imageUrl: String // For image-based sub-questions
   }],
+  // Sub-question configuration
+  subQuestionConfig: {
+    // Mode: 'all' (answer all), 'choose-n' (select N to answer)
+    mode: {
+      type: String,
+      enum: ['all', 'choose-n'],
+      default: 'all'
+    },
+    // Number of sub-questions student must select (when mode is 'choose-n')
+    requiredCount: {
+      type: Number,
+      default: 1,
+      min: 1
+    },
+    // Scoring type: 'all-or-nothing' (all correct for full marks) or 'partial' (proportional)
+    scoringType: {
+      type: String,
+      enum: ['all-or-nothing', 'partial'],
+      default: 'partial'
+    }
+  },
   // Question metadata
   difficulty: {
     type: String,

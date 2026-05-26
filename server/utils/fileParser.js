@@ -3,6 +3,8 @@ const path = require('path');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const mammoth = require('mammoth');
+const axios = require('axios');
+const { cloudinary } = require('../config/cloudinary');
 // Import the centralized Groq client for AI-assisted categorization
 const groqClient = require('./groqClient');
 
@@ -17,11 +19,50 @@ const parsePdf = async (filePath) => {
   try {
     console.log(`Parsing PDF file using Python: ${filePath}`);
     
+    let localFilePath = filePath;
+    
+    // Check if filePath is a URL (Cloudinary)
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      console.log('Downloading PDF from URL:', filePath);
+      
+      // Generate signed URL for Cloudinary
+      let downloadUrl = filePath;
+      if (filePath.includes('cloudinary.com')) {
+        // Extract public_id from Cloudinary URL
+        // URL format: https://res.cloudinary.com/cloud_name/resource_type/type/version/public_id.extension
+        const urlParts = filePath.split('/');
+        const versionIndex = urlParts.findIndex(part => /^\d+$/.test(part));
+        if (versionIndex !== -1 && versionIndex < urlParts.length - 1) {
+          // Everything after version is the public_id (with extension)
+          const publicIdWithExt = urlParts.slice(versionIndex + 1).join('/');
+          const publicId = publicIdWithExt.replace(/\.[^/.]+$/, ''); // Remove extension
+          downloadUrl = cloudinary.url(publicId, { 
+            resource_type: 'raw',
+            sign_url: true,
+            type: 'upload'
+          });
+          console.log('Extracted public_id:', publicId);
+          console.log('Generated signed URL:', downloadUrl);
+        }
+      }
+      
+      const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+      const tempDir = path.join(__dirname, '../temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      const tempFileName = `temp-${Date.now()}.pdf`;
+      localFilePath = path.join(tempDir, tempFileName);
+      fs.writeFileSync(localFilePath, response.data);
+      console.log('Downloaded PDF to:', localFilePath);
+    }
+    
     // Path to the Python script
     const scriptPath = path.join(__dirname, '../pdf_extractor.py');
     
-    // Execute Python script
-    const { stdout, stderr } = await execAsync(`python3 "${scriptPath}" "${filePath}"`);
+    // Execute Python script (use 'python' for Windows, 'python3' for Unix)
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const { stdout, stderr } = await execAsync(`${pythonCmd} "${scriptPath}" "${localFilePath}"`);
     
     if (stderr) {
       console.error('Python script stderr:', stderr);
@@ -42,6 +83,12 @@ const parsePdf = async (filePath) => {
     console.log(`Successfully parsed PDF, extracted ${result.text.length} characters`);
     console.log(`PDF content preview: ${result.text.substring(0, 200)}...`);
 
+    // Clean up temp file if it was downloaded
+    if (localFilePath !== filePath && fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+      console.log('Cleaned up temp file:', localFilePath);
+    }
+
     return result.text;
   } catch (error) {
     console.error('Error parsing PDF:', error);
@@ -61,10 +108,38 @@ const parsePdf = async (filePath) => {
  * @returns {Promise<string>} - Extracted text with structure preserved
  */
 const parseWord = async (filePath) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       console.log(`Parsing Word document: ${filePath}`);
-      const dataBuffer = fs.readFileSync(filePath);
+      
+      let dataBuffer;
+      
+      // Check if filePath is a URL (Cloudinary)
+      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        console.log('Downloading file from URL:', filePath);
+        
+        // Generate signed URL for Cloudinary
+        let downloadUrl = filePath;
+        if (filePath.includes('cloudinary.com')) {
+          // Extract public_id from Cloudinary URL
+          const urlParts = filePath.split('/');
+          const fileName = urlParts[urlParts.length - 1];
+          const publicId = `eexams/exam-files/${fileName.replace(/\.[^/.]+$/, '')}`;
+          downloadUrl = cloudinary.url(publicId, { 
+            resource_type: 'raw',
+            sign_url: true,
+            type: 'upload'
+          });
+          console.log('Generated signed URL:', downloadUrl);
+        }
+        
+        const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+        dataBuffer = Buffer.from(response.data);
+        console.log('Downloaded file size:', dataBuffer.length);
+      } else {
+        // Local file
+        dataBuffer = fs.readFileSync(filePath);
+      }
 
       // Use mammoth to extract raw text with better structure preservation
       mammoth.extractRawText({ 
@@ -172,6 +247,9 @@ CRITICAL INSTRUCTIONS:
 5. Extract question numbers if they exist
 6. Preserve the section structure (Section A, B, C, etc.)
 7. Extract all question types: multiple-choice, true-false, fill-in-blank, short answer, essay, matching, ordering
+8. EXTRACT ANSWER KEYS: If the document contains an answer key at the end (often labeled "ANSWER KEY", "MARKING SCHEME", "SOLUTIONS", or similar), extract all answers and match them to their question numbers
+9. EXTRACT PASSAGES AND TEXTS: Extract ALL reading passages, comprehension texts, diagrams, and any text blocks that serve as context for questions. These should be stored in the "passage" field of the question or as a separate "context" field.
+10. EXTRACT INSTRUCTIONS: Extract any instructions, directions, or guidelines that accompany questions or sections
 
 CRITICAL - MODEL ANSWER GENERATION FOR OPEN-ENDED QUESTIONS:
 - For ALL open-ended questions (short answer, essay, open-ended), if a model answer is NOT provided in the document, you MUST generate a comprehensive model answer
@@ -194,11 +272,41 @@ SPECIAL HANDLING FOR FILL-IN-THE-BLANK QUESTIONS:
 - For geometric shapes: triangle (3), square (4), pentagon (5), hexagon (6), heptagon (7), octagon (8), nonagon (9), decagon (10)
 - For other contexts, use the surrounding text to infer the missing information
 
+CRITICAL - DETECT MATCHING QUESTIONS:
+- Look for questions where the answer contains pairs of items separated by "-" or similar separators (e.g., "Item A - Match 1, Item B - Match 2, Item C - Match 3")
+- When you detect such patterns in the answer key, mark the question type as "matching"
+- Preserve the FULL answer string in the correctAnswer field exactly as it appears (e.g., "White blood cells - Defend the body against pathogens, Red blood cells - transport of respiratory gases, platelets - Clotting of blood")
+- DO NOT split the answer into separate fields - keep it as a single string in correctAnswer
+- The parser will extract the left-right pairs from this string
+- Examples of matching question indicators:
+  * Answer contains multiple pairs with separators like " - ", " - ", " | ", " : "
+  * Question text mentions "Match the following", "Match column A with column B", "Pair the items"
+  * Answer format: "Term1 - Definition1, Term2 - Definition2, Term3 - Definition3"
+
+CRITICAL - DETECT SUBQUESTIONS (INCLUDING TRUE/FALSE STATEMENTS):
+- Look for questions where the answer contains multiple labeled parts (e.g., "a) False, b) True, c) True, d) True, e) False, f) True")
+- When you detect such patterns, mark the question as having subQuestions
+- Preserve the FULL answer string in the correctAnswer field exactly as it appears
+- The parser will extract the individual subquestions from this string
+- Examples of subquestion indicators:
+  * Answer format: "a) False, b) True, c) True" or "a. Answer, b. Answer, c. Answer"
+  * Answer format with MCQ options: "a) i) No matter, b) v) consequently, c) ii) whether, d) i) why"
+  * Question text mentions "State whether each of the following statements is true or false"
+  * Question text mentions "Answer the following parts" or has labeled statements a), b), c)
+  * For true/false subquestions: each subquestion should have type "true-false" with correctAnswer "True" or "False"
+  * For multiple-choice subquestions: each subquestion should have type "multiple-choice" with options array and correctAnswer as the option letter
+  * For open-ended subquestions: each subquestion should have type "open-ended" with the full answer text
+  * For numeric subquestions: each subquestion should have type "open-ended" with the numeric answer
+  * Subquestions can have MIXED types within the same question (e.g., some true-false, some open-ended)
+  * Each subquestion MUST have: label, text, type, correctAnswer, and points
+
 CRITICAL - MULTI-PART QUESTIONS MUST BE SINGLE QUESTIONS:
 - Questions with parts labeled a), b), c) or i), ii), iii) MUST be extracted as ONE SINGLE question
 - DO NOT create separate questions for each part - they belong together
 - Use the "subQuestions" array to store each part
 - Example: "Question 15: The diagram shows a brick... a) i) The brick does not move sideways... ii) The weight of the brick... b) i) Does linear momentum... ii) State ONE thing..." is ONE question with 4 subquestions
+- ALWAYS include the subQuestions array with ALL parts (a, b, c, d, etc.) for multi-part questions
+- Each subquestion MUST have: label, text, type, correctAnswer, and points
 
 CORRECT STRUCTURE FOR MULTI-PART QUESTIONS:
 {
@@ -238,6 +346,72 @@ CORRECT STRUCTURE FOR MULTI-PART QUESTIONS:
   "points": 4
 }
 
+EXAMPLE - MULTI-PART WITH MULTIPLE-CHOICE SUBQUESTIONS:
+{
+  "questionNumber": 12,
+  "text": "Choose the best option from the given alternatives to fill the blank space.",
+  "type": "open-ended",
+  "points": 4,
+  "subQuestions": [
+    {
+      "label": "a)",
+      "text": "_____ how hard she tried, her boss always complained about her work.",
+      "type": "multiple-choice",
+      "options": [
+        {"letter": "i", "text": "No matter", "isCorrect": true},
+        {"letter": "ii", "text": "As much as", "isCorrect": false},
+        {"letter": "iii", "text": "Nonetheless", "isCorrect": false},
+        {"letter": "iv", "text": "Although", "isCorrect": false},
+        {"letter": "v", "text": "As though", "isCorrect": false}
+      ],
+      "correctAnswer": "i",
+      "points": 1
+    },
+    {
+      "label": "b)",
+      "text": "He consistently refused to take his medicine and _____ his illness has gotten worse.",
+      "type": "multiple-choice",
+      "options": [
+        {"letter": "i", "text": "otherwise", "isCorrect": false},
+        {"letter": "ii", "text": "on the other hand", "isCorrect": false},
+        {"letter": "iii", "text": "unless", "isCorrect": false},
+        {"letter": "iv", "text": "as long as", "isCorrect": false},
+        {"letter": "v", "text": "consequently", "isCorrect": true}
+      ],
+      "correctAnswer": "v",
+      "points": 1
+    },
+    {
+      "label": "c)",
+      "text": "When Sir Richard Burton set out on his pilgrimage to Mecca in 1854, no one knew _____ he would return alive.",
+      "type": "multiple-choice",
+      "options": [
+        {"letter": "i", "text": "unless", "isCorrect": false},
+        {"letter": "ii", "text": "whether", "isCorrect": true},
+        {"letter": "iii", "text": "in case", "isCorrect": false},
+        {"letter": "iv", "text": "however", "isCorrect": false},
+        {"letter": "v", "text": "until", "isCorrect": false}
+      ],
+      "correctAnswer": "ii",
+      "points": 1
+    },
+    {
+      "label": "d)",
+      "text": "On the other hand, I have never understood _____ people have to rely on the leisure industry, instead of using their imaginations.",
+      "type": "multiple-choice",
+      "options": [
+        {"letter": "i", "text": "why", "isCorrect": true},
+        {"letter": "ii", "text": "how", "isCorrect": false},
+        {"letter": "iii", "text": "when", "isCorrect": false},
+        {"letter": "iv", "text": "where", "isCorrect": false}
+      ],
+      "correctAnswer": "i",
+      "points": 1
+    }
+  ],
+  "correctAnswer": "a) i) No matter; b) v) consequently; c) ii) whether; d) i) why"
+}
+
 SUBQUESTION EXTRACTION RULES:
 1. ALWAYS extract multi-part questions as ONE question with subQuestions array
 2. Include the "label" field for each subquestion (a, b, c, i, ii, iii)
@@ -245,9 +419,42 @@ SUBQUESTION EXTRACTION RULES:
 4. Each subquestion has its own text, correctAnswer, and points
 5. Total points = sum of all subquestion points
 6. NEVER split a multi-part question into separate question entries
+7. DISTINGUISH REGULAR MCQ vs SUB-QUESTION MCQ:
+   - REGULAR MCQ: Single question with options A, B, C, D → type: "multiple-choice", NO subQuestions array
+   - SUB-QUESTION MCQ: Part of a multi-part question with options labeled i, ii, iii, iv, v or a, b, c, d INSIDE a subQuestions array
+   - CRITICAL: Do NOT put regular MCQ options in a subQuestions array
+   - Example regular MCQ: "What is 2+2? A) 3 B) 4 C) 5 D) 6" → type: "multiple-choice", options: [{letter:"A", text:"3"}...]
+   - Example sub-question MCQ: "Question 12: Choose the best option... a) ... i) No matter ii) As much as..." → This has subQuestions with MCQ type
+
+8. For MULTIPLE-CHOICE subquestions:
+   - ONLY when the question is already a multi-part question with labeled sections a), b), c)
+   - Extract sub-question options with letters (i, ii, iii, iv, v for sub-options)
+   - Mark the correct option with isCorrect: true
+   - Include options array with {letter, text, isCorrect} structure INSIDE the subQuestion object
+   - Each subquestion can be different types: open-ended, multiple-choice, true-false, fill-in-blank
+   - Each subquestion is independent - students answer each one separately
+10. DETECT "CHOOSE N" QUESTIONS:
+   - Look for phrases like: "Choose ONE", "Select ONE", "Answer ONE", "Answer any ONE", "Pick ONE"
+   - Also detect: "Choose TWO", "Select any 3", "Answer any TWO of the following"
+   - Extract the number from phrases like "Choose [NUMBER]" or "Select any [NUMBER]"
+   - Set "subQuestionConfig": { "mode": "choose-n", "requiredCount": N, "scoringType": "partial" } on the main question
+   - The student will select N sub-questions to answer, each graded independently
+   - Example: "Question 15: Choose ONE of the following (10 marks) a)... b)... c)" → requiredCount: 1
+   - Example: "Question 16: Answer any TWO questions (5 marks each) a)... b)... c)... d)" → requiredCount: 2
+   - Each sub-question earns its own marks - no requirement to get all correct
+11. SUBQUESTION CONFIGURATION:
+   - Always include "subQuestionConfig" for multi-part questions
+   - "mode": "all" (answer all, default) or "choose-n" (select N to answer)
+   - "requiredCount": number to select when mode is "choose-n"
+   - "scoringType": "partial" (independent grading, default) or "all-or-nothing" (strict)
 
 Return valid JSON with this exact structure:
 {
+  "instructions": "Extract general instructions if present",
+  "answerKey": {
+    "1": "Answer for question 1",
+    "2": "Answer for question 2"
+  },
   "sections": [
     {
       "name": "A",
@@ -257,6 +464,8 @@ Return valid JSON with this exact structure:
           "questionNumber": 1,
           "text": "Exact question text from document",
           "type": "multiple-choice",
+          "passage": "Extract reading passage or comprehension text if this question is based on a passage",
+          "context": "Extract any additional context, diagram descriptions, or setup text for this question",
           "options": [
             {"letter": "A", "text": "Option text as in document", "isCorrect": false},
             {"letter": "B", "text": "Option text as in document", "isCorrect": true},
@@ -276,8 +485,41 @@ Return valid JSON with this exact structure:
           "questionNumber": 1,
           "text": "Exact question text from document",
           "type": "open-ended",
+          "passage": "Extract reading passage or comprehension text if this question is based on a passage",
+          "context": "Extract any additional context, diagram descriptions, or setup text for this question",
           "correctAnswer": "Extract from document OR generate comprehensive model answer if not provided",
           "points": 5
+        },
+        {
+          "questionNumber": 2,
+          "text": "Choose any TWO of the following questions:",
+          "type": "open-ended",
+          "points": 10,
+          "subQuestionConfig": { "mode": "choose-n", "requiredCount": 2, "scoringType": "partial" },
+          "subQuestions": [
+            {
+              "label": "a)",
+              "text": "First sub-question text",
+              "type": "short-answer",
+              "points": 5,
+              "correctAnswer": "Answer for a)"
+            },
+            {
+              "label": "b)",
+              "text": "Second sub-question text",
+              "type": "short-answer",
+              "points": 5,
+              "correctAnswer": "Answer for b)"
+            },
+            {
+              "label": "c)",
+              "text": "Third sub-question text",
+              "type": "short-answer",
+              "points": 5,
+              "correctAnswer": "Answer for c)"
+            }
+          ],
+          "correctAnswer": "Student answers any 2 of the 3 sub-questions"
         }
       ]
     },
@@ -289,6 +531,8 @@ Return valid JSON with this exact structure:
           "questionNumber": 1,
           "text": "Exact question text from document",
           "type": "open-ended",
+          "passage": "Extract reading passage or comprehension text if this question is based on a passage",
+          "context": "Extract any additional context, diagram descriptions, or setup text for this question",
           "correctAnswer": "Extract from document OR generate comprehensive model answer if not provided",
           "points": 15
         }
@@ -374,6 +618,20 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
   try {
     console.log('Validating and enhancing extracted data...');
 
+    // Extract and store metadata if present
+    if (extractedData.metadata) {
+      console.log('Document metadata extracted:', extractedData.metadata);
+    }
+
+    // Extract and store answer key if present
+    if (extractedData.answerKey) {
+      console.log(`Answer key extracted with ${Object.keys(extractedData.answerKey).length} answers`);
+      // Merge with pre-loaded answer data
+      if (answerData && answerData.answers) {
+        Object.assign(answerData.answers, extractedData.answerKey);
+      }
+    }
+
     // Ensure sections exist
     if (!extractedData.sections || !Array.isArray(extractedData.sections)) {
       extractedData.sections = [
@@ -381,6 +639,22 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
         { name: 'B', description: 'Short Answer Questions', questions: [] },
         { name: 'C', description: 'Essay Questions', questions: [] }
       ];
+    }
+
+    // Validate and fix section names
+    const validSectionNames = ['A', 'B', 'C', 'D', 'E', 'F'];
+    let sectionIndex = 0;
+    for (const section of extractedData.sections) {
+      // If section name is empty or invalid, assign a default name
+      if (!section.name || section.name.trim() === '') {
+        console.warn(`Section has empty name, assigning default name: ${validSectionNames[sectionIndex] || 'A'}`);
+        section.name = validSectionNames[sectionIndex] || 'A';
+      }
+      // Ensure description exists
+      if (!section.description) {
+        section.description = `Section ${section.name}`;
+      }
+      sectionIndex++;
     }
 
     // Count total questions extracted
@@ -432,6 +706,48 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
         if (answerData.answers && answerData.answers[questionNumber]) {
           question.correctAnswer = answerData.answers[questionNumber];
           console.log(`Using pre-loaded answer for question ${questionNumber}: ${question.correctAnswer}`);
+          
+          // Log if subQuestions already exist from AI
+          if (question.subQuestions && question.subQuestions.length > 0) {
+            console.log(`Question ${questionNumber}: AI already provided ${question.subQuestions.length} subquestions, skipping parsing`);
+          }
+          
+          // For matching questions, parse matching pairs from the correctAnswer string
+          if (question.type === 'matching' && !question.matchingPairs && !question.leftItems && !question.rightItems) {
+            const parsedPairs = parseMatchingPairsFromAnswer(question.correctAnswer);
+            if (parsedPairs) {
+              question.matchingPairs = parsedPairs;
+              console.log(`Parsed matching pairs from correctAnswer for question ${questionNumber}`);
+            }
+          }
+          
+          // For questions without subQuestions, try to parse from correctAnswer string format
+          if (!question.subQuestions || question.subQuestions.length === 0) {
+            console.log(`Question ${questionNumber}: Attempting to parse subquestions from correctAnswer:`, question.correctAnswer);
+            const parsedSubQuestions = parseSubquestionsFromString(question.correctAnswer, question.text);
+            if (parsedSubQuestions && parsedSubQuestions.length >= 2) {
+              question.subQuestions = parsedSubQuestions;
+              // Update main question points to match sum of subquestion points
+              const totalSubPoints = parsedSubQuestions.reduce((sum, sq) => sum + (sq.points || 1), 0);
+              question.points = totalSubPoints;
+              
+              // Determine main question type based on subquestion types
+              const typeCounts = {};
+              parsedSubQuestions.forEach(sq => {
+                typeCounts[sq.type] = (typeCounts[sq.type] || 0) + 1;
+              });
+              
+              // If all subquestions are the same type, set main question to that type
+              const uniqueTypes = Object.keys(typeCounts);
+              if (uniqueTypes.length === 1) {
+                question.type = uniqueTypes[0];
+              }
+              
+              console.log(`Parsed ${parsedSubQuestions.length} subquestions from correctAnswer for question ${questionNumber}`);
+            } else {
+              console.log(`Question ${questionNumber}: Failed to parse subquestions, parsedSubQuestions:`, parsedSubQuestions);
+            }
+          }
         }
 
         // Handle subQuestions - generate model answers for each subquestion if missing
@@ -484,6 +800,50 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
         // Post-processing for fill-in-blank questions to infer missing numbers
         if (question.type === 'fill-in-blank' || (question.text && question.text.includes('_____'))) {
           question.correctAnswer = enhanceFillInBlankAnswer(question.text, question.correctAnswer);
+        }
+
+        // Auto-detect matching questions from answer format
+        // If the correctAnswer contains multiple pairs with separators, convert to matching type
+        if (question.correctAnswer && typeof question.correctAnswer === 'string' && 
+            !question.matchingPairs && !question.leftItems && !question.rightItems &&
+            question.type !== 'matching') {
+          const parsedPairs = parseMatchingPairsFromAnswer(question.correctAnswer);
+          if (parsedPairs && parsedPairs.leftColumn.length >= 2) {
+            console.log(`Auto-detected matching question from answer format for question ${questionNumber}`);
+            question.type = 'matching';
+            question.matchingPairs = parsedPairs;
+          }
+        }
+
+        // Auto-detect subquestions from answer format
+        // If the correctAnswer contains multiple labeled answers (a) Answer, b) Answer, etc.), parse as subquestions
+        if (question.correctAnswer && typeof question.correctAnswer === 'string' && 
+            (!question.subQuestions || question.subQuestions.length === 0)) {
+          const parsedSubQuestions = parseSubquestionsFromString(question.correctAnswer, question.text);
+          if (parsedSubQuestions && parsedSubQuestions.length >= 2) {
+            console.log(`Auto-detected subquestions from answer format for question ${questionNumber}`);
+            question.subQuestions = parsedSubQuestions;
+            // Update main question points to match sum of subquestion points
+            const totalSubPoints = parsedSubQuestions.reduce((sum, sq) => sum + (sq.points || 1), 0);
+            question.points = totalSubPoints;
+            
+            // Determine main question type based on subquestion types
+            const typeCounts = {};
+            parsedSubQuestions.forEach(sq => {
+              typeCounts[sq.type] = (typeCounts[sq.type] || 0) + 1;
+            });
+            
+            // If all subquestions are the same type, set main question to that type
+            // Otherwise, keep as open-ended (mixed types)
+            const uniqueTypes = Object.keys(typeCounts);
+            if (uniqueTypes.length === 1) {
+              question.type = uniqueTypes[0];
+              console.log(`Set main question type to ${question.type} (all subquestions are same type)`);
+            } else {
+              question.type = 'open-ended';
+              console.log(`Set main question type to open-ended (mixed subquestion types: ${uniqueTypes.join(', ')})`);
+            }
+          }
         }
 
         // Convert correctAnswer to string if it's an object - do this BEFORE any other processing
@@ -790,7 +1150,16 @@ const enhanceQuestionByType = async (question, answerData) => {
         // Structure matching questions properly - only if not already structured
         // Preserve original structure if matchingPairs or leftItems/rightItems already exist
         if (!question.matchingPairs && !question.leftItems && !question.rightItems) {
+          // First try to extract from question text
           question.matchingPairs = await extractMatchingPairs(question.text);
+          
+          // If no pairs found in question text, try parsing from correctAnswer
+          if (!question.matchingPairs && question.correctAnswer && typeof question.correctAnswer === 'string') {
+            question.matchingPairs = parseMatchingPairsFromAnswer(question.correctAnswer);
+            if (question.matchingPairs) {
+              console.log('Extracted matching pairs from correctAnswer string');
+            }
+          }
         }
         break;
 
@@ -965,6 +1334,10 @@ If you cannot identify clear matching pairs, return null.
  */
 const extractMatchingPairsRegex = (questionText) => {
   try {
+    if (!questionText || typeof questionText !== 'string') {
+      return null;
+    }
+    
     // Try different separators: -, –, —, |, :, ->
     const separators = ['-', '–', '—', '|', ':', '->'];
     let bestMatch = null;
@@ -976,8 +1349,8 @@ const extractMatchingPairsRegex = (questionText) => {
       let match;
 
       while ((match = pattern.exec(questionText)) !== null) {
-        const left = match[1].trim();
-        const right = match[2].trim();
+        const left = match[1] ? match[1].trim() : '';
+        const right = match[2] ? match[2].trim() : '';
         // Skip if either side is empty or too short
         if (left.length > 1 && right.length > 1) {
           matches.push({ left, right });
@@ -997,6 +1370,190 @@ const extractMatchingPairsRegex = (questionText) => {
     return bestMatch;
   } catch (error) {
     console.error('Error in regex matching pairs extraction:', error);
+    return null;
+  }
+};
+
+/**
+ * Parse subquestions from correctAnswer string format (e.g., "a) False, b) True, c) True")
+ * @param {string} correctAnswer - The correct answer string containing subquestion answers
+ * @param {string} questionText - The main question text to extract subquestion text from
+ * @returns {Array|null} - Array of subquestions or null
+ */
+const parseSubquestionsFromString = (correctAnswer, questionText = '') => {
+  try {
+    if (!correctAnswer || typeof correctAnswer !== 'string') {
+      console.log('parseSubquestionsFromString: Invalid input', { correctAnswer, type: typeof correctAnswer });
+      return null;
+    }
+
+    const text = correctAnswer.trim();
+    console.log('parseSubquestionsFromString: Input text:', text);
+    const subQuestions = [];
+
+    // Split by common delimiters first, then parse each part
+    // This handles: "a) False b) True c) True" and "a) False, b) True, c) True"
+    // Only split on space when followed by a letter AND ) or . (to avoid splitting on words)
+    const parts = text.split(/,\s*|\s+(?=[a-z][\)\.]\s)/);
+    const matches = [];
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+
+      // Match pattern: a) Answer or a. Answer or a Answer
+      const match = trimmed.match(/^([a-z])[\)\.]?\s*(.*)$/i);
+      if (match) {
+        const label = match[1].toLowerCase();
+        const answer = match[2] ? match[2].trim() : '';
+        
+        console.log('parseSubquestionsFromString: Match found', { label, answer });
+        
+        if (answer.length > 0) {
+          matches.push({
+            label,
+            subLabel: null,
+            answer
+          });
+        }
+      }
+    }
+
+    console.log('parseSubquestionsFromString: Total matches:', matches.length);
+    if (matches.length < 2) {
+      console.log('parseSubquestionsFromString: Not enough matches, returning null');
+      return null; // Need at least 2 subquestions
+    }
+
+    // Try to extract subquestion text from the main question text
+    const subquestionPatterns = questionText.match(/(?:^|\n)[\s]*[a-z][\)\.]?\s*([^.!?]*[.!?]?)/gi) || [];
+
+    for (let i = 0; i < matches.length; i++) {
+      const { label, subLabel, answer } = matches[i];
+      
+      // Try to get the corresponding subquestion text from the patterns
+      let subText = '';
+      if (subquestionPatterns[i]) {
+        subText = subquestionPatterns[i].trim();
+        // Remove the label prefix if present
+        subText = subText.replace(/^[a-z][\)\.]?\s*/i, '');
+      } else {
+        // Fallback: use a generic label
+        subText = `Subquestion ${label.toUpperCase()}`;
+      }
+
+      // Determine the type based on the answer format
+      let subType = 'open-ended';
+      let options = [];
+      
+      // Check for true/false
+      if (answer.toLowerCase() === 'true' || answer.toLowerCase() === 'false') {
+        subType = 'true-false';
+      }
+      // Check for multiple-choice (has roman numeral or letter option)
+      else if (subLabel && /^[ivx]+$/.test(subLabel)) {
+        subType = 'multiple-choice';
+        // The answer is the option letter (i, ii, iii, iv, v)
+        // We'll need to extract options from the question text or use a placeholder
+        options = [
+          { letter: 'i', text: 'Option i', isCorrect: subLabel === 'i' },
+          { letter: 'ii', text: 'Option ii', isCorrect: subLabel === 'ii' },
+          { letter: 'iii', text: 'Option iii', isCorrect: subLabel === 'iii' },
+          { letter: 'iv', text: 'Option iv', isCorrect: subLabel === 'iv' },
+          { letter: 'v', text: 'Option v', isCorrect: subLabel === 'v' }
+        ];
+      }
+      // Check for single letter answers (A, B, C, D)
+      else if (/^[a-d]$/i.test(answer)) {
+        subType = 'multiple-choice';
+        options = [
+          { letter: 'A', text: 'Option A', isCorrect: answer.toUpperCase() === 'A' },
+          { letter: 'B', text: 'Option B', isCorrect: answer.toUpperCase() === 'B' },
+          { letter: 'C', text: 'Option C', isCorrect: answer.toUpperCase() === 'C' },
+          { letter: 'D', text: 'Option D', isCorrect: answer.toUpperCase() === 'D' }
+        ];
+      }
+      // Check for numeric answers
+      else if (/^\d+$/.test(answer)) {
+        subType = 'open-ended'; // Could be fill-in-blank or numeric
+      }
+      // Otherwise, treat as open-ended/short-answer
+      else {
+        subType = 'open-ended';
+      }
+
+      const subQuestion = {
+        label: `${label})`,
+        text: subText,
+        type: subType,
+        correctAnswer: answer,
+        points: 1 // Default points per subquestion
+      };
+
+      // Add options if it's multiple-choice
+      if (options.length > 0) {
+        subQuestion.options = options;
+      }
+
+      subQuestions.push(subQuestion);
+    }
+
+    console.log(`Parsed ${subQuestions.length} subquestions from string format`);
+    return subQuestions;
+  } catch (error) {
+    console.error('Error parsing subquestions from string:', error);
+    return null;
+  }
+};
+
+/**
+ * Parse matching pairs from correctAnswer string format
+ * @param {string} correctAnswer - The correct answer string containing matching pairs
+ * @returns {Object|null} - Matching pairs structure or null
+ */
+const parseMatchingPairsFromAnswer = (correctAnswer) => {
+  try {
+    if (!correctAnswer || typeof correctAnswer !== 'string') {
+      return null;
+    }
+
+    const text = correctAnswer.trim();
+    const pairs = [];
+
+    // Split by comma to get individual pairs
+    const pairStrings = text.split(',').map(s => s.trim()).filter(s => s.length > 0);
+
+    for (const pairStr of pairStrings) {
+      // Try different separators: -, –, —, |, :, ->
+      const separators = [' - ', ' – ', ' — ', ' | ', ' : ', ' -> ', '-', '–', '—', '|', ':', '->'];
+      
+      for (const separator of separators) {
+        if (pairStr.includes(separator)) {
+          const parts = pairStr.split(separator);
+          if (parts.length === 2) {
+            const left = parts[0].trim();
+            const right = parts[1].trim();
+            if (left.length > 1 && right.length > 1) {
+              pairs.push({ left, right });
+              break; // Use the first matching separator
+            }
+          }
+        }
+      }
+    }
+
+    if (pairs.length >= 2) {
+      console.log(`Parsed ${pairs.length} matching pairs from correctAnswer`);
+      return {
+        leftColumn: pairs.map(p => p.left),
+        rightColumn: pairs.map(p => p.right),
+        correctPairs: pairs.map((_, index) => ({ left: index, right: index }))
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error parsing matching pairs from answer:', error);
     return null;
   }
 };
@@ -2412,10 +2969,14 @@ const categorizeQuestionsWithAI = async (examStructure) => {
  * @param {Object} answerData - Optional pre-loaded answer data
  * @returns {Promise<Object>} - Structured questions
  */
-const parseFile = async (filePath, answerData = { answers: {} }) => {
+const parseFile = async (filePath, answerData = { answers: {} }, originalFilename = null) => {
   try {
     console.log(`Parsing file: ${filePath}`);
-    const fileExtension = path.extname(filePath).toLowerCase();
+    // Use original filename for extension if provided, otherwise extract from path
+    const fileExtension = originalFilename 
+      ? path.extname(originalFilename).toLowerCase()
+      : path.extname(filePath).toLowerCase();
+    console.log(`Detected file extension: ${fileExtension}`);
     let text = '';
 
     // Parse the file based on its extension

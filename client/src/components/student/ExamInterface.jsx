@@ -37,7 +37,8 @@ import {
   List,
   ListItem,
   ListItemText,
-  useTheme
+  useTheme,
+  Checkbox
 } from '@mui/material';
 import EnhancedOpenAnswer from './EnhancedOpenAnswer';
 import ImageAnswer from './ImageAnswer';
@@ -4378,6 +4379,493 @@ const ExamInterface = () => {
                           );
                         }
                       })()}
+
+                      {/* SubQuestions Rendering - Supports ALL question types */}
+                      {currentQuestion.subQuestions && currentQuestion.subQuestions.length > 0 && (
+                        <Box sx={{ mt: { xs: 2, sm: 3, md: 4 } }}>
+                          <Typography 
+                            variant="h6" 
+                            fontWeight="bold" 
+                            color="primary.main" 
+                            sx={{ 
+                              mb: { xs: 1.5, sm: 2 }, 
+                              pb: 1, 
+                              borderBottom: '2px solid', 
+                              borderColor: 'primary.main',
+                              fontSize: { xs: '1rem', sm: '1.25rem' }
+                            }}
+                          >
+                            {(currentQuestion.subQuestionConfig?.mode === 'choose-n' || currentQuestion.subQuestionMode === 'choose-one')
+                              ? `Choose ${currentQuestion.subQuestionConfig?.requiredCount || 1} Question${(currentQuestion.subQuestionConfig?.requiredCount || 1) > 1 ? 's' : ''} to Answer (${currentQuestion.subQuestions.length} options)` 
+                              : `Sub-Questions (${currentQuestion.subQuestions.length})`}
+                          </Typography>
+                          
+                          {/* Choose-N Mode - Selection with Checkboxes */}
+                          {(currentQuestion.subQuestionConfig?.mode === 'choose-n' || currentQuestion.subQuestionMode === 'choose-one') && (
+                            <Paper elevation={0} sx={{ mb: 3, p: { xs: 2, sm: 3 }, bgcolor: '#FFF3E0', border: '2px solid', borderColor: 'warning.main', borderRadius: 2 }}>
+                              <Typography variant="subtitle1" fontWeight="bold" color="warning.dark" sx={{ mb: 1, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                                ⚠️ You must select {currentQuestion.subQuestionConfig?.requiredCount || 1} question{(currentQuestion.subQuestionConfig?.requiredCount || 1) > 1 ? 's' : ''} to answer.
+                              </Typography>
+                              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                                {currentQuestion.subQuestionConfig?.scoringType === 'all-or-nothing' 
+                                  ? `⚠️ All-or-Nothing: You must answer ALL ${currentQuestion.subQuestionConfig?.requiredCount || 1} questions correctly to get any marks.` 
+                                  : `✓ Each question is graded independently. You earn marks for each correct answer.`}
+                              </Typography>
+                              
+                              {/* Selection Counter */}
+                              {(() => {
+                                const selectedIndices = answers[`${currentQuestion._id}_selectedSubQuestions`]?.selectedIndices || [];
+                                const requiredCount = currentQuestion.subQuestionConfig?.requiredCount || 1;
+                                const remaining = requiredCount - selectedIndices.length;
+                                
+                                return (
+                                  <Box sx={{ mb: 2, p: 1, bgcolor: remaining === 0 ? '#E8F5E9' : '#FFF3E0', borderRadius: 1, border: '1px solid', borderColor: remaining === 0 ? '#4CAF50' : '#FF9800' }}>
+                                    <Typography sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' }, fontWeight: 500, color: remaining === 0 ? '#2E7D32' : '#E65100' }}>
+                                      {remaining === 0 
+                                        ? `✅ You've selected ${selectedIndices.length}/${requiredCount} questions. You can now answer them below.`
+                                        : `⏳ Select ${remaining} more question${remaining > 1 ? 's' : ''} (${selectedIndices.length}/${requiredCount} selected)`}
+                                    </Typography>
+                                  </Box>
+                                );
+                              })()}
+                              
+                              <FormControl component="fieldset" fullWidth>
+                                <Grid container spacing={2}>
+                                  {currentQuestion.subQuestions.map((subQ, subIdx) => {
+                                    const selectedIndices = answers[`${currentQuestion._id}_selectedSubQuestions`]?.selectedIndices || [];
+                                    const isSelected = selectedIndices.includes(subIdx);
+                                    const requiredCount = currentQuestion.subQuestionConfig?.requiredCount || 1;
+                                    const canSelect = isSelected || selectedIndices.length < requiredCount;
+                                    
+                                    return (
+                                      <Grid item xs={12} sm={6} key={subIdx}>
+                                        <Paper
+                                          elevation={0}
+                                          sx={{
+                                            p: 2,
+                                            border: '2px solid',
+                                            borderColor: isSelected ? 'warning.main' : canSelect ? '#E0E0E0' : '#EEEEEE',
+                                            borderRadius: 2,
+                                            bgcolor: isSelected ? '#FFF8E1' : canSelect ? 'white' : '#F5F5F5',
+                                            transition: 'all 0.2s ease',
+                                            cursor: canSelect ? 'pointer' : 'not-allowed',
+                                            opacity: canSelect ? 1 : 0.6,
+                                            '&:hover': canSelect ? {
+                                              borderColor: isSelected ? 'warning.main' : 'warning.light',
+                                              bgcolor: '#FFF8E1'
+                                            } : {}
+                                          }}
+                                          onClick={() => {
+                                            if (!canSelect && !isSelected) return;
+                                            
+                                            let newSelectedIndices;
+                                            if (isSelected) {
+                                              // Deselect
+                                              newSelectedIndices = selectedIndices.filter(idx => idx !== subIdx);
+                                            } else {
+                                              // Select
+                                              newSelectedIndices = [...selectedIndices, subIdx];
+                                            }
+                                            
+                                            // Save the selection
+                                            handleAnswerChange(
+                                              `${currentQuestion._id}_selectedSubQuestions`,
+                                              newSelectedIndices,
+                                              'selection',
+                                              { 
+                                                parentQuestionId: currentQuestion._id, 
+                                                isSubQuestionSelection: true, 
+                                                selectedSubQuestionIndices: newSelectedIndices 
+                                              }
+                                            );
+                                          }}
+                                        >
+                                          <FormControlLabel
+                                            control={
+                                              <Checkbox
+                                                id={`subq-select-${subIdx}`}
+                                                checked={isSelected}
+                                                disabled={!canSelect}
+                                                sx={{ '&.Mui-checked': { color: 'warning.main' } }}
+                                              />
+                                            }
+                                            label={
+                                              <Box>
+                                                <Typography fontWeight="bold" color={isSelected ? 'warning.dark' : 'text.primary'} sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                                                  {subQ.label || `Option ${String.fromCharCode(65 + subIdx)}`}
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary', fontSize: { xs: '0.8rem', sm: '0.875rem' }, lineHeight: 1.4 }}>
+                                                  {subQ.text?.substring(0, 100)}{subQ.text?.length > 100 ? '...' : ''}
+                                                </Typography>
+                                                <Chip 
+                                                  label={`${subQ.points || currentQuestion.points || 1} marks`}
+                                                  size="small"
+                                                  color={isSelected ? 'warning' : 'default'}
+                                                  variant="outlined"
+                                                  sx={{ mt: 1, fontSize: '0.7rem' }}
+                                                />
+                                              </Box>
+                                            }
+                                            sx={{ width: '100%', m: 0, alignItems: 'flex-start' }}
+                                          />
+                                        </Paper>
+                                      </Grid>
+                                    );
+                                  })}
+                                </Grid>
+                              </FormControl>
+                            </Paper>
+                          )}
+                          
+                          {currentQuestion.subQuestions.map((subQ, subIdx) => {
+                            const subAnswerKey = `${currentQuestion._id}_sub_${subIdx}`;
+                            const subAnswer = answers[subAnswerKey];
+                            const subType = subQ.type || 'open-ended';
+                            
+                            // In choose-n mode, only show the selected sub-questions
+                            const selectedIndices = answers[`${currentQuestion._id}_selectedSubQuestions`]?.selectedIndices || [];
+                            const isChooseNMode = currentQuestion.subQuestionConfig?.mode === 'choose-n' || 
+                                                 currentQuestion.subQuestionMode === 'choose-one';
+                            const isSelected = selectedIndices.includes(subIdx);
+                            
+                            // Skip rendering if in choose-n mode and this sub-question is not selected
+                            if (isChooseNMode && !isSelected) {
+                              return null;
+                            }
+                            
+                            // Render the appropriate input based on sub-question type
+                            const renderSubQuestionInput = () => {
+                              switch (subType) {
+                                case 'multiple-choice':
+                                case 'mcq':
+                                  return subQ.options && subQ.options.length > 0 ? (
+                                    <FormControl component="fieldset" fullWidth sx={{ width: '100%' }}>
+                                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                                        Select the best answer:
+                                      </Typography>
+                                      <RadioGroup
+                                        value={subAnswer?.selectedOption || ''}
+                                        onChange={(e) => handleAnswerChange(
+                                          subAnswerKey,
+                                          e.target.value,
+                                          'multiple-choice',
+                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                        )}
+                                        sx={{ width: '100%' }}
+                                      >
+                                        <Grid container spacing={{ xs: 1, sm: 2 }}>
+                                          {subQ.options.map((option, optIdx) => (
+                                            <Grid item xs={12} sm={6} md={12} lg={6} key={optIdx}>
+                                              <FormControlLabel
+                                                value={option.text}
+                                                control={
+                                                  <Radio
+                                                    disabled={subAnswer?.answered}
+                                                    sx={{ 
+                                                      '&.Mui-checked': { color: 'primary.main' },
+                                                      p: { xs: 0.5, sm: 1 }
+                                                    }}
+                                                  />
+                                                }
+                                                label={
+                                                  <Box component="span" sx={{
+                                                    whiteSpace: 'pre-wrap',
+                                                    fontWeight: subAnswer?.selectedOption === option.text ? 'bold' : 'normal',
+                                                    fontSize: { xs: '0.875rem', sm: '1rem' }
+                                                  }}>
+                                                    <Typography component="span" fontWeight="bold" color="primary.main" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+                                                      {option.letter || String.fromCharCode(105 + optIdx)}. {' '}
+                                                    </Typography>
+                                                    {option.text}
+                                                  </Box>
+                                                }
+                                                sx={{
+                                                  width: '100%',
+                                                  m: 0,
+                                                  p: { xs: 1, sm: 1.5 },
+                                                  borderRadius: 1,
+                                                  transition: 'all 0.2s ease',
+                                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                                  '&:hover': {
+                                                    bgcolor: 'action.hover',
+                                                  },
+                                                  ...(subAnswer?.selectedOption === option.text && {
+                                                    bgcolor: 'primary.lighter',
+                                                    border: '1px solid',
+                                                    borderColor: 'primary.main',
+                                                  })
+                                                }}
+                                              />
+                                            </Grid>
+                                          ))}
+                                        </Grid>
+                                      </RadioGroup>
+                                    </FormControl>
+                                  ) : (
+                                    <TextField
+                                      fullWidth
+                                      variant="outlined"
+                                      placeholder={`Enter your answer for ${subQ.label || `part ${String.fromCharCode(97 + subIdx)}`}...`}
+                                      value={subAnswer?.textAnswer || ''}
+                                      onChange={(e) => handleAnswerChange(
+                                        subAnswerKey,
+                                        e.target.value,
+                                        'open-ended',
+                                        { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                      )}
+                                      disabled={subAnswer?.answered}
+                                      sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.default' } }}
+                                    />
+                                  );
+                                  
+                                case 'true-false':
+                                case 'true/false':
+                                  return (
+                                    <FormControl component="fieldset" fullWidth>
+                                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                                        Select True or False:
+                                      </Typography>
+                                      <RadioGroup
+                                        value={subAnswer?.selectedOption || ''}
+                                        onChange={(e) => handleAnswerChange(
+                                          subAnswerKey,
+                                          e.target.value,
+                                          'true-false',
+                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                        )}
+                                        row={!isMobile} // Horizontal on desktop, vertical on mobile
+                                      >
+                                        {['True', 'False'].map((option, optIdx) => (
+                                          <FormControlLabel
+                                            key={optIdx}
+                                            value={option}
+                                            control={
+                                              <Radio
+                                                disabled={subAnswer?.answered}
+                                                sx={{ '&.Mui-checked': { color: 'success.main' } }}
+                                              />
+                                            }
+                                            label={
+                                              <Typography component="span" fontWeight="bold" color="success.main" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+                                                {option}
+                                              </Typography>
+                                            }
+                                            sx={{
+                                              mr: { xs: 2, sm: 4 },
+                                              mb: { xs: 1, sm: 0 },
+                                              p: { xs: 1, sm: 1.5 },
+                                              borderRadius: 1,
+                                              ...(subAnswer?.selectedOption === option && {
+                                                bgcolor: 'success.lighter',
+                                                border: '1px solid',
+                                                borderColor: 'success.main',
+                                              })
+                                            }}
+                                          />
+                                        ))}
+                                      </RadioGroup>
+                                    </FormControl>
+                                  );
+                                  
+                                case 'fill-in-blank':
+                                case 'fill-blank':
+                                  return (
+                                    <Box>
+                                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                                        Fill in the blank:
+                                      </Typography>
+                                      <TextField
+                                        fullWidth
+                                        variant="outlined"
+                                        placeholder="Type your answer..."
+                                        value={subAnswer?.textAnswer || ''}
+                                        onChange={(e) => handleAnswerChange(
+                                          subAnswerKey,
+                                          e.target.value,
+                                          'fill-in-blank',
+                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                        )}
+                                        disabled={subAnswer?.answered}
+                                        sx={{ 
+                                          '& .MuiOutlinedInput-root': { 
+                                            bgcolor: 'background.default',
+                                            fontSize: { xs: '0.875rem', sm: '1rem' }
+                                          } 
+                                        }}
+                                      />
+                                    </Box>
+                                  );
+                                  
+                                case 'short-answer':
+                                  return (
+                                    <Box>
+                                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                                        Short answer (1-2 sentences):
+                                      </Typography>
+                                      <TextField
+                                        fullWidth
+                                        multiline
+                                        rows={2}
+                                        variant="outlined"
+                                        placeholder={`Enter your answer for ${subQ.label || `part ${String.fromCharCode(97 + subIdx)}`}...`}
+                                        value={subAnswer?.textAnswer || ''}
+                                        onChange={(e) => handleAnswerChange(
+                                          subAnswerKey,
+                                          e.target.value,
+                                          'short-answer',
+                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                        )}
+                                        disabled={subAnswer?.answered}
+                                        sx={{ 
+                                          '& .MuiOutlinedInput-root': { 
+                                            bgcolor: 'background.default',
+                                            fontSize: { xs: '0.875rem', sm: '1rem' }
+                                          } 
+                                        }}
+                                      />
+                                    </Box>
+                                  );
+                                  
+                                case 'essay':
+                                case 'long-answer':
+                                  return (
+                                    <Box>
+                                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                                        Detailed answer:
+                                      </Typography>
+                                      <TextField
+                                        fullWidth
+                                        multiline
+                                        rows={5}
+                                        variant="outlined"
+                                        placeholder={`Enter your detailed answer for ${subQ.label || `part ${String.fromCharCode(97 + subIdx)}`}...`}
+                                        value={subAnswer?.textAnswer || ''}
+                                        onChange={(e) => handleAnswerChange(
+                                          subAnswerKey,
+                                          e.target.value,
+                                          'essay',
+                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                        )}
+                                        disabled={subAnswer?.answered}
+                                        sx={{ 
+                                          '& .MuiOutlinedInput-root': { 
+                                            bgcolor: 'background.default',
+                                            fontSize: { xs: '0.875rem', sm: '1rem' }
+                                          } 
+                                        }}
+                                      />
+                                    </Box>
+                                  );
+                                  
+                                case 'open-ended':
+                                default:
+                                  return (
+                                    <TextField
+                                      fullWidth
+                                      multiline
+                                      rows={3}
+                                      variant="outlined"
+                                      placeholder={`Enter your answer for ${subQ.label || `part ${String.fromCharCode(97 + subIdx)}`}...`}
+                                      value={subAnswer?.textAnswer || ''}
+                                      onChange={(e) => handleAnswerChange(
+                                        subAnswerKey,
+                                        e.target.value,
+                                        'open-ended',
+                                        { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                      )}
+                                      disabled={subAnswer?.answered}
+                                      sx={{ 
+                                        '& .MuiOutlinedInput-root': { 
+                                          bgcolor: 'background.default',
+                                          fontSize: { xs: '0.875rem', sm: '1rem' }
+                                        } 
+                                      }}
+                                    />
+                                  );
+                              }
+                            };
+                            
+                            return (
+                              <Paper 
+                                key={subIdx} 
+                                elevation={1} 
+                                sx={{ 
+                                  mb: { xs: 2, sm: 3 }, 
+                                  p: { xs: 2, sm: 3 }, 
+                                  bgcolor: 'background.paper', 
+                                  border: '1px solid', 
+                                  borderColor: 'divider', 
+                                  borderRadius: 2,
+                                  transition: 'all 0.2s ease',
+                                  '&:hover': {
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                  }
+                                }}
+                              >
+                                {/* Sub-question header with label and points */}
+                                <Box sx={{ 
+                                  display: 'flex', 
+                                  flexDirection: { xs: 'column', sm: 'row' },
+                                  justifyContent: 'space-between',
+                                  alignItems: { xs: 'flex-start', sm: 'center' },
+                                  mb: 2,
+                                  gap: 1
+                                }}>
+                                  <Typography 
+                                    variant="subtitle1" 
+                                    fontWeight="bold" 
+                                    color="primary.dark"
+                                    sx={{ fontSize: { xs: '0.9rem', sm: '1.1rem' } }}
+                                  >
+                                    {subQ.label || `Part ${String.fromCharCode(97 + subIdx)})`}
+                                  </Typography>
+                                  <Chip 
+                                    label={`${subQ.points || 1} point${(subQ.points || 1) > 1 ? 's' : ''}`}
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                    sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                                  />
+                                </Box>
+                                
+                                {/* Sub-question text */}
+                                <Typography 
+                                  variant="body1" 
+                                  sx={{ 
+                                    mt: 1, 
+                                    mb: 2,
+                                    whiteSpace: 'pre-wrap',
+                                    fontSize: { xs: '0.9rem', sm: '1rem' },
+                                    lineHeight: 1.6
+                                  }}
+                                >
+                                  {subQ.text}
+                                </Typography>
+
+                                {/* Sub-question answer interface */}
+                                <Box sx={{ 
+                                  pl: { xs: 1, sm: 2 }, 
+                                  borderLeft: '3px solid', 
+                                  borderColor: 'primary.light',
+                                  py: 1
+                                }}>
+                                  {renderSubQuestionInput()}
+                                  
+                                  {/* Saved indicator */}
+                                  {subAnswer?.savedToServer && (
+                                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, color: 'success.main' }}>
+                                      <Check fontSize="small" sx={{ mr: 0.5 }} />
+                                      <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+                                        Answer saved
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+                              </Paper>
+                            );
+                          })}
+                        </Box>
+                      )}
                     </Box>
 
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>

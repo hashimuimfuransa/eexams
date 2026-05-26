@@ -138,6 +138,215 @@ const ensureOptionLetters = (options) => {
 };
 
 /**
+ * Grade sub-questions for a question
+ * @param {Object} question - The parent question with subQuestions
+ * @param {Object} answer - The student's answer object
+ * @returns {Object} - Grading result with score and feedback
+ */
+const gradeSubQuestions = (question, answer) => {
+  const subQuestions = question.subQuestions || [];
+  const subQuestionAnswers = answer.subQuestionAnswers || [];
+  const config = question.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' };
+  const mode = config.mode || 'all';
+  const requiredCount = config.requiredCount || 1;
+  const scoringType = config.scoringType || 'partial';
+  
+  if (subQuestions.length === 0) {
+    return { score: 0, feedback: 'No sub-questions found', isCorrect: false };
+  }
+  
+  // Handle "choose-n" mode - student selects N sub-questions to answer
+  if (mode === 'choose-n') {
+    // Get selected sub-question indices
+    const selectedIndices = answer.selectedSubQuestionIndices || 
+                           (answer.selectedSubQuestionIndex !== undefined ? [answer.selectedSubQuestionIndex] : []);
+    
+    // Validate selection count
+    if (selectedIndices.length === 0) {
+      return { 
+        score: 0, 
+        feedback: `⚠️ No sub-questions were selected. You must choose ${requiredCount} question${requiredCount > 1 ? 's' : ''} to answer.`, 
+        isCorrect: false,
+        selectedCount: 0,
+        requiredCount
+      };
+    }
+    
+    if (selectedIndices.length < requiredCount) {
+      return { 
+        score: 0, 
+        feedback: `⚠️ You selected ${selectedIndices.length} question${selectedIndices.length > 1 ? 's' : ''} but must select ${requiredCount}.`, 
+        isCorrect: false,
+        selectedCount: selectedIndices.length,
+        requiredCount
+      };
+    }
+    
+    if (selectedIndices.length > requiredCount) {
+      return { 
+        score: 0, 
+        feedback: `⚠️ You selected ${selectedIndices.length} questions but can only answer ${requiredCount}. Please deselect ${selectedIndices.length - requiredCount}.`, 
+        isCorrect: false,
+        selectedCount: selectedIndices.length,
+        requiredCount
+      };
+    }
+    
+    // Grade each selected sub-question independently
+    let totalScore = 0;
+    let maxPossibleScore = 0;
+    let correctCount = 0;
+    let feedbackParts = [];
+    
+    for (const idx of selectedIndices) {
+      const subQ = subQuestions[idx];
+      const subQAnswer = subQuestionAnswers[idx];
+      const subQPoints = subQ.points || Math.round((question.points || 1) / requiredCount);
+      maxPossibleScore += subQPoints;
+      
+      if (!subQ) {
+        feedbackParts.push(`⚠️ Invalid selection at index ${idx}`);
+        continue;
+      }
+      
+      if (!subQAnswer || !subQAnswer.answered) {
+        feedbackParts.push(`${subQ.label || 'Option ' + String.fromCharCode(65 + idx)}: Not answered (0/${subQPoints})`);
+        continue;
+      }
+      
+      const subQType = subQ.type || 'open-ended';
+      let isSubCorrect = false;
+      let subQScore = 0;
+      
+      if (subQType === 'multiple-choice' || subQType === 'true-false') {
+        const studentAnswer = subQAnswer.selectedOption;
+        const correctAnswer = subQ.correctAnswer;
+        const selectedOptionObj = subQ.options?.find(opt => 
+          opt.text === studentAnswer || opt.letter === studentAnswer
+        );
+        
+        isSubCorrect = selectedOptionObj?.isCorrect || 
+                      studentAnswer === correctAnswer ||
+                      selectedOptionObj?.letter === correctAnswer;
+        
+        // Award points for this sub-question if correct
+        subQScore = isSubCorrect ? subQPoints : 0;
+      } else {
+        // For open-ended, check if there's an answer (AI will grade later)
+        const hasAnswer = subQAnswer.textAnswer && subQAnswer.textAnswer.trim().length > 0;
+        if (hasAnswer) {
+          // For open-ended, give full points for now (AI will adjust later)
+          isSubCorrect = true;
+          subQScore = subQPoints;
+        }
+      }
+      
+      totalScore += subQScore;
+      
+      if (isSubCorrect) {
+        correctCount++;
+        feedbackParts.push(`${subQ.label || 'Option ' + String.fromCharCode(65 + idx)}: ✅ Correct (+${subQScore} marks)`);
+      } else {
+        feedbackParts.push(`${subQ.label || 'Option ' + String.fromCharCode(65 + idx)}: ❌ Incorrect (0/${subQPoints})`);
+      }
+    }
+    
+    // Calculate final score based on scoring type
+    const questionPoints = question.points || maxPossibleScore;
+    let score = 0;
+    let isCorrect = false;
+    
+    if (scoringType === 'all-or-nothing') {
+      // Must get all selected questions correct for any points
+      score = (correctCount === requiredCount) ? questionPoints : 0;
+      isCorrect = correctCount === requiredCount;
+    } else {
+      // Award the sum of correct sub-question points (default behavior)
+      score = totalScore;
+      isCorrect = correctCount > 0;
+    }
+    
+    let feedback = `Selected ${requiredCount} question${requiredCount > 1 ? 's' : ''}:\n${feedbackParts.join('\n')}\n\nTotal: ${score}/${maxPossibleScore} marks`;
+    if (scoringType === 'all-or-nothing' && correctCount < requiredCount) {
+      feedback = `Selected ${requiredCount} question${requiredCount > 1 ? 's' : ''}:\n${feedbackParts.join('\n')}\n\n⚠️ All-or-nothing scoring: You needed all ${requiredCount} correct for ${questionPoints} marks. Score: 0/${questionPoints}`;
+    }
+    
+    return {
+      score,
+      feedback,
+      isCorrect,
+      mode: 'choose-n',
+      requiredCount,
+      selectedCount: selectedIndices.length,
+      correctCount,
+      scoringType
+    };
+  }
+  
+  // Handle "all" mode - student must answer all sub-questions
+  let totalScore = 0;
+  let maxPossibleScore = 0;
+  let feedbackParts = [];
+  let allAnswered = true;
+  
+  for (let i = 0; i < subQuestions.length; i++) {
+    const subQ = subQuestions[i];
+    const subQAnswer = subQuestionAnswers[i];
+    const subQPoints = subQ.points || 1;
+    maxPossibleScore += subQPoints;
+    
+    if (!subQAnswer || !subQAnswer.answered) {
+      allAnswered = false;
+      feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: Not answered`);
+      continue;
+    }
+    
+    const subQType = subQ.type || 'open-ended';
+    let subQScore = 0;
+    
+    if (subQType === 'multiple-choice' || subQType === 'true-false') {
+      const studentAnswer = subQAnswer.selectedOption;
+      const correctAnswer = subQ.correctAnswer;
+      const selectedOptionObj = subQ.options?.find(opt => 
+        opt.text === studentAnswer || opt.letter === studentAnswer
+      );
+      
+      const isSubCorrect = selectedOptionObj?.isCorrect || 
+                          studentAnswer === correctAnswer ||
+                          selectedOptionObj?.letter === correctAnswer;
+      
+      subQScore = isSubCorrect ? subQPoints : 0;
+      feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${isSubCorrect ? '✅' : '❌'} (${subQScore}/${subQPoints})`);
+    } else {
+      // Open-ended - check if answered, AI will grade later
+      const hasAnswer = subQAnswer.textAnswer && subQAnswer.textAnswer.trim().length > 0;
+      subQScore = hasAnswer ? subQPoints : 0;
+      feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${hasAnswer ? '✅ Answered' : '❌ Not answered'} (${subQScore}/${subQPoints})`);
+    }
+    
+    totalScore += subQScore;
+  }
+  
+  const questionPoints = question.points || maxPossibleScore;
+  const score = totalScore;
+  const isCorrect = score >= questionPoints * 0.7; // 70% threshold
+  
+  let feedback = `Sub-question scores:\n${feedbackParts.join('\n')}`;
+  if (!allAnswered) {
+    feedback += '\n\n⚠️ Some sub-questions were not answered.';
+  }
+  
+  return {
+    score,
+    feedback,
+    isCorrect,
+    mode: 'all',
+    totalSubQuestions: subQuestions.length,
+    answeredSubQuestions: feedbackParts.filter(f => f.includes('✅')).length
+  };
+};
+
+/**
  * Extract question number from question text
  * @param {string} questionText - The text of the question
  * @param {number} index - The index of the question in the array (fallback)
@@ -225,6 +434,14 @@ const gradeExamWithAI = async (resultId) => {
       // Store the index for later reference
       const answerWithIndex = { answer, question, index: i };
 
+      // Check if question has subQuestions that need special handling
+      if (question.subQuestions && question.subQuestions.length > 0) {
+        // Questions with subQuestions are handled separately
+        console.log(`Question ${i} has ${question.subQuestions.length} subQuestions - will be processed separately`);
+        // Still categorize by type for batch processing, but mark as having subQuestions
+        answerWithIndex.hasSubQuestions = true;
+      }
+
       if (question.type === 'multiple-choice') {
         multipleChoiceAnswers.push(answerWithIndex);
       } else if (question.type === 'true-false') {
@@ -250,6 +467,33 @@ const gradeExamWithAI = async (resultId) => {
     // Process each answer
     for (let j = 0; j < allAnswersToProcess.length; j++) {
       const { answer, question, index: i } = allAnswersToProcess[j];
+
+      // Check if this question has subQuestions that need special grading
+      if (question.subQuestions && question.subQuestions.length > 0) {
+        console.log(`Question ${i} has ${question.subQuestions.length} subQuestions - using sub-question grading`);
+        
+        const subQGrading = gradeSubQuestions(question, answer);
+        
+        // Update the answer with sub-question grading results
+        result.answers[i].score = subQGrading.score;
+        result.answers[i].feedback = subQGrading.feedback;
+        result.answers[i].isCorrect = subQGrading.isCorrect;
+        result.answers[i].correctedAnswer = formatCorrectAnswer(question.correctAnswer);
+        result.answers[i].gradingMethod = `subquestion_${subQGrading.mode}`;
+        
+        if (subQGrading.mode === 'choose-n') {
+          result.answers[i].selectedSubQuestionIndices = subQGrading.selectedSubQuestionIndices;
+          result.answers[i].requiredCount = subQGrading.requiredCount;
+          result.answers[i].correctCount = subQGrading.correctCount;
+          result.answers[i].scoringType = subQGrading.scoringType;
+        }
+        
+        // Add to total score
+        totalScore += subQGrading.score;
+        
+        console.log(`Sub-question grading completed for question ${i}: score=${subQGrading.score}/${question.points}, mode=${subQGrading.mode}`);
+        continue; // Skip regular grading for this question
+      }
 
       // Add a delay between grading attempts to avoid rate limits
       if (j > 0) {

@@ -97,37 +97,58 @@ router.get('/system-lock', getSystemLockStatus);
 const multer = require('multer');
 const { questionImageStorage, examFileStorage } = require('../config/cloudinary');
 
+const uploadDocs = multer({
+  storage: examFileStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit for docs
+  fileFilter: (req, file, cb) => {
+    const allowedDocs = /pdf|doc|docx/;
+    const allowedImages = /jpeg|jpg|png|gif|webp/;
+    const fieldName = file.fieldname;
+    
+    // Allow images for questionImages field, docs for examFile/answerFile
+    if (fieldName === 'questionImages') {
+      if (allowedImages.test(file.mimetype)) return cb(null, true);
+      cb(new Error('Only image files are allowed for question images'));
+    } else if (fieldName === 'examFile' || fieldName === 'answerFile') {
+      if (allowedDocs.test(file.mimetype) || /pdf|msword|officedocument/.test(file.mimetype)) return cb(null, true);
+      cb(new Error('Only PDF and Word documents are allowed'));
+    } else {
+      cb(new Error('Unexpected file field'));
+    }
+  }
+});
+
 const uploadImages = multer({
   storage: questionImageStorage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp/;
     if (allowed.test(file.mimetype)) return cb(null, true);
-    cb(new Error('Only image files are allowed for question images'));
+    cb(new Error('Only image files are allowed'));
   }
 });
 
-const uploadDocs = multer({
-  storage: examFileStorage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
-  fileFilter: (req, file, cb) => {
-    const allowed = /pdf|doc|docx/;
-    if (allowed.test(file.mimetype) || /pdf|msword|officedocument/.test(file.mimetype)) return cb(null, true);
-    cb(new Error('Only PDF and Word documents are allowed'));
+// Multer error handling middleware
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ message: 'Unexpected file field. Allowed fields: examFile, answerFile, questionImages' });
+    }
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ message: 'File too large. Images: max 10MB, Documents: max 50MB.' });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ message: 'Too many files. Max 10 images allowed.' });
+    }
+    return res.status(400).json({ message: `Upload error: ${err.message}` });
+  } else if (err) {
+    if (err.message && err.message.includes('Unexpected end of form')) {
+      console.error('Form parsing error - client may have disconnected:', err.message);
+      return res.status(400).json({ message: 'Upload was interrupted. Please try again with a stable connection.' });
+    }
+    return res.status(400).json({ message: err.message || 'File upload failed' });
   }
-});
-
-// Combined upload: exam/answer files go to Cloudinary raw, question images go to Cloudinary images
-const upload = {
-  fields: (fields) => (req, res, next) => {
-    const imageFields = fields.filter(f => f.name === 'questionImages');
-    const docFields = fields.filter(f => f.name !== 'questionImages');
-    uploadDocs.fields(docFields)(req, res, (err) => {
-      if (err) return next(err);
-      if (imageFields.length === 0) return next();
-      uploadImages.fields(imageFields)(req, res, next);
-    });
-  }
+  next();
 };
 
 // Exam management routes
@@ -135,11 +156,12 @@ router.post(
   '/exams',
   authLimiter,
   checkExamLimit,
-  upload.fields([
+  uploadDocs.fields([
     { name: 'examFile', maxCount: 1 },
     { name: 'answerFile', maxCount: 1 },
     { name: 'questionImages', maxCount: 10 }
   ]),
+  handleMulterError,
   createExam
 );
 router.get('/exams', apiLimiter, getAllExams);

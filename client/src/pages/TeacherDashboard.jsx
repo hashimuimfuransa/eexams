@@ -6451,20 +6451,29 @@ function ResultsSection({ results }) {
   };
 
   const handleReset = async () => {
-    if (!detailData || !detailData.shareToken || !detailData.student?._id) {
+    if (!detailData || !detailData.student?._id || !detailData.exam?._id) {
       alert('Cannot reset: Missing required information');
       return;
     }
-    
+
     try {
       setResetting(true);
-      const response = await api.post(`/share/${detailData.shareToken}/unlock/${detailData.student._id}`);
-      
+
+      // Use shared exam endpoint if shareToken exists, otherwise use assigned exam endpoint
+      let endpoint;
+      if (detailData.shareToken) {
+        endpoint = `/share/${detailData.shareToken}/unlock/${detailData.student._id}`;
+      } else {
+        endpoint = `/exam/${detailData.exam._id}/allow-retake/${detailData.student._id}`;
+      }
+
+      const response = await api.post(endpoint);
+
       alert(`Successfully reset ${detailData.student?.firstName} ${detailData.student?.lastName}'s exam for ${detailData.exam?.title}. They can now retake the exam.`);
-      
+
       setResetDialogOpen(false);
       setDetailDialogOpen(false);
-      
+
       // Refresh the results list
       api.get('/admin/results').then(r=>setData(Array.isArray(r.data)?r.data:(r.data?.results||[])));
     } catch (err) {

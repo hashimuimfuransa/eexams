@@ -5414,8 +5414,8 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           </Box>
         )}
 
-        {/* Matching Question Editor */}
-        {question.type === 'matching' && (
+        {/* Matching Question Editor - hide when sub-questions exist */}
+        {question.type === 'matching' && (!question.subQuestions || question.subQuestions.length === 0) && (
           <Box sx={{ mb: 1.5 }}>
             <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, mb: 1 }}>
               Matching Pairs (Left side → Right side)
@@ -5528,8 +5528,8 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           </Box>
         )}
 
-        {/* Ordering Question Editor */}
-        {question.type === 'ordering' && (
+        {/* Ordering Question Editor - hide when sub-questions exist */}
+        {question.type === 'ordering' && (!question.subQuestions || question.subQuestions.length === 0) && (
           <Box sx={{ mb: 1.5 }}>
             <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, mb: 1 }}>
               Items to Order (Correct Order)
@@ -5630,8 +5630,8 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           </Box>
         )}
 
-        {/* Open / Short */}
-        {isOpen && (
+        {/* Open / Short - hide when sub-questions exist */}
+        {isOpen && (!question.subQuestions || question.subQuestions.length === 0) && (
           <TextField fullWidth size="small" label="Model Answer (used for AI grading)" multiline minRows={2}
             value={question.correctAnswer} onChange={e => setQuestion(p => ({ ...p, correctAnswer: e.target.value }))}
             sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />

@@ -305,11 +305,22 @@ SharedExamSchema.methods.lockStudent = function(studentId) {
 
 // Unlock exam for a student (allow retaking)
 SharedExamSchema.methods.unlockStudent = function(studentId) {
+  console.log(`[SharedExam] Unlocking student ${studentId}, current students:`, this.students.map(s => ({
+    studentId: s.student?.toString(),
+    studentIdField: s.studentId?.toString(),
+    email: s.email,
+    _id: s._id?.toString()
+  })));
+
   const student = this.students.find(
-    s => s.student?.toString() === studentId || s.studentId?.toString() === studentId || s.email === studentId
+    s => s.student?.toString() === studentId ||
+         s.studentId?.toString() === studentId ||
+         s.email === studentId ||
+         s._id?.toString() === studentId
   );
 
   if (student) {
+    console.log(`[SharedExam] Found student to unlock:`, student.email || student.student);
     student.isLocked = false;
     student.hasCompleted = false;
     student.result = null;
@@ -318,6 +329,8 @@ SharedExamSchema.methods.unlockStudent = function(studentId) {
     student.lastActivity = null;
     return true;
   }
+
+  console.log(`[SharedExam] Student not found with ID: ${studentId}`);
   return false;
 };
 

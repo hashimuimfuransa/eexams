@@ -1448,7 +1448,7 @@ const ExamInterface = () => {
         } else if (questionType === 'drag-drop') {
           answerValue = currentAnswer.dragDropAnswer;
         }
-        
+
         await saveAnswerToServer(currentQuestion._id, answerValue, questionType);
         setAnswers(prev => ({
           ...prev,
@@ -1473,7 +1473,74 @@ const ExamInterface = () => {
           severity: 'error'
         });
       }
-    } else {
+    }
+
+    // Save sub-question answers when saving the last question
+    if (currentQuestion.subQuestions && Array.isArray(currentQuestion.subQuestions)) {
+      console.log(`🔍 Saving sub-question answers for last question ${currentQuestion._id}`);
+      for (let subIdx = 0; subIdx < currentQuestion.subQuestions.length; subIdx++) {
+        const subAnswerKey = `${currentQuestion._id}_sub_${subIdx}`;
+        const subAnswer = answers[subAnswerKey];
+        const subQ = currentQuestion.subQuestions[subIdx];
+        const subType = subQ.type || 'open-ended';
+
+        if (subAnswer) {
+          try {
+            let answerValue;
+            if (subAnswer.selectedOption) {
+              answerValue = subAnswer.selectedOption;
+            } else if (subAnswer.textAnswer?.trim()) {
+              answerValue = subAnswer.textAnswer.trim();
+            } else if (subAnswer.matchingAnswers) {
+              answerValue = subAnswer.matchingAnswers;
+            } else if (subAnswer.orderingAnswer) {
+              answerValue = subAnswer.orderingAnswer;
+            }
+
+            if (answerValue) {
+              await saveAnswerToServer(subAnswerKey, answerValue, subType, {
+                parentQuestionId: currentQuestion._id,
+                subQuestionIndex: subIdx,
+                isSubQuestion: true
+              });
+              console.log(`✅ Saved sub-question ${subIdx} answer for question ${currentQuestion._id}`);
+              setAnswers(prev => ({
+                ...prev,
+                [subAnswerKey]: {
+                  ...prev[subAnswerKey],
+                  savedToServer: true,
+                  hasChanges: false,
+                  lastSaved: new Date().toISOString()
+                }
+              }));
+            }
+          } catch (saveError) {
+            console.error(`❌ Failed to save sub-question ${subIdx} answer:`, saveError);
+          }
+        }
+      }
+    }
+
+    // If no main question answer but sub-questions exist, check if any sub-questions were answered
+    if (!currentAnswer || (!currentAnswer.textAnswer?.trim() && !currentAnswer.selectedOption && !currentAnswer.matchingAnswers && !currentAnswer.orderingAnswer && !currentAnswer.dragDropAnswer)) {
+      if (currentQuestion.subQuestions && Array.isArray(currentQuestion.subQuestions)) {
+        const hasSubAnswers = currentQuestion.subQuestions.some((_, subIdx) => {
+          const subAnswerKey = `${currentQuestion._id}_sub_${subIdx}`;
+          const subAnswer = answers[subAnswerKey];
+          return subAnswer && (subAnswer.selectedOption || subAnswer.textAnswer?.trim() || subAnswer.matchingAnswers || subAnswer.orderingAnswer);
+        });
+
+        if (hasSubAnswers) {
+          setLastQuestionSaved(true);
+          setSnackbar({
+            open: true,
+            message: 'Sub-questions saved. Click Submit to finish.',
+            severity: 'success'
+          });
+          return;
+        }
+      }
+
       setSnackbar({
         open: true,
         message: 'Please answer the question before saving.',
@@ -1633,6 +1700,52 @@ const ExamInterface = () => {
             }));
           } catch (saveError) {
             console.error(`❌ Failed to save drag-drop answer:`, saveError);
+          }
+        }
+      }
+
+      // Save sub-question answers when navigating
+      if (currentQuestion.subQuestions && Array.isArray(currentQuestion.subQuestions)) {
+        console.log(`🔍 Saving sub-question answers for question ${currentQuestion._id}`);
+        for (let subIdx = 0; subIdx < currentQuestion.subQuestions.length; subIdx++) {
+          const subAnswerKey = `${currentQuestion._id}_sub_${subIdx}`;
+          const subAnswer = answers[subAnswerKey];
+          const subQ = currentQuestion.subQuestions[subIdx];
+          const subType = subQ.type || 'open-ended';
+
+          if (subAnswer) {
+            try {
+              let answerValue;
+              if (subAnswer.selectedOption) {
+                answerValue = subAnswer.selectedOption;
+              } else if (subAnswer.textAnswer?.trim()) {
+                answerValue = subAnswer.textAnswer.trim();
+              } else if (subAnswer.matchingAnswers) {
+                answerValue = subAnswer.matchingAnswers;
+              } else if (subAnswer.orderingAnswer) {
+                answerValue = subAnswer.orderingAnswer;
+              }
+
+              if (answerValue) {
+                await saveAnswerToServer(subAnswerKey, answerValue, subType, {
+                  parentQuestionId: currentQuestion._id,
+                  subQuestionIndex: subIdx,
+                  isSubQuestion: true
+                });
+                console.log(`✅ Saved sub-question ${subIdx} answer for question ${currentQuestion._id}`);
+                setAnswers(prev => ({
+                  ...prev,
+                  [subAnswerKey]: {
+                    ...prev[subAnswerKey],
+                    savedToServer: true,
+                    hasChanges: false,
+                    lastSaved: new Date().toISOString()
+                  }
+                }));
+              }
+            } catch (saveError) {
+              console.error(`❌ Failed to save sub-question ${subIdx} answer:`, saveError);
+            }
           }
         }
       }

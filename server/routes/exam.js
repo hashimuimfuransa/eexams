@@ -1080,6 +1080,13 @@ TEACHER INSTRUCTIONS: "${prompt.trim()}"
 
 IMPORTANT: The pasted exam includes a TEACHER'S MARKING GUIDE at the end. You MUST extract ALL answers from this marking guide and include them in the correctAnswer field for each question.
 
+CRITICAL - WORD BANK DETECTION:
+- Look for word banks in the document (usually shown as a box of words at the top of the question or section)
+- Word banks are typically displayed as: [word1, word2, word3, ...] or as a box with multiple words separated by spaces or commas
+- Extract ALL words from the word bank into the "wordBank" array
+- If a section has a word bank that applies to multiple questions, include it in the section-level wordBank and also in each individual fill-in-blank question
+- Example format: "wordBank": ["sunny", "library", "singing", "playground", "rainy"]
+
 CRITICAL - MULTI-PART QUESTIONS MUST BE SINGLE QUESTIONS:
 - Questions with parts labeled a), b), c), i), ii), iii) MUST be extracted as ONE SINGLE question with subQuestions array
 - DO NOT create separate questions for each part - they belong together as one question

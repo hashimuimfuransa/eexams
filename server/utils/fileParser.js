@@ -543,6 +543,12 @@ Return valid JSON with this exact structure:
 
 Question types: multiple-choice, true-false, fill-in-blank, open-ended, matching, ordering.
 
+IMPORTANT INSTRUCTIONS:
+- For fill-in-blank questions: Look for word banks in the document (usually shown as a box of words at the top of the question or section). Extract ALL words from the word bank into the "wordBank" array.
+- Word banks are typically displayed as: [word1, word2, word3, ...] or as a box with multiple words separated by spaces or commas.
+- If a section has a word bank that applies to multiple questions, include it in the section-level wordBank and also in each individual fill-in-blank question.
+- For sub-questions: If a question has multiple parts (a, b, c, etc.), structure them as subQuestions with individual correct answers.
+
 Document text:
 ${fullText}`;
 

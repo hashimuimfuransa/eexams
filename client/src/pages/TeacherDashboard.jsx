@@ -5356,8 +5356,8 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           )}
         </Box>
 
-        {/* Multiple choice options */}
-        {question.type === 'multiple-choice' && (
+        {/* Multiple choice options - hide when sub-questions exist */}
+        {question.type === 'multiple-choice' && (!question.subQuestions || question.subQuestions.length === 0) && (
           <Grid container spacing={1} sx={{ mb: 1.5 }}>
             {question.options.map((opt, i) => (
               <Grid item xs={12} sm={6} key={i}>
@@ -5379,8 +5379,8 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           </Grid>
         )}
 
-        {/* True / False */}
-        {question.type === 'true-false' && (
+        {/* True / False - hide when sub-questions exist */}
+        {question.type === 'true-false' && (!question.subQuestions || question.subQuestions.length === 0) && (
           <Box sx={{ display: 'flex', gap: 1.5, mb: 1.5 }}>
             {['True', 'False'].map(val => (
               <Paper key={val} onClick={() => setQuestion(p => ({ ...p, correctAnswer: val, options: [{ text: 'True', isCorrect: val === 'True', letter: 'A' }, { text: 'False', isCorrect: val === 'False', letter: 'B' }] }))}
@@ -5392,16 +5392,16 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           </Box>
         )}
 
-        {/* Fill blank */}
-        {question.type === 'fill-blank' && (
+        {/* Fill blank - hide when sub-questions exist */}
+        {question.type === 'fill-blank' && (!question.subQuestions || question.subQuestions.length === 0) && (
           <Box>
             <TextField fullWidth size="small" label="Correct Answer (expected fill)" value={question.correctAnswer}
               onChange={e => setQuestion(p => ({ ...p, correctAnswer: e.target.value }))}
               sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
-            <TextField 
-              fullWidth 
-              size="small" 
-              label="Acceptable Answers (comma-separated)" 
+            <TextField
+              fullWidth
+              size="small"
+              label="Acceptable Answers (comma-separated)"
               placeholder="e.g., answer1, answer2, answer3"
               value={Array.isArray(question.acceptableAnswers) ? question.acceptableAnswers.join(', ') : question.acceptableAnswers || ''}
               onChange={e => {
@@ -5409,7 +5409,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
                 setQuestion(p => ({ ...p, acceptableAnswers: answers }));
               }}
               helperText="Alternative answers that should also be marked correct"
-              sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} 
+              sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
             />
           </Box>
         )}

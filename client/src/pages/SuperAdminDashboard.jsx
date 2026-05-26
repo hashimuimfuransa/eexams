@@ -4214,7 +4214,7 @@ function StudentResultsSection({ searchQuery }) {
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
-                          {new Date(result.createdAt).toLocaleDateString()}
+                          {new Date(result.createdAt).toLocaleString()}
                         </Typography>
                       </TableCell>
                       <TableCell>

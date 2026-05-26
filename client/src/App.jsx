@@ -59,14 +59,37 @@ function useInView(ref, threshold = 0.15) {
 }
 
 // ─── Reveal wrapper ───────────────────────────────────────────────────────────
-function Reveal({ children, delay = 0, style = {} }) {
+function Reveal({ children, delay = 0, style = {}, animation = 'fadeInUp' }) {
   const ref = useRef(null);
   const inView = useInView(ref);
-  return (
-    <div ref={ref} style={{
+  
+  const animations = {
+    fadeInUp: {
       opacity: inView ? 1 : 0,
       transform: inView ? 'translateY(0)' : 'translateY(28px)',
-      transition: `opacity 0.65s ease ${delay}ms, transform 0.65s ease ${delay}ms`,
+    },
+    fadeInDown: {
+      opacity: inView ? 1 : 0,
+      transform: inView ? 'translateY(0)' : 'translateY(-28px)',
+    },
+    fadeInLeft: {
+      opacity: inView ? 1 : 0,
+      transform: inView ? 'translateX(0)' : 'translateX(-28px)',
+    },
+    fadeInRight: {
+      opacity: inView ? 1 : 0,
+      transform: inView ? 'translateX(0)' : 'translateX(28px)',
+    },
+    fadeInScale: {
+      opacity: inView ? 1 : 0,
+      transform: inView ? 'scale(1)' : 'scale(0.9)',
+    },
+  };
+  
+  return (
+    <div ref={ref} style={{
+      ...animations[animation] || animations.fadeInUp,
+      transition: `opacity 0.65s cubic-bezier(0.4, 0, 0.2, 1) ${delay}ms, transform 0.65s cubic-bezier(0.4, 0, 0.2, 1) ${delay}ms`,
       ...style,
     }}>
       {children}
@@ -78,6 +101,7 @@ function Reveal({ children, delay = 0, style = {} }) {
 function Hero({ mode, isAuthenticated, user }) {
   const isDark = mode === 'dark';
   const [count, setCount] = useState(0);
+  const scrollY = useScrollY();
 
   useEffect(() => {
     let frame;
@@ -98,24 +122,62 @@ function Hero({ mode, isAuthenticated, user }) {
     <section id="home" style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center',
       position: 'relative', overflow: 'hidden',
-      background: isDark
-        ? `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.06) 0%, transparent 70%), #030712`
-        : `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.1) 0%, transparent 70%), #FAFBFF`,
+      background: isDark ? '#030712' : '#FAFBFF',
       paddingTop: 'clamp(80px, 15vw, 100px)',
     }}>
-      {/* Grid pattern */}
+      {/* Professional gradient motion layers */}
       <div style={{
         position: 'absolute', inset: 0, zIndex: 0,
-        backgroundImage: isDark
-          ? 'linear-gradient(rgba(30,41,59,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(30,41,59,0.4) 1px, transparent 1px)'
-          : 'linear-gradient(rgba(226,232,240,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(226,232,240,0.7) 1px, transparent 1px)',
-        backgroundSize: 'clamp(40px, 10vw, 60px) clamp(40px, 10vw, 60px)',
-        maskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
+        background: isDark
+          ? 'linear-gradient(135deg, #030712 0%, #082A45 50%, #0D406C 100%)'
+          : 'linear-gradient(135deg, #FAFBFF 0%, #F0F4FF 50%, #E8F4F8 100%)',
+        backgroundSize: '400% 400%',
+        animation: 'gradientMotion 20s ease infinite',
       }} />
 
-      {/* Floating orbs */}
-      <div style={{ position: 'absolute', top: '15%', left: '8%', width: 'clamp(150px, 30vw, 280px)', height: 'clamp(150px, 30vw, 280px)', borderRadius: '50%', background: 'radial-gradient(circle, rgba(12,189,115,0.14) 0%, transparent 70%)', animation: 'float1 8s ease-in-out infinite', zIndex: 0 }} />
-      <div style={{ position: 'absolute', bottom: '20%', right: '6%', width: 'clamp(100px, 25vw, 200px)', height: 'clamp(100px, 25vw, 200px)', borderRadius: '50%', background: 'radial-gradient(circle, rgba(157,246,214,0.16) 0%, transparent 70%)', animation: 'float2 10s ease-in-out infinite', zIndex: 0 }} />
+      {/* Subtle 3D depth layer 1 */}
+      <div style={{
+        position: 'absolute', top: '-20%', left: '-10%', width: '60%', height: '60%',
+        background: isDark
+          ? 'radial-gradient(ellipse at center, rgba(12,189,115,0.08) 0%, transparent 70%)'
+          : 'radial-gradient(ellipse at center, rgba(12,189,115,0.12) 0%, transparent 70%)',
+        filter: 'blur(80px)',
+        animation: 'slowDrift1 25s ease-in-out infinite',
+        transform: `translateY(${scrollY * 0.15}px)`,
+      }} />
+
+      {/* Subtle 3D depth layer 2 */}
+      <div style={{
+        position: 'absolute', bottom: '-10%', right: '-5%', width: '50%', height: '50%',
+        background: isDark
+          ? 'radial-gradient(ellipse at center, rgba(13,64,108,0.1) 0%, transparent 70%)'
+          : 'radial-gradient(ellipse at center, rgba(13,64,108,0.08) 0%, transparent 70%)',
+        filter: 'blur(100px)',
+        animation: 'slowDrift2 30s ease-in-out infinite',
+        transform: `translateY(${scrollY * 0.1}px)`,
+      }} />
+
+      {/* Subtle 3D depth layer 3 */}
+      <div style={{
+        position: 'absolute', top: '30%', left: '30%', width: '40%', height: '40%',
+        background: isDark
+          ? 'radial-gradient(ellipse at center, rgba(157,246,214,0.06) 0%, transparent 70%)'
+          : 'radial-gradient(ellipse at center, rgba(157,246,214,0.1) 0%, transparent 70%)',
+        filter: 'blur(120px)',
+        animation: 'slowDrift3 35s ease-in-out infinite',
+        transform: `translateY(${scrollY * 0.05}px)`,
+      }} />
+
+      {/* Grid pattern overlay */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 1,
+        backgroundImage: isDark
+          ? 'linear-gradient(rgba(30,41,59,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(30,41,59,0.3) 1px, transparent 1px)'
+          : 'linear-gradient(rgba(226,232,240,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(226,232,240,0.5) 1px, transparent 1px)',
+        backgroundSize: 'clamp(40px, 10vw, 60px) clamp(40px, 10vw, 60px)',
+        maskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
+        opacity: 0.6,
+      }} />
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px', position: 'relative', zIndex: 1, width: '100%' }}>
         <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'clamp(40px, 8vw, 80px)', alignItems: 'center' }}>
@@ -127,7 +189,17 @@ function Hero({ mode, isAuthenticated, user }) {
               background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)',
               border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`,
               marginBottom: 'clamp(16px, 4vw, 28px)', animation: 'fadeInUp 0.6s ease forwards',
-            }}>
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 0 20px rgba(12,189,115,0.3)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#0CBD73', display: 'inline-block', animation: 'pulse 2s infinite' }} />
               <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(11px, 2vw, 13px)', fontWeight: 600, color: '#0CBD73', letterSpacing: '0.02em' }}>
                 Rwanda's leading exam platform
@@ -163,12 +235,24 @@ function Hero({ mode, isAuthenticated, user }) {
                   <RouterLink to="/dashboard" style={{
                     padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
                     background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                    backgroundSize: '200% 200%',
                     color: 'white', textDecoration: 'none',
                     boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                  }}>
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    animation: 'gradientShift 3s ease infinite',
+                  }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                      e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+                    }}
+                  >
                     Go to Dashboard
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </RouterLink>
                   <RouterLink to="/marketplace" style={{
                     padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
@@ -176,7 +260,21 @@ function Hero({ mode, isAuthenticated, user }) {
                     color: isDark ? '#94A3B8' : '#64748B',
                     background: isDark ? tokens.dark.surfaceAlt : 'transparent',
                     textDecoration: 'none', whiteSpace: 'nowrap',
-                  }}>
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-3px)';
+                      e.currentTarget.style.borderColor = '#0CBD73';
+                      e.currentTarget.style.color = '#0CBD73';
+                      e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.05)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.borderColor = isDark ? '#1E293B' : '#E2E8F0';
+                      e.currentTarget.style.color = isDark ? '#94A3B8' : '#64748B';
+                      e.currentTarget.style.background = isDark ? tokens.dark.surfaceAlt : 'transparent';
+                    }}
+                  >
                     Browse Exam Bank
                   </RouterLink>
                 </>
@@ -185,22 +283,46 @@ function Hero({ mode, isAuthenticated, user }) {
                   <RouterLink to="/marketplace" style={{
                     padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
                     background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                    backgroundSize: '200% 200%',
                     color: 'white', textDecoration: 'none',
                     boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                  }}>
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    animation: 'gradientShift 3s ease infinite',
+                  }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                      e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+                    }}
+                  >
                     Browse Exam Bank
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 3h18v18H3zM9 9h6M9 12h6M9 15h6"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M3 3h18v18H3zM9 9h6M9 12h6M9 15h6"/></svg>
                   </RouterLink>
                   <RouterLink to="/login" style={{
                     padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
                     background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                    backgroundSize: '200% 200%',
                     color: 'white', textDecoration: 'none',
                     boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                  }}>
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    animation: 'gradientShift 3s ease infinite',
+                  }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                      e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+                    }}
+                  >
                     Login
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </RouterLink>
                 </>
               )}
@@ -213,7 +335,24 @@ function Hero({ mode, isAuthenticated, user }) {
                 { value: '140+', label: 'Institutions' },
                 { value: '99.8%', label: 'Uptime' },
               ].map((s, i) => (
-                <div key={i}>
+                <div key={i} style={{
+                  padding: '12px 20px',
+                  borderRadius: 12,
+                  background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)',
+                  border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)'}`,
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.05)';
+                    e.currentTarget.style.borderColor = '#0CBD73';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)';
+                    e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)';
+                  }}
+                >
                   <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(20px, 4vw, 26px)', letterSpacing: '-0.02em', color: isDark ? '#94A3B8' : '#0F172A' }}>{s.value}</div>
                   <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(11px, 2vw, 13px)', color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{s.label}</div>
                 </div>
@@ -230,11 +369,27 @@ function Hero({ mode, isAuthenticated, user }) {
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
-        @keyframes fadeInUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes float1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(12px,-20px)} }
-        @keyframes float2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-12px,16px)} }
-        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(1.3)} }
-        @keyframes slideIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes fadeInUp { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeInDown { from { opacity:0; transform:translateY(-30px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeInLeft { from { opacity:0; transform:translateX(-30px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes fadeInRight { from { opacity:0; transform:translateX(30px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes fadeInScale { from { opacity:0; transform:scale(0.9); } to { opacity:1; transform:scale(1); } }
+        @keyframes float1 { 0%,100%{transform:translate(0,0) scale(1)} 25%{transform:translate(15px,-25px) scale(1.05)} 50%{transform:translate(8px,-15px) scale(1)} 75%{transform:translate(-5px,-10px) scale(0.98)} }
+        @keyframes float2 { 0%,100%{transform:translate(0,0) scale(1)} 25%{transform:translate(-18px,20px) scale(1.03)} 50%{transform:translate(-10px,12px) scale(1)} 75%{transform:translate(8px,5px) scale(0.97)} }
+        @keyframes float3 { 0%,100%{transform:translate(0,0) rotate(0deg)} 33%{transform:translate(10px,-15px) rotate(5deg)} 66%{transform:translate(-8px,10px) rotate(-3deg)} }
+        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.4)} }
+        @keyframes pulseGlow { 0%,100%{box-shadow:0 0 20px rgba(12,189,115,0.3)} 50%{box-shadow:0 0 40px rgba(12,189,115,0.6)} }
+        @keyframes slideIn { from{opacity:0;transform:translateX(30px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+        @keyframes rotate { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes gradientShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        @keyframes scaleIn { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:scale(1)} }
+        @keyframes elastic { 0%{transform:scale(1)} 30%{transform:scale(1.1)} 50%{transform:scale(0.95)} 70%{transform:scale(1.02)} 100%{transform:scale(1)} }
+        @keyframes gradientMotion { 0%{background-position:0% 50%} 25%{background-position:100% 50%} 50%{background-position:100% 100%} 75%{background-position:0% 100%} 100%{background-position:0% 50%} }
+        @keyframes slowDrift1 { 0%,100%{transform:translate(0,0)} 33%{transform:translate(30px,-20px)} 66%{transform:translate(-20px,15px)} }
+        @keyframes slowDrift2 { 0%,100%{transform:translate(0,0)} 33%{transform:translate(-25px,30px)} 66%{transform:translate(20px,-25px)} }
+        @keyframes slowDrift3 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(15px,20px)} }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .mobile-menu-btn { display: none !important; }
         .desktop-nav-links { display: flex !important; }
@@ -478,17 +633,21 @@ function MarketplaceShowcase({ mode }) {
                 padding: 28, borderRadius: 24,
                 background: cardBg,
                 border: `1px solid ${border}`,
-                transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                 cursor: 'pointer',
+                position: 'relative',
+                overflow: 'hidden',
               }}
                 onClick={() => handleExamClick(exam._id)}
                 onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-6px)';
-                  e.currentTarget.style.boxShadow = isDark ? '0 24px 48px rgba(0,0,0,0.4)' : '0 24px 48px rgba(15,23,42,0.12)';
+                  e.currentTarget.style.transform = 'translateY(-8px) scale(1.02)';
+                  e.currentTarget.style.boxShadow = isDark ? '0 28px 56px rgba(0,0,0,0.5)' : '0 28px 56px rgba(15,23,42,0.15)';
+                  e.currentTarget.style.borderColor = '#0CBD73';
                 }}
                 onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
                   e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.borderColor = border;
                 }}
               >
                 {/* Header with badge */}
@@ -552,12 +711,24 @@ function MarketplaceShowcase({ mode }) {
             <RouterLink to="/marketplace" style={{
               padding: '14px 32px', borderRadius: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 700, fontSize: 16,
               background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+              backgroundSize: '200% 200%',
               color: 'white', textDecoration: 'none',
               boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
               display: 'inline-flex', alignItems: 'center', gap: 8,
-            }}>
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              animation: 'gradientShift 3s ease infinite',
+            }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+              }}
+            >
               View All Exams
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </RouterLink>
           </div>
         </Reveal>
@@ -602,9 +773,18 @@ function HowItWorks({ mode }) {
 
           {steps.map((s, i) => (
             <Reveal key={i} delay={i * 100}>
-              <div style={{ position: 'relative', zIndex: 1 }}>
+              <div style={{ position: 'relative', zIndex: 1, padding: '20px', borderRadius: 16, transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-5px)';
+                  e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
                 {/* Number bubble */}
-                <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${s.color}22, ${s.color}33)`, border: `2px solid ${s.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, color: s.color, fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em' }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${s.color}22, ${s.color}33)`, border: `2px solid ${s.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, color: s.color, fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', transition: 'all 0.3s ease' }}>
                   {s.num}
                 </div>
                 <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 16, color: text, marginBottom: 8 }}>{s.title}</h3>
@@ -622,9 +802,19 @@ function HowItWorks({ mode }) {
               background: 'white', color: '#0CBD73', textDecoration: 'none',
               boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
               whiteSpace: 'nowrap',
-            }}>
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.3)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
+              }}
+            >
               Try it free — no credit card
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </RouterLink>
           </div>
         </Reveal>
@@ -671,21 +861,44 @@ function FAQ({ mode }) {
               <div style={{
                 borderRadius: 16, border: `1px solid ${open === i ? 'rgba(12,189,115,0.27)' : border}`,
                 background: cardBg, overflow: 'hidden',
-                transition: 'border-color 0.2s',
-              }}>
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+                onMouseEnter={e => {
+                  if (open !== i) {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = isDark ? '0 8px 24px rgba(0,0,0,0.3)' : '0 8px 24px rgba(15,23,42,0.08)';
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (open !== i) {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }
+                }}
+              >
                 <button onClick={() => setOpen(open === i ? null : i)} style={{
                   width: '100%', padding: '20px 24px', background: 'none', border: 'none', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, textAlign: 'left',
-                }}>
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+                  onMouseEnter={e => {
+                    if (open !== i) {
+                      e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(15,23,42,0.02)';
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
                   <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16, color: text }}>
                     {faq.q}
                   </span>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: open === i ? '#0CBD73' : isDark ? '#111827' : '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: open === i ? '#0CBD73' : isDark ? '#94A3B8' : '#64748B', transition: 'all 0.2s', transform: open === i ? 'rotate(45deg)' : 'none' }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: open === i ? '#0CBD73' : isDark ? '#111827' : '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: open === i ? '#0CBD73' : isDark ? '#94A3B8' : '#64748B', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', transform: open === i ? 'rotate(45deg)' : 'none' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
                   </div>
                 </button>
                 {open === i && (
-                  <div style={{ padding: '0 24px 20px', animation: 'fadeInUp 0.2s ease' }}>
+                  <div style={{ padding: '0 24px 20px', animation: 'fadeInUp 0.3s ease' }}>
                     <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, lineHeight: 1.7, color: isDark ? '#94A3B8' : '#64748B' }}>
                       {faq.a}
                     </p>
@@ -738,15 +951,37 @@ function CTABanner({ mode }) {
                 background: 'white', color: '#0CBD73', textDecoration: 'none',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
                 whiteSpace: 'nowrap',
-              }}>
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.3)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
+                }}
+              >
                 Start free trial
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </RouterLink>
               <button onClick={() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })} style={{
                 padding: '14px 32px', borderRadius: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16,
                 background: 'rgba(255,255,255,0.1)', color: 'white',
                 border: '1.5px solid rgba(255,255,255,0.25)', cursor: 'pointer', whiteSpace: 'nowrap',
-              }}>
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+                }}
+              >
                 Book a demo
               </button>
             </div>

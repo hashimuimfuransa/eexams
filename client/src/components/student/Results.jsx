@@ -383,7 +383,7 @@ const Results = () => {
     // Group answers by section
     const sectionAnswers = {};
     detailedResult.answers.forEach(answer => {
-      const section = answer.question.section;
+      const section = String(answer.question.section || 'A');
       if (!sectionAnswers[section]) {
         sectionAnswers[section] = [];
       }
@@ -660,8 +660,8 @@ const Results = () => {
                                 >
                                   <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
                                     <Typography fontWeight="medium">
-                                      Question {answerIndex + 1}: {answer.question.text.substring(0, 50)}
-                                      {answer.question.text.length > 50 ? '...' : ''}
+                                      Question {answerIndex + 1}: {String(answer.question.text || '').substring(0, 50)}
+                                      {String(answer.question.text || '').length > 50 ? '...' : ''}
                                     </Typography>
                                     <Box sx={{ display: 'flex', alignItems: 'center', ml: 2 }}>
                                       <Chip
@@ -676,7 +676,7 @@ const Results = () => {
                                 </AccordionSummary>
                                 <AccordionDetails>
                                   <Typography variant="body1" gutterBottom>
-                                    <strong>Question:</strong> {answer.question.text}
+                                    <strong>Question:</strong> {String(answer.question.text || '')}
                                   </Typography>
 
                                   {answer.question.type === 'multiple-choice' ? (
@@ -691,7 +691,7 @@ const Results = () => {
                                           fontWeight: 'medium'
                                         }}
                                       >
-                                        {answer.selectedOption}
+                                        {String(answer.selectedOption || '')}
                                       </Typography>
 
                                       {!answer.isCorrect && (
@@ -700,7 +700,7 @@ const Results = () => {
                                             <strong>Correct Answer:</strong>
                                           </Typography>
                                           <Typography variant="body1" color="success.main" fontWeight="medium">
-                                            {answer.question.correctAnswer}
+                                            {String(answer.question.correctAnswer || '')}
                                           </Typography>
                                         </>
                                       )}
@@ -725,14 +725,20 @@ const Results = () => {
 
                                       // Helper to get label from item (handles both string and object formats)
                                       const getLabel = (item) => {
+                                        if (item === null || item === undefined) return 'Unknown';
                                         if (typeof item === 'string') return item;
+                                        if (typeof item === 'number') return String(item);
                                         if (item && typeof item === 'object') {
                                           // Check for common label properties
-                                          if (item.text) return item.text;
-                                          if (item.label) return item.label;
-                                          if (item.value) return item.value;
+                                          if (item.text) return String(item.text);
+                                          if (item.label) return String(item.label);
+                                          if (item.value) return String(item.value);
                                           // For complex objects, convert to JSON string
-                                          return JSON.stringify(item);
+                                          try {
+                                            return JSON.stringify(item);
+                                          } catch (e) {
+                                            return 'Complex Object';
+                                          }
                                         }
                                         return String(item);
                                       };
@@ -756,7 +762,7 @@ const Results = () => {
                                                       {isMatchCorrect ? '✓' : '✗'}
                                                     </Typography>
                                                     <Typography variant="body2">
-                                                      <strong>{leftLabel}</strong> → {rightLabel}
+                                                      <strong>{String(leftLabel)}</strong> → {String(rightLabel)}
                                                     </Typography>
                                                   </Box>
                                                 );
@@ -778,13 +784,13 @@ const Results = () => {
                                                 const rightLabel = rightItem ? getLabel(rightItem) : `Item ${pair.right + 1}`;
                                                 return (
                                                   <Typography key={pi} variant="body2" color="success.main">
-                                                    <strong>{leftLabel}</strong> → {rightLabel}
+                                                    <strong>{String(leftLabel)}</strong> → {String(rightLabel)}
                                                   </Typography>
                                                 );
                                               })}
                                             </Box>
                                           ) : answer.correctedAnswer ? (
-                                            <Typography variant="body1" sx={{ mb: 2 }}>{answer.correctedAnswer}</Typography>
+                                            <Typography variant="body1" sx={{ mb: 2 }}>{String(answer.correctedAnswer || '')}</Typography>
                                           ) : (
                                             <Typography variant="body1" sx={{ mb: 2 }} color="text.secondary">Not provided</Typography>
                                           )}
@@ -795,7 +801,7 @@ const Results = () => {
                                                 <strong>Feedback:</strong>
                                               </Typography>
                                               <Typography variant="body1">
-                                                {answer.feedback}
+                                                {String(answer.feedback || '')}
                                               </Typography>
                                             </>
                                           )}
@@ -808,14 +814,14 @@ const Results = () => {
                                         <strong>Your Answer:</strong>
                                       </Typography>
                                       <Typography variant="body1" sx={{ mb: 2 }}>
-                                        {answer.textAnswer || 'No answer provided'}
+                                        {String(answer.textAnswer || 'No answer provided')}
                                       </Typography>
 
                                       <Typography variant="body2" color="text.secondary">
                                         <strong>Model Answer:</strong>
                                       </Typography>
                                       <Typography variant="body1" sx={{ mb: 2 }}>
-                                        {answer.correctedAnswer || answer.question.correctAnswer || 'Not provided'}
+                                        {String(answer.correctedAnswer || answer.question.correctAnswer || 'Not provided')}
                                       </Typography>
 
                                       {answer.feedback && (
@@ -824,7 +830,7 @@ const Results = () => {
                                             <strong>Feedback:</strong>
                                           </Typography>
                                           <Typography variant="body1">
-                                            {answer.feedback}
+                                            {String(answer.feedback || '')}
                                           </Typography>
                                         </>
                                       )}

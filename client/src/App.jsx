@@ -3,6 +3,7 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { useThemeMode } from './context/ThemeContext';
 import Nav from './components/Nav';
+import SEO from './components/SEO';
 import api from './services/api';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -1123,6 +1124,51 @@ function App() {
 
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <SEO
+        title="eexams - Rwanda's Leading Online Exam Platform | AI-Powered Grading"
+        description="eexams is Rwanda's premier online exam management system. AI-powered grading, real-time analytics, secure exams for schools and universities. Join 140+ institutions using eexams."
+        keywords="eexams, online exams, Rwanda, education, AI grading, exam platform, digital assessment, student testing, school management, university exams, Kinyarwanda exams, English exams, Rwanda exams, national exams, secondary exams, primary exams"
+        ogUrl="https://www.eexams.net/"
+        canonical="https://www.eexams.net/"
+        structuredData={[
+          {
+            '@context': 'https://schema.org',
+            '@type': 'Organization',
+            name: 'eexams',
+            url: 'https://www.eexams.net/',
+            logo: 'https://www.eexams.net/logo.png',
+            description: 'Rwanda\'s leading online exam platform with AI-powered grading, real-time analytics, and secure exams for schools and universities.',
+            address: {
+              '@type': 'PostalAddress',
+              addressCountry: 'RW',
+              addressRegion: 'Kigali'
+            },
+            contactPoint: {
+              '@type': 'ContactPoint',
+              telephone: '+250 788 535 156',
+              contactType: 'customer service',
+              email: 'info@excellencecoachinghub.com'
+            },
+            sameAs: [
+              'https://facebook.com/ech.info',
+              'https://tiktok.com/@ech.info',
+              'https://instagram.com/ech.info'
+            ]
+          },
+          {
+            '@context': 'https://schema.org',
+            '@type': 'WebSite',
+            name: 'eexams',
+            url: 'https://www.eexams.net/',
+            description: 'Rwanda\'s leading online exam platform with AI-powered grading',
+            potentialAction: {
+              '@type': 'SearchAction',
+              target: 'https://www.eexams.net/marketplace?q={search_term_string}',
+              'query-input': 'required name=search_term_string'
+            }
+          }
+        ]}
+      />
       <Nav
         scrolled={scrollY > 40}
         mode={mode}

@@ -5,6 +5,7 @@ import { ArrowBack, School, AccessTime, AttachMoney, CheckCircle } from '@mui/ic
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
+import SEO from '../components/SEO';
 import api from '../services/api';
 
 const ExamRequest = () => {
@@ -181,7 +182,50 @@ const ExamRequest = () => {
 
   return (
     <>
-      <Nav 
+      {exam && (
+        <SEO
+          title={`${exam.title} - Public Exam | eexams`}
+          description={`${exam.publicDescription || exam.description} - ${calculateTotalQuestions(exam.sections)} questions, ${exam.timeLimit} minutes. Request access to this exam on eexams.`}
+          keywords={`${exam.title}, ${exam.level?.name || exam.targetAudience}, exam, Rwanda, ${exam.subLevel || ''}, practice test, study material`}
+          ogUrl={`https://www.eexams.net/marketplace/exams/${examId}/request`}
+          canonical={`https://www.eexams.net/marketplace/exams/${examId}/request`}
+          breadcrumbs={[
+            { name: 'Home', url: 'https://www.eexams.net/' },
+            { name: 'Marketplace', url: 'https://www.eexams.net/marketplace' },
+            { name: exam.title, url: `https://www.eexams.net/marketplace/exams/${examId}/request` }
+          ]}
+          structuredData={{
+            '@context': 'https://schema.org',
+            '@type': 'Quiz',
+            name: exam.title,
+            description: exam.publicDescription || exam.description,
+            educationalLevel: exam.level?.name || exam.targetAudience,
+            learningResourceType: 'Exam',
+            timeRequired: `PT${exam.timeLimit}M`,
+            about: {
+              '@type': 'Thing',
+              name: exam.level?.name || exam.targetAudience
+            },
+            offers: exam.publicPrice > 0 ? {
+              '@type': 'Offer',
+              price: exam.publicPrice,
+              priceCurrency: 'RWF',
+              availability: 'https://schema.org/InStock'
+            } : {
+              '@type': 'Offer',
+              price: '0',
+              priceCurrency: 'RWF',
+              availability: 'https://schema.org/InStock'
+            },
+            provider: {
+              '@type': 'Organization',
+              name: 'eexams',
+              url: 'https://www.eexams.net/'
+            }
+          }}
+        />
+      )}
+      <Nav
         scrolled={scrollY > 40}
         mode={mode}
         toggleMode={toggleMode}

@@ -283,6 +283,36 @@ const Marketplace = () => {
           { name: 'Home', url: 'https://www.eexams.net/' },
           { name: 'Marketplace', url: 'https://www.eexams.net/marketplace' }
         ]}
+        structuredData={{
+          '@context': 'https://schema.org',
+          '@type': 'CollectionPage',
+          name: 'Exam Marketplace',
+          description: 'Browse and access public exams shared by teachers across Rwanda',
+          url: 'https://www.eexams.net/marketplace',
+          mainEntity: {
+            '@type': 'ItemList',
+            itemListElement: exams.slice(0, 10).map((exam, index) => ({
+              '@type': 'ListItem',
+              position: index + 1,
+              item: {
+                '@type': 'CreativeWork',
+                name: exam.title,
+                description: exam.publicDescription || exam.description,
+                educationalLevel: exam.level?.name || exam.targetAudience,
+                learningResourceType: 'Exam',
+                offers: exam.publicPrice > 0 ? {
+                  '@type': 'Offer',
+                  price: exam.publicPrice,
+                  priceCurrency: 'RWF'
+                } : {
+                  '@type': 'Offer',
+                  price: '0',
+                  priceCurrency: 'RWF'
+                }
+              }
+            }))
+          }
+        }}
       />
       <Nav
         scrolled={scrollY > 40}

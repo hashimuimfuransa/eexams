@@ -5864,7 +5864,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
 }
 
 // Memoized StudentFormFields component (moved outside StudentsSection to prevent re-creation)
-const StudentFormFields = memo(({ form, setForm, formError }) => {
+const StudentFormFields = memo(({ form, setForm, formError, isEdit = false }) => {
   console.log('StudentFormFields render');
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -5874,6 +5874,16 @@ const StudentFormFields = memo(({ form, setForm, formError }) => {
         <TextField label="Last Name *" value={form.lastName} onChange={e => { console.log('Last Name onChange:', e.target.value); setForm(p => ({ ...p, lastName: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
       </Box>
       <TextField label="Email *" type="email" value={form.email} onChange={e => { console.log('Email onChange:', e.target.value); setForm(p => ({ ...p, email: e.target.value })); }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+      {isEdit && (
+        <TextField 
+          label="New Password (leave blank to keep current)" 
+          type="password" 
+          value={form.password || ''} 
+          onChange={e => { console.log('Password onChange:', e.target.value); setForm(p => ({ ...p, password: e.target.value })); }} 
+          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} 
+          helperText="Enter a new password to update it directly without sending an email"
+        />
+      )}
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <TextField label="Phone" value={form.phone} onChange={e => { console.log('Phone onChange:', e.target.value); setForm(p => ({ ...p, phone: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         <TextField label="Class / Grade" value={form.class} onChange={e => { console.log('Class onChange:', e.target.value); setForm(p => ({ ...p, class: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
@@ -6158,7 +6168,7 @@ function StudentsSection() {
       {/* Edit Dialog */}
       <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", pb: 0 }}>Edit Student</DialogTitle>
-        <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields form={form} setForm={setForm} formError={formError} /></DialogContent>
+        <DialogContent sx={{ pt: '16px !important' }}><StudentFormFields form={form} setForm={setForm} formError={formError} isEdit={true} /></DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setEditDialog(false)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
           <Button variant="contained" onClick={handleEdit} disabled={saving}

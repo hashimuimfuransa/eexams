@@ -368,7 +368,7 @@ const getStudentById = async (req, res) => {
 // @access  Private/Admin
 const updateStudent = async (req, res) => {
   try {
-    const { firstName, lastName, email, class: studentClass, organization, isBlocked, phone, gender } = req.body;
+    const { firstName, lastName, email, class: studentClass, organization, isBlocked, phone, gender, password } = req.body;
 
     const student = await User.findById(req.params.id);
 
@@ -409,6 +409,7 @@ const updateStudent = async (req, res) => {
       if (isBlocked !== undefined && isBlocked !== student.isBlocked) changes.status = isBlocked ? 'Blocked' : 'Active';
       if (phone !== undefined && phone !== student.phone) changes.phone = phone || 'none';
       if (gender !== undefined && gender !== student.gender) changes.gender = gender || 'none';
+      if (password && password.trim() !== '') changes.password = 'Password updated';
 
       // Update student fields
       if (firstName) student.firstName = firstName;
@@ -419,6 +420,7 @@ const updateStudent = async (req, res) => {
       if (isBlocked !== undefined) student.isBlocked = isBlocked;
       if (phone !== undefined) student.phone = phone;
       if (gender !== undefined) student.gender = gender;
+      if (password && password.trim() !== '') student.password = password;
 
       const updatedStudent = await student.save();
 
@@ -429,12 +431,13 @@ const updateStudent = async (req, res) => {
         details: {
           studentId: updatedStudent._id,
           studentName: `${updatedStudent.firstName} ${updatedStudent.lastName}`,
-          editedByRole: req.user.role
+          editedByRole: req.user.role,
+          passwordChanged: !!password && password.trim() !== ''
         }
       });
 
-      // Send update email to student if there are changes
-      if (Object.keys(changes).length > 0) {
+      // Send update email to student if there are changes (but not for password changes since they're done directly)
+      if (Object.keys(changes).length > 0 && !changes.password) {
         const emailService = require('../utils/emailService');
         emailService.sendStudentUpdateEmail(updatedStudent, changes).catch(err => {
           console.error('[updateStudent] Failed to send update email:', err);

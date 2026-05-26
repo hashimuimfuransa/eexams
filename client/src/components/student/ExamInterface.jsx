@@ -38,6 +38,7 @@ import {
   ListItem,
   ListItemText,
   useTheme,
+  useMediaQuery,
   Checkbox
 } from '@mui/material';
 import EnhancedOpenAnswer from './EnhancedOpenAnswer';
@@ -233,6 +234,7 @@ const ExamInterface = () => {
   const theme = useTheme();
   const { toggleTheme, mode } = useThemeMode();
   const { user } = useAuth();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // Security state variables
   const [securityActive, setSecurityActive] = useState(false);

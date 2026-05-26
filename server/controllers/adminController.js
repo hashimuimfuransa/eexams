@@ -2087,15 +2087,17 @@ const createExam = async (req, res) => {
             explanation: q.explanation || '',
             answerKey: q.answerKey || q.explanation || '',
             gradingCriteria: normalizedGradingCriteria,
-            keyPoints: Array.isArray(q.keyPoints) 
+            keyPoints: Array.isArray(q.keyPoints)
               ? q.keyPoints.map(kp => typeof kp === 'string' ? kp : JSON.stringify(kp))
-              : (typeof q.keyPoints === 'string' 
+              : (typeof q.keyPoints === 'string'
                   ? (q.keyPoints.startsWith('[') ? JSON.parse(q.keyPoints).map(kp => typeof kp === 'string' ? kp : JSON.stringify(kp)) : [q.keyPoints])
                   : []),
             acceptableAnswers: q.acceptableAnswers || [],
             exam: exam._id,
             section: sectionName,
-            createdBy: createdById
+            createdBy: createdById,
+            subQuestions: q.subQuestions || [],
+            subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' }
           };
           
           const question = await Question.create(questionData);

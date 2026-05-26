@@ -369,6 +369,82 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
               />
             </Grid>
 
+            {/* Image Upload - Available for all question types */}
+            <Grid item xs={12}>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, color: tokens.textSecondary, mb: 0.75, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Question Image (Optional)
+              </Typography>
+              {localQ.imageUrl || localQ.image ? (
+                <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
+                  <Box
+                    component="img"
+                    src={getImageUrl(localQ.imageUrl || localQ.image)}
+                    alt="Question image"
+                    sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
+                  />
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="error"
+                    onClick={() => { setLocalQ({ ...localQ, image: null, imageUrl: '' }); setEdited(true); }}
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      borderRadius: 2,
+                      minWidth: 'auto',
+                      px: 1
+                    }}
+                  >
+                    <Delete fontSize="small" />
+                  </Button>
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    border: `1px dashed ${tokens.surfaceBorder}`,
+                    borderRadius: 2,
+                    p: 3,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    '&:hover': {
+                      borderColor: tokens.primary,
+                      backgroundColor: 'rgba(12,189,115,0.02)'
+                    }
+                  }}
+                  component="label"
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setLocalQ({
+                            ...localQ,
+                            image: file,
+                            imageUrl: reader.result
+                          });
+                          setEdited(true);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <Add sx={{ fontSize: 32, color: tokens.textMuted, mb: 1 }} />
+                  <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>
+                    Click to upload image
+                  </Typography>
+                  <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
+                    PNG, JPG, GIF up to 10MB
+                  </Typography>
+                </Box>
+              )}
+            </Grid>
+
             {/* Settings Row - Responsive: 2 cols on mobile, 4 cols on desktop */}
             <Grid item xs={12} sm={6} md={3}>
               <Typography sx={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: tokens.textSecondary, mb: 0.75, textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -1720,7 +1796,9 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           itemsToOrder: q.itemsToOrder,
           passage: q.passage,
           instructions: q.instructions,
-          wordBank: q.wordBank
+          wordBank: q.wordBank,
+          subQuestions: q.subQuestions || [],
+          subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' }
         }))
       };
       
@@ -1801,7 +1879,9 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           itemsToOrder: q.itemsToOrder,
           passage: q.passage,
           instructions: q.instructions,
-          wordBank: q.wordBank
+          wordBank: q.wordBank,
+          subQuestions: q.subQuestions || [],
+          subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' }
         }))
       };
       
@@ -2740,7 +2820,7 @@ function ExamPreviewPanel({ exam }) {
                 </Paper>
 
                 {/* Multiple choice */}
-                {isMC && (
+                {isMC && !hasSubQuestions && (
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {(q.options || []).map((opt, oi) => {
                       const letter = opt.letter || String.fromCharCode(65 + oi);
@@ -2759,7 +2839,7 @@ function ExamPreviewPanel({ exam }) {
                 )}
 
                 {/* True / False */}
-                {isTF && (
+                {isTF && !hasSubQuestions && (
                   <Box sx={{ display: 'flex', gap: 2 }}>
                     {['True', 'False'].map(val => {
                       const sel = answers[q._id] === val;
@@ -2774,21 +2854,21 @@ function ExamPreviewPanel({ exam }) {
                 )}
 
                 {/* Fill blank */}
-                {isFill && (
+                {isFill && !hasSubQuestions && (
                   <TextField fullWidth placeholder="Type your answer here…" value={answers[q._id] || ''}
                     onChange={e => setAnswer(q._id, e.target.value)}
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 14, bgcolor: 'white' } }} />
                 )}
 
                 {/* Open / Short */}
-                {isOpen && (
+                {isOpen && !hasSubQuestions && (
                   <TextField fullWidth multiline minRows={4} placeholder="Write your answer here…" value={answers[q._id] || ''}
                     onChange={e => setAnswer(q._id, e.target.value)}
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 14, bgcolor: 'white' } }} />
                 )}
 
                 {/* Matching */}
-                {isMatching && (
+                {isMatching && !hasSubQuestions && (
                   <Box>
                     <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textSecondary, mb: 2 }}>
                       Drag items from the right to match with items on the left
@@ -2819,7 +2899,7 @@ function ExamPreviewPanel({ exam }) {
                 )}
 
                 {/* Ordering */}
-                {isOrdering && (
+                {isOrdering && !hasSubQuestions && (
                   <Box>
                     <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textSecondary, mb: 2 }}>
                       Drag to reorder the items in the correct sequence
@@ -2836,7 +2916,7 @@ function ExamPreviewPanel({ exam }) {
                 )}
 
                 {/* Image / Image-based */}
-                {isImage && (
+                {isImage && !hasSubQuestions && (
                   <Box>
                     <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textSecondary, mb: 1.5 }}>
                       Study the image above and write your answer below.
@@ -2854,7 +2934,7 @@ function ExamPreviewPanel({ exam }) {
                 )}
 
                 {/* Drag-Drop */}
-                {isDragDrop && (
+                {isDragDrop && !hasSubQuestions && (
                   <Box>
                     <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.textSecondary, mb: 2 }}>
                       Drag items to their correct drop zones
@@ -3640,10 +3720,13 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                         {sec.questions.map((q, qi) => (
                           <Paper key={qi} elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
                             <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
                                 <Chip label={`Q${qi + 1}`} size="small" sx={{ bgcolor: tokens.primary, color: 'white', fontWeight: 700, minWidth: 32 }} />
                                 <Chip label={q.type?.replace(/-/g, ' ')} size="small" sx={{ bgcolor: '#F1F5F9', color: tokens.textSecondary, fontSize: 11, textTransform: 'capitalize' }} />
                                 <Chip label={`${q.points}pt`} size="small" sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning, fontWeight: 700, fontSize: 11 }} />
+                                {q.subQuestions && Array.isArray(q.subQuestions) && q.subQuestions.length > 0 && (
+                                  <Chip label={`${q.subQuestions.length} Sub-Q${q.subQuestions.length > 1 ? 's' : ''}`} size="small" sx={{ bgcolor: '#DCFCE7', color: '#166534', fontWeight: 700, fontSize: 10 }} />
+                                )}
                               </Box>
                               <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.5 }}>{q.text}</Typography>
                               {(q.imageUrl || q.image) && (
@@ -3659,6 +3742,20 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                                   {q.options.map((opt, oi) => (
                                     <Chip key={oi} label={`${opt.letter || String.fromCharCode(65 + oi)}: ${opt.text}`} size="small" sx={{ bgcolor: opt.isCorrect ? 'rgba(12,189,115,0.1)' : '#F1F5F9', color: opt.isCorrect ? tokens.accent : tokens.textSecondary, fontSize: 10, fontWeight: opt.isCorrect ? 700 : 400 }} />
                                   ))}
+                                </Box>
+                              )}
+                              {q.subQuestions && Array.isArray(q.subQuestions) && q.subQuestions.length > 0 && (
+                                <Box sx={{ mt: 1, p: 1, bgcolor: '#F0F9FF', borderRadius: 1.5, border: '1px solid #BAE6FD' }}>
+                                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#0369A1', mb: 0.5 }}>Sub-Questions:</Typography>
+                                  {q.subQuestions.slice(0, 3).map((subQ, idx) => (
+                                    <Box key={idx} sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 0.25 }}>
+                                      <Typography sx={{ fontSize: 10, fontWeight: 700, color: tokens.primary }}>{subQ.label || String.fromCharCode(97 + idx) + ')'}</Typography>
+                                      <Typography sx={{ fontSize: 10, color: tokens.textPrimary, noWrap: true }}>{subQ.text || '(empty)'}</Typography>
+                                    </Box>
+                                  ))}
+                                  {q.subQuestions.length > 3 && (
+                                    <Typography sx={{ fontSize: 10, color: tokens.textMuted, fontStyle: 'italic' }}>+{q.subQuestions.length - 3} more</Typography>
+                                  )}
                                 </Box>
                               )}
                             </Box>
@@ -4475,6 +4572,254 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
             onChange={(e) => setEditingQuestion({ ...editingQuestion, explanation: e.target.value })}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
+
+          {/* Sub-Questions Section */}
+          {(!editingQuestion?.subQuestions || !Array.isArray(editingQuestion.subQuestions) || editingQuestion.subQuestions.length === 0) ? (
+            <Box sx={{ p: 2, border: `1px dashed ${tokens.accent}`, borderRadius: 2, bgcolor: 'rgba(12,189,115,0.02)' }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.accent, mb: 1 }}>Sub-Questions</Typography>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted, mb: 1.5 }}>Break this question into multiple sub-questions for students to answer</Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Add />}
+                onClick={() => {
+                  setEditingQuestion({
+                    ...editingQuestion,
+                    subQuestions: [
+                      {
+                        label: 'a)',
+                        text: '',
+                        type: 'open-ended',
+                        points: 1,
+                        correctAnswer: '',
+                        options: []
+                      }
+                    ],
+                    subQuestionConfig: {
+                      mode: 'all',
+                      requiredCount: 1,
+                      scoringType: 'partial'
+                    }
+                  });
+                }}
+                sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, borderColor: tokens.accent, color: tokens.accent }}
+              >
+                + Add Sub-Questions
+              </Button>
+            </Box>
+          ) : (
+            <Box sx={{ p: 2, bgcolor: '#FFF8E1', borderRadius: 2, border: '1px solid #FFE082' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#F57C00' }}>Sub-Questions ({editingQuestion.subQuestions.length})</Typography>
+                <IconButton
+                  size="small"
+                  onClick={() => setEditingQuestion({ ...editingQuestion, subQuestions: [], subQuestionConfig: undefined })}
+                  sx={{ color: '#DC2626' }}
+                >
+                  <Delete fontSize="small" />
+                </IconButton>
+              </Box>
+
+              {/* Sub-question Configuration */}
+              <Box sx={{ mb: 2, p: 1.5, bgcolor: 'white', borderRadius: 1.5 }}>
+                <Typography sx={{ fontSize: 10, fontWeight: 600, color: '#F57C00', mb: 1 }}>Mode:</Typography>
+                <RadioGroup
+                  row
+                  value={editingQuestion.subQuestionConfig?.mode || 'all'}
+                  onChange={(e) => {
+                    setEditingQuestion({
+                      ...editingQuestion,
+                      subQuestionConfig: {
+                        ...(editingQuestion.subQuestionConfig || {}),
+                        mode: e.target.value,
+                        requiredCount: editingQuestion.subQuestionConfig?.requiredCount || 1
+                      }
+                    });
+                  }}
+                >
+                  <FormControlLabel value="all" control={<Radio size="small" />} label="Answer All" />
+                  <FormControlLabel value="choose-n" control={<Radio size="small" />} label="Choose N" />
+                </RadioGroup>
+                {editingQuestion.subQuestionConfig?.mode === 'choose-n' && (
+                  <TextField
+                    size="small"
+                    type="number"
+                    label="Required Count"
+                    value={editingQuestion.subQuestionConfig?.requiredCount || 1}
+                    onChange={(e) => {
+                      const count = Math.max(1, Math.min(editingQuestion.subQuestions.length, parseInt(e.target.value) || 1));
+                      setEditingQuestion({
+                        ...editingQuestion,
+                        subQuestionConfig: {
+                          ...(editingQuestion.subQuestionConfig || {}),
+                          mode: 'choose-n',
+                          requiredCount: count
+                        }
+                      });
+                    }}
+                    sx={{ width: 100, mt: 1 }}
+                  />
+                )}
+              </Box>
+
+              {/* Sub-questions list */}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {editingQuestion.subQuestions.map((subQ, idx) => (
+                  <Box key={idx} sx={{ p: 1.5, bgcolor: 'white', borderRadius: 1.5, border: '1px solid #BAE6FD' }}>
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                      <TextField
+                        size="small"
+                        placeholder="Label"
+                        value={subQ.label || ''}
+                        onChange={(e) => {
+                          const updated = [...editingQuestion.subQuestions];
+                          updated[idx] = { ...subQ, label: e.target.value };
+                          setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                        }}
+                        sx={{ width: 60 }}
+                      />
+                      <FormControl size="small" sx={{ minWidth: 100 }}>
+                        <Select
+                          value={subQ.type || 'open-ended'}
+                          onChange={(e) => {
+                            const updated = [...editingQuestion.subQuestions];
+                            updated[idx] = { ...subQ, type: e.target.value, options: e.target.value === 'multiple-choice' ? [{ letter: 'i', text: '', isCorrect: false }] : [] };
+                            setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                          }}
+                        >
+                          <MenuItem value="open-ended">Open-ended</MenuItem>
+                          <MenuItem value="short-answer">Short Answer</MenuItem>
+                          <MenuItem value="multiple-choice">Multiple Choice</MenuItem>
+                          <MenuItem value="true-false">True/False</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Points"
+                        value={subQ.points || 1}
+                        onChange={(e) => {
+                          const updated = [...editingQuestion.subQuestions];
+                          updated[idx] = { ...subQ, points: parseInt(e.target.value) || 1 };
+                          setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                        }}
+                        sx={{ width: 70 }}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          const updated = editingQuestion.subQuestions.filter((_, i) => i !== idx);
+                          setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                        }}
+                        sx={{ color: '#DC2626' }}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Box>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="Subquestion text..."
+                      value={subQ.text || ''}
+                      onChange={(e) => {
+                        const updated = [...editingQuestion.subQuestions];
+                        updated[idx] = { ...subQ, text: e.target.value };
+                        setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                      }}
+                      sx={{ mb: 1 }}
+                    />
+                    {subQ.type === 'multiple-choice' && (
+                      <Box sx={{ pl: 1, borderLeft: '2px solid #BAE6FD' }}>
+                        {(subQ.options || []).map((opt, optIdx) => (
+                          <Box key={optIdx} sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 0.5 }}>
+                            <TextField
+                              size="small"
+                              placeholder={`${optIdx + 1}`}
+                              value={opt.letter || ''}
+                              onChange={(e) => {
+                                const updated = [...editingQuestion.subQuestions];
+                                const updatedOptions = [...(subQ.options || [])];
+                                updatedOptions[optIdx] = { ...opt, letter: e.target.value };
+                                updated[idx] = { ...subQ, options: updatedOptions };
+                                setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                              }}
+                              sx={{ width: 35 }}
+                            />
+                            <TextField
+                              fullWidth
+                              size="small"
+                              placeholder={`Option ${optIdx + 1}`}
+                              value={opt.text || ''}
+                              onChange={(e) => {
+                                const updated = [...editingQuestion.subQuestions];
+                                const updatedOptions = [...(subQ.options || [])];
+                                updatedOptions[optIdx] = { ...opt, text: e.target.value };
+                                updated[idx] = { ...subQ, options: updatedOptions };
+                                setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                              }}
+                            />
+                            <Checkbox
+                              size="small"
+                              checked={opt.isCorrect || false}
+                              onChange={() => {
+                                const updated = [...editingQuestion.subQuestions];
+                                const updatedOptions = (subQ.options || []).map((o, i) => ({ ...o, isCorrect: i === optIdx }));
+                                updated[idx] = { ...subQ, options: updatedOptions, correctAnswer: opt.letter || '' };
+                                setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                              }}
+                            />
+                          </Box>
+                        ))}
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            const updated = [...editingQuestion.subQuestions];
+                            const newLetter = String.fromCharCode(105 + (subQ.options || []).length);
+                            updated[idx] = { ...subQ, options: [...(subQ.options || []), { letter: newLetter, text: '', isCorrect: false }] };
+                            setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                          }}
+                          sx={{ fontSize: 10, mt: 0.5 }}
+                        >
+                          + Add Option
+                        </Button>
+                      </Box>
+                    )}
+                    {subQ.type !== 'multiple-choice' && (
+                      <TextField
+                        fullWidth
+                        size="small"
+                        placeholder="Correct answer..."
+                        value={subQ.correctAnswer || ''}
+                        onChange={(e) => {
+                          const updated = [...editingQuestion.subQuestions];
+                          updated[idx] = { ...subQ, correctAnswer: e.target.value };
+                          setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                        }}
+                      />
+                    )}
+                  </Box>
+                ))}
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => {
+                    const newSubQ = {
+                      label: `${String.fromCharCode(97 + editingQuestion.subQuestions.length)})`,
+                      text: '',
+                      type: 'open-ended',
+                      points: 1,
+                      correctAnswer: '',
+                      options: []
+                    };
+                    setEditingQuestion({ ...editingQuestion, subQuestions: [...editingQuestion.subQuestions, newSubQ] });
+                  }}
+                  sx={{ fontSize: 11 }}
+                >
+                  + Add Subquestion
+                </Button>
+              </Box>
+            </Box>
+          )}
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>

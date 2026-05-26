@@ -4182,6 +4182,12 @@ const ExamInterface = () => {
 
                       {(() => {
                         const questionType = detectQuestionTypeFromContent(currentQuestion);
+                        const hasSubQuestions = currentQuestion.subQuestions && currentQuestion.subQuestions.length > 0;
+
+                        // If question has sub-questions, don't show main answer input for any type
+                        if (hasSubQuestions) {
+                          return null;
+                        }
 
                         if (questionType === 'multiple-choice') {
                           return (
@@ -4368,15 +4374,19 @@ const ExamInterface = () => {
                             />
                           );
                         } else if (questionType === 'image-based' || questionType === 'image' || questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {
-                          return (
-                            <EnhancedOpenAnswer
-                              question={currentQuestion}
-                              answer={answers[currentQuestion._id]}
-                              onAnswerChange={handleAnswerChange}
-                              disabled={false} // Never disable open-ended questions to allow continued editing
-                              answerRef={openAnswerRef}
-                            />
-                          );
+                          // Only show main answer input if question has NO sub-questions
+                          if (!currentQuestion.subQuestions || currentQuestion.subQuestions.length === 0) {
+                            return (
+                              <EnhancedOpenAnswer
+                                question={currentQuestion}
+                                answer={answers[currentQuestion._id]}
+                                onAnswerChange={handleAnswerChange}
+                                disabled={false} // Never disable open-ended questions to allow continued editing
+                                answerRef={openAnswerRef}
+                              />
+                            );
+                          }
+                          return null;
                         }
                       })()}
 

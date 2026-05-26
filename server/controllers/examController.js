@@ -3661,7 +3661,7 @@ function areSemanticallySimilar(text1, text2) {
  */
 const saveDraftExam = async (req, res) => {
   try {
-    const { title, description, timeLimit, passingScore, questions, totalMarks } = req.body;
+    const { title, description, timeLimit, passingScore, questions, totalMarks, sections } = req.body;
 
     if (!title || !questions || questions.length === 0) {
       return res.status(400).json({ message: 'Title and at least one question are required' });
@@ -3673,7 +3673,7 @@ const saveDraftExam = async (req, res) => {
       description: description || title,
       timeLimit: timeLimit || 60,
       passingScore: passingScore || 70,
-      sections: [{
+      sections: sections || [{
         name: 'A',
         description: 'Generated Questions',
         questions: []
@@ -3686,6 +3686,8 @@ const saveDraftExam = async (req, res) => {
 
     // Create questions with exam ID and section
     const createdQuestions = [];
+    const sectionQuestionsMap = {};
+
     for (const q of questions) {
       const question = await Question.create({
         text: q.text,
@@ -3701,13 +3703,33 @@ const saveDraftExam = async (req, res) => {
         acceptableAnswers: q.acceptableAnswers || [],
         createdBy: req.user._id,
         exam: exam._id,
-        section: 'A'
+        section: q.section || 'A',
+        subQuestions: q.subQuestions || [],
+        subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' }
       });
       createdQuestions.push(question._id);
+
+      // Group questions by section
+      const sectionName = q.section || 'A';
+      if (!sectionQuestionsMap[sectionName]) {
+        sectionQuestionsMap[sectionName] = [];
+      }
+      sectionQuestionsMap[sectionName].push(question._id);
     }
 
-    // Update exam with question IDs and recalculate total points
-    exam.sections[0].questions = createdQuestions;
+    // Update exam sections with question IDs
+    if (sections && Array.isArray(sections)) {
+      exam.sections = sections.map(sec => ({
+        name: sec.name,
+        description: sec.description || `Section ${sec.name}`,
+        questions: sectionQuestionsMap[sec.name] || []
+      }));
+    } else {
+      // Fallback to single section if no sections provided
+      exam.sections[0].questions = createdQuestions;
+    }
+
+    // Recalculate total points
     exam.totalPoints = totalMarks || createdQuestions.reduce((sum, id) => {
       const q = questions.find(q => q._id === id);
       return sum + (q?.marks || q?.points || 1);

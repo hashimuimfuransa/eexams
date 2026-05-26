@@ -1884,7 +1884,7 @@ const ExamInterface = () => {
   };
 
   // Enhanced handle answer change for all question types
-  const handleAnswerChange = (questionId, value, type) => {
+  const handleAnswerChange = (questionId, value, type, options = {}) => {
     // Don't allow changing answers if exam is completed or being submitted
     if (examCompleted || submitting) {
       console.log('⚠️ Ignoring answer change - exam is completed or being submitted');
@@ -1928,7 +1928,7 @@ const ExamInterface = () => {
         }));
 
         // Submit answer to server immediately for multiple choice and true/false
-        saveAnswerToServer(questionId, value, type);
+        saveAnswerToServer(questionId, value, type, options);
         return;
 
       case 'matching':
@@ -2069,6 +2069,13 @@ const ExamInterface = () => {
             questionId,
             questionType: actualType
           };
+
+          // Add sub-question metadata if applicable
+          if (options.isSubQuestion) {
+            payload.parentQuestionId = options.parentQuestionId;
+            payload.subQuestionIndex = options.subQuestionIndex;
+            payload.isSubQuestion = true;
+          }
 
           // Ensure value is properly formatted and validated
           let cleanValue;

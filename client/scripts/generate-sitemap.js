@@ -1,6 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
+import fs from 'fs';
+import path from 'path';
+import https from 'https';
 
 // Static pages
 const staticPages = [
@@ -73,7 +73,7 @@ ${allPages.map(page => `  <url>
 </urlset>`;
 
   // Write to public folder
-  const publicDir = path.join(__dirname, '../public');
+  const publicDir = path.join(new URL('.', import.meta.url).pathname, '../public');
   const sitemapPath = path.join(publicDir, 'sitemap.xml');
 
   if (!fs.existsSync(publicDir)) {

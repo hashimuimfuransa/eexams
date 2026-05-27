@@ -293,11 +293,17 @@ async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
 function detectMultiPartQuestionFast(questionText) {
   if (!questionText) return { isMultiPart: false, expectedParts: 1 };
 
-  const letterParts = questionText.match(/\b[\(\[]?[a-z][\)\]]?[\s\.]/gi);
-  const romanParts = questionText.match(/\b[\(\[]?i{1,3}[\)\]]?[\s\.]/gi);
+  // More conservative multi-part detection
+  // Only detect as multi-part if there are clear structural indicators
+  const letterParts = questionText.match(/\b[a-z]\)[\s]|\([a-z]\)[\s]|\\b[a-z]\.[\s]/gi);
+  const romanParts = questionText.match(/\b[i]{1,3}\)[\s]|\([i]{1,3}\)[\s]/gi);
 
   const allParts = [...(letterParts || []), ...(romanParts || [])];
-  const uniqueParts = new Set(allParts.map(p => p.toLowerCase().replace(/[\(\)\[\]\s\.]/g, '')));
+  const uniqueParts = new Set(allParts.map(p => p.toLowerCase().replace(/[\(\)\[\]\s\.:]/g, '')));
+
+  // Check for explicit "part" language or numbered list format
+  const hasExplicitParts = /(?:part|section|step)\s*\d+/i.test(questionText);
+  const hasNumberedList = /\d+\)[\s]|\d+\.[\s]/.test(questionText) && (questionText.match(/\d+\)[\s]|\d+\.[\s]/g) || []).length > 1;
 
   const marksPattern = questionText.match(/\(\s*\d+\s*(?:mark|marks)\s*\)/gi);
   const totalMarks = marksPattern ? marksPattern.reduce((sum, m) => {
@@ -305,8 +311,12 @@ function detectMultiPartQuestionFast(questionText) {
     return sum + num;
   }, 0) : 0;
 
+  // Only consider it multi-part if there are at least 2 clearly labeled parts
+  // AND it's not a simple math/calculation question
+  const isCalculationQuestion = /calculate|compute|find|solve|determine|what is|how much|how many/i.test(questionText);
+  
   return {
-    isMultiPart: uniqueParts.size > 1 || totalMarks > 1,
+    isMultiPart: (uniqueParts.size >= 2 || hasExplicitParts || hasNumberedList) && !isCalculationQuestion,
     expectedParts: Math.max(uniqueParts.size, 1),
     totalMarks: totalMarks,
     detectedParts: Array.from(uniqueParts)
@@ -411,17 +421,12 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
   const multiPartInfo = detectMultiPartQuestionFast(question.text);
   const multiPartValidation = validateMultiPartAnswerFast(studentAnswer, multiPartInfo);
 
-  // Reject severely incomplete multi-part answers (< 25%)
+  // For severely incomplete multi-part answers (< 25%), log but still attempt grading
+  // This allows partial credit for calculation questions that might be misdetected
   if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
     console.log(`Fast grading: Multi-part question severely incomplete - ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts`);
-    return {
-      score: 0,
-      feedback: `Incomplete answer. You only addressed ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts. Please answer all parts of the question.`,
-      correctedAnswer: modelAnswer,
-      gradingMethod: 'incomplete_multipart',
-      multiPartInfo,
-      multiPartValidation
-    };
+    console.log(`⚠️ Attempting fallback grading for potentially misdetected multi-part question`);
+    // Don't return 0, continue to attempt grading
   }
 
   // For very short answers (less than 10 characters), use keyword matching for speed

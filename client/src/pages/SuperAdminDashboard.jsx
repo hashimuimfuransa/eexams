@@ -4014,6 +4014,8 @@ function StudentResultsSection({ searchQuery }) {
   const [selectedResult, setSelectedResult] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [resultDetails, setResultDetails] = useState(null);
+  const [regradingIds, setRegradingIds] = useState(new Set());
+  const [regradeMessage, setRegradeMessage] = useState(null);
 
   // Helper to get option display text (handles both string and object formats)
   const getOptionText = (opt) => {
@@ -4058,6 +4060,7 @@ function StudentResultsSection({ searchQuery }) {
     setSelectedResult(result);
     setDetailLoading(true);
     setResultDetails(null);
+    setRegradeMessage(null);
     try {
       const response = await api.get(`/superadmin/results/${result._id}/details`);
       setResultDetails(response.data);
@@ -4065,6 +4068,39 @@ function StudentResultsSection({ searchQuery }) {
       console.error('Error fetching result details:', error);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const handleRegrade = async (resultId) => {
+    setRegradingIds(prev => new Set([...prev, resultId]));
+    setRegradeMessage(null);
+    try {
+      const response = await api.post(`/admin/regrade-result/${resultId}`, {
+        method: 'ai',
+        forceRegrade: true
+      }, {
+        timeout: 300000 // 5 minutes timeout for regrade operations
+      });
+      setRegradeMessage({ type: 'success', text: 'Result regraded successfully!' });
+      
+      // Refresh the results and details
+      await fetchResults();
+      if (selectedResult) {
+        await handleViewDetails(selectedResult);
+      }
+    } catch (error) {
+      console.error('Error regrading result:', error);
+      if (error.code === 'ECONNABORTED') {
+        setRegradeMessage({ type: 'error', text: 'Regrade operation timed out. The backend is still processing. Please check the results later.' });
+      } else {
+        setRegradeMessage({ type: 'error', text: error.response?.data?.message || 'Failed to regrade result' });
+      }
+    } finally {
+      setRegradingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(resultId);
+        return newSet;
+      });
     }
   };
 
@@ -4135,6 +4171,17 @@ function StudentResultsSection({ searchQuery }) {
           </Grid>
         </Grid>
       </Paper>
+
+      {/* Regrade Message */}
+      {regradeMessage && (
+        <Alert 
+          severity={regradeMessage.type} 
+          sx={{ mb: 3 }}
+          onClose={() => setRegradeMessage(null)}
+        >
+          {regradeMessage.text}
+        </Alert>
+      )}
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -4218,14 +4265,25 @@ function StudentResultsSection({ searchQuery }) {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => handleViewDetails(result)}
-                          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 12 }}
-                        >
-                          View Details
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleViewDetails(result)}
+                            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 12 }}
+                          >
+                            View Details
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() => handleRegrade(result._id)}
+                            disabled={regradingIds.has(result._id)}
+                            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 12, bgcolor: tokens.primary, '&:hover': { bgcolor: tokens.primary } }}
+                          >
+                            {regradingIds.has(result._id) ? 'Regrading...' : 'Regrade'}
+                          </Button>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   );
@@ -4276,9 +4334,20 @@ function StudentResultsSection({ searchQuery }) {
               {selectedResult?.student?.firstName} {selectedResult?.student?.lastName} - {selectedResult?.exam?.title}
             </Typography>
           </Box>
-          <IconButton onClick={() => setSelectedResult(null)}>
-            <Close />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => handleRegrade(selectedResult?._id)}
+              disabled={regradingIds.has(selectedResult?._id)}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 12, bgcolor: tokens.primary, '&:hover': { bgcolor: tokens.primary } }}
+            >
+              {regradingIds.has(selectedResult?._id) ? 'Regrading...' : 'Regrade'}
+            </Button>
+            <IconButton onClick={() => setSelectedResult(null)}>
+              <Close />
+            </IconButton>
+          </Box>
         </DialogTitle>
         <DialogContent>
           {detailLoading ? (
@@ -4333,16 +4402,26 @@ function StudentResultsSection({ searchQuery }) {
                       <Typography variant="body1" fontWeight={600} sx={{ flex: 1 }}>
                         Q{index + 1}. {questionText}
                       </Typography>
-                      <Chip
-                        label={answer.isCorrect ? 'Correct' : 'Incorrect'}
-                        size="small"
-                        sx={{
-                          ml: 2,
-                          fontWeight: 600,
-                          bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
-                          color: answer.isCorrect ? tokens.accent : '#EF4444'
-                        }}
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip
+                          label={`${answer.score || 0} pts`}
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            bgcolor: 'rgba(59,130,246,0.1)',
+                            color: '#3B82F6'
+                          }}
+                        />
+                        <Chip
+                          label={answer.isCorrect ? 'Correct' : 'Incorrect'}
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
+                            color: answer.isCorrect ? tokens.accent : '#EF4444'
+                          }}
+                        />
+                      </Box>
                     </Box>
 
                   {questionType === 'multiple-choice' && options.length > 0 && (

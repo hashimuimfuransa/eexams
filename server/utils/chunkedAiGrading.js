@@ -163,13 +163,18 @@ const extractTechnicalTerms = (text) => {
 const detectMultiPartQuestion = (questionText) => {
   if (!questionText) return { isMultiPart: false, expectedParts: 1 };
 
-  // Look for patterns like a), b), c) or i), ii), iii) or (a), (b), (c)
-  const letterParts = questionText.match(/\b[\(\[]?[a-z][\)\]]?[\s\.:]/gi);
-  const romanParts = questionText.match(/\b[\(\[]?i{1,3}[\)\]]?[\s\.:]/gi);
-  const numberParts = questionText.match(/\b[\(\[]?\d+[\)\]]?[\s\.:]/gi);
+  // More conservative multi-part detection
+  // Only detect as multi-part if there are clear structural indicators
+  const letterParts = questionText.match(/\b[a-z]\)[\s]|\([a-z]\)[\s]|\\b[a-z]\.[\s]/gi);
+  const romanParts = questionText.match(/\b[i]{1,3}\)[\s]|\([i]{1,3}\)[\s]/gi);
+  const numberParts = questionText.match(/\b\d+\)[\s]|\(\d+\)[\s]/gi);
 
   const allParts = [...(letterParts || []), ...(romanParts || []), ...(numberParts || [])];
   const uniqueParts = new Set(allParts.map(p => p.toLowerCase().replace(/[\(\)\[\]\s\.:]/g, '')));
+
+  // Check for explicit "part" language or numbered list format
+  const hasExplicitParts = /(?:part|section|step)\s*\d+/i.test(questionText);
+  const hasNumberedList = /\d+\)[\s]|\d+\.[\s]/.test(questionText) && (questionText.match(/\d+\)[\s]|\d+\.[\s]/g) || []).length > 1;
 
   // Check for multiple marks indicators like (1 mark), (2 marks), (4 marks)
   const marksPattern = questionText.match(/\(\s*\d+\s*(?:mark|marks)\s*\)/gi);
@@ -178,8 +183,12 @@ const detectMultiPartQuestion = (questionText) => {
     return sum + num;
   }, 0) : 0;
 
+  // Only consider it multi-part if there are at least 2 clearly labeled parts
+  // AND it's not a simple math/calculation question
+  const isCalculationQuestion = /calculate|compute|find|solve|determine|what is|how much|how many/i.test(questionText);
+
   return {
-    isMultiPart: uniqueParts.size > 1 || totalMarks > 1,
+    isMultiPart: (uniqueParts.size >= 2 || hasExplicitParts || hasNumberedList) && !isCalculationQuestion,
     expectedParts: Math.max(uniqueParts.size, 1),
     totalMarks: totalMarks,
     detectedParts: Array.from(uniqueParts)
@@ -235,17 +244,12 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
     const multiPartInfo = detectMultiPartQuestion(questionText);
     const multiPartValidation = validateMultiPartAnswer(studentAnswer, multiPartInfo);
 
-    // If multi-part question has very low completeness (< 25%), reject it
+    // For severely incomplete multi-part answers (< 25%), log but still attempt grading
+    // This allows partial credit for calculation questions that might be misdetected
     if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
       console.log(`Multi-part question severely incomplete: ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts found`);
-      return {
-        conceptsPresent: [],
-        conceptsMissing: keyConcepts,
-        score: 0,
-        technicalMerit: `Incomplete answer - only ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts addressed`,
-        multiPartInfo,
-        multiPartValidation
-      };
+      console.log(`⚠️ Attempting fallback grading for potentially misdetected multi-part question`);
+      // Don't return 0, continue to attempt grading
     }
 
     // Use fast model for better performance and to avoid timeouts
@@ -297,9 +301,10 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
 
       CRITICAL RULES:
       1. For multi-part questions, ALL parts must be addressed for full marks
-      2. Very short answers (under 20 characters) should receive 0 marks
-      3. Single keyword answers without explanation should receive minimal marks
-      4. Do NOT give automatic partial credit - evaluate actual content quality
+      2. For calculation questions: Extract the final numerical result and verify it's correct. Correct method with wrong result = 30-50% partial credit
+      3. Mathematical expressions are acceptable for calculation questions - evaluate the numerical result
+      4. For brief answers: Be lenient - award partial credit if the approach is correct, even if incomplete
+      5. Do NOT give automatic partial credit - evaluate actual content quality, but award partial credit for correct approach
 
       Assign a precise score between 0 and ${maxPoints} based on how well the answer addresses the specific question.
       Be STRICT and fair - incomplete answers should receive proportionally lower scores.
@@ -354,9 +359,10 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
 
       CRITICAL RULES:
       1. For multi-part questions, ALL parts must be addressed for full marks
-      2. Very short answers (under 20 characters) should receive 0 marks
-      3. Single keyword answers without explanation should receive minimal marks
-      4. Do NOT give automatic partial credit - evaluate actual content quality
+      2. For calculation questions: Extract the final numerical result and verify it's correct. Correct method with wrong result = 30-50% partial credit
+      3. Mathematical expressions are acceptable for calculation questions - evaluate the numerical result
+      4. For brief answers: Be lenient - award partial credit if the approach is correct, even if incomplete
+      5. Do NOT give automatic partial credit - evaluate actual content quality, but award partial credit for correct approach
 
       For each key concept, determine if it is present in the student's answer.
       Then assign a precise score between 0 and ${maxPoints} based on:

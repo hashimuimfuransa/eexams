@@ -741,9 +741,28 @@ Only respond with the letter of the correct option (A, B, C, or D).
               result.answers[i].selectedOptionLetter = selectedLetter;
             } else {
               console.log(`Could not find option with letter ${correctLetter} for question ${questionNumber}`);
-              isCorrect = false;
-              correctOptionText = `Option ${correctLetter}`;
-              correctOptionLetter = correctLetter;
+              console.log(`Available options: ${question.options.map(o => o.letter).join(', ')}`);
+              console.log(`AI determined correct answer: ${correctLetter}`);
+              
+              // Try to match by text content as fallback
+              if (correctOption && selectedOptionText) {
+                const isTextMatch = selectedOptionText.includes(correctOption.text) || 
+                                   correctOption.text.includes(selectedOptionText);
+                if (isTextMatch) {
+                  console.log(`Fallback: Text content match found`);
+                  isCorrect = true;
+                  correctOptionText = correctOption.text;
+                  correctOptionLetter = correctLetter;
+                } else {
+                  isCorrect = false;
+                  correctOptionText = `Option ${correctLetter}`;
+                  correctOptionLetter = correctLetter;
+                }
+              } else {
+                isCorrect = false;
+                correctOptionText = `Option ${correctLetter}`;
+                correctOptionLetter = correctLetter;
+              }
             }
           }
 

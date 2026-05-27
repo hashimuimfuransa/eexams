@@ -60,11 +60,17 @@ function formatCorrectAnswer(correctAnswer, fallback = 'Not provided') {
 const detectMultiPartQuestion = (questionText) => {
   if (!questionText) return { isMultiPart: false, expectedParts: 1 };
 
-  const letterParts = questionText.match(/\b[\(\[]?[a-z][\)\]]?[\s\.:]/gi);
-  const romanParts = questionText.match(/\b[\(\[]?i{1,3}[\)\]]?[\s\.:]/gi);
+  // More conservative multi-part detection
+  // Only detect as multi-part if there are clear structural indicators
+  const letterParts = questionText.match(/\b[a-z]\)[\s]|\([a-z]\)[\s]|\\b[a-z]\.[\s]/gi);
+  const romanParts = questionText.match(/\b[i]{1,3}\)[\s]|\([i]{1,3}\)[\s]/gi);
 
   const allParts = [...(letterParts || []), ...(romanParts || [])];
   const uniqueParts = new Set(allParts.map(p => p.toLowerCase().replace(/[\(\)\[\]\s\.:]/g, '')));
+
+  // Check for explicit "part" language or numbered list format
+  const hasExplicitParts = /(?:part|section|step)\s*\d+/i.test(questionText);
+  const hasNumberedList = /\d+\)[\s]|\d+\.[\s]/.test(questionText) && (questionText.match(/\d+\)[\s]|\d+\.[\s]/g) || []).length > 1;
 
   const marksPattern = questionText.match(/\(\s*\d+\s*(?:mark|marks)\s*\)/gi);
   const totalMarks = marksPattern ? marksPattern.reduce((sum, m) => {
@@ -72,8 +78,12 @@ const detectMultiPartQuestion = (questionText) => {
     return sum + num;
   }, 0) : 0;
 
+  // Only consider it multi-part if there are at least 2 clearly labeled parts
+  // AND it's not a simple math/calculation question
+  const isCalculationQuestion = /calculate|compute|find|solve|determine|what is|how much|how many/i.test(questionText);
+  
   return {
-    isMultiPart: uniqueParts.size > 1 || totalMarks > 1,
+    isMultiPart: (uniqueParts.size >= 2 || hasExplicitParts || hasNumberedList) && !isCalculationQuestion,
     expectedParts: Math.max(uniqueParts.size, 1),
     totalMarks: totalMarks,
     detectedParts: Array.from(uniqueParts)
@@ -142,6 +152,13 @@ const parseAnswerContent = (answer) => {
     content = content.replace(/\[IMAGE_UPLOADED:\s*[^\]]*\]/, '').trim();
   }
 
+  // Extract final result from calculation patterns like "X + Y = Z" or "X * Y = Z"
+  // This handles cases like "Depreciation:$54000+$25000 =$79000"
+  const calcPattern = content.match(/(?:=|:)\s*([-\d,]+(?:\.\d+)?)\s*$/);
+  if (calcPattern) {
+    content = calcPattern[1].trim();
+  }
+
   // If answer still has brackets, try to extract content between them
   if (content.includes('[') && content.includes(']')) {
     content = content.replace(/\[.*?\]/g, '').trim();
@@ -158,8 +175,8 @@ const parseAnswerContent = (answer) => {
  * @returns {Object} - Validation result with isValid and reason
  */
 const validateAnswerRelevance = (answer, questionText) => {
-  if (!answer || answer.trim().length < 10) {
-    return { isValid: false, reason: 'Answer too short. Open-ended questions require detailed explanations showing your work and reasoning.' };
+  if (!answer || answer.trim().length === 0) {
+    return { isValid: false, reason: 'No answer provided.' };
   }
 
   const cleanAnswer = answer.trim().toLowerCase();
@@ -178,16 +195,9 @@ const validateAnswerRelevance = (answer, questionText) => {
     }
   }
 
-  // Check for answers that are just mathematical expressions without explanation
-  const isJustMathExpression = /^[\d\+\-\*\/\=\(\)\s\\a-zA-Z]+$/.test(cleanAnswer) && cleanAnswer.length < 20;
-  if (isJustMathExpression) {
-    return { isValid: false, reason: 'Your answer appears to be just a mathematical expression without explanation. Please show your working and explain your reasoning.' };
-  }
-
   // Check for obvious placeholder answers
   const placeholderPatterns = [
     /^[a-j],?\s*$/,  // Single letter like "a," or "a"
-    /^[a-j],?\s*[x+=\d]*$/,  // Like "a,x+2=8" or similar
     /^question\s*\d*$/i,  // "question 1" etc
     /^[.\s]+$/,  // Just dots or spaces
   ];
@@ -198,9 +208,9 @@ const validateAnswerRelevance = (answer, questionText) => {
     }
   }
 
-  // Check if answer is just repeating the question label (a, b, c, etc)
-  if (/^[a-j][,\s]*$/.test(cleanAnswer) && cleanAnswer.length <= 3) {
-    return { isValid: false, reason: 'Answer appears to be just a question label' };
+  // For very short answers or math expressions, mark for lenient grading but don't reject
+  if (cleanAnswer.length < 10 || /^[\d\+\-\*\/\=\(\)\s\\a-zA-Z]+$/.test(cleanAnswer)) {
+    return { isValid: true, needsLenientGrading: true, reason: 'Answer is brief or mathematical - use lenient grading' };
   }
 
   return { isValid: true };
@@ -369,22 +379,16 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
         const multiPartInfo = detectMultiPartQuestion(question.text);
         const multiPartValidation = validateMultiPartAnswer(parsedAnswer, multiPartInfo);
 
-        // Reject only severely incomplete answers (< 25%)
+        // Only reject severely incomplete answers (< 25%) for actual multi-part questions
+        // Skip this check for calculation questions or short answers
         if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
           console.log(`❌ Multi-part question severely incomplete: ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts found`);
-          return {
-            score: 0,
-            feedback: `Incomplete answer. You only addressed ${multiPartValidation.partsFound} of ${multiPartInfo.expectedParts} required parts. Please answer all parts of the question: ${question.text.substring(0, 100)}...`,
-            correctedAnswer: modelAnswer || formatCorrectAnswer(question.correctAnswer, 'Model answer not available'),
-            details: {
-              section: question.section,
-              questionType: 'open-ended',
-              gradingMethod: 'incomplete_multipart',
-              partsFound: multiPartValidation.partsFound,
-              partsExpected: multiPartInfo.expectedParts,
-              completeness: multiPartValidation.completeness
-            }
-          };
+          console.log(`⚠️ Question text: ${question.text.substring(0, 150)}...`);
+          console.log(`⚠️ Student answer: ${parsedAnswer.substring(0, 150)}...`);
+          
+          // For severely incomplete answers, still attempt basic grading rather than giving 0
+          // This allows partial credit for calculation questions that might be misdetected
+          console.log(`⚠️ Attempting fallback grading for potentially misdetected multi-part question`);
         }
 
         // Validate answer relevance before grading
@@ -404,6 +408,13 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
               multiPartValidation
             }
           };
+        }
+
+        // If answer needs lenient grading (brief or mathematical), add note to prompt
+        if (relevanceCheck.needsLenientGrading) {
+          console.log(`⚠️ Answer marked for lenient grading: ${relevanceCheck.reason}`);
+          // Add instruction to AI to be more lenient
+          gradingInstructions += '\n\nNOTE: This answer is brief or mathematical. Be lenient and award partial credit if the approach is correct, even if the answer is incomplete.';
         }
 
         // Enhanced AI grading for sections B and C with optimized processing

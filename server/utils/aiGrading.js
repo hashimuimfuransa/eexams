@@ -1,6 +1,89 @@
 // Import the centralized Groq client
 const groqClient = require('./groqClient');
-const { parseAnswerContent, validateAnswerRelevance } = require('./enhancedGrading');
+
+// Helper functions to avoid circular dependency
+const parseAnswerContent = (answer) => {
+  if (!answer || typeof answer !== 'string') return '';
+
+  let content = answer;
+
+  // Extract content from [MATH: ...] format
+  const mathMatch = answer.match(/\[MATH:\s*(.*?)\]/);
+  if (mathMatch) {
+    content = mathMatch[1].trim();
+  }
+
+  // Extract content from [DRAWING: ...] format (base64 data, ignore for grading)
+  const drawingMatch = answer.match(/\[DRAWING:\s*([^\]]*)\]/);
+  if (drawingMatch) {
+    // Remove drawing data from content for text grading
+    content = content.replace(/\[DRAWING:\s*[^\]]*\]/, '').trim();
+  }
+
+  // Extract content from [IMAGE_UPLOADED: ...] format (remove the tag, keep the text)
+  const imageMatch = answer.match(/\[IMAGE_UPLOADED:\s*[^\]]*\]/);
+  if (imageMatch) {
+    content = content.replace(/\[IMAGE_UPLOADED:\s*[^\]]*\]/, '').trim();
+  }
+
+  // Extract final result from calculation patterns like "X + Y = Z" or "X * Y = Z"
+  // This handles cases like "Depreciation:$54000+$25000 =$79000"
+  const calcPattern = content.match(/(?:=|:)\s*([-\d,]+(?:\.\d+)?)\s*$/);
+  if (calcPattern) {
+    content = calcPattern[1].trim();
+  }
+
+  return content;
+};
+
+const validateAnswerRelevance = (answer, questionText) => {
+  if (!answer || answer.trim().length === 0) {
+    return { isValid: false, reason: 'No answer provided.' };
+  }
+
+  const cleanAnswer = answer.trim().toLowerCase();
+
+  // Check for meaningless answers like "I don't know", "no idea", etc.
+  const meaninglessPatterns = [
+    /^(i\s+don'?t\s+know|dont\s+know|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
+    /^(i\s+do\s+not\s+know|i\s+do\s+not\s+understand|i\s+have\s+no\s+clue|no\s+clue)$/i,
+    /^(skip|pass|n\/a|none|nothing|answer|question)$/i,
+    /^(please\s+help|help\s+me|idk)$/i
+  ];
+
+  for (const pattern of meaninglessPatterns) {
+    if (pattern.test(cleanAnswer)) {
+      return { isValid: false, reason: 'Your answer indicates you do not know the answer. Please review the material and provide a proper response.' };
+    }
+  }
+
+  // Check for placeholder answers
+  const placeholderPatterns = [
+    /^(answer|answer:|the answer is|the answer is:)$/i,
+    /^(solution|solution:|the solution is|the solution is:)$/i,
+    /^(response|response:|my response|my response:)$/i
+  ];
+
+  for (const pattern of placeholderPatterns) {
+    if (pattern.test(cleanAnswer)) {
+      return { isValid: false, reason: 'Your answer is just a placeholder. Please provide a complete answer.' };
+    }
+  }
+
+  // Allow short answers for calculation/math questions or numerical answers
+  // Only reject if it's extremely short (< 2 chars) and not a number
+  if (cleanAnswer.length < 2 && !/^\d+$/.test(cleanAnswer)) {
+    return { isValid: false, reason: 'Answer too brief.' };
+  }
+
+  // For very short answers (less than 10 chars) that are not numerical, 
+  // mark as potentially needing AI evaluation but don't reject completely
+  if (cleanAnswer.length < 10 && !/^\d+$/.test(cleanAnswer)) {
+    return { isValid: true, needsLenientGrading: true, reason: 'Answer is brief - use lenient grading' };
+  }
+
+  return { isValid: true };
+};
 
 /**
  * Enhanced AI grading system with improved accuracy and reliability
@@ -32,6 +115,13 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
           validationReason: relevanceCheck.reason
         }
       };
+    }
+
+    // If answer needs lenient grading (brief or mathematical), add note to prompt
+    let lenientGradingNote = '';
+    if (relevanceCheck.needsLenientGrading) {
+      console.log(`⚠️ Answer marked for lenient grading: ${relevanceCheck.reason}`);
+      lenientGradingNote = '\n\nNOTE: This answer is brief or mathematical. Be lenient and award partial credit if the approach is correct, even if the answer is incomplete.';
     }
 
     // Enhanced input validation
@@ -545,33 +635,18 @@ const gradeWithoutModelAnswer = async (studentAnswer, questionText, maxPoints, q
   try {
     console.log('🤖 Grading without model answer using AI analysis');
 
-    // Pre-check: Reject very short answers before sending to AI
-    if (studentAnswer.length < 10) {
-      console.log(`Answer too short (${studentAnswer.length} chars), rejecting without AI grading`);
+    // Don't reject answers based on length or format - let AI evaluate them
+    // Only reject truly empty answers
+    if (!studentAnswer || studentAnswer.trim().length === 0) {
+      console.log(`Answer is empty, rejecting without AI grading`);
       return {
         score: 0,
-        feedback: 'Your answer is too brief. Open-ended questions require detailed explanations showing your work and reasoning. Please provide a complete answer.',
+        feedback: 'No answer provided.',
         correctedAnswer: 'Model answer not available',
         details: {
           questionType: questionType,
-          gradingMethod: 'too_brief_no_ai',
-          answerLength: studentAnswer.length
-        }
-      };
-    }
-
-    // Pre-check: Reject answers that are just mathematical expressions without explanation
-    const isJustMathExpression = /^[\d\+\-\*\/\=\(\)\s\\a-zA-Z]+$/.test(studentAnswer) && studentAnswer.length < 20;
-    if (isJustMathExpression) {
-      console.log(`Answer appears to be just a math expression without explanation, rejecting`);
-      return {
-        score: 0,
-        feedback: 'Your answer appears to be just a mathematical expression without explanation. Open-ended questions require you to show your working and explain your reasoning. Please provide a complete answer with explanation.',
-        correctedAnswer: 'Model answer not available',
-        details: {
-          questionType: questionType,
-          gradingMethod: 'math_only_no_ai',
-          answerLength: studentAnswer.length
+          gradingMethod: 'empty_answer',
+          answerLength: studentAnswer?.length || 0
         }
       };
     }
@@ -595,11 +670,12 @@ STRICT GRADING GUIDELINES (No Model Answer Available):
 1. Evaluate the answer based on correctness, completeness, and understanding of the question
 2. Award full points only if the answer is completely correct and well-explained
 3. Award partial credit (30-70%) only if the answer shows partial understanding or is mostly correct but missing details
-4. Award 0 points for answers that are incorrect, irrelevant, too brief, or show no understanding
-5. Very short answers (under 10 characters) or irrelevant answers should receive 0 points
-6. Mathematical expressions without explanation for non-math questions should receive 0 points
+4. For calculation questions: Extract the final numerical result and verify it's correct. Correct method with wrong result = 30-50% partial credit
+5. For brief answers: Be lenient - award partial credit if the approach is correct, even if incomplete
+6. Mathematical expressions are acceptable for calculation questions - evaluate the numerical result
 7. For explanation questions: Look for key concepts, logical reasoning, and completeness
-8. NO MINIMUM CREDIT - do not give automatic points for effort alone
+8. NO MINIMUM CREDIT - do not give automatic points for effort alone, but award partial credit for correct approach
+${lenientGradingNote}
 
 Return JSON with this exact structure:
 {

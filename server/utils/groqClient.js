@@ -337,26 +337,35 @@ STRICT GRADING GUIDELINES:
 
 SPECIAL GUIDELINES FOR NUMERICAL/CALCULATION QUESTIONS:
 - EXTRACT NUMERICAL VALUES: If the student shows their work (e.g., "400kg * $1.50 = $600"), extract the final numerical result
+- VERIFY FINAL ANSWER: MUST check if the final numerical result matches the model answer exactly
 - IGNORE CALCULATION STEPS: Focus on whether the final numerical answer is correct, not the format
 - CURRENCY SYMBOLS: "$600" = "600" = "600 dollars" (all equivalent if context is monetary)
 - DECIMAL TOLERANCE: Allow small rounding differences (e.g., 3.14 ≈ 3.14159 for π)
 - UNIT VARIATIONS: "600 kg" = "600kg" = "600 kilograms" (all equivalent)
-- CALCULATION SHOWING WORK: If student shows correct calculation steps but wrong final answer, award 50-70% partial credit
+- CALCULATION SHOWING WORK: If student shows correct calculation steps but wrong final answer, award 30-50% partial credit
 - CORRECT FINAL ANSWER: If the final numerical result is correct regardless of format, award FULL points
-- EXAMPLES:
+- PATTERN RECOGNITION: Look for patterns like "X + Y = Z" or "X * Y = Z" and extract Z as the answer
+- IGNORE LABELS: Labels like "Depreciation:", "Answer:", "Total:" should be ignored when comparing numerical values
+- CRITICAL: For calculation questions, the FINAL ANSWER MUST BE CORRECT for full points. Correct method with wrong result = partial credit only
+-- EXAMPLES:
   * Model: "$600" | Student: "400kg * $1.50 = $600" → FULL POINTS (correct calculation and result)
   * Model: "600" | Student: "The answer is 600" → FULL POINTS (correct numerical value)
   * Model: "$600" | Student: "600 dollars" → FULL POINTS (correct value with different unit format)
   * Model: "600" | Student: "400 * 1.5 = 600" → FULL POINTS (correct calculation shown)
-  * Model: "600" | Student: "400 * 1.5 = 500" → 50% PARTIAL CREDIT (correct method, wrong result)
+  * Model: "$79,000" | Student: "Depreciation:$54000+$25000 =$79000" → FULL POINTS (correct calculation shown)
+  * Model: "$1,040" | Student: "COGS: $1060, Closing inventory: $1160" → 40% PARTIAL CREDIT (correct method shown but wrong final answer)
+  * Model: "600" | Student: "400 * 1.5 = 500" → 40% PARTIAL CREDIT (correct method, wrong result)
 
 SPECIAL GUIDELINES FOR OPEN-ENDED/EXPLANATION QUESTIONS:
 - For questions asking to "describe" or "explain": Look for key concepts and understanding, not exact wording
-- Award 0 points for answers that are too short, irrelevant, or show no understanding
+- AWARD PARTIAL CREDIT for answers showing correct approach or understanding, even if incomplete
+- Award 20-30% if the student shows some understanding or correct approach but answer is very brief
 - Award 30-40% only if the student has the right general idea but missing most details
-- Award 60-70% if the student has the right general idea but missing some details
+- Award 50-60% if the student has the right general idea but missing some details
+- Award 60-70% if the student understands the concept well but uses different words
 - Award 80-90% if the student understands the concept well but uses different words
 - Award full points if the student demonstrates complete understanding, even if phrasing differs from model answer
+- NEVER award 0 points if the student shows any understanding or correct approach - always give partial credit
 
 STRICT PARTIAL CREDIT EXAMPLES:
 - Model: "Plants need water, sunlight, and soil to survive"

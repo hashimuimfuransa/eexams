@@ -3572,7 +3572,10 @@ const regradeStudentResult = async (req, res) => {
     }
 
     // Verify admin has access to this result
-    const hasAccess = result.exam.createdBy.toString() === req.user._id.toString() ||
+    // Super admins can regrade any result
+    const isSuperAdmin = req.user.role === 'superadmin';
+    const hasAccess = isSuperAdmin ||
+                     result.exam.createdBy.toString() === req.user._id.toString() ||
                      result.student.createdBy.toString() === req.user._id.toString();
 
     if (!hasAccess) {

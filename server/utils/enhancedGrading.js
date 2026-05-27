@@ -941,7 +941,7 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
   } catch (error) {
     console.error('Error grading fill-in-blank:', error);
 
-    // Fallback grading
+    // Fallback grading with enhanced numerical and partial credit support
     const studentAnswer = String(answer.textAnswer || answer.selectedOption || '').trim();
     const correctAnswer = formatCorrectAnswer(modelAnswer || question.correctAnswer, '');
 
@@ -949,6 +949,30 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
     let feedback = 'Error occurred during grading';
 
     if (studentAnswer && correctAnswer) {
+      // Enhanced numerical extraction for calculation questions
+      const extractNumericalValue = (text) => {
+        const cleaned = text.replace(/[$€£¥₹]/g, '').replace(/,/g, '');
+        const patterns = [
+          /(?:=|:|is)\s*([\d,]+(?:\.\d+)?)/i,
+          /([\d,]+(?:\.\d+)?)\s*(?:$|answer|result)/i,
+          /[\d,]+(?:\.\d+)?\s*[\*×]\s*[\d,]+(?:\.\d+)?\s*[=]\s*([\d,]+(?:\.\d+)?)/i,
+        ];
+        for (const pattern of patterns) {
+          const match = cleaned.match(pattern);
+          if (match) return parseFloat(match[1].replace(/,/g, ''));
+        }
+        const numbers = cleaned.match(/[\d,]+(?:\.\d+)?/g);
+        if (numbers && numbers.length > 0) return parseFloat(numbers[numbers.length - 1].replace(/,/g, ''));
+        return null;
+      };
+
+      const studentNumerical = extractNumericalValue(studentAnswer);
+      const correctNumerical = extractNumericalValue(correctAnswer);
+
+      // Check for numerical match (with tolerance)
+      const isNumericalMatch = studentNumerical !== null && correctNumerical !== null && 
+                               Math.abs(studentNumerical - correctNumerical) < 0.01;
+
       // Enhanced comparison fallback with semantic matching
       let isCorrect = studentAnswer.toLowerCase() === correctAnswer.toLowerCase() ||
                      correctAnswer.toLowerCase().includes(studentAnswer.toLowerCase()) ||
@@ -959,8 +983,32 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
         isCorrect = areSemanticallySimilar(studentAnswer, correctAnswer);
       }
 
-      score = isCorrect ? (question.points || 1) : 0;
-      feedback = isCorrect ? 'Correct answer!' : `Incorrect. The correct answer is: ${correctAnswer}`;
+      // Calculate score with partial credit support
+      const maxPoints = question.points || 1;
+      
+      if (isNumericalMatch) {
+        // Full points for correct numerical answer even if format differs
+        score = maxPoints;
+        feedback = `Correct! Your numerical answer (${studentNumerical}) matches the expected result (${correctNumerical}).`;
+      } else if (isCorrect) {
+        score = maxPoints;
+        feedback = 'Correct answer!';
+      } else {
+        // Check for partial credit based on keyword matching
+        const modelKeywords = correctAnswer.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+        const studentLower = studentAnswer.toLowerCase();
+        const matchedKeywords = modelKeywords.filter(kw => studentLower.includes(kw));
+        const matchRatio = modelKeywords.length > 0 ? matchedKeywords.length / modelKeywords.length : 0;
+        
+        if (matchRatio >= 0.5) {
+          // Partial credit for having at least 50% of key concepts
+          score = Math.round(maxPoints * matchRatio);
+          feedback = `Partially correct. You included ${matchedKeywords.length} of ${modelKeywords.length} key concepts. The correct answer is: ${correctAnswer}`;
+        } else {
+          score = 0;
+          feedback = `Incorrect. The correct answer is: ${correctAnswer}`;
+        }
+      }
     }
 
     return {

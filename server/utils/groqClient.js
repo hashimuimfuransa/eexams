@@ -335,6 +335,21 @@ STRICT GRADING GUIDELINES:
 9. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
 10. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
 
+SPECIAL GUIDELINES FOR NUMERICAL/CALCULATION QUESTIONS:
+- EXTRACT NUMERICAL VALUES: If the student shows their work (e.g., "400kg * $1.50 = $600"), extract the final numerical result
+- IGNORE CALCULATION STEPS: Focus on whether the final numerical answer is correct, not the format
+- CURRENCY SYMBOLS: "$600" = "600" = "600 dollars" (all equivalent if context is monetary)
+- DECIMAL TOLERANCE: Allow small rounding differences (e.g., 3.14 ≈ 3.14159 for π)
+- UNIT VARIATIONS: "600 kg" = "600kg" = "600 kilograms" (all equivalent)
+- CALCULATION SHOWING WORK: If student shows correct calculation steps but wrong final answer, award 50-70% partial credit
+- CORRECT FINAL ANSWER: If the final numerical result is correct regardless of format, award FULL points
+- EXAMPLES:
+  * Model: "$600" | Student: "400kg * $1.50 = $600" → FULL POINTS (correct calculation and result)
+  * Model: "600" | Student: "The answer is 600" → FULL POINTS (correct numerical value)
+  * Model: "$600" | Student: "600 dollars" → FULL POINTS (correct value with different unit format)
+  * Model: "600" | Student: "400 * 1.5 = 600" → FULL POINTS (correct calculation shown)
+  * Model: "600" | Student: "400 * 1.5 = 500" → 50% PARTIAL CREDIT (correct method, wrong result)
+
 SPECIAL GUIDELINES FOR OPEN-ENDED/EXPLANATION QUESTIONS:
 - For questions asking to "describe" or "explain": Look for key concepts and understanding, not exact wording
 - Award 0 points for answers that are too short, irrelevant, or show no understanding

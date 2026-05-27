@@ -687,26 +687,30 @@ Return JSON: {score,feedback,correctedAnswer}`;
     }
   }
 
-  // Extract numerical answers from both student and model answers
+  // Enhanced numerical extraction for calculation questions
   const extractNumericalAnswer = (text) => {
-    // Look for patterns like "h=13", "h = 13", "answer: 13", "=13", etc.
+    // Remove currency symbols and commas for better matching
+    const cleaned = text.replace(/[$€£¥₹]/g, '').replace(/,/g, '');
+    
+    // Look for patterns including calculations
     const patterns = [
-      /(?:=|:)\s*(\d+(?:\.\d+)?)/,  // "= 13" or ": 13"
-      /(\d+(?:\.\d+)?)\s*(?:$|answer|result)/i,  // "13" followed by end or answer/result
-      /h\s*=\s*(\d+(?:\.\d+)?)/i,  // "h = 13"
+      /(?:=|:|is)\s*([\d,]+(?:\.\d+)?)/i,  // "= 600" or ": 600" or "is 600"
+      /([\d,]+(?:\.\d+)?)\s*(?:$|answer|result)/i,  // "600" followed by end or answer/result
+      /[\d,]+(?:\.\d+)?\s*[\*×]\s*[\d,]+(?:\.\d+)?\s*[=]\s*([\d,]+(?:\.\d+)?)/i, // Extract result from calculation: "400 * 1.5 = 600"
+      /h\s*=\s*([\d,]+(?:\.\d+)?)/i,  // "h = 13"
     ];
 
     for (const pattern of patterns) {
-      const match = text.match(pattern);
+      const match = cleaned.match(pattern);
       if (match) {
-        return parseFloat(match[1]);
+        return parseFloat(match[1].replace(/,/g, ''));
       }
     }
 
     // If no pattern matches, try to find the last number in the text
-    const numbers = text.match(/\d+(?:\.\d+)?/g);
+    const numbers = cleaned.match(/[\d,]+(?:\.\d+)?/g);
     if (numbers && numbers.length > 0) {
-      return parseFloat(numbers[numbers.length - 1]);
+      return parseFloat(numbers[numbers.length - 1].replace(/,/g, ''));
     }
 
     return null;
@@ -716,14 +720,31 @@ Return JSON: {score,feedback,correctedAnswer}`;
   const modelNumerical = extractNumericalAnswer(modelAnswer);
 
   // If both have numerical answers and they match, give full credit
-  if (studentNumerical !== null && modelNumerical !== null && Math.abs(studentNumerical - modelNumerical) < 0.001) {
+  if (studentNumerical !== null && modelNumerical !== null && Math.abs(studentNumerical - modelNumerical) < 0.01) {
     return {
       score: maxPoints,
-      feedback: `Correct! Your answer (${studentNumerical}) matches the expected result.`,
+      feedback: `Correct! Your numerical answer (${studentNumerical}) matches the expected result (${modelNumerical}).`,
       correctedAnswer: modelAnswer,
       gradingMethod: 'numerical_match',
       isCorrect: true
     };
+  }
+
+  // Check for partial credit in numerical answers (correct method, wrong result)
+  // If student shows calculation steps with numbers that are close to the model
+  if (studentNumerical !== null && modelNumerical !== null) {
+    const ratio = studentNumerical / modelNumerical;
+    // If the ratio is between 0.5 and 2, they might have used correct method but made calculation error
+    if (ratio >= 0.5 && ratio <= 2 && Math.abs(studentNumerical - modelNumerical) > 0.01) {
+      const partialScore = Math.round(maxPoints * 0.5); // 50% for correct method
+      return {
+        score: partialScore,
+        feedback: `You used the correct approach but got a different result. Your answer: ${studentNumerical}, Expected: ${modelNumerical}. Partial credit awarded for correct method.`,
+        correctedAnswer: modelAnswer,
+        gradingMethod: 'numerical_partial',
+        isCorrect: false
+      };
+    }
   }
 
   // Extract keywords (3+ characters)

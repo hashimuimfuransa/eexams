@@ -778,20 +778,62 @@ Only respond with the letter of the correct option (A, B, C, or D).
         console.log(`Processing fill-in-blank question ${questionNumber}: "${question.text.substring(0, 50)}..."`);
 
         if (answer.textAnswer && answer.textAnswer.trim()) {
-          const studentAnswer = answer.textAnswer.trim().toLowerCase();
-          const correctAnswer = question.correctAnswer ? question.correctAnswer.trim().toLowerCase() : '';
+          const studentAnswer = answer.textAnswer.trim();
+          const correctAnswer = question.correctAnswer ? question.correctAnswer.trim() : '';
 
           console.log(`  Student answer: "${studentAnswer}"`);
           console.log(`  Correct answer: "${correctAnswer}"`);
 
+          // Enhanced numerical extraction function for calculation questions
+          const extractNumericalValue = (text) => {
+            // Remove currency symbols and extract numbers
+            const cleaned = text.replace(/[$€£¥₹]/g, '').replace(/,/g, '');
+            
+            // Look for patterns like "= 600", "answer: 600", "result is 600", etc.
+            const patterns = [
+              /(?:=|:|is)\s*([\d,]+(?:\.\d+)?)/i,
+              /([\d,]+(?:\.\d+)?)\s*(?:$|answer|result)/i,
+              /[\d,]+(?:\.\d+)?\s*[\*×]\s*[\d,]+(?:\.\d+)?\s*[=]\s*([\d,]+(?:\.\d+)?)/i, // Extract result from calculation
+            ];
+
+            for (const pattern of patterns) {
+              const match = cleaned.match(pattern);
+              if (match) {
+                return parseFloat(match[1].replace(/,/g, ''));
+              }
+            }
+
+            // If no pattern matches, try to find the last number in the text
+            const numbers = cleaned.match(/[\d,]+(?:\.\d+)?/g);
+            if (numbers && numbers.length > 0) {
+              return parseFloat(numbers[numbers.length - 1].replace(/,/g, ''));
+            }
+
+            return null;
+          };
+
+          // Extract numerical values for comparison
+          const studentNumerical = extractNumericalValue(studentAnswer);
+          const correctNumerical = extractNumericalValue(correctAnswer);
+
+          console.log(`  Student numerical: ${studentNumerical}`);
+          console.log(`  Correct numerical: ${correctNumerical}`);
+
           // Check if the student's answer matches the correct answer
           // We'll use a more flexible matching approach for fill-in-the-blank
-          const isExactMatch = studentAnswer === correctAnswer;
+          const studentLower = studentAnswer.toLowerCase();
+          const correctLower = correctAnswer.toLowerCase();
+          
+          const isExactMatch = studentLower === correctLower;
           const isCloseMatch = correctAnswer && (
-            studentAnswer.includes(correctAnswer) ||
-            correctAnswer.includes(studentAnswer) ||
-            levenshteinDistance(studentAnswer, correctAnswer) <= 2 // Allow for small typos
+            studentLower.includes(correctLower) ||
+            correctLower.includes(studentLower) ||
+            levenshteinDistance(studentLower, correctLower) <= 2 // Allow for small typos
           );
+
+          // Check for numerical match (with tolerance for floating point)
+          const isNumericalMatch = studentNumerical !== null && correctNumerical !== null && 
+                                   Math.abs(studentNumerical - correctNumerical) < 0.01;
 
           if (isExactMatch) {
             // Exact match - full points
@@ -799,6 +841,12 @@ Only respond with the letter of the correct option (A, B, C, or D).
             answer.feedback = "Correct! Your answer matches exactly.";
             answer.isCorrect = true;
             console.log(`  Answer is CORRECT (exact match)`);
+          } else if (isNumericalMatch) {
+            // Numerical match - full points (student got the right number even if format differs)
+            answer.score = question.points || 1;
+            answer.feedback = `Correct! Your numerical answer (${studentNumerical}) matches the expected result (${correctNumerical}).`;
+            answer.isCorrect = true;
+            console.log(`  Answer is CORRECT (numerical match)`);
           } else if (isCloseMatch) {
             // Close match - partial points
             answer.score = (question.points || 1) * 0.8; // 80% of points

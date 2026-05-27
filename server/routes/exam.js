@@ -649,12 +649,18 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         return [];
       };
 
+        const normalizeDifficulty = (d) => {
+          if (!d || typeof d !== 'string') return 'medium';
+          const s = d.trim().toLowerCase();
+          return ['easy', 'medium', 'hard'].includes(s) ? s : 'medium';
+        };
+
       const questionData = {
         text: q.text,
         type: q.type || 'multiple-choice',
         marks: q.marks || q.points || 1,
         points: q.marks || q.points || 1,
-        difficulty: q.difficulty || 'medium',
+        difficulty: normalizeDifficulty(q.difficulty),
         correctAnswer: q.correctAnswer || '',
         options: [],
         explanation: q.explanation || '',

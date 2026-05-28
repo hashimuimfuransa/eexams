@@ -1415,64 +1415,50 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
     // Helper function to add delay between API calls
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Process each answer
-    for (let i = 0; i < result.answers.length; i++) {
-      const answer = result.answers[i];
-      const question = answer.question;
+    // Helper function to grade a single multiple choice or true/false question
+    const gradeSingleMCQuestion = async (answer, question, index) => {
+      const i = index;
+      // Get the question number from the question text or use the index
+      const questionNumber = extractQuestionNumber(question.text, i);
 
-      // Add a delay between grading attempts to avoid rate limits
-      if (i > 0) {
-        console.log(`Adding delay before grading next question to avoid rate limits...`);
-        await delay(3000); // 3 second delay between questions
+      // Log whether we're grading for the first time or regrading
+      const questionTypeLabel = question.type === 'true-false' ? 'true/false' : 'multiple choice';
+      if (forceRegrade && answer.score > 0) {
+        console.log(`Regrading ${questionTypeLabel} question ${questionNumber}: "${question.text.substring(0, 50)}..." (previous score: ${answer.score}/${question.points})`);
+      } else {
+        console.log(`Processing ${questionTypeLabel} question ${questionNumber}: "${question.text.substring(0, 50)}..."`);
       }
 
-      // Handle multiple-choice AND true-false questions (both use selectedOption)
-      if (question.type === 'multiple-choice' || question.type === 'true-false') {
-        // Verify that multiple choice and true/false questions are graded correctly
-        // Check both selectedOption and textAnswer as answer may be stored in either field
-        const hasAnswer = answer.selectedOption || answer.textAnswer;
-        if (hasAnswer) {
-          // Get the question number from the question text or use the index
-          const questionNumber = extractQuestionNumber(question.text, i);
+      // Ensure all options have letter properties
+      if (question.options && Array.isArray(question.options)) {
+        question.options = ensureOptionLetters(question.options);
+      }
 
-          // Log whether we're grading for the first time or regrading
-          const questionTypeLabel = question.type === 'true-false' ? 'true/false' : 'multiple choice';
-          if (forceRegrade && answer.score > 0) {
-            console.log(`Regrading ${questionTypeLabel} question ${questionNumber}: "${question.text.substring(0, 50)}..." (previous score: ${answer.score}/${question.points})`);
-          } else {
-            console.log(`Processing ${questionTypeLabel} question ${questionNumber}: "${question.text.substring(0, 50)}..."`);
-          }
+      // Variables to track correctness
+      let isCorrect = false;
+      let correctOptionText = '';
+      let correctOptionLetter = '';
+      let selectedOptionText = ''; // Will store student's answer for logging
 
-          // Ensure all options have letter properties
-          if (question.options && Array.isArray(question.options)) {
-            question.options = ensureOptionLetters(question.options);
-          }
+      // Use AI to determine the correct answer
+      console.log(`Using AI to determine correct answer for question ${questionNumber}`);
 
-          // Variables to track correctness
-          let isCorrect = false;
-          let correctOptionText = '';
-          let correctOptionLetter = '';
-          let selectedOptionText = ''; // Will store student's answer for logging
+      // Get the question text and options
+      const questionText = question.text;
+      const options = question.options.map(opt => ({
+        letter: opt.letter || '',
+        text: opt.text || ''
+      }));
 
-          // Use AI to determine the correct answer
-          console.log(`Using AI to determine correct answer for question ${questionNumber}`);
+      // Prepare to use AI to determine the correct answer
+      let correctLetter = '';
 
-          // Get the question text and options
-          const questionText = question.text;
-          const options = question.options.map(opt => ({
-            letter: opt.letter || '',
-            text: opt.text || ''
-          }));
+      try {
+        // Use the Gemini AI to determine the correct answer
+        const { generateContent } = require('./aiService');
 
-          // Prepare to use AI to determine the correct answer
-          let correctLetter = '';
-
-          try {
-            // Use the Gemini AI to determine the correct answer
-            const { generateContent } = require('./aiService');
-
-            // Create a prompt for the AI
-            const prompt = `
+        // Create a prompt for the AI
+        const prompt = `
 You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
 
 I have a multiple choice question from a computer systems exam:
@@ -1488,213 +1474,262 @@ Important: Do not rely on outdated information. For example, while PS/2 ports we
 Only respond with the letter of the correct option (A, B, C, or D).
 `;
 
-            // Generate content with the AI
-            const response = await generateContent(prompt);
+        // Generate content with the AI
+        const response = await generateContent(prompt);
 
-            // Extract the letter from the response
-            if (response && response.text) {
-              // Look for a single letter A, B, C, or D in the response
-              const letterMatch = response.text.match(/\b([A-D])\b/i);
-              if (letterMatch) {
-                correctLetter = letterMatch[1].toUpperCase();
-                console.log(`AI determined correct answer for question ${questionNumber}: ${correctLetter}`);
-              } else {
-                // If no clear letter, try to find any A, B, C, or D in the response
-                const anyLetterMatch = response.text.match(/([A-D])/i);
-                if (anyLetterMatch) {
-                  correctLetter = anyLetterMatch[1].toUpperCase();
-                  console.log(`AI determined correct answer (fallback) for question ${questionNumber}: ${correctLetter}`);
-                } else {
-                  console.log(`AI could not determine a clear answer. Response: ${response.text}`);
-                  // Default to option A if AI fails
-                  correctLetter = 'A';
-                }
-              }
+        // Extract the letter from the response
+        if (response && response.text) {
+          // Look for a single letter A, B, C, or D in the response
+          const letterMatch = response.text.match(/\b([A-D])\b/i);
+          if (letterMatch) {
+            correctLetter = letterMatch[1].toUpperCase();
+            console.log(`AI determined correct answer for question ${questionNumber}: ${correctLetter}`);
+          } else {
+            // If no clear letter, try to find any A, B, C, or D in the response
+            const anyLetterMatch = response.text.match(/([A-D])/i);
+            if (anyLetterMatch) {
+              correctLetter = anyLetterMatch[1].toUpperCase();
+              console.log(`AI determined correct answer (fallback) for question ${questionNumber}: ${correctLetter}`);
             } else {
-              console.log(`No response from AI for question ${questionNumber}`);
+              console.log(`AI could not determine a clear answer. Response: ${response.text}`);
               // Default to option A if AI fails
               correctLetter = 'A';
             }
-          } catch (aiError) {
-            console.error(`Error using AI to determine correct answer: ${aiError.message}`);
-            // Default to option A if AI fails
-            correctLetter = 'A';
           }
+        } else {
+          console.log(`No response from AI for question ${questionNumber}`);
+          // Default to option A if AI fails
+          correctLetter = 'A';
+        }
+      } catch (aiError) {
+        console.error(`Error using AI to determine correct answer: ${aiError.message}`);
+        // Default to option A if AI fails
+        correctLetter = 'A';
+      }
 
-          console.log(`Final determined correct answer for question ${questionNumber}: ${correctLetter}`);
+      console.log(`Final determined correct answer for question ${questionNumber}: ${correctLetter}`);
 
-          // Find the option with this letter
-          const correctOption = question.options.find(opt =>
-            opt.letter && opt.letter.toUpperCase() === correctLetter
+      // Find the option with this letter
+      const correctOption = question.options.find(opt =>
+        opt.letter && opt.letter.toUpperCase() === correctLetter
+      );
+
+      if (correctOption) {
+        // Mark this option as correct in memory
+        question.options.forEach(opt => {
+          opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
+        });
+
+        // Set the correct answer text
+        correctOptionText = correctOption.text;
+        correctOptionLetter = correctLetter;
+
+        // Update the question's correct answer in the database
+        try {
+          // First update all options to ensure they have letter and value fields
+          const updatedOptions = question.options.map((opt, index) => {
+            // If the option doesn't have a letter, assign one based on index
+            if (!opt.letter) {
+              opt.letter = String.fromCharCode(65 + index); // A, B, C, D...
+            }
+            // If the option doesn't have a value, assign one based on letter
+            if (!opt.value) {
+              opt.value = opt.letter.toLowerCase();
+            }
+            // Set isCorrect based on the letter
+            opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
+            return opt;
+          });
+
+          // Update the question with the correct options
+          await Question.findByIdAndUpdate(
+            question._id,
+            {
+              $set: {
+                options: updatedOptions,
+                correctAnswer: correctOption.text
+              }
+            },
+            { new: true }
           );
 
-          if (correctOption) {
-            // Mark this option as correct in memory
-            question.options.forEach(opt => {
-              opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
-            });
-
-            // Set the correct answer text
-            correctOptionText = correctOption.text;
-            correctOptionLetter = correctLetter;
-
-            // Update the question's correct answer in the database
-            try {
-              // First update all options to ensure they have letter and value fields
-              const updatedOptions = question.options.map((opt, index) => {
-                // If the option doesn't have a letter, assign one based on index
-                if (!opt.letter) {
-                  opt.letter = String.fromCharCode(65 + index); // A, B, C, D...
-                }
-                // If the option doesn't have a value, assign one based on letter
-                if (!opt.value) {
-                  opt.value = opt.letter.toLowerCase();
-                }
-                // Set isCorrect based on the letter
-                opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
-                return opt;
-              });
-
-              // Update the question with the correct options
-              await Question.findByIdAndUpdate(
-                question._id,
-                {
-                  $set: {
-                    options: updatedOptions,
-                    correctAnswer: correctOption.text
-                  }
-                },
-                { new: true }
-              );
-
-              console.log(`Updated question ${question._id} with correct answer: ${correctOption.text} (${correctLetter})`);
-            } catch (updateError) {
-              console.error(`Error updating question in database: ${updateError.message}`);
-            }
-
-            // Find the selected option letter
-            let selectedLetter = '';
-            // Check both selectedOption and textAnswer as answer may be stored in either field
-            selectedOptionText = answer.selectedOption || answer.textAnswer || '';
-
-            // Log the selected option for debugging
-            console.log(`Student selected option: "${selectedOptionText}"`);
-
-            if (selectedOptionText) {
-              // First check if the selectedOption is already just a letter
-              if (selectedOptionText.match(/^[A-D]$/i)) {
-                selectedLetter = selectedOptionText.toUpperCase();
-                console.log(`Detected letter format: ${selectedLetter}`);
-              }
-              // If the selected option starts with a letter followed by a period or parenthesis
-              else if (selectedOptionText.match(/^([A-D])[\.\)]/i)) {
-                const letterMatch = selectedOptionText.match(/^([A-D])[\.\)]/i);
-                selectedLetter = letterMatch[1].toUpperCase();
-                console.log(`Detected letter with punctuation: ${selectedLetter}`);
-              }
-              // Check if the option contains a letter in parentheses or with a period
-              else if (selectedOptionText.match(/\(([A-D])\)|\s([A-D])\./i)) {
-                const letterMatch = selectedOptionText.match(/\(([A-D])\)|\s([A-D])\./i);
-                selectedLetter = (letterMatch[1] || letterMatch[2]).toUpperCase();
-                console.log(`Detected embedded letter: ${selectedLetter}`);
-              }
-              // Try to find the matching option in the question options
-              else {
-                console.log(`Trying to match selected text with options`);
-
-                // First try to find an exact match
-                let selectedOption = question.options.find(opt =>
-                  opt.text === selectedOptionText
-                );
-
-                // If no exact match, try case-insensitive match
-                if (!selectedOption) {
-                  selectedOption = question.options.find(opt =>
-                    opt.text.toLowerCase() === selectedOptionText.toLowerCase()
-                  );
-                }
-
-                // If still no match, try partial matches
-                if (!selectedOption) {
-                  // Try to find the option that best matches the selected text
-                  let bestMatch = null;
-                  let bestMatchScore = 0;
-
-                  for (const opt of question.options) {
-                    // Check if the option text contains the selected text or vice versa
-                    if (opt.text.includes(selectedOptionText) || selectedOptionText.includes(opt.text)) {
-                      // Calculate a simple match score based on the length of the common substring
-                      const matchScore = Math.min(opt.text.length, selectedOptionText.length);
-                      if (matchScore > bestMatchScore) {
-                        bestMatchScore = matchScore;
-                        bestMatch = opt;
-                      }
-                    }
-                  }
-
-                  selectedOption = bestMatch;
-                }
-
-                if (selectedOption && selectedOption.letter) {
-                  selectedLetter = selectedOption.letter.toUpperCase();
-                  console.log(`Matched with option ${selectedLetter}: "${selectedOption.text}"`);
-                } else {
-                  console.log(`Could not match selected text with any option`);
-
-                  // As a last resort, try to match the selected text directly with the correct option
-                  if (correctOption &&
-                      (selectedOptionText.includes(correctOption.text) ||
-                       correctOption.text.includes(selectedOptionText))) {
-                    console.log(`Direct match with correct option text`);
-                    selectedLetter = correctLetter;
-                  }
-                }
-              }
-            }
-
-            // If we have the selectedOptionLetter from the database, use that
-            if (answer.selectedOptionLetter) {
-              selectedLetter = answer.selectedOptionLetter.toUpperCase();
-              console.log(`Using stored selectedOptionLetter: ${selectedLetter}`);
-            }
-
-            // Check if the selected letter matches the correct letter
-            isCorrect = selectedLetter && selectedLetter === correctLetter;
-
-            // Store the selected letter for future reference
-            result.answers[i].selectedOptionLetter = selectedLetter;
-          } else {
-            console.log(`Could not find option with letter ${correctLetter} for question ${questionNumber}`);
-            isCorrect = false;
-            correctOptionText = `Option ${correctLetter}`;
-            correctOptionLetter = correctLetter;
-          }
-
-          // Update the answer with correct grading
-          result.answers[i].isCorrect = isCorrect;
-          result.answers[i].score = isCorrect ? question.points : 0;
-
-          // Store the correct answer for display in results
-          result.answers[i].correctedAnswer = correctOptionText;
-          if (correctOptionLetter) {
-            result.answers[i].correctOptionLetter = correctOptionLetter;
-          }
-
-          // Add to total score if correct
-          if (isCorrect) {
-            totalScore += question.points;
-          }
-
-          console.log(`Verified ${questionTypeLabel} answer for question ${question._id}:`);
-          console.log(`- Selected option: ${selectedOptionText}`);
-          console.log(`- Correct option: ${correctOptionText}`);
-          console.log(`- Is correct: ${isCorrect}`);
-        } else if (forceRegrade && answer.score > 0) {
-          // If force regrading, make sure to include multiple choice scores
-          totalScore += answer.score;
+          console.log(`Updated question ${question._id} with correct answer: ${correctOption.text} (${correctLetter})`);
+        } catch (updateError) {
+          console.error(`Error updating question in database: ${updateError.message}`);
         }
 
-        continue;
+        // Find the selected option letter
+        let selectedLetter = '';
+        // Check both selectedOption and textAnswer as answer may be stored in either field
+        selectedOptionText = answer.selectedOption || answer.textAnswer || '';
+
+        // Log the selected option for debugging
+        console.log(`Student selected option: "${selectedOptionText}"`);
+
+        if (selectedOptionText) {
+          // First check if the selectedOption is already just a letter
+          if (selectedOptionText.match(/^[A-D]$/i)) {
+            selectedLetter = selectedOptionText.toUpperCase();
+            console.log(`Detected letter format: ${selectedLetter}`);
+          }
+          // If the selected option starts with a letter followed by a period or parenthesis
+          else if (selectedOptionText.match(/^([A-D])[\.\)]/i)) {
+            const letterMatch = selectedOptionText.match(/^([A-D])[\.\)]/i);
+            selectedLetter = letterMatch[1].toUpperCase();
+            console.log(`Detected letter with punctuation: ${selectedLetter}`);
+          }
+          // Check if the option contains a letter in parentheses or with a period
+          else if (selectedOptionText.match(/\(([A-D])\)|\s([A-D])\./i)) {
+            const letterMatch = selectedOptionText.match(/\(([A-D])\)|\s([A-D])\./i);
+            selectedLetter = (letterMatch[1] || letterMatch[2]).toUpperCase();
+            console.log(`Detected embedded letter: ${selectedLetter}`);
+          }
+          // Try to find the matching option in the question options
+          else {
+            console.log(`Trying to match selected text with options`);
+
+            // First try to find an exact match
+            let selectedOption = question.options.find(opt =>
+              opt.text === selectedOptionText
+            );
+
+            // If no exact match, try case-insensitive match
+            if (!selectedOption) {
+              selectedOption = question.options.find(opt =>
+                opt.text.toLowerCase() === selectedOptionText.toLowerCase()
+              );
+            }
+
+            // If still no match, try partial matches
+            if (!selectedOption) {
+              // Try to find the option that best matches the selected text
+              let bestMatch = null;
+              let bestMatchScore = 0;
+
+              for (const opt of question.options) {
+                // Check if the option text contains the selected text or vice versa
+                if (opt.text.includes(selectedOptionText) || selectedOptionText.includes(opt.text)) {
+                  // Calculate a simple match score based on the length of the common substring
+                  const matchScore = Math.min(opt.text.length, selectedOptionText.length);
+                  if (matchScore > bestMatchScore) {
+                    bestMatchScore = matchScore;
+                    bestMatch = opt;
+                  }
+                }
+              }
+
+              selectedOption = bestMatch;
+            }
+
+            if (selectedOption && selectedOption.letter) {
+              selectedLetter = selectedOption.letter.toUpperCase();
+              console.log(`Matched with option ${selectedLetter}: "${selectedOption.text}"`);
+            } else {
+              console.log(`Could not match selected text with any option`);
+
+              // As a last resort, try to match the selected text directly with the correct option
+              if (correctOption &&
+                  (selectedOptionText.includes(correctOption.text) ||
+                   correctOption.text.includes(selectedOptionText))) {
+                console.log(`Direct match with correct option text`);
+                selectedLetter = correctLetter;
+              }
+            }
+          }
+        }
+
+        // If we have the selectedOptionLetter from the database, use that
+        if (answer.selectedOptionLetter) {
+          selectedLetter = answer.selectedOptionLetter.toUpperCase();
+          console.log(`Using stored selectedOptionLetter: ${selectedLetter}`);
+        }
+
+        // Check if the selected letter matches the correct letter
+        isCorrect = !!(selectedLetter && selectedLetter === correctLetter);
+
+        // Store the selected letter for future reference
+        result.answers[i].selectedOptionLetter = selectedLetter;
+      } else {
+        console.log(`Could not find option with letter ${correctLetter} for question ${questionNumber}`);
+        isCorrect = false;
+        correctOptionText = `Option ${correctLetter}`;
+        correctOptionLetter = correctLetter;
+      }
+
+      // Update the answer with correct grading
+      result.answers[i].isCorrect = isCorrect;
+      result.answers[i].score = isCorrect ? question.points : 0;
+
+      // Store the correct answer for display in results
+      result.answers[i].correctedAnswer = correctOptionText;
+      if (correctOptionLetter) {
+        result.answers[i].correctOptionLetter = correctOptionLetter;
+      }
+
+      // Add to total score if correct
+      if (isCorrect) {
+        totalScore += question.points;
+      }
+
+      console.log(`Verified ${questionTypeLabel} answer for question ${question._id}:`);
+      console.log(`- Selected option: ${selectedOptionText}`);
+      console.log(`- Correct option: ${correctOptionText}`);
+      console.log(`- Is correct: ${isCorrect}`);
+
+      return { score: isCorrect ? question.points : 0, isCorrect };
+    };
+
+    // Separate MC/TF questions from open-ended questions for parallel processing
+    const mcQuestions = [];
+    const openEndedQuestions = [];
+
+    for (let i = 0; i < result.answers.length; i++) {
+      const answer = result.answers[i];
+      const question = answer.question;
+
+      if (question.type === 'multiple-choice' || question.type === 'true-false') {
+        const hasAnswer = answer.selectedOption || answer.textAnswer;
+        if (hasAnswer) {
+          mcQuestions.push({ answer, question, index: i });
+        } else if (forceRegrade && answer.score > 0) {
+          totalScore += answer.score;
+        }
+      } else {
+        openEndedQuestions.push({ answer, question, index: i });
+      }
+    }
+
+    console.log(`\n🚀 PARALLEL GRADING: Processing ${mcQuestions.length} MC/TF questions in parallel, ${openEndedQuestions.length} open-ended sequentially`);
+
+    // Process all MC/TF questions in parallel with concurrency limit
+    const CONCURRENCY_LIMIT = 5; // Process 5 at a time to avoid overwhelming AI
+    console.log(`Processing ${mcQuestions.length} MC/TF questions with concurrency limit of ${CONCURRENCY_LIMIT}...`);
+
+    // Process in batches
+    for (let i = 0; i < mcQuestions.length; i += CONCURRENCY_LIMIT) {
+      const batch = mcQuestions.slice(i, i + CONCURRENCY_LIMIT);
+      console.log(`Processing batch ${Math.floor(i / CONCURRENCY_LIMIT) + 1}/${Math.ceil(mcQuestions.length / CONCURRENCY_LIMIT)} (${batch.length} questions)`);
+
+      await Promise.all(batch.map(({ answer, question, index }) =>
+        gradeSingleMCQuestion(answer, question, index)
+      ));
+
+      // Small delay between batches to avoid rate limits
+      if (i + CONCURRENCY_LIMIT < mcQuestions.length) {
+        await delay(500);
+      }
+    }
+
+    console.log(`✅ Completed parallel grading of ${mcQuestions.length} MC/TF questions`);
+
+    // Process open-ended questions sequentially (they need more time per question)
+    for (let idx = 0; idx < openEndedQuestions.length; idx++) {
+      const { answer, question, index: i } = openEndedQuestions[idx];
+
+      // Add a delay between grading attempts to avoid rate limits
+      if (idx > 0) {
+        console.log(`Adding delay before grading next question to avoid rate limits...`);
+        await delay(3000); // 3 second delay between questions
       }
 
       // Skip empty answers

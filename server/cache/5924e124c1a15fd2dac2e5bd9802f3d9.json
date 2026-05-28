@@ -1,0 +1,1 @@
+{"text":"A.","parsedContent":null,"usage":{"queue_time":0.047146699,"prompt_tokens":193,"prompt_time":0.018461014,"completion_tokens":3,"completion_time":0.016253597,"total_tokens":196,"total_time":0.034714611},"model":"llama-3.3-70b-versatile"}

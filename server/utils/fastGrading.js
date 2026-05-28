@@ -1,4 +1,5 @@
 const groqClient = require('./groqClient');
+const { verifyGradingWithAI } = require('./enhancedGrading');
 
 /**
  * Fast chunked AI grading system that processes questions in small batches
@@ -65,12 +66,14 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
       if (subAnswer.questionType === 'multiple-choice' || subAnswer.questionType === 'true-false') {
         // Check if selected option matches any correct option in parent question
         const correctOptions = question.options ? question.options.filter(opt => opt.isCorrect).map(opt => opt.text) : [];
+        // Check both selectedOption and textAnswer as answer may be stored in either field
+        const studentSelectedOption = subAnswer.selectedOption || subAnswer.textAnswer || '';
         console.log(`🔍 Sub-question ${i} MC grading:`, {
-          selectedOption: subAnswer.selectedOption,
+          selectedOption: studentSelectedOption,
           correctOptions,
           questionOptions: question.options?.map(o => ({ text: o.text, isCorrect: o.isCorrect }))
         });
-        if (correctOptions.length > 0 && correctOptions.includes(subAnswer.selectedOption)) {
+        if (correctOptions.length > 0 && correctOptions.includes(studentSelectedOption)) {
           subScore = subQ.points || 1;
           isCorrect = true;
           feedback = 'Correct';
@@ -232,7 +235,8 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
  * Fast multiple choice grading
  */
 async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
-  const selectedOption = answer.selectedOption || answer.selectedOptionLetter;
+  // Check selectedOption, selectedOptionLetter, and textAnswer as answer may be stored in any field
+  const selectedOption = answer.selectedOption || answer.selectedOptionLetter || answer.textAnswer;
 
   if (!selectedOption) {
     return {
@@ -271,18 +275,55 @@ async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
                 selectedOption.toLowerCase() === modelAnswer.toLowerCase();
   }
 
-  const score = isCorrect ? question.points : 0;
-  const feedback = isCorrect
+  let score = isCorrect ? question.points : 0;
+  let feedback = isCorrect
     ? 'Correct answer!'
     : `Incorrect. The correct answer is: ${correctOption?.text || modelAnswer}`;
 
-  return {
-    score,
-    feedback,
-    correctedAnswer: correctOption?.text || modelAnswer,
-    gradingMethod: 'enhanced_grading', // Use existing enum value
-    isCorrect
-  };
+  // Run fast AI verification to catch grading errors
+  try {
+    const verification = await verifyGradingWithAI(
+      question,
+      selectedOption,
+      correctOption?.text || modelAnswer,
+      isCorrect,
+      1500 // 1.5 second timeout for fast grading (quicker)
+    );
+
+    // If AI verification disagrees with high confidence, adjust grading
+    if (!verification.verified && verification.confidence > 0.85) {
+      if (verification.recommendation === 'change_to_correct' && !isCorrect) {
+        console.log(`🔄 Fast AI verification corrected MC grading: INCORRECT -> CORRECT`);
+        isCorrect = true;
+        score = question.points;
+        feedback = 'Correct answer! (verified by AI)';
+      } else if (verification.recommendation === 'change_to_incorrect' && isCorrect) {
+        console.log(`🔄 Fast AI verification corrected MC grading: CORRECT -> INCORRECT`);
+        isCorrect = false;
+        score = 0;
+        feedback = `Incorrect. The correct answer is: ${correctOption?.text || modelAnswer}`;
+      }
+    }
+
+    return {
+      score,
+      feedback,
+      correctedAnswer: correctOption?.text || modelAnswer,
+      gradingMethod: 'enhanced_grading',
+      isCorrect,
+      aiVerification: verification
+    };
+  } catch (verifyError) {
+    // Return original grading if verification fails
+    return {
+      score,
+      feedback,
+      correctedAnswer: correctOption?.text || modelAnswer,
+      gradingMethod: 'enhanced_grading',
+      isCorrect,
+      aiVerification: { verified: false, error: verifyError.message }
+    };
+  }
 }
 
 /**
@@ -486,12 +527,27 @@ Return JSON: {score,feedback,correctedAnswer}`;
       finalScore = applyMultiPartScaling(finalScore, question.points, multiPartInfo, multiPartValidation);
     }
 
+    // Run quick verification to ensure AI grading is consistent
+    let verification = null;
+    try {
+      verification = await verifyGradingWithAI(
+        question,
+        truncatedAnswer,
+        result.correctedAnswer || truncatedModelAnswer,
+        finalScore >= question.points,
+        2000 // 2 second timeout for verification
+      );
+    } catch (verifyError) {
+      console.log(`AI verification skipped for open-ended: ${verifyError.message}`);
+    }
+
     return {
       score: finalScore,
       feedback: result.feedback || (isEssayQuestion ? 'AI graded your essay answer' : 'AI graded answer'),
       correctedAnswer: result.correctedAnswer || modelAnswer,
       gradingMethod: 'enhanced_ai_grading',
       isCorrect: finalScore >= question.points,
+      aiVerification: verification,
       // Store enhanced data for sections B & C display
       aiAnalysis: isEssayQuestion ? {
         detailedFeedback: result.feedback || 'AI provided detailed analysis',
@@ -505,7 +561,7 @@ Return JSON: {score,feedback,correctedAnswer}`;
     console.error(`AI grading failed for question ${question._id}:`, error.message);
 
     // Fast keyword fallback
-    const fallbackResult = await gradeWithKeywordsFast(studentAnswer, modelAnswer, question.points, question.text);
+    let fallbackResult = await gradeWithKeywordsFast(studentAnswer, modelAnswer, question.points, question.text);
     console.log(`Using keyword fallback for question ${question._id}, score: ${fallbackResult.score}`);
 
     // Apply multi-part scaling to fallback result
@@ -513,6 +569,25 @@ Return JSON: {score,feedback,correctedAnswer}`;
       fallbackResult.score = applyMultiPartScaling(fallbackResult.score, question.points, multiPartInfo, multiPartValidation);
       fallbackResult.multiPartInfo = multiPartInfo;
       fallbackResult.multiPartValidation = multiPartValidation;
+    }
+
+    // Run verification on keyword fallback
+    try {
+      const verification = await verifyGradingWithAI(
+        question,
+        studentAnswer,
+        modelAnswer,
+        fallbackResult.score >= question.points,
+        2000
+      );
+      fallbackResult.aiVerification = verification;
+
+      // If verification strongly disagrees with keyword result, flag it
+      if (!verification.verified && verification.confidence > 0.9) {
+        console.log(`⚠️ AI verification flagged keyword fallback for question ${question._id}: ${verification.reason}`);
+      }
+    } catch (verifyError) {
+      fallbackResult.aiVerification = { verified: false, error: verifyError.message };
     }
 
     return fallbackResult;
@@ -568,20 +643,68 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
 
   // Quick similarity check
   const similarity = calculateSimilarity(studentAnswer, correctAnswer);
-  const score = similarity > 0.8 ? question.points :
+  let score = similarity > 0.8 ? question.points :
                 similarity > 0.6 ? Math.round(question.points * 0.8) :
                 similarity > 0.4 ? Math.round(question.points * 0.5) : 0;
 
-  const feedback = score === question.points ? 'Correct!' :
+  let isCorrect = score >= question.points;
+  let feedback = score === question.points ? 'Correct!' :
                    score > 0 ? 'Partially correct' :
                    'Incorrect';
+
+  // Run AI verification for true/false questions (fast path)
+  if (question.type === 'true-false') {
+    try {
+      const verification = await verifyGradingWithAI(
+        question,
+        answer.textAnswer || answer.selectedOption,
+        modelAnswer,
+        isCorrect,
+        1500 // 1.5 second timeout
+      );
+
+      // If AI verification disagrees with high confidence, adjust grading
+      if (!verification.verified && verification.confidence > 0.85) {
+        if (verification.recommendation === 'change_to_correct' && !isCorrect) {
+          console.log(`🔄 Fast AI verification corrected TF grading: INCORRECT -> CORRECT`);
+          score = question.points;
+          isCorrect = true;
+          feedback = 'Correct! (verified by AI)';
+        } else if (verification.recommendation === 'change_to_incorrect' && isCorrect) {
+          console.log(`🔄 Fast AI verification corrected TF grading: CORRECT -> INCORRECT`);
+          score = 0;
+          isCorrect = false;
+          feedback = `Incorrect. The correct answer is: ${modelAnswer}`;
+        }
+      }
+
+      return {
+        score,
+        feedback,
+        correctedAnswer: modelAnswer,
+        gradingMethod: 'enhanced_grading',
+        isCorrect,
+        aiVerification: verification
+      };
+    } catch (verifyError) {
+      // Return original grading if verification fails
+      return {
+        score,
+        feedback,
+        correctedAnswer: modelAnswer,
+        gradingMethod: 'enhanced_grading',
+        isCorrect,
+        aiVerification: { verified: false, error: verifyError.message }
+      };
+    }
+  }
 
   return {
     score,
     feedback,
     correctedAnswer: modelAnswer,
-    gradingMethod: 'enhanced_grading', // Use existing enum value
-    isCorrect: score >= question.points
+    gradingMethod: 'enhanced_grading',
+    isCorrect
   };
 }
 
@@ -856,18 +979,50 @@ async function gradeMatchingFast(question, answer, modelAnswer) {
 
   console.log(`- Total correct: ${correctCount}/${totalPairs}`);
 
-  const score = Math.round((correctCount / totalPairs) * question.points);
-  const feedback = score === question.points 
+  let score = Math.round((correctCount / totalPairs) * question.points);
+  let isCorrect = score >= question.points;
+  let feedback = score === question.points
     ? `All ${totalPairs} matches correct!`
     : `${correctCount}/${totalPairs} matches correct`;
 
-  return {
-    score,
-    feedback,
-    correctedAnswer: modelAnswer,
-    gradingMethod: 'matching_grading',
-    isCorrect: score >= question.points
-  };
+  // Run AI verification for edge cases
+  try {
+    // Build a summary of the matching for verification
+    const studentSummary = studentPairs.map(p => `${leftItems[p.left]}->${rightItems[p.right]}`).join(', ');
+    const correctSummary = correctPairs.map(p => `${leftItems[p.left]}->${rightItems[p.right]}`).join(', ');
+
+    const verification = await verifyGradingWithAI(
+      question,
+      `Student: ${studentSummary}`,
+      `Correct: ${correctSummary}`,
+      isCorrect,
+      2000 // 2 second timeout
+    );
+
+    // If AI verification strongly disagrees, flag for review (but don't auto-change complex matching)
+    if (!verification.verified && verification.confidence > 0.9) {
+      console.log(`⚠️ AI verification flagged matching question ${question._id}: ${verification.reason}`);
+      feedback += ` (AI verification: ${verification.reason})`;
+    }
+
+    return {
+      score,
+      feedback,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'matching_grading',
+      isCorrect,
+      aiVerification: verification
+    };
+  } catch (verifyError) {
+    return {
+      score,
+      feedback,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'matching_grading',
+      isCorrect,
+      aiVerification: { verified: false, error: verifyError.message }
+    };
+  }
 }
 
 /**
@@ -895,18 +1050,48 @@ async function gradeOrderingFast(question, answer, modelAnswer) {
     }
   }
 
-  const score = Math.round((correctCount / orderingAnswer.length) * question.points);
-  const feedback = score === question.points
+  let score = Math.round((correctCount / orderingAnswer.length) * question.points);
+  let isCorrect = score >= question.points;
+  let feedback = score === question.points
     ? 'All items in correct order!'
     : `${correctCount}/${orderingAnswer.length} items in correct order`;
 
-  return {
-    score,
-    feedback,
-    correctedAnswer: modelAnswer,
-    gradingMethod: 'ordering_grading',
-    isCorrect: score >= question.points
-  };
+  // Run AI verification for edge cases
+  try {
+    const studentSummary = orderingAnswer.map((idx, i) => `${i+1}:${items[idx]}`).join(', ');
+    const correctSummary = correctOrder.map((idx, i) => `${i+1}:${items[idx]}`).join(', ');
+
+    const verification = await verifyGradingWithAI(
+      question,
+      `Student order: ${studentSummary}`,
+      `Correct order: ${correctSummary}`,
+      isCorrect,
+      2000
+    );
+
+    if (!verification.verified && verification.confidence > 0.9) {
+      console.log(`⚠️ AI verification flagged ordering question ${question._id}: ${verification.reason}`);
+      feedback += ` (AI verification: ${verification.reason})`;
+    }
+
+    return {
+      score,
+      feedback,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'ordering_grading',
+      isCorrect,
+      aiVerification: verification
+    };
+  } catch (verifyError) {
+    return {
+      score,
+      feedback,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'ordering_grading',
+      isCorrect,
+      aiVerification: { verified: false, error: verifyError.message }
+    };
+  }
 }
 
 /**
@@ -936,18 +1121,48 @@ async function gradeDragDropFast(question, answer, modelAnswer) {
     }
   }
 
-  const score = totalPlacements > 0 ? Math.round((correctCount / totalPlacements) * question.points) : 0;
-  const feedback = score === question.points
+  let score = totalPlacements > 0 ? Math.round((correctCount / totalPlacements) * question.points) : 0;
+  let isCorrect = score >= question.points;
+  let feedback = score === question.points
     ? 'All items placed correctly!'
     : `${correctCount}/${totalPlacements} items placed correctly`;
 
-  return {
-    score,
-    feedback,
-    correctedAnswer: modelAnswer,
-    gradingMethod: 'drag_drop_grading',
-    isCorrect: score >= question.points
-  };
+  // Run AI verification for edge cases
+  try {
+    const studentSummary = Object.entries(dragDropAnswers).map(([item, zone]) => `${item}:${zone}`).join(', ');
+    const correctSummary = correctPlacements.map(p => `${p.item}:${p.zone}`).join(', ');
+
+    const verification = await verifyGradingWithAI(
+      question,
+      `Student placements: ${studentSummary}`,
+      `Correct placements: ${correctSummary}`,
+      isCorrect,
+      2000
+    );
+
+    if (!verification.verified && verification.confidence > 0.9) {
+      console.log(`⚠️ AI verification flagged drag-drop question ${question._id}: ${verification.reason}`);
+      feedback += ` (AI verification: ${verification.reason})`;
+    }
+
+    return {
+      score,
+      feedback,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'drag_drop_grading',
+      isCorrect,
+      aiVerification: verification
+    };
+  } catch (verifyError) {
+    return {
+      score,
+      feedback,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'drag_drop_grading',
+      isCorrect,
+      aiVerification: { verified: false, error: verifyError.message }
+    };
+  }
 }
 
 /**

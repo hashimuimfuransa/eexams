@@ -219,16 +219,17 @@ const gradeSubQuestions = (question, answer) => {
       let subQScore = 0;
       
       if (subQType === 'multiple-choice' || subQType === 'true-false') {
-        const studentAnswer = subQAnswer.selectedOption;
+        // Check both selectedOption and textAnswer as answer may be stored in either field
+        const studentAnswer = subQAnswer.selectedOption || subQAnswer.textAnswer || '';
         const correctAnswer = subQ.correctAnswer;
-        const selectedOptionObj = subQ.options?.find(opt => 
+        const selectedOptionObj = subQ.options?.find(opt =>
           opt.text === studentAnswer || opt.letter === studentAnswer
         );
-        
-        isSubCorrect = selectedOptionObj?.isCorrect || 
+
+        isSubCorrect = selectedOptionObj?.isCorrect ||
                       studentAnswer === correctAnswer ||
                       selectedOptionObj?.letter === correctAnswer;
-        
+
         // Award points for this sub-question if correct
         subQScore = isSubCorrect ? subQPoints : 0;
       } else {
@@ -305,16 +306,17 @@ const gradeSubQuestions = (question, answer) => {
     let subQScore = 0;
     
     if (subQType === 'multiple-choice' || subQType === 'true-false') {
-      const studentAnswer = subQAnswer.selectedOption;
+      // Check both selectedOption and textAnswer as answer may be stored in either field
+      const studentAnswer = subQAnswer.selectedOption || subQAnswer.textAnswer || '';
       const correctAnswer = subQ.correctAnswer;
-      const selectedOptionObj = subQ.options?.find(opt => 
+      const selectedOptionObj = subQ.options?.find(opt =>
         opt.text === studentAnswer || opt.letter === studentAnswer
       );
-      
-      const isSubCorrect = selectedOptionObj?.isCorrect || 
+
+      const isSubCorrect = selectedOptionObj?.isCorrect ||
                           studentAnswer === correctAnswer ||
                           selectedOptionObj?.letter === correctAnswer;
-      
+
       subQScore = isSubCorrect ? subQPoints : 0;
       feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${isSubCorrect ? '✅' : '❌'} (${subQScore}/${subQPoints})`);
     } else {
@@ -513,7 +515,9 @@ const gradeExamWithAI = async (resultId) => {
       // Handle multiple-choice, true-false, and fill-in-blank questions
       if (question.type === 'multiple-choice' || question.type === 'true-false') {
         // Verify that multiple choice and true/false questions are graded correctly
-        if (answer.selectedOption) {
+        // Check both selectedOption and textAnswer as answer may be stored in either field
+        const hasAnswer = answer.selectedOption || answer.textAnswer;
+        if (hasAnswer) {
           // Get the question number from the question text or use the index
           const questionNumber = extractQuestionNumber(question.text, i);
 
@@ -528,6 +532,7 @@ const gradeExamWithAI = async (resultId) => {
           let isCorrect = false;
           let correctOptionText = '';
           let correctOptionLetter = '';
+          let selectedOptionText = ''; // Will store student's answer for logging
 
           // Use AI to determine the correct answer
           console.log(`Using AI to determine correct answer for question ${questionNumber}`);
@@ -651,7 +656,7 @@ Only respond with the letter of the correct option (A, B, C, or D).
 
               // Find the selected option letter
               let selectedLetter = '';
-              let selectedOptionText = answer.selectedOption || '';
+              let selectedOptionText = answer.selectedOption || answer.textAnswer || '';
 
               // Log the selected option for debugging
               console.log(`Student selected option: "${selectedOptionText}"`);
@@ -1421,18 +1426,21 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
         await delay(3000); // 3 second delay between questions
       }
 
-      // Handle multiple-choice questions
-      if (question.type === 'multiple-choice') {
-        // Verify that multiple choice questions are graded correctly
-        if (answer.selectedOption) {
+      // Handle multiple-choice AND true-false questions (both use selectedOption)
+      if (question.type === 'multiple-choice' || question.type === 'true-false') {
+        // Verify that multiple choice and true/false questions are graded correctly
+        // Check both selectedOption and textAnswer as answer may be stored in either field
+        const hasAnswer = answer.selectedOption || answer.textAnswer;
+        if (hasAnswer) {
           // Get the question number from the question text or use the index
           const questionNumber = extractQuestionNumber(question.text, i);
 
           // Log whether we're grading for the first time or regrading
+          const questionTypeLabel = question.type === 'true-false' ? 'true/false' : 'multiple choice';
           if (forceRegrade && answer.score > 0) {
-            console.log(`Regrading multiple choice question ${questionNumber}: "${question.text.substring(0, 50)}..." (previous score: ${answer.score}/${question.points})`);
+            console.log(`Regrading ${questionTypeLabel} question ${questionNumber}: "${question.text.substring(0, 50)}..." (previous score: ${answer.score}/${question.points})`);
           } else {
-            console.log(`Processing multiple choice question ${questionNumber}: "${question.text.substring(0, 50)}..."`);
+            console.log(`Processing ${questionTypeLabel} question ${questionNumber}: "${question.text.substring(0, 50)}..."`);
           }
 
           // Ensure all options have letter properties
@@ -1444,6 +1452,7 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
           let isCorrect = false;
           let correctOptionText = '';
           let correctOptionLetter = '';
+          let selectedOptionText = ''; // Will store student's answer for logging
 
           // Use AI to determine the correct answer
           console.log(`Using AI to determine correct answer for question ${questionNumber}`);
@@ -1565,7 +1574,8 @@ Only respond with the letter of the correct option (A, B, C, or D).
 
             // Find the selected option letter
             let selectedLetter = '';
-            let selectedOptionText = answer.selectedOption || '';
+            // Check both selectedOption and textAnswer as answer may be stored in either field
+            selectedOptionText = answer.selectedOption || answer.textAnswer || '';
 
             // Log the selected option for debugging
             console.log(`Student selected option: "${selectedOptionText}"`);
@@ -1675,8 +1685,8 @@ Only respond with the letter of the correct option (A, B, C, or D).
             totalScore += question.points;
           }
 
-          console.log(`Verified multiple choice answer for question ${question._id}:`);
-          console.log(`- Selected option: ${answer.selectedOption}`);
+          console.log(`Verified ${questionTypeLabel} answer for question ${question._id}:`);
+          console.log(`- Selected option: ${selectedOptionText}`);
           console.log(`- Correct option: ${correctOptionText}`);
           console.log(`- Is correct: ${isCorrect}`);
         } else if (forceRegrade && answer.score > 0) {

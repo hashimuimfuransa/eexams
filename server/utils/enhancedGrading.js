@@ -3,6 +3,140 @@ const { gradeOpenEndedAnswer } = require('./aiGrading');
 const groqClient = require('./groqClient');
 
 /**
+ * Fast AI verification of grading results
+ * Quickly checks if the grading decision appears correct
+ * @param {Object} question - The question object
+ * @param {string} studentAnswer - The student's answer
+ * @param {string} correctAnswer - The correct answer
+ * @param {boolean} currentIsCorrect - Current grading decision
+ * @param {number} timeoutMs - Timeout in milliseconds (default 3000ms for speed)
+ * @returns {Promise<Object>} - Verification result with confidence and recommendation
+ */
+const verifyGradingWithAI = async (question, studentAnswer, correctAnswer, currentIsCorrect, timeoutMs = 3000) => {
+  try {
+    // Skip verification if answers are empty or too short for meaningful comparison
+    if (!studentAnswer || !correctAnswer || studentAnswer.trim().length === 0) {
+      return { verified: true, confidence: 1.0, recommendation: 'accept', reason: 'Empty answer handling' };
+    }
+
+    // Normalize answers for quick comparison
+    const normalize = (text) => String(text).toLowerCase().trim().replace(/[.\s]*$/, '');
+    const studentNorm = normalize(studentAnswer);
+    const correctNorm = normalize(correctAnswer);
+
+    // Quick exact match - no need for AI
+    if (studentNorm === correctNorm) {
+      return { verified: true, confidence: 1.0, recommendation: 'accept', reason: 'Exact match' };
+    }
+
+    // For true/false questions, use semantic equivalence check (fast, no AI needed)
+    if (question.type === 'true-false') {
+      const trueValues = ['true', 'yes', 'correct', 'right', '1', 't', 'y'];
+      const falseValues = ['false', 'no', 'incorrect', 'wrong', '0', 'f', 'n'];
+
+      const studentIsTrue = trueValues.includes(studentNorm);
+      const studentIsFalse = falseValues.includes(studentNorm);
+      const correctIsTrue = trueValues.includes(correctNorm);
+      const correctIsFalse = falseValues.includes(correctNorm);
+
+      const semanticMatch = (studentIsTrue && correctIsTrue) || (studentIsFalse && correctIsFalse);
+
+      if (semanticMatch && !currentIsCorrect) {
+        return { verified: false, confidence: 0.95, recommendation: 'change_to_correct', reason: 'Semantic equivalence not detected by original grader' };
+      }
+      if (!semanticMatch && currentIsCorrect) {
+        return { verified: false, confidence: 0.8, recommendation: 'review', reason: 'Answers appear different but marked correct' };
+      }
+      return { verified: true, confidence: 0.95, recommendation: 'accept', reason: 'Semantic match verified' };
+    }
+
+    // For multiple choice, check letter/text match (fast, no AI needed)
+    if (question.type === 'multiple-choice') {
+      // If we have options, try to match by letter or text
+      if (question.options && Array.isArray(question.options)) {
+        const selectedOption = question.options.find(opt =>
+          normalize(opt.text) === studentNorm ||
+          normalize(opt.letter) === studentNorm ||
+          studentNorm.includes(normalize(opt.letter))
+        );
+        const correctOption = question.options.find(opt => opt.isCorrect);
+
+        if (selectedOption && correctOption) {
+          const letterMatch = selectedOption.letter === correctOption.letter;
+          const textMatch = normalize(selectedOption.text) === normalize(correctOption.text);
+
+          if ((letterMatch || textMatch) && !currentIsCorrect) {
+            return { verified: false, confidence: 0.95, recommendation: 'change_to_correct', reason: 'Option match not detected by original grader' };
+          }
+          if (!(letterMatch || textMatch) && currentIsCorrect) {
+            return { verified: false, confidence: 0.85, recommendation: 'review', reason: 'Selected option differs from correct option' };
+          }
+        }
+      }
+      return { verified: true, confidence: 0.9, recommendation: 'accept', reason: 'MC check passed' };
+    }
+
+    // For other types, use fast AI verification with short timeout
+    const prompt = `Quick grading verification (respond with JSON only):
+
+Question: ${question.text?.substring(0, 200)}
+Student Answer: ${studentNorm.substring(0, 100)}
+Correct Answer: ${correctNorm.substring(0, 100)}
+Currently Marked: ${currentIsCorrect ? 'CORRECT' : 'INCORRECT'}
+
+Task: Verify if the grading decision is correct.
+
+Rules:
+1. If answers are semantically equivalent (same meaning), mark as correct
+2. If student answer is essentially correct but worded differently, mark as correct
+3. If student answer is wrong or incomplete, mark as incorrect
+4. For numerical answers, allow small rounding differences
+
+Respond ONLY with JSON: {"isCorrect": boolean, "confidence": 0.0-1.0, "reason": "brief explanation"}`;
+
+    // Race between AI call and timeout
+    const aiPromise = groqClient.generateContent(prompt, {
+      model: 'smart',
+      jsonMode: true,
+      temperature: 0.1,
+      maxTokens: 256
+    });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Verification timeout')), timeoutMs)
+    );
+
+    const response = await Promise.race([aiPromise, timeoutPromise]);
+    const result = response.parsedContent || JSON.parse(response.text.replace(/```json\n?|\n?```/g, '').trim());
+
+    const aiIsCorrect = result.isCorrect;
+    const confidence = result.confidence || 0.8;
+
+    // If AI disagrees with current grading
+    if (aiIsCorrect !== currentIsCorrect) {
+      return {
+        verified: false,
+        confidence: confidence,
+        recommendation: aiIsCorrect ? 'change_to_correct' : 'change_to_incorrect',
+        reason: result.reason || 'AI verification disagrees with grading'
+      };
+    }
+
+    return {
+      verified: true,
+      confidence: confidence,
+      recommendation: 'accept',
+      reason: result.reason || 'AI verification confirms grading'
+    };
+
+  } catch (error) {
+    console.log(`AI verification skipped for question ${question._id}: ${error.message}`);
+    // On error, accept the current grading to avoid blocking
+    return { verified: true, confidence: 0.5, recommendation: 'accept', reason: 'Verification skipped due to error' };
+  }
+};
+
+/**
  * Helper function to convert correctAnswer to a string
  * Handles multi-part questions where correctAnswer might be an object
  * @param {any} correctAnswer - The correct answer (string or object)
@@ -410,11 +544,9 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
           };
         }
 
-        // If answer needs lenient grading (brief or mathematical), add note to prompt
+        // If answer needs lenient grading (brief or mathematical), log it
         if (relevanceCheck.needsLenientGrading) {
           console.log(`⚠️ Answer marked for lenient grading: ${relevanceCheck.reason}`);
-          // Add instruction to AI to be more lenient
-          gradingInstructions += '\n\nNOTE: This answer is brief or mathematical. Be lenient and award partial credit if the approach is correct, even if the answer is incomplete.';
         }
 
         // Enhanced AI grading for sections B and C with optimized processing
@@ -770,22 +902,71 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
     console.log(`- Score: ${score}/${question.points || 1}`);
     console.log(`- AI graded: ${isCorrect}`);
 
-    return {
-      score,
-      feedback,
-      correctedAnswer: correctAnswerDisplay,
-      details: {
-        selectedOption: option ? option.letter : selectedOptionLetter || selectedOption,
-        selectedText: option ? option.text : selectedOption,
-        selectedFull: selectedAnswerDisplay,
-        correctOption: correctOption ? correctOption.letter : 'Unknown',
-        correctText: correctOption ? correctOption.text : modelAnswer,
-        correctFull: correctAnswerDisplay,
+    // Run AI verification to catch any grading errors
+    try {
+      const verification = await verifyGradingWithAI(
+        question,
+        selectedAnswerDisplay || selectedOption,
+        correctAnswerDisplay || modelAnswer,
         isCorrect,
-        answerType: 'multiple_choice',
-        gradingMethod
+        2000 // 2 second timeout for multiple choice (fast)
+      );
+
+      console.log(`AI verification for multiple choice question ${question._id}:`, verification);
+
+      // If AI verification disagrees and has high confidence, adjust the grading
+      if (!verification.verified && verification.confidence > 0.85) {
+        if (verification.recommendation === 'change_to_correct' && !isCorrect) {
+          console.log(`🔄 AI verification corrected grading: INCORRECT -> CORRECT`);
+          isCorrect = true;
+          score = question.points || 1;
+          feedback = `✅ Correct! You selected: ${selectedAnswerDisplay} (verified by AI)`;
+        } else if (verification.recommendation === 'change_to_incorrect' && isCorrect) {
+          console.log(`🔄 AI verification corrected grading: CORRECT -> INCORRECT`);
+          isCorrect = false;
+          score = 0;
+          feedback = `❌ Incorrect. You selected: ${selectedAnswerDisplay}. The correct answer is: ${correctAnswerDisplay}`;
+        }
       }
-    };
+
+      return {
+        score,
+        feedback,
+        correctedAnswer: correctAnswerDisplay,
+        details: {
+          selectedOption: option ? option.letter : selectedOptionLetter || selectedOption,
+          selectedText: option ? option.text : selectedOption,
+          selectedFull: selectedAnswerDisplay,
+          correctOption: correctOption ? correctOption.letter : 'Unknown',
+          correctText: correctOption ? correctOption.text : modelAnswer,
+          correctFull: correctAnswerDisplay,
+          isCorrect,
+          answerType: 'multiple_choice',
+          gradingMethod,
+          aiVerification: verification
+        }
+      };
+    } catch (verifyError) {
+      console.log(`AI verification failed for multiple choice, using original grading: ${verifyError.message}`);
+      // Return original grading if verification fails
+      return {
+        score,
+        feedback,
+        correctedAnswer: correctAnswerDisplay,
+        details: {
+          selectedOption: option ? option.letter : selectedOptionLetter || selectedOption,
+          selectedText: option ? option.text : selectedOption,
+          selectedFull: selectedAnswerDisplay,
+          correctOption: correctOption ? correctOption.letter : 'Unknown',
+          correctText: correctOption ? correctOption.text : modelAnswer,
+          correctFull: correctAnswerDisplay,
+          isCorrect,
+          answerType: 'multiple_choice',
+          gradingMethod,
+          aiVerification: { verified: false, error: verifyError.message }
+        }
+      };
+    }
   } catch (error) {
     console.error('Error grading multiple choice:', error);
     return {
@@ -804,9 +985,31 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
  */
 const gradeTrueFalse = async (question, answer, modelAnswer) => {
   try {
-    const selectedOption = answer.selectedOption;
+    // DEBUG: Log the full answer object to diagnose issues
+    console.log(`🔍 DEBUG gradeTrueFalse - Question ${question._id}:`, {
+      answerFields: Object.keys(answer),
+      selectedOption: answer.selectedOption,
+      textAnswer: answer.textAnswer,
+      selectedOptionLetter: answer.selectedOptionLetter,
+      answerType: typeof answer.selectedOption,
+      modelAnswer: modelAnswer,
+      questionCorrectAnswer: question.correctAnswer
+    });
+
+    // Extract the selected option, handling various formats (similar to multiple choice)
+    let selectedOption = answer.selectedOption || answer.textAnswer || '';
+
+    // Handle case where answer might be in object format
+    if (typeof selectedOption === 'object') {
+      selectedOption = String(selectedOption).trim();
+    } else {
+      selectedOption = String(selectedOption || '').trim();
+    }
+
+    console.log(`Grading true/false question: ${question._id}, selected: "${selectedOption}"`);
 
     if (!selectedOption) {
+      console.log(`⚠️ True/False question ${question._id}: No answer provided`);
       return {
         score: 0,
         feedback: 'No answer provided',
@@ -818,39 +1021,126 @@ const gradeTrueFalse = async (question, answer, modelAnswer) => {
     let isCorrect = false;
     let correctAnswer = modelAnswer;
 
+    // Normalize the selected answer for comparison
+    const normalizeAnswer = (ans) => {
+      return String(ans).toLowerCase().trim().replace(/[.\s]*$/, ''); // Remove trailing periods and spaces
+    };
+
+    const selectedNormalized = normalizeAnswer(selectedOption);
+
     // Try direct comparison first (more reliable for true/false)
     if (modelAnswer) {
-      const selectedLower = selectedOption.toLowerCase().trim();
-      const correctLower = modelAnswer.toLowerCase().trim();
-      isCorrect = selectedLower === correctLower;
-      
-      // If direct comparison fails, try AI as fallback
+      const correctNormalized = normalizeAnswer(modelAnswer);
+      isCorrect = selectedNormalized === correctNormalized;
+
+      console.log(`True/False comparison: selected="${selectedNormalized}" vs correct="${correctNormalized}" -> ${isCorrect}`);
+
+      // If direct comparison fails, check semantic equivalence (handles yes/no/true/false variations)
       if (!isCorrect) {
-        isCorrect = await checkAnswerWithAI(question.text, selectedOption, modelAnswer, 'true-false');
+        const trueValues = ['true', 'yes', 'correct', 'right', '1', 't', 'y'];
+        const falseValues = ['false', 'no', 'incorrect', 'wrong', '0', 'f', 'n'];
+
+        const selectedIsTrue = trueValues.includes(selectedNormalized);
+        const selectedIsFalse = falseValues.includes(selectedNormalized);
+        const correctIsTrue = trueValues.includes(correctNormalized);
+        const correctIsFalse = falseValues.includes(correctNormalized);
+
+        if ((selectedIsTrue && correctIsTrue) || (selectedIsFalse && correctIsFalse)) {
+          isCorrect = true;
+          console.log(`True/False semantic match: selected="${selectedNormalized}" matches correct="${correctNormalized}"`);
+        }
+      }
+    } else if (question.options && Array.isArray(question.options)) {
+      // Use the question's options to determine correct answer
+      const correctOption = question.options.find(opt => opt.isCorrect);
+      if (correctOption) {
+        correctAnswer = correctOption.text;
+        const correctNormalized = normalizeAnswer(correctAnswer);
+        isCorrect = selectedNormalized === correctNormalized;
+        console.log(`True/False option comparison: selected="${selectedNormalized}" vs correct="${correctNormalized}" -> ${isCorrect}`);
+      } else {
+        // If no option marked correct, try to infer from correctAnswer field
+        const questionCorrectAnswer = question.correctAnswer;
+        if (questionCorrectAnswer) {
+          correctAnswer = questionCorrectAnswer;
+          const correctNormalized = normalizeAnswer(correctAnswer);
+          isCorrect = selectedNormalized === correctNormalized;
+          console.log(`True/False question.correctAnswer comparison: selected="${selectedNormalized}" vs correct="${correctNormalized}" -> ${isCorrect}`);
+        }
       }
     } else {
-      // Use the question's options
-      const correctOption = question.options.find(opt => opt.isCorrect);
-      correctAnswer = correctOption?.text || 'True';
-      isCorrect = selectedOption.toLowerCase() === correctAnswer.toLowerCase();
+      // Fallback: try to use question.correctAnswer
+      const questionCorrectAnswer = question.correctAnswer;
+      if (questionCorrectAnswer) {
+        correctAnswer = questionCorrectAnswer;
+        const correctNormalized = normalizeAnswer(correctAnswer);
+        isCorrect = selectedNormalized === correctNormalized;
+        console.log(`True/False fallback comparison: selected="${selectedNormalized}" vs correct="${correctNormalized}" -> ${isCorrect}`);
+      }
     }
 
-    const score = isCorrect ? question.points : 0;
-    const feedback = isCorrect
+    let score = isCorrect ? (question.points || 1) : 0;
+    let feedback = isCorrect
       ? 'Correct!'
       : `Incorrect. The correct answer is: ${correctAnswer}`;
 
-    return {
-      score,
-      feedback,
-      correctedAnswer: correctAnswer,
-      details: {
+    // Run AI verification to catch any grading errors
+    try {
+      const verification = await verifyGradingWithAI(
+        question,
         selectedOption,
         correctAnswer,
         isCorrect,
-        answerType: 'true_false'
+        2000 // 2 second timeout for true/false (fast)
+      );
+
+      console.log(`AI verification for true/false question ${question._id}:`, verification);
+
+      // If AI verification disagrees and has high confidence, adjust the grading
+      if (!verification.verified && verification.confidence > 0.85) {
+        if (verification.recommendation === 'change_to_correct' && !isCorrect) {
+          console.log(`🔄 AI verification corrected grading: INCORRECT -> CORRECT`);
+          isCorrect = true;
+          score = question.points || 1;
+          feedback = 'Correct! (verified by AI)';
+        } else if (verification.recommendation === 'change_to_incorrect' && isCorrect) {
+          console.log(`🔄 AI verification corrected grading: CORRECT -> INCORRECT`);
+          isCorrect = false;
+          score = 0;
+          feedback = `Incorrect. The correct answer is: ${correctAnswer}`;
+        }
       }
-    };
+
+      return {
+        score,
+        feedback,
+        correctedAnswer: correctAnswer,
+        details: {
+          selectedOption,
+          correctAnswer,
+          isCorrect,
+          answerType: 'true_false',
+          gradingMethod: isCorrect ? 'direct_comparison' : 'incorrect',
+          aiVerification: verification
+        }
+      };
+    } catch (verifyError) {
+      console.log(`AI verification failed for true/false, using original grading: ${verifyError.message}`);
+      // Return original grading if verification fails
+      return {
+        score,
+        feedback,
+        correctedAnswer: correctAnswer,
+        details: {
+          selectedOption,
+          correctAnswer,
+          isCorrect,
+          answerType: 'true_false',
+          gradingMethod: isCorrect ? 'direct_comparison' : 'incorrect',
+          aiVerification: { verified: false, error: verifyError.message }
+        }
+      };
+    }
   } catch (error) {
     console.error('Error grading true/false:', error);
     return {
@@ -1301,5 +1591,6 @@ module.exports = {
   areSemanticallySimilar,
   SEMANTIC_MAPPINGS,
   parseAnswerContent,
-  validateAnswerRelevance
+  validateAnswerRelevance,
+  verifyGradingWithAI
 };

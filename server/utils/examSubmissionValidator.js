@@ -147,7 +147,10 @@ const validateAnswerSubmission = (answerData, question) => {
   switch (actualQuestionType) {
     case 'multiple-choice':
     case 'true-false':
-      if (!selectedOption && selectedOption !== 0 && selectedOption !== false) {
+      // Accept either selectedOption or textAnswer as valid answer
+      const hasSelectedOption = selectedOption && selectedOption.toString().trim().length > 0;
+      const hasTextAnswer = textAnswer && textAnswer.toString().trim().length > 0;
+      if (!hasSelectedOption && !hasTextAnswer) {
         errors.push(`Selected option is required for ${actualQuestionType} questions`);
       }
       break;

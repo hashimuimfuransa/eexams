@@ -5,6 +5,7 @@ const compression = require('compression');
 const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
+const cron = require('node-cron');
 
 // Load environment variables
 dotenv.config();
@@ -262,6 +263,20 @@ const connectWithRetry = async (retries = 0) => {
     });
     
     console.log('Connected to MongoDB with optimized settings');
+    
+    // Start background job to check for expired exams
+    const { checkExpiredExams } = require('./utils/examExpirationChecker');
+    
+    // Run every minute to check for expired exams
+    cron.schedule('* * * * *', async () => {
+      try {
+        await checkExpiredExams();
+      } catch (error) {
+        console.error('Error in expired exam checker cron job:', error);
+      }
+    });
+    
+    console.log('🕐 Started background job to check for expired exams (runs every minute)');
     
     // Start server only after successful connection
     const PORT = process.env.PORT || 5000;

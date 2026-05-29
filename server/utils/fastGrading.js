@@ -247,6 +247,85 @@ async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
     };
   }
 
+  // Use AI to determine the correct answer (like regrading does)
+  // This ensures consistency between initial grading and regrading
+  if (question.options && Array.isArray(question.options) && question.options.length >= 2) {
+    try {
+      const { generateContent } = require('./aiService');
+      const questionText = question.text;
+      const options = question.options.map(opt => ({
+        letter: opt.letter || '',
+        text: opt.text || ''
+      }));
+
+      const prompt = `
+You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
+
+I have a multiple choice question from a computer systems exam:
+Question: ${questionText}
+
+Options:
+${options.map(opt => `${opt.letter}. ${opt.text}`).join('\n')}
+
+Please determine the correct answer based on current, modern technology standards and practices. Consider that there may be multiple valid answers depending on the context, but select the most appropriate one.
+
+Important: Do not rely on outdated information. For example, while PS/2 ports were once common for keyboards, USB is now the standard connection method for most modern keyboards.
+
+Only respond with the letter of the correct option (A, B, C, or D).
+`;
+
+      const response = await generateContent(prompt);
+
+      if (response && response.text) {
+        const letterMatch = response.text.match(/\b([A-D])\b/i);
+        if (letterMatch) {
+          const correctLetter = letterMatch[1].toUpperCase();
+          const correctOption = question.options.find(opt =>
+            opt.letter && opt.letter.toUpperCase() === correctLetter
+          );
+          if (correctOption) {
+            // Mark this option as correct in memory
+            question.options.forEach(opt => {
+              opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
+            });
+
+            // Update the question's correct answer in the database
+            const Question = require('../models/Question');
+            try {
+              const updatedOptions = question.options.map((opt, index) => {
+                if (!opt.letter) {
+                  opt.letter = String.fromCharCode(65 + index);
+                }
+                if (!opt.value) {
+                  opt.value = opt.letter.toLowerCase();
+                }
+                opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
+                return opt;
+              });
+
+              await Question.findByIdAndUpdate(
+                question._id,
+                {
+                  $set: {
+                    options: updatedOptions,
+                    correctAnswer: correctOption.text
+                  }
+                },
+                { new: true }
+              );
+              console.log(`Updated multiple choice question ${question._id} with AI-determined correct answer: ${correctLetter} (${correctOption.text})`);
+            } catch (updateError) {
+              console.error(`Error updating multiple choice question in database: ${updateError.message}`);
+            }
+          }
+        }
+      }
+    } catch (aiError) {
+      console.error(`Error using AI to determine correct answer for multiple choice: ${aiError.message}`);
+      // Fall back to existing logic if AI fails
+    }
+  }
+
   // Find the correct option
   let correctOption = null;
   let selectedAnswerOption = null;
@@ -309,7 +388,7 @@ async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
       score,
       feedback,
       correctedAnswer: correctOption?.text || modelAnswer,
-      gradingMethod: 'enhanced_grading',
+      gradingMethod: 'ai_determined_correct',
       isCorrect,
       aiVerification: verification
     };
@@ -319,7 +398,7 @@ async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
       score,
       feedback,
       correctedAnswer: correctOption?.text || modelAnswer,
-      gradingMethod: 'enhanced_grading',
+      gradingMethod: 'ai_determined_correct',
       isCorrect,
       aiVerification: { verified: false, error: verifyError.message }
     };
@@ -600,7 +679,82 @@ Return JSON: {score,feedback,correctedAnswer}`;
  */
 async function gradeShortAnswerFast(question, answer, modelAnswer) {
   const studentAnswer = (answer.textAnswer || '').trim().toLowerCase();
-  const correctAnswer = (modelAnswer || '').toLowerCase();
+  let correctAnswer = (modelAnswer || '').toLowerCase();
+
+  // Use AI to determine the correct answer for true/false questions (like regrading does)
+  // This ensures consistency between initial grading and regrading
+  if (question.type === 'true-false' && question.options && Array.isArray(question.options) && question.options.length >= 2) {
+    try {
+      const { generateContent } = require('./aiService');
+      const questionText = question.text;
+      const options = question.options.map(opt => ({
+        letter: opt.letter || '',
+        text: opt.text || ''
+      }));
+
+      const prompt = `
+You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
+
+I have a true/false question from a computer systems exam:
+Question: ${questionText}
+
+Options:
+${options.map(opt => `${opt.letter}. ${opt.text}`).join('\n')}
+
+Please determine the correct answer based on current, modern technology standards and practices.
+
+Only respond with the letter of the correct option (A or B).
+`;
+
+      const response = await generateContent(prompt);
+
+      if (response && response.text) {
+        const letterMatch = response.text.match(/\b([A-B])\b/i);
+        if (letterMatch) {
+          const correctLetter = letterMatch[1].toUpperCase();
+          const correctOption = question.options.find(opt =>
+            opt.letter && opt.letter.toUpperCase() === correctLetter
+          );
+          if (correctOption) {
+            correctAnswer = correctOption.text;
+            console.log(`AI determined correct answer for true/false question ${question._id}: ${correctLetter} (${correctAnswer})`);
+            
+            // Update the question's correct answer in the database
+            const Question = require('../models/Question');
+            try {
+              const updatedOptions = question.options.map((opt, index) => {
+                if (!opt.letter) {
+                  opt.letter = String.fromCharCode(65 + index);
+                }
+                if (!opt.value) {
+                  opt.value = opt.letter.toLowerCase();
+                }
+                opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
+                return opt;
+              });
+
+              await Question.findByIdAndUpdate(
+                question._id,
+                {
+                  $set: {
+                    options: updatedOptions,
+                    correctAnswer: correctOption.text
+                  }
+                },
+                { new: true }
+              );
+              console.log(`Updated true/false question ${question._id} with AI-determined correct answer`);
+            } catch (updateError) {
+              console.error(`Error updating true/false question in database: ${updateError.message}`);
+            }
+          }
+        }
+      }
+    } catch (aiError) {
+      console.error(`Error using AI to determine correct answer for true/false: ${aiError.message}`);
+      // Fall back to modelAnswer if AI fails
+    }
+  }
 
   if (!studentAnswer) {
     return {
@@ -637,7 +791,7 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
       score: question.points,
       feedback: 'Correct!',
       correctedAnswer: modelAnswer,
-      gradingMethod: 'enhanced_grading', // Use existing enum value
+      gradingMethod: 'ai_determined_correct',
       isCorrect: true
     };
   }
@@ -683,7 +837,7 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
         score,
         feedback,
         correctedAnswer: modelAnswer,
-        gradingMethod: 'enhanced_grading',
+        gradingMethod: 'ai_determined_correct',
         isCorrect,
         aiVerification: verification
       };
@@ -693,7 +847,7 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
         score,
         feedback,
         correctedAnswer: modelAnswer,
-        gradingMethod: 'enhanced_grading',
+        gradingMethod: 'ai_determined_correct',
         isCorrect,
         aiVerification: { verified: false, error: verifyError.message }
       };
@@ -704,7 +858,7 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
     score,
     feedback,
     correctedAnswer: modelAnswer,
-    gradingMethod: 'enhanced_grading',
+    gradingMethod: 'ai_determined_correct',
     isCorrect
   };
 }

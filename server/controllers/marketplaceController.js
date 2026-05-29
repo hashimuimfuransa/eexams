@@ -336,11 +336,8 @@ const requestMarketplaceExam = async (req, res) => {
       }
     }
 
-    // Calculate the amount - 500 RWF for retakes of free exams
-    let amount = exam.publicPrice || 0;
-    if (isRetake && amount === 0) {
-      amount = 500;
-    }
+    // Calculate the amount - use retakePrice for retakes, publicPrice for initial requests
+    let amount = isRetake ? (exam.retakePrice || 0) : (exam.publicPrice || 0);
 
     // Create the request
     const requestData = {
@@ -372,17 +369,19 @@ const requestMarketplaceExam = async (req, res) => {
       console.error('[Marketplace] Failed to send super admin notification:', err);
     });
 
-    // Check if exam is free (price = 0) - auto-approve, but NOT for retakes
-    const isFree = exam.publicPrice === 0 || exam.publicPrice === '0' || exam.publicPrice === '0 RWF';
+    // Check if exam is free (price = 0) - auto-approve including retakes if retakePrice is 0
+    const isFree = isRetake 
+      ? (exam.retakePrice === 0 || exam.retakePrice === '0' || exam.retakePrice === '0 RWF')
+      : (exam.publicPrice === 0 || exam.publicPrice === '0' || exam.publicPrice === '0 RWF');
     
-    if (isFree && !isRetake) {
-      console.log(`Auto-approving free exam request: ${exam._id}, price: ${exam.publicPrice}`);
+    if (isFree) {
+      console.log(`Auto-approving free exam request: ${exam._id}, isRetake: ${isRetake}, price: ${isRetake ? exam.retakePrice : exam.publicPrice}`);
       
       // Process the approval automatically
       const approvalResult = await processExamApproval(examRequest, false);
       
       return res.status(201).json({
-        message: 'Request approved automatically. This exam is free!',
+        message: isRetake ? 'Retake request approved automatically. This retake is free!' : 'Request approved automatically. This exam is free!',
         requestId: examRequest._id,
         shareToken: approvalResult.shareToken,
         accessCode: approvalResult.accessCode,
@@ -391,8 +390,8 @@ const requestMarketplaceExam = async (req, res) => {
     }
 
     res.status(201).json({
-      message: isRetake && isFree 
-        ? 'Retake request submitted successfully. Please pay 500 RWF to complete your request.'
+      message: isRetake 
+        ? `Retake request submitted successfully. Please pay ${exam.retakePrice || 0} RWF to complete your request.`
         : 'Request submitted successfully. The teacher will review your request.',
       requestId: examRequest._id
     });
@@ -551,7 +550,7 @@ const Level = require('../models/Level');
 // @access  Private (Teacher)
 const updateMarketplaceExamSettings = async (req, res) => {
   try {
-    const { isPubliclyListed, publicPrice, publicDescription, targetAudience, levelId, newLevelName, subLevel } = req.body;
+    const { isPubliclyListed, publicPrice, retakePrice, publicDescription, targetAudience, levelId, newLevelName, subLevel } = req.body;
 
     // First, check if the exam exists
     const exam = await Exam.findById(req.params.id);
@@ -575,6 +574,9 @@ const updateMarketplaceExamSettings = async (req, res) => {
     }
     if (publicPrice !== undefined) {
       exam.publicPrice = parseFloat(publicPrice);
+    }
+    if (retakePrice !== undefined) {
+      exam.retakePrice = parseFloat(retakePrice);
     }
     if (publicDescription !== undefined) {
       exam.publicDescription = publicDescription;

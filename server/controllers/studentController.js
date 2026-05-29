@@ -839,8 +839,8 @@ const requestExamRetake = async (req, res) => {
       return res.status(400).json({ message: 'You already have a pending retake request for this exam' });
     }
 
-    // For assigned exams, retake is free (no fee)
-    const retakeFee = 0;
+    // Use the exam's retakePrice for retake fee
+    const retakeFee = exam.retakePrice || 0;
 
     // Create the retake request
     const examRequest = await ExamRequest.create({
@@ -855,8 +855,27 @@ const requestExamRetake = async (req, res) => {
       },
       amount: retakeFee,
       isRetake: true,
-      status: 'pending'
+      status: retakeFee === 0 ? 'approved' : 'pending'
     });
+
+    // If retake is free, auto-approve and provide access
+    if (retakeFee === 0) {
+      console.log(`Auto-approving free retake request for exam ${examId}, student ${req.user._id}`);
+      
+      // Delete the previous completed result to allow retake
+      await Result.findOneAndDelete({
+        student: req.user._id,
+        exam: examId,
+        isCompleted: true
+      });
+
+      return res.status(201).json({
+        message: 'Retake request approved automatically. This retake is free!',
+        requestId: examRequest._id,
+        amount: retakeFee,
+        autoApproved: true
+      });
+    }
 
     // Send email notification to the teacher about the retake request
     emailService.sendTeacherRetakeRequestEmail(examRequest, exam, req.user).catch(err => {
@@ -864,7 +883,7 @@ const requestExamRetake = async (req, res) => {
     });
 
     res.status(201).json({
-      message: 'Retake request submitted successfully. The teacher will review your request.',
+      message: `Retake request submitted successfully. Please pay ${retakeFee} RWF to complete your request.`,
       requestId: examRequest._id,
       amount: retakeFee
     });

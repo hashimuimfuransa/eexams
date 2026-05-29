@@ -94,6 +94,10 @@ const ExamSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  retakePrice: {
+    type: Number,
+    default: 0
+  },
   publicDescription: {
     type: String,
     default: null

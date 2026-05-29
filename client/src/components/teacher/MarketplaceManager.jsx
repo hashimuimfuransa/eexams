@@ -44,6 +44,7 @@ const MarketplaceManager = ({ exam }) => {
   const [settings, setSettings] = useState({
     isPubliclyListed: exam?.isPubliclyListed || false,
     publicPrice: exam?.publicPrice || 0,
+    retakePrice: exam?.retakePrice || 0,
     publicDescription: exam?.publicDescription || '',
     targetAudience: exam?.targetAudience || '',
     levelId: exam?.level?._id || null,
@@ -79,6 +80,7 @@ const MarketplaceManager = ({ exam }) => {
     setSettings({
       isPubliclyListed: exam?.isPubliclyListed || false,
       publicPrice: exam?.publicPrice || 0,
+      retakePrice: exam?.retakePrice || 0,
       publicDescription: exam?.publicDescription || '',
       targetAudience: exam?.targetAudience || '',
       levelId: exam?.level?._id || null,
@@ -221,6 +223,7 @@ const MarketplaceManager = ({ exam }) => {
       const payload = {
         isPubliclyListed: settings.isPubliclyListed,
         publicPrice: settings.publicPrice,
+        retakePrice: settings.retakePrice || 0,
         publicDescription: settings.publicDescription,
         targetAudience: settings.targetAudience,
         levelId: settings.levelId,
@@ -580,6 +583,18 @@ const MarketplaceManager = ({ exam }) => {
                 type="number"
                 value={settings.publicPrice}
                 onChange={(e) => handleSettingsChange('publicPrice', parseFloat(e.target.value) || 0)}
+                InputProps={{ startAdornment: 'RWF ' }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Retake Price (optional)"
+                type="number"
+                value={settings.retakePrice || 0}
+                onChange={(e) => handleSettingsChange('retakePrice', parseFloat(e.target.value) || 0)}
                 InputProps={{ startAdornment: 'RWF ' }}
                 sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
               />

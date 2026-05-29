@@ -800,7 +800,9 @@ const updateExam = async (req, res) => {
       sectionBRequiredQuestions,
       sectionCRequiredQuestions,
       status,
-      questions
+      questions,
+      publicPrice,
+      retakePrice
     } = req.body;
 
     const exam = await Exam.findById(req.params.id);
@@ -818,6 +820,8 @@ const updateExam = async (req, res) => {
       exam.isLocked = isLocked === 'true' || isLocked === true;
     }
     if (status) exam.status = status;
+    if (publicPrice !== undefined) exam.publicPrice = parseInt(publicPrice);
+    if (retakePrice !== undefined) exam.retakePrice = parseInt(retakePrice);
 
     // Handle file uploads
     if (req.files) {

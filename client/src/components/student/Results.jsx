@@ -390,6 +390,9 @@ const Results = () => {
       sectionAnswers[section].push(answer);
     });
 
+    // Get all unique sections and sort them
+    const allSections = Object.keys(sectionAnswers).sort();
+
     return (
       <StudentLayout>
         <Container maxWidth="lg" sx={{ mb: 8 }}>
@@ -620,13 +623,13 @@ const Results = () => {
                       textColor="primary"
                       variant="fullWidth"
                     >
-                      <Tab label="Section A" />
-                      <Tab label="Section B" />
-                      <Tab label="Section C" />
+                      {allSections.map((section) => (
+                        <Tab key={section} label={`Section ${section}`} />
+                      ))}
                     </Tabs>
                   </Box>
 
-                  {['A', 'B', 'C'].map((section, index) => (
+                  {allSections.map((section, index) => (
                     <Box
                       key={section}
                       role="tabpanel"

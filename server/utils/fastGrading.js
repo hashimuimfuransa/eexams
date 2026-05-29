@@ -492,7 +492,8 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
     const truncatedModelAnswer = (modelAnswer && modelAnswer.length > MAX_LENGTH) ? modelAnswer.substring(0, MAX_LENGTH) + '...' : modelAnswer || 'Evaluate based on question';
 
     // Simplified, faster prompt for all question types
-    const isEssayQuestion = question.section === 'B' || question.section === 'C';
+    // Section A is typically multiple choice, sections B and beyond are typically essay/open-ended
+    const isEssayQuestion = question.section !== 'A';
     const prompt = `Grade (0-${question.points}). Q: ${truncatedQuestion}. A: ${truncatedAnswer}. Model: ${truncatedModelAnswer}. ${isEssayQuestion ? 'Detailed feedback.' : 'Brief feedback.'}
 
 STRICT GRADING RULES:

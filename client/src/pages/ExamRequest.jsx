@@ -127,20 +127,18 @@ const ExamRequest = () => {
       setSubmitting(true);
       const response = await api.post(`/marketplace/exams/${examId}/request`, formData);
       setSuccess(true);
-      
+
       // For free exams, backend returns autoApproved: true with shareToken
-      // Redirect directly to the exam instead of dashboard
+      // Redirect directly to the exam instead of dashboard - no delay for instant access
       const { shareToken, autoApproved } = response.data;
-      
-      setTimeout(() => {
-        if (autoApproved && shareToken) {
-          // Redirect directly to exam for instant access
-          navigate(`/exam/${shareToken}`);
-        } else {
-          // Fallback to dashboard if something went wrong
-          navigate('/student/dashboard');
-        }
-      }, 1500);
+
+      if (autoApproved && shareToken) {
+        // Redirect directly to exam for instant access - no delay
+        navigate(`/exam/${shareToken}`);
+      } else {
+        // Fallback to dashboard if something went wrong
+        navigate('/student/dashboard');
+      }
     } catch (err) {
       console.error('Error auto-granting access:', err);
       setError(err.response?.data?.message || 'Failed to grant access. Please try again.');

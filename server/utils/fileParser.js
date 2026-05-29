@@ -1911,14 +1911,14 @@ const extractQuestionsDirectly = async (text, answerData = { answers: {} }) => {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Define section header patterns
+    // Define section header patterns - now supports any letter
     const sectionHeaderPatterns = [
-      /^SECTION\s+[A-C]/i,                                  // SECTION A
-      /^PART\s+[A-C]/i,                                     // PART A
-      /^[A-C]\.\s+/,                                        // A.
-      /^SECTION\s+[A-C]:/i,                                 // SECTION A:
-      /^PART\s+[A-C]:/i,                                    // PART A:
-      /^[A-C]\s*[-:]/i,                                     // A- or A:
+      /^SECTION\s+[A-Z]/i,                                  // SECTION A, B, C, D, etc.
+      /^PART\s+[A-Z]/i,                                     // PART A, B, C, D, etc.
+      /^[A-Z]\.\s+/,                                        // A., B., C., D., etc.
+      /^SECTION\s+[A-Z]:/i,                                 // SECTION A:, B:, C:, D:, etc.
+      /^PART\s+[A-Z]:/i,                                    // PART A:, B:, C:, D:, etc.
+      /^[A-Z]\s*[-:]/i,                                     // A- or A:, B- or B:, etc.
       /^MULTIPLE\s+CHOICE/i,                                // MULTIPLE CHOICE
       /^SHORT\s+ANSWER/i,                                   // SHORT ANSWER
       /^ESSAY/i,                                            // ESSAY
@@ -1927,22 +1927,25 @@ const extractQuestionsDirectly = async (text, answerData = { answers: {} }) => {
 
     // Check if the line is a section header
     if (sectionHeaderPatterns.some(pattern => line.match(pattern))) {
-      // Extract section letter (A, B, or C)
+      // Extract section letter (any letter A-Z)
       let sectionLetter = null;
 
-      // Try to extract section letter from the line
-      if (line.match(/SECTION\s+A|PART\s+A|^A\.|^A\s*[-:]/i)) {
-        sectionLetter = 'A';
-      } else if (line.match(/SECTION\s+B|PART\s+B|^B\.|^B\s*[-:]/i)) {
-        sectionLetter = 'B';
-      } else if (line.match(/SECTION\s+C|PART\s+C|^C\.|^C\s*[-:]/i)) {
-        sectionLetter = 'C';
-      } else if (line.match(/MULTIPLE\s+CHOICE/i)) {
-        sectionLetter = 'A';
-      } else if (line.match(/SHORT\s+ANSWER/i)) {
-        sectionLetter = 'B';
-      } else if (line.match(/ESSAY|LONG\s+ANSWER|STRUCTURED/i)) {
-        sectionLetter = 'C';
+      // Try to extract section letter from the line dynamically
+      const sectionMatch = line.match(/(?:SECTION|PART)\s+([A-Z])/i) ||
+                           line.match(/^([A-Z])\./) ||
+                           line.match(/^([A-Z])\s*[-:]/i);
+
+      if (sectionMatch) {
+        sectionLetter = sectionMatch[1].toUpperCase();
+      } else {
+        // Fallback for descriptive section headers
+        if (line.match(/MULTIPLE\s+CHOICE/i)) {
+          sectionLetter = 'A';
+        } else if (line.match(/SHORT\s+ANSWER/i)) {
+          sectionLetter = 'B';
+        } else if (line.match(/ESSAY|LONG\s+ANSWER|STRUCTURED/i)) {
+          sectionLetter = 'C';
+        }
       }
 
       if (sectionLetter) {
@@ -2431,7 +2434,7 @@ const extractQuestionsDirectly = async (text, answerData = { answers: {} }) => {
         type: 'open-ended',
         options: [],
         correctAnswer: '',
-        points: questionSection === 'B' ? 5 : 10,
+        points: questionSection === 'B' ? 5 : (questionSection === 'A' ? 1 : 10),
         section: questionSection,
         currentSection: questionSection
       };

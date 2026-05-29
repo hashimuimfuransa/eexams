@@ -5925,6 +5925,16 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                     <TextField fullWidth label="Time Limit (min)" type="number" value={editExam.timeLimit} onChange={e => setEditExam(p => ({ ...p, timeLimit: +e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                     <TextField fullWidth label="Passing Score (%)" type="number" value={editExam.passingScore} onChange={e => setEditExam(p => ({ ...p, passingScore: +e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                   </Box>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editExam.calculatorEnabled !== false}
+                        onChange={e => setEditExam(p => ({ ...p, calculatorEnabled: e.target.checked }))}
+                        color="primary"
+                      />
+                    }
+                    label="Enable Calculator for Students"
+                  />
                 </Box>
               </Box>
 

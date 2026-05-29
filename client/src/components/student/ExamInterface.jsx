@@ -69,7 +69,9 @@ import {
   Close,
   PlaylistAddCheck,
   PlayArrow,
-  Assessment
+  Assessment,
+  ExpandMore,
+  ExpandLess
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
 import { useThemeMode } from '../../context/ThemeContext';
@@ -272,6 +274,10 @@ const ExamInterface = () => {
   const [lastActiveTime, setLastActiveTime] = useState(Date.now());
   const [calculatorDisplay, setCalculatorDisplay] = useState('');
   const [showInstructions, setShowInstructions] = useState(true);
+  const [calculatorMinimized, setCalculatorMinimized] = useState(false);
+  const [calculatorPosition, setCalculatorPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   // Reset lastQuestionSaved when exam loads or when switching questions
   useEffect(() => {
@@ -323,6 +329,38 @@ const ExamInterface = () => {
       setCalculatorDisplay('Error');
     }
   };
+
+  // Calculator drag handlers
+  const handleCalculatorDragStart = (e) => {
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - calculatorPosition.x,
+      y: e.clientY - calculatorPosition.y
+    });
+  };
+
+  const handleCalculatorDrag = (e) => {
+    if (!isDragging) return;
+    setCalculatorPosition({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleCalculatorDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleCalculatorDrag);
+      window.addEventListener('mouseup', handleCalculatorDragEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleCalculatorDrag);
+        window.removeEventListener('mouseup', handleCalculatorDragEnd);
+      };
+    }
+  }, [isDragging, dragStart]);
 
   // This will be defined after saveAnswerToServer function
 
@@ -1353,7 +1391,7 @@ const ExamInterface = () => {
     if (!currentQuestion) return;
 
     const currentAnswer = answers[currentQuestion._id];
-    const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
+    const questionType = currentQuestion.type;
     const questionSection = currentQuestion.section || 'A';
 
     console.log(`🔍 handleSaveLastQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}`);
@@ -1549,39 +1587,6 @@ const ExamInterface = () => {
     }
   };
 
-  // Detect question type from content if database type is missing or clearly wrong
-  const detectQuestionTypeFromContent = (question) => {
-    const type = question.type;
-    const text = question.text?.toLowerCase() || '';
-    const hasOptions = question.options && question.options.length > 0;
-    const hasImage = question.imageUrl || question.image;
-
-    // If type is already set and valid, use it
-    if (type && type !== 'multiple-choice') return type;
-
-    // Check for image-based questions
-    if (hasImage) {
-      return 'image-based';
-    }
-
-    // Check for fill-in-blank patterns
-    if (text.includes('___') || text.includes('....') || text.includes('_____') ||
-        text.includes('fill in') || text.includes('blank')) {
-      return 'fill-in-blank';
-    }
-    // Check for true-false
-    if (hasOptions && question.options.length === 2 &&
-        (question.options.some(o => o.text?.toLowerCase()?.includes('true')) ||
-         question.options.some(o => o.text?.toLowerCase()?.includes('false')))) {
-      return 'true-false';
-    }
-    // Keep as multiple-choice if it has 3+ options
-    if (hasOptions && question.options.length >= 3) {
-      return 'multiple-choice';
-    }
-    // Default based on section
-    return question.section === 'B' ? 'short-answer' : 'open-ended';
-  };
 
   // Handle question navigation with enhanced error handling
   const handleNextQuestion = async () => {
@@ -1602,7 +1607,7 @@ const ExamInterface = () => {
 
       // Save answer before navigating (for sections B and C open-ended questions)
       const currentAnswer = answers[currentQuestion._id];
-      const questionType = currentQuestion.type || detectQuestionTypeFromContent(currentQuestion);
+      const questionType = currentQuestion.type;
       const questionSection = currentQuestion.section || 'A';
 
       console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
@@ -4104,30 +4109,32 @@ const ExamInterface = () => {
                         <Typography variant="h6" fontWeight="bold" color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main'}>
                           {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
                         </Typography>
-                        <Tooltip title="Open Calculator">
-                          <Button
-                            variant="contained"
-                            startIcon={<Calculate />}
-                            onClick={() => setCalculatorOpen(true)}
-                            sx={{
-                              bgcolor: 'primary.main',
-                              color: 'white',
-                              fontWeight: 'bold',
-                              textTransform: 'none',
-                              px: 2,
-                              py: 1,
-                              '&:hover': {
-                                bgcolor: 'primary.dark'
-                              }
-                            }}
-                          >
-                            Calculator
-                          </Button>
-                        </Tooltip>
+                        {exam?.calculatorEnabled !== false && (
+                          <Tooltip title="Open Calculator">
+                            <Button
+                              variant="contained"
+                              startIcon={<Calculate />}
+                              onClick={() => setCalculatorOpen(true)}
+                              sx={{
+                                bgcolor: 'primary.main',
+                                color: 'white',
+                                fontWeight: 'bold',
+                                textTransform: 'none',
+                                px: 2,
+                                py: 1,
+                                '&:hover': {
+                                  bgcolor: 'primary.dark'
+                                }
+                              }}
+                            >
+                              Calculator
+                            </Button>
+                          </Tooltip>
+                        )}
                       </Box>
 
                       {(() => {
-                        const questionType = detectQuestionTypeFromContent(currentQuestion);
+                        const questionType = currentQuestion.type;
                         const hasSubQuestions = currentQuestion.subQuestions && currentQuestion.subQuestions.length > 0;
 
                         // If question has sub-questions, don't show main answer input for any type
@@ -4289,6 +4296,7 @@ const ExamInterface = () => {
                               question={currentQuestion}
                               answer={answers[currentQuestion._id]}
                               onAnswerChange={handleAnswerChange}
+                              exam={exam}
                               disabled={answers[currentQuestion._id]?.answered}
                             />
                           );
@@ -5228,129 +5236,160 @@ const ExamInterface = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Calculator Dialog */}
-      <Dialog
-        open={calculatorOpen}
-        onClose={() => setCalculatorOpen(false)}
-        maxWidth="lg"
-        fullWidth
-        aria-labelledby="calculator-dialog-title"
-        sx={{
-          '& .MuiDialog-paper': {
-            maxWidth: { xs: '95%', sm: '800px' },
-            width: { xs: '95%', sm: '800px' }
-          }
-        }}
-      >
-        <DialogTitle id="calculator-dialog-title">
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Calculate sx={{ mr: 1, fontSize: 28 }} />
-              <Typography variant="h6" fontWeight="bold">
-                Scientific Calculator
-              </Typography>
-            </Box>
-            <IconButton onClick={() => setCalculatorOpen(false)} size="large">
-              <Close />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ 
-            mt: 2, 
-            minHeight: { xs: '300px', sm: '500px' },
-            border: '2px solid',
-            borderColor: 'primary.main',
-            borderRadius: 2,
-            p: 1
-          }}>
+      {/* Calculator - Draggable Box */}
+      {calculatorOpen && (
+        <>
+          {/* Minimized State - Small Floating Button */}
+          {calculatorMinimized && (
             <Box
               sx={{
-                width: '100%',
-                height: { xs: '300px', sm: '500px' },
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                p: 2,
-                bgcolor: 'background.paper',
+                position: 'fixed',
+                bottom: 20,
+                right: 20,
+                zIndex: 9999,
+                bgcolor: 'primary.main',
+                borderRadius: '50%',
+                width: 56,
+                height: 56,
                 display: 'flex',
-                flexDirection: 'column'
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: 4,
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'scale(1.1)',
+                  boxShadow: 6
+                }
+              }}
+              onClick={() => setCalculatorMinimized(false)}
+            >
+              <Calculate sx={{ color: 'white', fontSize: 28 }} />
+            </Box>
+          )}
+
+          {/* Full Calculator */}
+          {!calculatorMinimized && (
+            <Box
+              sx={{
+                position: 'fixed',
+                top: calculatorPosition.y || '50%',
+                left: calculatorPosition.x || '50%',
+                transform: calculatorPosition.x === 0 && calculatorPosition.y === 0 ? 'translate(-50%, -50%)' : 'none',
+                zIndex: 9999,
+                width: { xs: '280px', sm: '320px' },
+                maxWidth: { xs: '280px', sm: '320px' },
+                bgcolor: 'background.paper',
+                borderRadius: 2,
+                boxShadow: 4,
+                border: '2px solid',
+                borderColor: 'primary.main',
+                overflow: 'hidden'
               }}
             >
+              {/* Draggable Header */}
               <Box
+                onMouseDown={handleCalculatorDragStart}
                 sx={{
-                  bgcolor: 'background.default',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                  p: 2,
-                  mb: 2,
-                  minHeight: '60px',
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                  p: 1,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'flex-end',
-                  fontSize: { xs: '1.5rem', sm: '2rem' },
-                  fontWeight: 'bold',
-                  fontFamily: 'monospace'
+                  justifyContent: 'space-between',
+                  cursor: 'move',
+                  userSelect: 'none'
                 }}
               >
-                {calculatorDisplay || '0'}
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Calculate sx={{ mr: 0.5, fontSize: 16 }} />
+                  <Typography variant="body2" fontWeight="bold" sx={{ fontSize: 13 }}>
+                    Calculator
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 0.25 }}>
+                  <IconButton
+                    onClick={() => setCalculatorMinimized(true)}
+                    size="small"
+                    sx={{ color: 'white', p: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+                    title="Minimize"
+                  >
+                    <ExpandLess sx={{ fontSize: 18 }} />
+                  </IconButton>
+                  <IconButton
+                    onClick={() => setCalculatorOpen(false)}
+                    size="small"
+                    sx={{ color: 'white', p: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+                    title="Close"
+                  >
+                    <Close sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Box>
               </Box>
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, flex: 1 }}>
-                <Button onClick={() => handleCalculatorInput('sin(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>sin</Button>
-                <Button onClick={() => handleCalculatorInput('cos(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>cos</Button>
-                <Button onClick={() => handleCalculatorInput('tan(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>tan</Button>
-                <Button onClick={() => handleCalculatorInput('log(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>log</Button>
-                <Button onClick={() => handleCalculatorInput('ln(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>ln</Button>
-                <Button onClick={() => handleCalculatorInput('sqrt(')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>√</Button>
-                <Button onClick={() => handleCalculatorInput('^')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>x^y</Button>
-                <Button onClick={() => handleCalculatorInput('π')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>π</Button>
-                <Button onClick={() => handleCalculatorInput('7')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>7</Button>
-                <Button onClick={() => handleCalculatorInput('8')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>8</Button>
-                <Button onClick={() => handleCalculatorInput('9')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>9</Button>
-                <Button onClick={() => handleCalculatorInput('/')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>÷</Button>
-                <Button onClick={() => handleCalculatorInput('4')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>4</Button>
-                <Button onClick={() => handleCalculatorInput('5')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>5</Button>
-                <Button onClick={() => handleCalculatorInput('6')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>6</Button>
-                <Button onClick={() => handleCalculatorInput('*')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>×</Button>
-                <Button onClick={() => handleCalculatorInput('1')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>1</Button>
-                <Button onClick={() => handleCalculatorInput('2')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>2</Button>
-                <Button onClick={() => handleCalculatorInput('3')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>3</Button>
-                <Button onClick={() => handleCalculatorInput('-')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>-</Button>
-                <Button onClick={() => handleCalculatorInput('0')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>0</Button>
-                <Button onClick={() => handleCalculatorInput('.')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>.</Button>
-                <Button onClick={() => handleCalculatorClear()} sx={{ bgcolor: 'error.light', '&:hover': { bgcolor: 'error.dark' } }}>C</Button>
-                <Button onClick={() => handleCalculatorInput('+')} sx={{ bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.dark' } }}>+</Button>
-                <Button onClick={() => handleCalculatorInput('(')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>(</Button>
-                <Button onClick={() => handleCalculatorInput(')')} sx={{ bgcolor: 'grey.200', '&:hover': { bgcolor: 'grey.300' } }}>)</Button>
-                <Button onClick={() => handleCalculatorInput('e')} sx={{ bgcolor: 'info.light', '&:hover': { bgcolor: 'info.dark' } }}>e</Button>
-                <Button onClick={() => handleCalculatorCalculate()} sx={{ bgcolor: 'success.light', '&:hover': { bgcolor: 'success.dark' }, gridColumn: 'span 1' }}>=</Button>
+
+              {/* Calculator Content */}
+              <Box sx={{ p: 0.75 }}>
+                <Box
+                  sx={{
+                    bgcolor: 'background.default',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 1,
+                    mb: 1,
+                    minHeight: '36px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    fontSize: { xs: '1rem', sm: '1.1rem' },
+                    fontWeight: 'bold',
+                    fontFamily: 'monospace'
+                  }}
+                >
+                  {calculatorDisplay || '0'}
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.25 }}>
+                  <Button onClick={() => handleCalculatorInput('sin(')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>sin</Button>
+                  <Button onClick={() => handleCalculatorInput('cos(')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>cos</Button>
+                  <Button onClick={() => handleCalculatorInput('tan(')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>tan</Button>
+                  <Button onClick={() => handleCalculatorInput('log(')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>log</Button>
+                  <Button onClick={() => handleCalculatorInput('ln(')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>ln</Button>
+                  <Button onClick={() => handleCalculatorInput('sqrt(')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>√</Button>
+                  <Button onClick={() => handleCalculatorInput('^')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>x^y</Button>
+                  <Button onClick={() => handleCalculatorInput('π')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>π</Button>
+                  <Button onClick={() => handleCalculatorInput('7')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>7</Button>
+                  <Button onClick={() => handleCalculatorInput('8')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>8</Button>
+                  <Button onClick={() => handleCalculatorInput('9')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>9</Button>
+                  <Button onClick={() => handleCalculatorInput('/')} sx={{ bgcolor: 'warning.light', fontSize: 14, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'warning.dark' } }}>÷</Button>
+                  <Button onClick={() => handleCalculatorInput('4')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>4</Button>
+                  <Button onClick={() => handleCalculatorInput('5')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>5</Button>
+                  <Button onClick={() => handleCalculatorInput('6')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>6</Button>
+                  <Button onClick={() => handleCalculatorInput('*')} sx={{ bgcolor: 'warning.light', fontSize: 14, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'warning.dark' } }}>×</Button>
+                  <Button onClick={() => handleCalculatorInput('1')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>1</Button>
+                  <Button onClick={() => handleCalculatorInput('2')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>2</Button>
+                  <Button onClick={() => handleCalculatorInput('3')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>3</Button>
+                  <Button onClick={() => handleCalculatorInput('-')} sx={{ bgcolor: 'warning.light', fontSize: 14, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'warning.dark' } }}>-</Button>
+                  <Button onClick={() => handleCalculatorInput('0')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>0</Button>
+                  <Button onClick={() => handleCalculatorInput('.')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>.</Button>
+                  <Button onClick={() => handleCalculatorClear()} sx={{ bgcolor: 'error.light', fontSize: 12, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'error.dark' } }}>C</Button>
+                  <Button onClick={() => handleCalculatorInput('+')} sx={{ bgcolor: 'warning.light', fontSize: 14, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'warning.dark' } }}>+</Button>
+                  <Button onClick={() => handleCalculatorInput('(')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 32, minWidth: 32, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>(</Button>
+                  <Button onClick={() => handleCalculatorInput(')')} sx={{ bgcolor: 'grey.200', fontSize: 12, minHeight: 32, minWidth: 32, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'grey.300' } }}>)</Button>
+                  <Button onClick={() => handleCalculatorInput('e')} sx={{ bgcolor: 'info.light', fontSize: 11, minHeight: 32, minWidth: 32, p: 0.5, '&:hover': { bgcolor: 'info.dark' } }}>e</Button>
+                  <Button onClick={() => handleCalculatorCalculate()} sx={{ bgcolor: 'success.light', fontSize: 14, minHeight: 36, minWidth: 36, p: 0.5, fontWeight: 'bold', '&:hover': { bgcolor: 'success.dark' }, gridColumn: 'span 1' }}>=</Button>
+                </Box>
               </Box>
             </Box>
-          </Box>
-          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom fontWeight="bold">
-              How to use:
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              • Type mathematical expressions directly (e.g., 2+2, sin(30), sqrt(16))
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              • Use the virtual keyboard for advanced functions and symbols
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              • Press Enter to calculate results
-            </Typography>
-          </Box>
-        </DialogContent>
-      </Dialog>
+          )}
+        </>
+      )}
       </Container>
     </Box>
   );
 };
 
 // Enhanced Fill-in-the-Blank Question Component
-const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => {
+const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled, exam }) => {
   const theme = useTheme();
   const { mode } = useThemeMode();
   const [localAnswer, setLocalAnswer] = useState(answer?.textAnswer || '');
@@ -5401,24 +5440,26 @@ const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled }) => 
   return (
     <Box>
       {/* Calculator Button */}
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          startIcon={<Calculate />}
-          onClick={() => setCalculatorOpen(true)}
-          sx={{
-            bgcolor: 'primary.main',
-            color: 'white',
-            fontWeight: 'bold',
-            textTransform: 'none',
-            '&:hover': {
-              bgcolor: 'primary.dark'
-            }
-          }}
-        >
-          Calculator
-        </Button>
-      </Box>
+      {exam?.calculatorEnabled !== false && (
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            startIcon={<Calculate />}
+            onClick={() => setCalculatorOpen(true)}
+            sx={{
+              bgcolor: 'primary.main',
+              color: 'white',
+              fontWeight: 'bold',
+              textTransform: 'none',
+              '&:hover': {
+                bgcolor: 'primary.dark'
+              }
+            }}
+          >
+            Calculator
+          </Button>
+        </Box>
+      )}
 
       {/* Answer Input */}
       <Box sx={{ mb: 3 }}>
@@ -6390,33 +6431,9 @@ const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 };
 
 // Helper functions for question types
-const getQuestionTypeLabel = (type, section, question = null) => {
+const getQuestionTypeLabel = (type, section) => {
   // Use the provided type directly from exam data
-  let questionType = type || 'open-ended';
-
-  // Fallback: if type is missing or clearly wrong, detect from question content
-  if (!type || type === 'multiple-choice') {
-    if (question) {
-      const text = question.text?.toLowerCase() || '';
-      const hasOptions = question.options && question.options.length > 0;
-
-      // Check for fill-in-blank patterns
-      if (text.includes('___') || text.includes('....') || text.includes('_____') ||
-          text.includes('fill in') || text.includes('blank')) {
-        questionType = 'fill-in-blank';
-      }
-      // Check for true-false
-      else if (hasOptions && question.options.length === 2 &&
-               (question.options.some(o => o.text?.toLowerCase()?.includes('true')) ||
-                question.options.some(o => o.text?.toLowerCase()?.includes('false')))) {
-        questionType = 'true-false';
-      }
-      // Keep as multiple-choice if it has 3+ options
-      else if (!hasOptions || question.options.length < 3) {
-        questionType = section === 'B' ? 'short-answer' : 'open-ended';
-      }
-    }
-  }
+  const questionType = type || 'open-ended';
 
   switch (questionType) {
     case 'multiple-choice':
@@ -6445,7 +6462,7 @@ const getQuestionTypeLabel = (type, section, question = null) => {
   }
 };
 
-const getQuestionTypeColor = (type, section, question = null) => {
+const getQuestionTypeColor = (type, section) => {
   // Use the provided type directly from exam data
   const questionType = type || 'open-ended';
 

@@ -1379,11 +1379,14 @@ const startExam = async (req, res) => {
     });
 
     // Group questions by section for proper initialization
-    const questionsBySection = {
-      A: allQuestions.filter(q => q.section === 'A'),
-      B: allQuestions.filter(q => q.section === 'B'),
-      C: allQuestions.filter(q => q.section === 'C')
-    };
+    const questionsBySection = {};
+    allQuestions.forEach(q => {
+      const section = q.section || 'A';
+      if (!questionsBySection[section]) {
+        questionsBySection[section] = [];
+      }
+      questionsBySection[section].push(q);
+    });
 
     // Seeded random number generator for consistent shuffling per student-exam pair
     function seededRandom(seed) {
@@ -2456,19 +2459,23 @@ const triggerAIGrading = async (req, res) => {
     const exam = await Exam.findById(result.exam);
 
     if (exam && exam.allowSelectiveAnswering) {
-      // Get all questions by section
-      const sectionAQuestions = result.answers.filter(answer =>
-        answer.question && answer.question.section === 'A');
-      const sectionBQuestions = result.answers.filter(answer =>
-        answer.question && answer.question.section === 'B');
-      const sectionCQuestions = result.answers.filter(answer =>
-        answer.question && answer.question.section === 'C');
+      // Get all questions by section dynamically
+      const questionsBySection = {};
+      result.answers.forEach(answer => {
+        if (answer.question && answer.question.section) {
+          const section = answer.question.section;
+          if (!questionsBySection[section]) {
+            questionsBySection[section] = [];
+          }
+          questionsBySection[section].push(answer);
+        }
+      });
 
-      // Get selected questions by section
-      const selectedSectionBQuestions = sectionBQuestions.filter(answer =>
-        answer.isSelected);
-      const selectedSectionCQuestions = sectionCQuestions.filter(answer =>
-        answer.isSelected);
+      // Get selected questions for sections B and C (selective answering sections)
+      const sectionBQuestions = questionsBySection['B'] || [];
+      const sectionCQuestions = questionsBySection['C'] || [];
+      const selectedSectionBQuestions = sectionBQuestions.filter(answer => answer.isSelected);
+      const selectedSectionCQuestions = sectionCQuestions.filter(answer => answer.isSelected);
 
       // Check if student has answered the required number of questions in each section
       const hasEnoughSectionB = selectedSectionBQuestions.length >= (exam.sectionBRequiredQuestions || 3);
@@ -2478,51 +2485,58 @@ const triggerAIGrading = async (req, res) => {
       let totalScore = 0;
       let maxPossibleScore = 0;
 
-      // Section A - all questions are required
-      const sectionAScore = sectionAQuestions.reduce((total, answer) => total + (answer.score || 0), 0);
-      const sectionAMaxScore = sectionAQuestions.reduce((total, answer) =>
-        total + (answer.question.points || 1), 0);
+      // Process all sections dynamically
+      Object.keys(questionsBySection).sort().forEach(section => {
+        const sectionQuestions = questionsBySection[section];
+        
+        if (section === 'A' || (section !== 'B' && section !== 'C')) {
+          // Section A and any other sections (D, E, etc.) - all questions are required
+          const sectionScore = sectionQuestions.reduce((total, answer) => total + (answer.score || 0), 0);
+          const sectionMaxScore = sectionQuestions.reduce((total, answer) =>
+            total + (answer.question.points || 1), 0);
 
-      totalScore += sectionAScore;
-      maxPossibleScore += sectionAMaxScore || 1; // Ensure we don't have a zero denominator
+          totalScore += sectionScore;
+          maxPossibleScore += sectionMaxScore || 1;
+        } else if (section === 'B') {
+          // Section B - only count selected questions if enough are selected
+          if (hasEnoughSectionB && selectedSectionBQuestions.length > 0) {
+            const sectionBScore = selectedSectionBQuestions.reduce((total, answer) =>
+              total + (answer.score || 0), 0);
+            const sectionBMaxScore = selectedSectionBQuestions.reduce((total, answer) =>
+              total + (answer.question.points || 1), 0);
 
-      // Section B - only count selected questions if enough are selected
-      if (hasEnoughSectionB && selectedSectionBQuestions.length > 0) {
-        const sectionBScore = selectedSectionBQuestions.reduce((total, answer) =>
-          total + (answer.score || 0), 0);
-        const sectionBMaxScore = selectedSectionBQuestions.reduce((total, answer) =>
-          total + (answer.question.points || 1), 0);
+            totalScore += sectionBScore;
+            maxPossibleScore += sectionBMaxScore;
+          } else if (sectionBQuestions.length > 0) {
+            // Not enough questions selected - count all questions in the section
+            const sectionBScore = sectionBQuestions.reduce((total, answer) => total + (answer.score || 0), 0);
+            const sectionBMaxScore = sectionBQuestions.reduce((total, answer) =>
+              total + (answer.question.points || 1), 0);
 
-        totalScore += sectionBScore;
-        maxPossibleScore += sectionBMaxScore;
-      } else if (sectionBQuestions.length > 0) {
-        // Not enough questions selected - count all questions in the section
-        const sectionBScore = sectionBQuestions.reduce((total, answer) => total + (answer.score || 0), 0);
-        const sectionBMaxScore = sectionBQuestions.reduce((total, answer) =>
-          total + (answer.question.points || 1), 0);
+            totalScore += sectionBScore;
+            maxPossibleScore += sectionBMaxScore;
+          }
+        } else if (section === 'C') {
+          // Section C - only count selected questions if enough are selected
+          if (hasEnoughSectionC && selectedSectionCQuestions.length > 0) {
+            const sectionCScore = selectedSectionCQuestions.reduce((total, answer) =>
+              total + (answer.score || 0), 0);
+            const sectionCMaxScore = selectedSectionCQuestions.reduce((total, answer) =>
+              total + (answer.question.points || 1), 0);
 
-        totalScore += sectionBScore;
-        maxPossibleScore += sectionBMaxScore;
-      }
+            totalScore += sectionCScore;
+            maxPossibleScore += sectionCMaxScore;
+          } else if (sectionCQuestions.length > 0) {
+            // Not enough questions selected - count all questions in the section
+            const sectionCScore = sectionCQuestions.reduce((total, answer) => total + (answer.score || 0), 0);
+            const sectionCMaxScore = sectionCQuestions.reduce((total, answer) =>
+              total + (answer.question.points || 1), 0);
 
-      // Section C - only count selected questions if enough are selected
-      if (hasEnoughSectionC && selectedSectionCQuestions.length > 0) {
-        const sectionCScore = selectedSectionCQuestions.reduce((total, answer) =>
-          total + (answer.score || 0), 0);
-        const sectionCMaxScore = selectedSectionCQuestions.reduce((total, answer) =>
-          total + (answer.question.points || 1), 0);
-
-        totalScore += sectionCScore;
-        maxPossibleScore += sectionCMaxScore;
-      } else if (sectionCQuestions.length > 0) {
-        // Not enough questions selected - count all questions in the section
-        const sectionCScore = sectionCQuestions.reduce((total, answer) => total + (answer.score || 0), 0);
-        const sectionCMaxScore = sectionCQuestions.reduce((total, answer) =>
-          total + (answer.question.points || 1), 0);
-
-        totalScore += sectionCScore;
-        maxPossibleScore += sectionCMaxScore;
-      }
+            totalScore += sectionCScore;
+            maxPossibleScore += sectionCMaxScore;
+          }
+        }
+      });
 
       // Ensure we have valid scores (not NaN or 0/0)
       if (isNaN(totalScore) || totalScore === undefined) totalScore = 0;

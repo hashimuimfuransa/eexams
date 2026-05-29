@@ -64,6 +64,10 @@ const ExamSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  calculatorEnabled: {
+    type: Boolean,
+    default: true
+  },
   sectionBRequiredQuestions: {
     type: Number,
     default: 3

@@ -549,8 +549,9 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
           console.log(`⚠️ Answer marked for lenient grading: ${relevanceCheck.reason}`);
         }
 
-        // Enhanced AI grading for sections B and C with optimized processing
-        const sectionType = question.section === 'C' ? 'essay/long-answer' : 'short-answer';
+        // Enhanced AI grading for sections B and beyond with optimized processing
+        // Section A is typically multiple choice, B is short answer, C and beyond are essay/long-answer
+        const sectionType = (question.section === 'C' || !['A', 'B'].includes(question.section)) ? 'essay/long-answer' : 'short-answer';
         console.log(`📝 Processing ${sectionType} question in section ${question.section}`);
 
         const openEndedResult = await gradeOpenEndedAnswer(

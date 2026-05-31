@@ -162,7 +162,10 @@ const ResultSchema = new mongoose.Schema({
         'ordering_grading',
         'drag_drop_grading',
         // Sub-question grading
-        'sub_question_grading'
+        'sub_question_grading',
+        // AI-determined grading methods
+        'ai_determined_correct',
+        'ai_determined_incorrect'
       ],
       default: 'enhanced_grading'
     },

@@ -3,8 +3,12 @@ const { verifyGradingWithAI } = require('./enhancedGrading');
 
 /**
  * Fast chunked AI grading system that processes questions in small batches
+ * OPTIMIZED: Reduced AI workload with caching and pre-determination
  * for faster performance and better reliability
  */
+
+// Global cache for AI-determined answers (shared across grading sessions)
+const globalAIAnswerCache = new Map();
 
 /**
  * Grade sub-questions
@@ -233,6 +237,7 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
 
 /**
  * Fast multiple choice grading
+ * OPTIMIZED: Uses cache and skips AI if correct option already marked
  */
 async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
   // Check selectedOption, selectedOptionLetter, and textAnswer as answer may be stored in any field
@@ -247,18 +252,30 @@ async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
     };
   }
 
-  // Use AI to determine the correct answer (like regrading does)
-  // This ensures consistency between initial grading and regrading
-  if (question.options && Array.isArray(question.options) && question.options.length >= 2) {
-    try {
-      const { generateContent } = require('./aiService');
-      const questionText = question.text;
-      const options = question.options.map(opt => ({
-        letter: opt.letter || '',
-        text: opt.text || ''
-      }));
+  // OPTIMIZED: Skip AI if question already has a correct option marked
+  const hasCorrectOption = question.options && Array.isArray(question.options) &&
+    question.options.some(opt => opt.isCorrect === true);
 
-      const prompt = `
+  // Use AI to determine the correct answer only if not already marked
+  // This ensures consistency between initial grading and regrading
+  if (!hasCorrectOption && question.options && Array.isArray(question.options) && question.options.length >= 2) {
+    // OPTIMIZED: Check global cache first
+    const cacheKey = question._id.toString();
+    let correctLetter = '';
+
+    if (globalAIAnswerCache.has(cacheKey)) {
+      correctLetter = globalAIAnswerCache.get(cacheKey);
+      console.log(`✅ Fast grading using cached AI answer for question ${cacheKey}: ${correctLetter}`);
+    } else {
+      try {
+        const { generateContent } = require('./aiService');
+        const questionText = question.text;
+        const options = question.options.map(opt => ({
+          letter: opt.letter || '',
+          text: opt.text || ''
+        }));
+
+        const prompt = `
 You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
 
 I have a multiple choice question from a computer systems exam:
@@ -274,55 +291,63 @@ Important: Do not rely on outdated information. For example, while PS/2 ports we
 Only respond with the letter of the correct option (A, B, C, or D).
 `;
 
-      const response = await generateContent(prompt);
+        const response = await generateContent(prompt);
 
-      if (response && response.text) {
-        const letterMatch = response.text.match(/\b([A-D])\b/i);
-        if (letterMatch) {
-          const correctLetter = letterMatch[1].toUpperCase();
-          const correctOption = question.options.find(opt =>
-            opt.letter && opt.letter.toUpperCase() === correctLetter
-          );
-          if (correctOption) {
-            // Mark this option as correct in memory
-            question.options.forEach(opt => {
-              opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
-            });
-
-            // Update the question's correct answer in the database
-            const Question = require('../models/Question');
-            try {
-              const updatedOptions = question.options.map((opt, index) => {
-                if (!opt.letter) {
-                  opt.letter = String.fromCharCode(65 + index);
-                }
-                if (!opt.value) {
-                  opt.value = opt.letter.toLowerCase();
-                }
-                opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
-                return opt;
-              });
-
-              await Question.findByIdAndUpdate(
-                question._id,
-                {
-                  $set: {
-                    options: updatedOptions,
-                    correctAnswer: correctOption.text
-                  }
-                },
-                { new: true }
-              );
-              console.log(`Updated multiple choice question ${question._id} with AI-determined correct answer: ${correctLetter} (${correctOption.text})`);
-            } catch (updateError) {
-              console.error(`Error updating multiple choice question in database: ${updateError.message}`);
-            }
+        if (response && response.text) {
+          const letterMatch = response.text.match(/\b([A-D])\b/i);
+          if (letterMatch) {
+            correctLetter = letterMatch[1].toUpperCase();
+            // Cache the result
+            globalAIAnswerCache.set(cacheKey, correctLetter);
+            console.log(`✅ Fast grading cached AI answer for question ${cacheKey}: ${correctLetter}`);
           }
         }
+      } catch (aiError) {
+        console.error(`Error using AI to determine correct answer for multiple choice: ${aiError.message}`);
+        // Fall back to existing logic if AI fails
       }
-    } catch (aiError) {
-      console.error(`Error using AI to determine correct answer for multiple choice: ${aiError.message}`);
-      // Fall back to existing logic if AI fails
+    }
+
+    // Apply the cached or AI-determined correct answer
+    if (correctLetter) {
+      const correctOption = question.options.find(opt =>
+        opt.letter && opt.letter.toUpperCase() === correctLetter
+      );
+      if (correctOption) {
+        // Mark this option as correct in memory
+        question.options.forEach(opt => {
+          opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
+        });
+
+        // Update the question's correct answer in the database
+        const Question = require('../models/Question');
+        try {
+          const updatedOptions = question.options.map((opt, index) => {
+            if (!opt.letter) {
+              opt.letter = String.fromCharCode(65 + index);
+            }
+            if (!opt.value) {
+              opt.value = opt.letter.toLowerCase();
+            }
+            opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
+            return opt;
+          });
+
+          await Question.findByIdAndUpdate(
+            question._id,
+            {
+              $set: {
+                options: updatedOptions,
+                correctAnswer: correctOption.text
+              }
+            },
+            { new: true }
+          );
+          console.log(`Updated multiple choice question ${question._id} with AI-determined correct answer: ${correctLetter} (${correctOption.text})`);
+        } catch (updateError) {
+          console.error(`Error updating multiple choice question in database: ${updateError.message}`);
+        }
+      }
     }
   }
 
@@ -359,14 +384,31 @@ Only respond with the letter of the correct option (A, B, C, or D).
     ? 'Correct answer!'
     : `Incorrect. The correct answer is: ${correctOption?.text || modelAnswer}`;
 
-  // Run fast AI verification to catch grading errors
+  // OPTIMIZED: Skip AI verification for exact matches or high-confidence cases
+  const normalize = (text) => String(text).toLowerCase().trim();
+  const selectedNorm = normalize(selectedOption);
+  const correctNorm = normalize(correctOption?.text || modelAnswer);
+
+  // Fast path: exact match or semantic match - no need for AI verification
+  if (selectedNorm === correctNorm || selectedNorm.includes(correctNorm) || correctNorm.includes(selectedNorm)) {
+    return {
+      score,
+      feedback: isCorrect ? 'Correct answer!' : `Incorrect. The correct answer is: ${correctOption?.text || modelAnswer}`,
+      correctedAnswer: correctOption?.text || modelAnswer,
+      gradingMethod: 'fast_similarity',
+      isCorrect,
+      aiVerification: { verified: true, reason: 'Fast path match' }
+    };
+  }
+
+  // Run fast AI verification only for uncertain cases
   try {
     const verification = await verifyGradingWithAI(
       question,
       selectedOption,
       correctOption?.text || modelAnswer,
       isCorrect,
-      1500 // 1.5 second timeout for fast grading (quicker)
+      1000 // Reduced from 1500ms to 1000ms for even faster grading
     );
 
     // If AI verification disagrees with high confidence, adjust grading

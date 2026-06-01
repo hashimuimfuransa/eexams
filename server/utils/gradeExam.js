@@ -414,8 +414,55 @@ const gradeExamWithAI = async (resultId) => {
     // Track total score
     let totalScore = 0;
 
-    // Helper function to add delay between API calls
+    // Helper function to add delay between API calls (OPTIMIZED: Reduced delays)
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Cache for AI-determined correct answers to avoid redundant API calls
+    const aiAnswerCache = new Map();
+
+    // OPTIMIZED: Pre-determine correct answers for all MC/TF questions using AI in batch
+    // This runs AI checks FIRST, reducing redundant calls during grading
+    const determineCorrectAnswersWithAI = async (questions) => {
+      const { generateContent } = require('./aiService');
+      const answersMap = new Map();
+
+      for (const q of questions) {
+        if (!q || !q.text || !q.options || q.options.length < 2) continue;
+
+        const cacheKey = q._id.toString();
+        if (aiAnswerCache.has(cacheKey)) {
+          continue; // Already determined
+        }
+
+        try {
+          const options = q.options.map(opt => ({
+            letter: opt.letter || '',
+            text: opt.text || ''
+          }));
+
+          const prompt = `
+You are an expert grader. Determine the correct answer for this multiple choice question:
+Question: ${q.text}
+Options:
+${options.map(opt => `${opt.letter}. ${opt.text}`).join('\n')}
+
+Only respond with the letter (A, B, C, or D). No explanation.`;
+
+          const response = await generateContent(prompt);
+          if (response && response.text) {
+            const letterMatch = response.text.match(/\b([A-D])\b/i);
+            if (letterMatch) {
+              const correctLetter = letterMatch[1].toUpperCase();
+              aiAnswerCache.set(cacheKey, correctLetter);
+              console.log(`✅ AI determined correct answer for question ${cacheKey}: ${correctLetter}`);
+            }
+          }
+        } catch (error) {
+          console.log(`⚠️ Could not determine answer for question ${cacheKey}, will use fallback`);
+        }
+      }
+      return aiAnswerCache;
+    };
 
     // Group answers by question type for batch processing
     const multipleChoiceAnswers = [];
@@ -457,6 +504,14 @@ const gradeExamWithAI = async (resultId) => {
 
     console.log(`Grouped answers by type: ${multipleChoiceAnswers.length} multiple choice, ${trueFalseAnswers.length} true/false, ${fillInBlankAnswers.length} fill-in-blank, ${openEndedAnswers.length} open-ended`);
 
+    // OPTIMIZED: Pre-determine correct answers for MC/TF questions FIRST
+    // This reduces redundant AI calls during grading
+    const mcQuestions = multipleChoiceAnswers.map(a => a.question);
+    const tfQuestions = trueFalseAnswers.map(a => a.question);
+    console.log(`🚀 Pre-determining correct answers for ${mcQuestions.length + tfQuestions.length} questions using AI...`);
+    await determineCorrectAnswersWithAI([...mcQuestions, ...tfQuestions]);
+    console.log(`✅ AI answer cache populated with ${aiAnswerCache.size} answers`);
+
     // Process answers in batches by type for better performance
     // Process multiple choice and true/false first (faster to grade)
     const allAnswersToProcess = [
@@ -473,42 +528,42 @@ const gradeExamWithAI = async (resultId) => {
       // Check if this question has subQuestions that need special grading
       if (question.subQuestions && question.subQuestions.length > 0) {
         console.log(`Question ${i} has ${question.subQuestions.length} subQuestions - using sub-question grading`);
-        
+
         const subQGrading = gradeSubQuestions(question, answer);
-        
+
         // Update the answer with sub-question grading results
         result.answers[i].score = subQGrading.score;
         result.answers[i].feedback = subQGrading.feedback;
         result.answers[i].isCorrect = subQGrading.isCorrect;
         result.answers[i].correctedAnswer = formatCorrectAnswer(question.correctAnswer);
         result.answers[i].gradingMethod = `subquestion_${subQGrading.mode}`;
-        
+
         if (subQGrading.mode === 'choose-n') {
           result.answers[i].selectedSubQuestionIndices = subQGrading.selectedSubQuestionIndices;
           result.answers[i].requiredCount = subQGrading.requiredCount;
           result.answers[i].correctCount = subQGrading.correctCount;
           result.answers[i].scoringType = subQGrading.scoringType;
         }
-        
+
         // Add to total score
         totalScore += subQGrading.score;
-        
+
         console.log(`Sub-question grading completed for question ${i}: score=${subQGrading.score}/${question.points}, mode=${subQGrading.mode}`);
         continue; // Skip regular grading for this question
       }
 
-      // Add a delay between grading attempts to avoid rate limits
-      if (j > 0) {
-        // Add longer delays between different question types
+      // OPTIMIZED: Reduced delays - only add delay for open-ended questions which need AI grading
+      if (j > 0 && (question.type === 'open-ended' || question.type === 'image' || question.type === 'image-based')) {
+        // Only delay for AI-intensive questions, and reduce the delay
         const isNewQuestionType = j > 0 &&
           allAnswersToProcess[j].question.type !== allAnswersToProcess[j-1].question.type;
 
         if (isNewQuestionType) {
-          console.log(`Switching to new question type. Adding longer delay...`);
-          await delay(5000); // 5 second delay between question types
+          console.log(`Switching to new question type. Adding minimal delay...`);
+          await delay(1000); // Reduced from 5000ms to 1000ms
         } else {
-          console.log(`Adding delay before grading next question to avoid rate limits...`);
-          await delay(2000); // 2 second delay between questions of same type
+          console.log(`Adding minimal delay before grading next question...`);
+          await delay(500); // Reduced from 2000ms to 500ms
         }
       }
 
@@ -534,8 +589,8 @@ const gradeExamWithAI = async (resultId) => {
           let correctOptionLetter = '';
           let selectedOptionText = ''; // Will store student's answer for logging
 
-          // Use AI to determine the correct answer
-          console.log(`Using AI to determine correct answer for question ${questionNumber}`);
+          // OPTIMIZED: Use cached AI-determined answer instead of calling AI again
+          console.log(`Using cached AI-determined answer for question ${questionNumber}`);
 
           // Get the question text and options
           const questionText = question.text;
@@ -547,12 +602,21 @@ const gradeExamWithAI = async (resultId) => {
           // Prepare to use AI to determine the correct answer
           let correctLetter = '';
 
-          try {
-            // Use the Gemini AI to determine the correct answer
-            const { generateContent } = require('./aiService');
+          // OPTIMIZED: Check cache first to avoid redundant AI calls
+          const cacheKey = question._id.toString();
+          if (aiAnswerCache.has(cacheKey)) {
+            correctLetter = aiAnswerCache.get(cacheKey);
+            console.log(`✅ Using cached AI answer for question ${questionNumber}: ${correctLetter}`);
+          } else {
+            // Fallback: Use AI if not in cache (shouldn't happen with pre-determination)
+            console.log(`⚠️ Cache miss for question ${questionNumber}, using AI fallback`);
 
-            // Create a prompt for the AI
-            const prompt = `
+            try {
+              // Use the Gemini AI to determine the correct answer
+              const { generateContent } = require('./aiService');
+
+              // Create a prompt for the AI
+              const prompt = `
 You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
 
 I have a multiple choice question from a computer systems exam:
@@ -568,37 +632,41 @@ Important: Do not rely on outdated information. For example, while PS/2 ports we
 Only respond with the letter of the correct option (A, B, C, or D).
 `;
 
-            // Generate content with the AI
-            const response = await generateContent(prompt);
+              // Generate content with the AI
+              const response = await generateContent(prompt);
 
-            // Extract the letter from the response
-            if (response && response.text) {
-              // Look for a single letter A, B, C, or D in the response
-              const letterMatch = response.text.match(/\b([A-D])\b/i);
-              if (letterMatch) {
-                correctLetter = letterMatch[1].toUpperCase();
-                console.log(`AI determined correct answer for question ${questionNumber}: ${correctLetter}`);
-              } else {
-                // If no clear letter, try to find any A, B, C, or D in the response
-                const anyLetterMatch = response.text.match(/([A-D])/i);
-                if (anyLetterMatch) {
-                  correctLetter = anyLetterMatch[1].toUpperCase();
-                  console.log(`AI determined correct answer (fallback) for question ${questionNumber}: ${correctLetter}`);
+              // Extract the letter from the response
+              if (response && response.text) {
+                // Look for a single letter A, B, C, or D in the response
+                const letterMatch = response.text.match(/\b([A-D])\b/i);
+                if (letterMatch) {
+                  correctLetter = letterMatch[1].toUpperCase();
+                  console.log(`AI determined correct answer for question ${questionNumber}: ${correctLetter}`);
+                  // Cache the result
+                  aiAnswerCache.set(cacheKey, correctLetter);
                 } else {
-                  console.log(`AI could not determine a clear answer. Response: ${response.text}`);
-                  // Default to option A if AI fails
-                  correctLetter = 'A';
+                  // If no clear letter, try to find any A, B, C, or D in the response
+                  const anyLetterMatch = response.text.match(/([A-D])/i);
+                  if (anyLetterMatch) {
+                    correctLetter = anyLetterMatch[1].toUpperCase();
+                    console.log(`AI determined correct answer (fallback) for question ${questionNumber}: ${correctLetter}`);
+                    aiAnswerCache.set(cacheKey, correctLetter);
+                  } else {
+                    console.log(`AI could not determine a clear answer. Response: ${response.text}`);
+                    // Default to option A if AI fails
+                    correctLetter = 'A';
+                  }
                 }
+              } else {
+                console.log(`No response from AI for question ${questionNumber}`);
+                // Default to option A if AI fails
+                correctLetter = 'A';
               }
-            } else {
-              console.log(`No response from AI for question ${questionNumber}`);
+            } catch (aiError) {
+              console.error(`Error using AI to determine correct answer: ${aiError.message}`);
               // Default to option A if AI fails
               correctLetter = 'A';
             }
-          } catch (aiError) {
-            console.error(`Error using AI to determine correct answer: ${aiError.message}`);
-            // Default to option A if AI fails
-            correctLetter = 'A';
           }
 
           console.log(`Final determined correct answer for question ${questionNumber}: ${correctLetter}`);
@@ -1391,6 +1459,7 @@ const findAndGradeUngradedResults = async () => {
 
 /**
  * Grade a specific exam result, even if it's already been graded
+ * OPTIMIZED: Uses caching and pre-determination for faster regrading
  * @param {string} resultId - The ID of the result to grade
  * @param {boolean} forceRegrade - Whether to regrade already graded answers
  * @returns {Promise<object>} - The updated result
@@ -1427,8 +1496,54 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
     // Reset total score if we're force regrading
     let totalScore = forceRegrade ? 0 : result.totalScore || 0;
 
-    // Helper function to add delay between API calls
+    // Helper function to add delay between API calls (OPTIMIZED: Reduced delays)
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // OPTIMIZED: Cache for AI-determined answers to avoid redundant API calls
+    const aiAnswerCache = new Map();
+
+    // OPTIMIZED: Pre-determine correct answers for all MC/TF questions using AI in batch
+    const determineCorrectAnswersWithAI = async (questions) => {
+      const { generateContent } = require('./aiService');
+      const answersMap = new Map();
+
+      for (const q of questions) {
+        if (!q || !q.text || !q.options || q.options.length < 2) continue;
+
+        const cacheKey = q._id.toString();
+        if (aiAnswerCache.has(cacheKey)) {
+          continue; // Already determined
+        }
+
+        try {
+          const options = q.options.map(opt => ({
+            letter: opt.letter || '',
+            text: opt.text || ''
+          }));
+
+          const prompt = `
+You are an expert grader. Determine the correct answer for this multiple choice question:
+Question: ${q.text}
+Options:
+${options.map(opt => `${opt.letter}. ${opt.text}`).join('\n')}
+
+Only respond with the letter (A, B, C, or D). No explanation.`;
+
+          const response = await generateContent(prompt);
+          if (response && response.text) {
+            const letterMatch = response.text.match(/\b([A-D])\b/i);
+            if (letterMatch) {
+              const correctLetter = letterMatch[1].toUpperCase();
+              aiAnswerCache.set(cacheKey, correctLetter);
+              console.log(`✅ AI determined correct answer for question ${cacheKey}: ${correctLetter}`);
+            }
+          }
+        } catch (error) {
+          console.log(`⚠️ Could not determine answer for question ${cacheKey}, will use fallback`);
+        }
+      }
+      return aiAnswerCache;
+    };
 
     // Helper function to grade a single multiple choice or true/false question
     const gradeSingleMCQuestion = async (answer, question, index) => {
@@ -1455,8 +1570,8 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
       let correctOptionLetter = '';
       let selectedOptionText = ''; // Will store student's answer for logging
 
-      // Use AI to determine the correct answer
-      console.log(`Using AI to determine correct answer for question ${questionNumber}`);
+      // OPTIMIZED: Use cached AI-determined answer instead of calling AI again
+      console.log(`Using cached AI-determined answer for question ${questionNumber}`);
 
       // Get the question text and options
       const questionText = question.text;
@@ -1468,12 +1583,21 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
       // Prepare to use AI to determine the correct answer
       let correctLetter = '';
 
-      try {
-        // Use the Gemini AI to determine the correct answer
-        const { generateContent } = require('./aiService');
+      // OPTIMIZED: Check cache first to avoid redundant AI calls
+      const cacheKey = question._id.toString();
+      if (aiAnswerCache.has(cacheKey)) {
+        correctLetter = aiAnswerCache.get(cacheKey);
+        console.log(`✅ Using cached AI answer for question ${questionNumber}: ${correctLetter}`);
+      } else {
+        // Fallback: Use AI if not in cache (shouldn't happen with pre-determination)
+        console.log(`⚠️ Cache miss for question ${questionNumber}, using AI fallback`);
 
-        // Create a prompt for the AI
-        const prompt = `
+        try {
+          // Use the Gemini AI to determine the correct answer
+          const { generateContent } = require('./aiService');
+
+          // Create a prompt for the AI
+          const prompt = `
 You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
 
 I have a multiple choice question from a computer systems exam:
@@ -1489,37 +1613,41 @@ Important: Do not rely on outdated information. For example, while PS/2 ports we
 Only respond with the letter of the correct option (A, B, C, or D).
 `;
 
-        // Generate content with the AI
-        const response = await generateContent(prompt);
+          // Generate content with the AI
+          const response = await generateContent(prompt);
 
-        // Extract the letter from the response
-        if (response && response.text) {
-          // Look for a single letter A, B, C, or D in the response
-          const letterMatch = response.text.match(/\b([A-D])\b/i);
-          if (letterMatch) {
-            correctLetter = letterMatch[1].toUpperCase();
-            console.log(`AI determined correct answer for question ${questionNumber}: ${correctLetter}`);
-          } else {
-            // If no clear letter, try to find any A, B, C, or D in the response
-            const anyLetterMatch = response.text.match(/([A-D])/i);
-            if (anyLetterMatch) {
-              correctLetter = anyLetterMatch[1].toUpperCase();
-              console.log(`AI determined correct answer (fallback) for question ${questionNumber}: ${correctLetter}`);
+          // Extract the letter from the response
+          if (response && response.text) {
+            // Look for a single letter A, B, C, or D in the response
+            const letterMatch = response.text.match(/\b([A-D])\b/i);
+            if (letterMatch) {
+              correctLetter = letterMatch[1].toUpperCase();
+              console.log(`AI determined correct answer for question ${questionNumber}: ${correctLetter}`);
+              // Cache the result
+              aiAnswerCache.set(cacheKey, correctLetter);
             } else {
-              console.log(`AI could not determine a clear answer. Response: ${response.text}`);
-              // Default to option A if AI fails
-              correctLetter = 'A';
+              // If no clear letter, try to find any A, B, C, or D in the response
+              const anyLetterMatch = response.text.match(/([A-D])/i);
+              if (anyLetterMatch) {
+                correctLetter = anyLetterMatch[1].toUpperCase();
+                console.log(`AI determined correct answer (fallback) for question ${questionNumber}: ${correctLetter}`);
+                aiAnswerCache.set(cacheKey, correctLetter);
+              } else {
+                console.log(`AI could not determine a clear answer. Response: ${response.text}`);
+                // Default to option A if AI fails
+                correctLetter = 'A';
+              }
             }
+          } else {
+            console.log(`No response from AI for question ${questionNumber}`);
+            // Default to option A if AI fails
+            correctLetter = 'A';
           }
-        } else {
-          console.log(`No response from AI for question ${questionNumber}`);
+        } catch (aiError) {
+          console.error(`Error using AI to determine correct answer: ${aiError.message}`);
           // Default to option A if AI fails
           correctLetter = 'A';
         }
-      } catch (aiError) {
-        console.error(`Error using AI to determine correct answer: ${aiError.message}`);
-        // Default to option A if AI fails
-        correctLetter = 'A';
       }
 
       console.log(`Final determined correct answer for question ${questionNumber}: ${correctLetter}`);
@@ -1716,6 +1844,12 @@ Only respond with the letter of the correct option (A, B, C, or D).
 
     console.log(`\n🚀 PARALLEL GRADING: Processing ${mcQuestions.length} MC/TF questions in parallel, ${openEndedQuestions.length} open-ended sequentially`);
 
+    // OPTIMIZED: Pre-determine correct answers for MC/TF questions FIRST
+    const mcQuestionsList = mcQuestions.map(a => a.question);
+    console.log(`🚀 Pre-determining correct answers for ${mcQuestionsList.length} MC/TF questions using AI...`);
+    await determineCorrectAnswersWithAI(mcQuestionsList);
+    console.log(`✅ AI answer cache populated with ${aiAnswerCache.size} answers for regrading`);
+
     // Process all MC/TF questions in parallel with concurrency limit
     const CONCURRENCY_LIMIT = 5; // Process 5 at a time to avoid overwhelming AI
     console.log(`Processing ${mcQuestions.length} MC/TF questions with concurrency limit of ${CONCURRENCY_LIMIT}...`);
@@ -1729,9 +1863,9 @@ Only respond with the letter of the correct option (A, B, C, or D).
         gradeSingleMCQuestion(answer, question, index)
       ));
 
-      // Small delay between batches to avoid rate limits
+      // OPTIMIZED: Reduced delay between batches
       if (i + CONCURRENCY_LIMIT < mcQuestions.length) {
-        await delay(500);
+        await delay(200); // Reduced from 500ms to 200ms
       }
     }
 
@@ -1741,10 +1875,10 @@ Only respond with the letter of the correct option (A, B, C, or D).
     for (let idx = 0; idx < openEndedQuestions.length; idx++) {
       const { answer, question, index: i } = openEndedQuestions[idx];
 
-      // Add a delay between grading attempts to avoid rate limits
+      // OPTIMIZED: Reduced delay between grading attempts
       if (idx > 0) {
-        console.log(`Adding delay before grading next question to avoid rate limits...`);
-        await delay(3000); // 3 second delay between questions
+        console.log(`Adding minimal delay before grading next question...`);
+        await delay(1000); // Reduced from 3000ms to 1000ms
       }
 
       // Skip empty answers

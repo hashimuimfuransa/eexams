@@ -87,6 +87,7 @@ const validateAnswerRelevance = (answer, questionText) => {
 
 /**
  * Enhanced AI grading system with improved accuracy and reliability
+ * OPTIMIZED: Reduced work and faster processing
  * @param {string} studentAnswer - The student's answer
  * @param {string} modelAnswer - The model answer to compare against
  * @param {number} maxPoints - Maximum points for the question
@@ -100,7 +101,7 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
 
     // Parse answer content to extract actual text from [MATH: ...] and [DRAWING: ...] formats
     const parsedAnswer = parseAnswerContent(studentAnswer || '');
-    
+
     // Validate answer relevance before grading
     const relevanceCheck = validateAnswerRelevance(parsedAnswer, questionText);
     if (!relevanceCheck.isValid) {
@@ -148,6 +149,21 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
     const cleanStudentAnswer = String(parsedAnswer).trim().replace(/\s+/g, ' ');
     const cleanModelAnswer = String(modelAnswer || '').trim().replace(/\s+/g, ' ');
     const cleanQuestionText = String(questionText || '').trim().replace(/\s+/g, ' ');
+
+    // OPTIMIZED: Fast path for exact matches - skip AI entirely
+    if (cleanStudentAnswer.toLowerCase() === cleanModelAnswer.toLowerCase()) {
+      console.log('✅ Exact match detected, skipping AI grading');
+      return {
+        score: maxPoints,
+        feedback: 'Your answer is exactly correct!',
+        correctedAnswer: modelAnswer,
+        details: {
+          questionType: questionType,
+          gradingMethod: 'exact_match',
+          aiGraded: false
+        }
+      };
+    }
 
     // Enhanced model answer validation - be more lenient for sections B & C
     if (!cleanModelAnswer ||

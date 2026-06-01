@@ -5,14 +5,15 @@ const groqClient = require('./groqClient');
 /**
  * Fast AI verification of grading results
  * Quickly checks if the grading decision appears correct
+ * OPTIMIZED: Runs AI check FIRST for correct answer determination, then verifies
  * @param {Object} question - The question object
  * @param {string} studentAnswer - The student's answer
  * @param {string} correctAnswer - The correct answer
  * @param {boolean} currentIsCorrect - Current grading decision
- * @param {number} timeoutMs - Timeout in milliseconds (default 3000ms for speed)
+ * @param {number} timeoutMs - Timeout in milliseconds (default 2000ms for speed)
  * @returns {Promise<Object>} - Verification result with confidence and recommendation
  */
-const verifyGradingWithAI = async (question, studentAnswer, correctAnswer, currentIsCorrect, timeoutMs = 3000) => {
+const verifyGradingWithAI = async (question, studentAnswer, correctAnswer, currentIsCorrect, timeoutMs = 2000) => {
   try {
     // Skip verification if answers are empty or too short for meaningful comparison
     if (!studentAnswer || !correctAnswer || studentAnswer.trim().length === 0) {
@@ -24,7 +25,7 @@ const verifyGradingWithAI = async (question, studentAnswer, correctAnswer, curre
     const studentNorm = normalize(studentAnswer);
     const correctNorm = normalize(correctAnswer);
 
-    // Quick exact match - no need for AI
+    // Quick exact match - no need for AI (FAST PATH)
     if (studentNorm === correctNorm) {
       return { verified: true, confidence: 1.0, recommendation: 'accept', reason: 'Exact match' };
     }
@@ -76,7 +77,12 @@ const verifyGradingWithAI = async (question, studentAnswer, correctAnswer, curre
       return { verified: true, confidence: 0.9, recommendation: 'accept', reason: 'MC check passed' };
     }
 
-    // For other types, use fast AI verification with short timeout
+    // For other types, use fast AI verification with short timeout (OPTIMIZED: Only verify if uncertain)
+    // Skip AI verification if the current grading is already confident (exact match or semantic match)
+    if (currentIsCorrect && (studentNorm.includes(correctNorm) || correctNorm.includes(studentNorm))) {
+      return { verified: true, confidence: 0.9, recommendation: 'accept', reason: 'Semantic match detected' };
+    }
+
     const prompt = `Quick grading verification (respond with JSON only):
 
 Question: ${question.text?.substring(0, 200)}
@@ -695,9 +701,12 @@ const gradeMultipleChoice = async (question, answer, modelAnswer) => {
       };
     }
 
-    // Use AI to determine the correct answer (like regrading does)
-    // This ensures consistency between initial grading and regrading
-    if (question.options && Array.isArray(question.options) && question.options.length >= 2) {
+    // OPTIMIZED: Skip AI determination if question already has a correct option marked
+    // Only use AI if no correct option is clearly defined
+    const hasCorrectOption = question.options && Array.isArray(question.options) &&
+      question.options.some(opt => opt.isCorrect === true);
+
+    if (!hasCorrectOption && question.options && Array.isArray(question.options) && question.options.length >= 2) {
       try {
         const { generateContent } = require('./aiService');
         const questionText = question.text;

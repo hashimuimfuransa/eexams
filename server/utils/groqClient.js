@@ -143,7 +143,12 @@ const createGroqClient = () => {
     // Check if there's already an identical request in flight
     if (inFlightRequests.has(cacheKey) && !options.skipCache) {
       console.log(`🔄 Request already in flight, waiting for existing promise for key ${cacheKey.substring(0, 8)}...`);
-      return inFlightRequests.get(cacheKey);
+      const existingPromise = inFlightRequests.get(cacheKey);
+      // Add timeout to prevent indefinite waiting if the first request hangs
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request deduplication timeout - first request took too long')), 95000);
+      });
+      return Promise.race([existingPromise, timeoutPromise]);
     }
 
     // Create the request promise

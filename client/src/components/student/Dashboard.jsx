@@ -591,7 +591,6 @@ const Dashboard = () => {
                 );
 
                 const canStart = !exam.isLocked && exam.status !== 'in-progress' && (exam.status !== 'completed' || approvedRetakeRequest);
-                const canRequestRetake = exam.status === 'completed' && !exam.isLocked && !approvedRetakeRequest && !pendingRetakeRequest;
                 const getStatusLabel = () => {
                   if (approvedRetakeRequest) return 'Retake Approved';
                   if (pendingRetakeRequest) return 'Retake Pending';
@@ -673,23 +672,6 @@ const Dashboard = () => {
                               }}
                             >
                               Start Exam
-                            </Button>
-                          ) : canRequestRetake ? (
-                            <Button
-                              variant="outlined"
-                              onClick={() => handleRetakeRequest(exam._id, exam.title)}
-                              disabled={requestingExam === exam._id}
-                              size={isMobile ? 'medium' : 'large'}
-                              startIcon={<AddCircle />}
-                              fullWidth={isMobile}
-                              sx={{
-                                fontWeight: 'bold',
-                                px: { xs: 2, sm: 3 },
-                                py: { xs: 1.2, sm: 1.5 },
-                                textTransform: 'none'
-                              }}
-                            >
-                              {requestingExam === exam._id ? 'Requesting...' : 'Request Retake'}
                             </Button>
                           ) : (
                             <Button

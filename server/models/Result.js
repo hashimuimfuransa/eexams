@@ -165,7 +165,19 @@ const ResultSchema = new mongoose.Schema({
         'sub_question_grading',
         // AI-determined grading methods
         'ai_determined_correct',
-        'ai_determined_incorrect'
+        'ai_determined_incorrect',
+        // Numerical and keyword matching methods
+        'numerical_match',
+        'numerical_partial',
+        'keyword_matching_poor',
+        'meaningless_answer',
+        'meaningless_answer_short',
+        'meaningless_answer_fallback',
+        'ai_no_model_answer',
+        'default_fallback_insufficient',
+        'letter_based',
+        'isCorrect_flag',
+        'modelAnswer_comparison'
       ],
       default: 'enhanced_grading'
     },

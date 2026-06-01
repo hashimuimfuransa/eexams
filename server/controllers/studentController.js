@@ -30,9 +30,17 @@ const getAvailableExams = async (req, res) => {
       student: req.user._id
     }).select('exam isCompleted');
 
-    // Map results to exam IDs
+    // Get approved retake requests so those exams are treated as not-started
+    const approvedRetakeRequests = await ExamRequest.find({
+      student: req.user._id,
+      isRetake: true,
+      status: 'approved'
+    }).select('exam');
+    const approvedRetakeExamIds = approvedRetakeRequests.map(r => r.exam.toString());
+
+    // Map results to exam IDs (exclude approved retake exams from completed list)
     const completedExams = results
-      .filter(result => result.isCompleted)
+      .filter(result => result.isCompleted && !approvedRetakeExamIds.includes(result.exam.toString()))
       .map(result => result.exam.toString());
 
     const inProgressExams = results

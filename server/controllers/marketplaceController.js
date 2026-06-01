@@ -163,6 +163,16 @@ const processExamApproval = async (request, waivePayment = false) => {
 
   await request.save();
 
+  // If this is a retake approval, delete the previous completed result so the student can retake
+  if (request.isRetake) {
+    await Result.findOneAndDelete({
+      student: studentUser._id,
+      exam: request.exam,
+      isCompleted: true
+    });
+    console.log(`Marketplace approval - Deleted previous completed result for retake: student ${studentUser._id}, exam ${request.exam}`);
+  }
+
   // Send email notification to student about exam approval
   // Include login credentials if this is a new user
   emailService.sendStudentExamApprovedEmail(studentUser, exam, shareToken, isNewUser ? tempPassword : null).catch(err => {

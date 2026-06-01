@@ -28,7 +28,8 @@ import {
   Refresh,
   ArrowForward,
   AddCircle,
-  Psychology
+  Psychology,
+  Replay
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -301,7 +302,18 @@ const Dashboard = () => {
     );
   }
 
-  const hasAvailableExams = availableExams.length > 0;
+  // Approved retake requests (marketplace or assigned exam retakes)
+  const approvedRetakeRequests = pendingRequests.filter(
+    r => r.status === 'approved' && r.isRetake
+  );
+  const approvedRetakeExamIds = approvedRetakeRequests.map(r => r.exam?._id?.toString()).filter(Boolean);
+
+  // Available exams that are NOT retake-approved (retakes shown in their own section)
+  const regularAvailableExams = availableExams.filter(
+    exam => !approvedRetakeExamIds.includes(exam._id?.toString())
+  );
+
+  const hasAvailableExams = regularAvailableExams.length > 0 || approvedRetakeRequests.length > 0;
 
   return (
     <StudentLayout>
@@ -524,6 +536,76 @@ const Dashboard = () => {
           </Box>
         )}
 
+        {/* Approved Retake Exams Section */}
+        {approvedRetakeRequests.length > 0 && (
+          <Box sx={{ mt: 4 }}>
+            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Replay color="warning" />
+              Approved Retake Exams
+            </Typography>
+            <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'warning.light', border: '2px solid', borderColor: 'warning.main' }}>
+              {approvedRetakeRequests.map((request) => {
+                const examId = request.exam?._id;
+                const examTitle = request.exam?.title || request.examTitle || 'Exam';
+                const matchedAvailableExam = availableExams.find(e => e._id?.toString() === examId?.toString());
+                const linkTarget = examId ? `/student/exam/${examId}` : null;
+
+                return (
+                  <Card key={request._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper', border: '2px solid', borderColor: 'warning.main' }}>
+                    <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                        <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
+                          <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">
+                            {examTitle}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Retake approved on: {formatDate(request.processedAt || request.requestedAt)}
+                          </Typography>
+                          {matchedAvailableExam?.timeLimit && (
+                            <Chip
+                              icon={<AccessTime fontSize="small" />}
+                              label={`${matchedAvailableExam.timeLimit} minutes`}
+                              size="small"
+                              variant="outlined"
+                              sx={{ mt: 1 }}
+                            />
+                          )}
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', justifyContent: { xs: 'stretch', sm: 'flex-start' }, width: { xs: '100%', sm: 'auto' } }}>
+                          <Chip
+                            label="Retake Approved"
+                            color="warning"
+                            size="medium"
+                            sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}
+                          />
+                          {linkTarget ? (
+                            <Button
+                              variant="contained"
+                              component={RouterLink}
+                              to={linkTarget}
+                              size={isMobile ? 'medium' : 'large'}
+                              startIcon={<Replay />}
+                              fullWidth={isMobile}
+                              color="warning"
+                              sx={{ fontWeight: 'bold', px: { xs: 2, sm: 3 }, py: { xs: 1.2, sm: 1.5 }, textTransform: 'none' }}
+                            >
+                              Start Retake
+                            </Button>
+                          ) : (
+                            <Button variant="outlined" disabled size={isMobile ? 'medium' : 'large'} fullWidth={isMobile}>
+                              Not Available
+                            </Button>
+                          )}
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Paper>
+          </Box>
+        )}
+
         {/* Available Exams Section */}
         <Box sx={{ mt: 4 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -551,7 +633,7 @@ const Dashboard = () => {
             </Button>
           </Box>
 
-          {availableExams.length === 0 ? (
+          {regularAvailableExams.length === 0 ? (
             <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mb: 4, bgcolor: 'grey.50' }}>
               <School sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" fontWeight="bold">
@@ -581,11 +663,9 @@ const Dashboard = () => {
             </Paper>
           ) : (
             <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
-              {availableExams.map((exam) => {
-                // Check if there's an approved or pending retake request for this exam
-                const approvedRetakeRequest = pendingRequests.find(
-                  r => r.exam?._id?.toString() === exam._id?.toString() && r.status === 'approved' && r.isRetake
-                );
+              {regularAvailableExams.map((exam) => {
+                // Check if there's a pending retake request for this exam (approved ones are in their own section)
+                const approvedRetakeRequest = null;
                 const pendingRetakeRequest = pendingRequests.find(
                   r => r.exam?._id?.toString() === exam._id?.toString() && r.status === 'pending' && r.isRetake
                 );

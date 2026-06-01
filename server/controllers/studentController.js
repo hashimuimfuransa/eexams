@@ -34,8 +34,9 @@ const getAvailableExams = async (req, res) => {
     const approvedRequests = await ExamRequest.find({
       student: req.user._id,
       status: 'approved'
-    }).select('exam isRetake');
-    const approvedRetakeExamIds = approvedRequests.filter(r => r.isRetake).map(r => r.exam.toString());
+    }).select('exam isRetake accessCodeUsed');
+    // Only count retake as active if the access code hasn't been used (i.e. retake not yet completed)
+    const approvedRetakeExamIds = approvedRequests.filter(r => r.isRetake && !r.accessCodeUsed).map(r => r.exam.toString());
     const approvedAccessExamIds = approvedRequests.map(r => r.exam.toString());
 
     // Map results to exam IDs (exclude approved retake exams from completed list)

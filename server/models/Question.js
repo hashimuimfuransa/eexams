@@ -10,7 +10,7 @@ const QuestionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured'],
+    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'extended-response', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured'],
     required: true
   },
   imageUrl: {
@@ -120,7 +120,7 @@ const QuestionSchema = new mongoose.Schema({
     text: String,
     type: {
       type: String,
-      enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured']
+      enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'extended-response', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured']
     },
     options: [{
       text: String,

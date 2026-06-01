@@ -1133,6 +1133,36 @@ const allowStudentRetake = async (req, res) => {
       await Result.deleteOne({ _id: completedResult._id });
     }
 
+    // Create or update an approved ExamRequest so the dashboard shows the retake section
+    const student = await User.findById(studentId).select('firstName lastName email phone');
+    if (student) {
+      // Remove any existing pending retake request for this exam/student
+      await ExamRequest.deleteMany({ exam: examId, student: studentId, isRetake: true, status: 'pending' });
+
+      // Upsert an approved retake ExamRequest (reset accessCodeUsed so exam shows as retakeable)
+      await ExamRequest.findOneAndUpdate(
+        { exam: examId, student: studentId, isRetake: true },
+        {
+          exam: examId,
+          examTitle: exam.title,
+          teacher: exam.createdBy,
+          student: studentId,
+          userInfo: {
+            name: `${student.firstName} ${student.lastName}`,
+            email: student.email,
+            phone: student.phone || ''
+          },
+          amount: 0,
+          isRetake: true,
+          status: 'approved',
+          accessCodeUsed: false,
+          processedAt: new Date()
+        },
+        { upsert: true, new: true }
+      );
+      console.log(`[AllowRetake] Created/updated approved ExamRequest for student ${studentId} on exam ${examId}`);
+    }
+
     res.json({
       success: true,
       message: 'Student can now retake this exam'

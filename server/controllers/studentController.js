@@ -247,6 +247,16 @@ const getExamById = async (req, res) => {
       .filter(result => !result.isCompleted)
       .map(result => result.exam.toString());
 
+    // Check if student has an approved request for this exam (overrides isLocked)
+    const approvedRequest = await ExamRequest.findOne({
+      student: req.user._id,
+      exam: exam._id,
+      status: 'approved'
+    });
+    if (exam.isLocked && approvedRequest) {
+      examObj.isLocked = false;
+    }
+
     // Add completion status
     if (completedExams.includes(exam._id.toString())) {
       examObj.status = 'completed';
@@ -258,7 +268,7 @@ const getExamById = async (req, res) => {
 
     // Add availability status
     const now = new Date();
-    if (exam.isLocked) {
+    if (examObj.isLocked) {
       examObj.availability = 'locked';
     } else if (exam.startTime && exam.endTime) {
       if (now < exam.startTime) {

@@ -235,7 +235,8 @@ function buildSectionsInstruction(questionTypes) {
     'ordering': 'Order with items[], itemsToOrder{items[], correctOrder[indices]}, correctAnswer(explanation string), marks',
     'drag-drop': 'Drag-drop with dragDropData{dropZones[], draggableItems[], correctPlacements[{item,zone}]}, correctAnswer(explanation string), marks',
     'image-based': 'Image-based with imageUrl, correctAnswer(string), explanation',
-    'image': 'Image with imageUrl, correctAnswer(string), explanation'
+    'image': 'Image with imageUrl, correctAnswer(string), explanation',
+    'structured': 'Structured with subQuestions[{label,text,type,points,correctAnswer,options}], subQuestionConfig{mode,requiredCount,scoringType}, correctAnswer(explanation string), marks'
   };
 
   return questionTypes.map((qt, idx) => {
@@ -315,7 +316,11 @@ function mapQuestionType(type) {
   if (t.includes('short') || t.includes('brief') || t.includes('one-word')) {
     return 'short-answer';
   }
-  
+  // Structured variations
+  if (t.includes('structured') || t.includes('multi-part') || t.includes('composite')) {
+    return 'structured';
+  }
+
   return 'multiple-choice'; // default
 }
 

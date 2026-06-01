@@ -510,7 +510,8 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
 
       case 'open-ended':
       case 'short-answer':
-        console.log(`🤖 AI grading open-ended question ${question._id} in section ${question.section}`);
+      case 'structured':
+        console.log(`🤖 AI grading ${question.type} question ${question._id} in section ${question.section}`);
 
         // Parse answer content to extract actual text from [MATH: ...] and [DRAWING: ...] formats
         const parsedAnswer = parseAnswerContent(answer.textAnswer || '');
@@ -541,7 +542,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
             correctedAnswer: modelAnswer || formatCorrectAnswer(question.correctAnswer, 'Model answer not available'),
             details: {
               section: question.section,
-              questionType: 'open-ended',
+              questionType: question.type,
               gradingMethod: 'answer_validation_failed',
               validationReason: relevanceCheck.reason,
               multiPartInfo,
@@ -586,7 +587,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
             ...openEndedResult.details,
             section: question.section,
             sectionType: sectionType,
-            questionType: 'open-ended',
+            questionType: question.type,
             aiGraded: true,
             gradingMethod: 'enhanced_ai_grading_section',
             processingOptimized: true,

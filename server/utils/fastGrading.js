@@ -196,6 +196,7 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
       case 'image-based':
       case 'essay':
       case 'short-answer':
+      case 'structured':
         return await gradeOpenEndedFast(question, answer, modelAnswer);
 
       case 'true-false':

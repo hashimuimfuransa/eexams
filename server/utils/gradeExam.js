@@ -497,7 +497,7 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
         trueFalseAnswers.push(answerWithIndex);
       } else if (question.type === 'fill-in-blank') {
         fillInBlankAnswers.push(answerWithIndex);
-      } else if (question.type === 'open-ended' || question.type === 'image' || question.type === 'image-based') {
+      } else if (question.type === 'open-ended' || question.type === 'image' || question.type === 'image-based' || question.type === 'structured') {
         openEndedAnswers.push(answerWithIndex);
       }
     }
@@ -553,7 +553,7 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
       }
 
       // OPTIMIZED: Reduced delays - only add delay for open-ended questions which need AI grading
-      if (j > 0 && (question.type === 'open-ended' || question.type === 'image' || question.type === 'image-based')) {
+      if (j > 0 && (question.type === 'open-ended' || question.type === 'image' || question.type === 'image-based' || question.type === 'structured')) {
         // Only delay for AI-intensive questions, and reduce the delay
         const isNewQuestionType = j > 0 &&
           allAnswersToProcess[j].question.type !== allAnswersToProcess[j-1].question.type;
@@ -1421,7 +1421,7 @@ const findAndGradeUngradedResults = async () => {
 
         // Check if this result has any ungraded open-ended or image-based answers
         const hasUngradedAnswers = result.answers.some(answer =>
-          (answer.question.type === 'open-ended' || answer.question.type === 'image' || answer.question.type === 'image-based') &&
+          (answer.question.type === 'open-ended' || answer.question.type === 'image' || answer.question.type === 'image-based' || answer.question.type === 'structured') &&
           answer.textAnswer &&
           answer.textAnswer.trim() !== '' &&
           (answer.score === 0 || !answer.feedback || !answer.correctedAnswer)

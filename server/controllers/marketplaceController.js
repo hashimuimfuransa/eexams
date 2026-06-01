@@ -66,7 +66,12 @@ const processExamApproval = async (request, waivePayment = false) => {
   let isNewUser = false;
   let tempPassword = null;
 
-  if (request.userInfo.email) {
+  // Prefer the stored student reference (ObjectId) over email lookup
+  if (request.student) {
+    studentUser = await User.findById(request.student);
+  }
+
+  if (!studentUser && request.userInfo.email) {
     studentUser = await User.findOne({ email: request.userInfo.email.toLowerCase().trim() });
   }
 

@@ -84,7 +84,10 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
     'short-answer': '#8B5CF6',
     'essay': '#F59E0B',
     'matching': '#10B981',
-    'ordering': '#6366F1'
+    'ordering': '#6366F1',
+    'drag-drop': '#14B8A6',
+    'image-based': '#F97316',
+    'structured': '#8B5CF6'
   };
   const typeIcons = {
     'multiple-choice': <RadioButtonChecked sx={{ fontSize: 14 }} />,
@@ -95,7 +98,10 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
     'short-answer': <ShortText sx={{ fontSize: 14 }} />,
     'essay': <Article sx={{ fontSize: 14 }} />,
     'matching': <FormatListNumbered sx={{ fontSize: 14 }} />,
-    'ordering': <FormatListNumbered sx={{ fontSize: 14 }} />
+    'ordering': <FormatListNumbered sx={{ fontSize: 14 }} />,
+    'drag-drop': <DragIndicator sx={{ fontSize: 14 }} />,
+    'image-based': <Visibility sx={{ fontSize: 14 }} />,
+    'structured': <FormatListNumbered sx={{ fontSize: 14 }} />
   };
 
   const handleSave = () => {
@@ -465,6 +471,9 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
                   <MenuItem value="open-ended" sx={{ fontSize: isMobile ? 12 : 14 }}>Open Ended</MenuItem>
                   <MenuItem value="matching" sx={{ fontSize: isMobile ? 12 : 14 }}>Matching</MenuItem>
                   <MenuItem value="ordering" sx={{ fontSize: isMobile ? 12 : 14 }}>Ordering</MenuItem>
+                  <MenuItem value="drag-drop" sx={{ fontSize: isMobile ? 12 : 14 }}>Drag & Drop</MenuItem>
+                  <MenuItem value="image-based" sx={{ fontSize: isMobile ? 12 : 14 }}>Image Based</MenuItem>
+                  <MenuItem value="structured" sx={{ fontSize: isMobile ? 12 : 14 }}>Structured</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -1019,6 +1028,11 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
                             <MenuItem value="multiple-choice">Multiple Choice</MenuItem>
                             <MenuItem value="true-false">True/False</MenuItem>
                             <MenuItem value="fill-in-blank">Fill in blank</MenuItem>
+                            <MenuItem value="matching">Matching</MenuItem>
+                            <MenuItem value="ordering">Ordering</MenuItem>
+                            <MenuItem value="drag-drop">Drag & Drop</MenuItem>
+                            <MenuItem value="image-based">Image Based</MenuItem>
+                            <MenuItem value="structured">Structured</MenuItem>
                           </Select>
                         </FormControl>
                         <TextField
@@ -4752,8 +4766,15 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                         >
                           <MenuItem value="open-ended">Open-ended</MenuItem>
                           <MenuItem value="short-answer">Short Answer</MenuItem>
+                          <MenuItem value="essay">Essay</MenuItem>
                           <MenuItem value="multiple-choice">Multiple Choice</MenuItem>
                           <MenuItem value="true-false">True/False</MenuItem>
+                          <MenuItem value="fill-in-blank">Fill in blank</MenuItem>
+                          <MenuItem value="matching">Matching</MenuItem>
+                          <MenuItem value="ordering">Ordering</MenuItem>
+                          <MenuItem value="drag-drop">Drag & Drop</MenuItem>
+                          <MenuItem value="image-based">Image Based</MenuItem>
+                          <MenuItem value="structured">Structured</MenuItem>
                         </Select>
                       </FormControl>
                       <TextField
@@ -5139,10 +5160,14 @@ const Q_TYPES = [
   { value: 'multiple-choice', label: 'Multiple Choice' },
   { value: 'true-false',      label: 'True / False' },
   { value: 'short-answer',    label: 'Short Answer' },
+  { value: 'essay',           label: 'Essay' },
   { value: 'matching',        label: 'Matching' },
   { value: 'ordering',        label: 'Ordering' },
+  { value: 'drag-drop',       label: 'Drag & Drop' },
   { value: 'fill-blank',      label: 'Fill in the Blank' },
   { value: 'open-ended',      label: 'Open Ended' },
+  { value: 'image-based',     label: 'Image Based' },
+  { value: 'structured',      label: 'Structured' },
 ];
 const DIFFS = ['easy', 'medium', 'hard'];
 const LETTERS = ['A', 'B', 'C', 'D'];

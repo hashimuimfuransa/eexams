@@ -590,7 +590,7 @@ const Dashboard = () => {
                   r => r.exam?._id?.toString() === exam._id?.toString() && r.status === 'pending' && r.isRetake
                 );
 
-                const canStart = !exam.isLocked && exam.status !== 'in-progress' && exam.status !== 'completed';
+                const canStart = !exam.isLocked && exam.status !== 'in-progress' && (exam.status !== 'completed' || !!approvedRetakeRequest);
                 const getStatusLabel = () => {
                   if (approvedRetakeRequest) return 'Retake Approved';
                   if (pendingRetakeRequest) return 'Retake Pending';

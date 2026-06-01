@@ -1397,7 +1397,7 @@ const ExamInterface = () => {
     console.log(`🔍 handleSaveLastQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}`);
 
     // For open-ended/image questions, get the current answer from ref and save directly (same as handleNextQuestion)
-    if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image') {
+    if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured') {
       const refAnswer = openAnswerRef.current ? openAnswerRef.current() : '';
       const currentTextAnswer = (refAnswer && refAnswer.trim()) ? refAnswer : (currentAnswer?.textAnswer || '');
       console.log(`🔍 Last question save: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
@@ -1479,7 +1479,7 @@ const ExamInterface = () => {
       // Save interactive question answers
       try {
         let answerValue;
-        if (questionType === 'matching') {
+        if (questionType === 'matching' || questionType === 'structured') {
           answerValue = currentAnswer.matchingAnswers;
         } else if (questionType === 'ordering') {
           answerValue = currentAnswer.orderingAnswer;
@@ -1613,7 +1613,7 @@ const ExamInterface = () => {
       console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
 
       // For open-ended questions, get the current answer from ref and save directly
-      if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image') {
+      if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured') {
         const refAnswer = openAnswerRef.current ? openAnswerRef.current() : '';
         const currentTextAnswer = (refAnswer && refAnswer.trim()) ? refAnswer : (currentAnswer?.textAnswer || '');
         console.log(`🔍 Open-ended question: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
@@ -2163,7 +2163,7 @@ const ExamInterface = () => {
       }
 
       // Show brief success message only for manual saves
-      if (type === 'open-ended' || type === 'essay') {
+      if (type === 'open-ended' || type === 'essay' || type === 'structured') {
         setSnackbar({
           open: true,
           message: 'Answer saved successfully',
@@ -6457,6 +6457,8 @@ const getQuestionTypeLabel = (type, section) => {
     case 'image':
     case 'image-based':
       return 'Image Based';
+    case 'structured':
+      return 'Structured Question';
     default:
       return section === 'B' ? 'Short Answer' : 'Essay Question';
   }
@@ -6488,6 +6490,8 @@ const getQuestionTypeColor = (type, section) => {
     case 'image':
     case 'image-based':
       return 'success';
+    case 'structured':
+      return 'secondary';
     default:
       return section === 'B' ? 'info' : 'secondary';
   }

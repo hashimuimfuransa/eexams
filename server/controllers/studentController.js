@@ -30,13 +30,13 @@ const getAvailableExams = async (req, res) => {
       student: req.user._id
     }).select('exam isCompleted');
 
-    // Get approved retake requests so those exams are treated as not-started
-    const approvedRetakeRequests = await ExamRequest.find({
+    // Get all approved exam requests (retake and initial) so we can override locked/completed status
+    const approvedRequests = await ExamRequest.find({
       student: req.user._id,
-      isRetake: true,
       status: 'approved'
-    }).select('exam');
-    const approvedRetakeExamIds = approvedRetakeRequests.map(r => r.exam.toString());
+    }).select('exam isRetake');
+    const approvedRetakeExamIds = approvedRequests.filter(r => r.isRetake).map(r => r.exam.toString());
+    const approvedAccessExamIds = approvedRequests.map(r => r.exam.toString());
 
     // Map results to exam IDs (exclude approved retake exams from completed list)
     const completedExams = results
@@ -87,8 +87,13 @@ const getAvailableExams = async (req, res) => {
         examObj.status = 'not-started';
       }
 
+      // If the student has an approved request for this exam, override isLocked
+      if (exam.isLocked && approvedAccessExamIds.includes(exam._id.toString())) {
+        examObj.isLocked = false;
+      }
+
       // Add availability status
-      if (exam.isLocked) {
+      if (examObj.isLocked) {
         examObj.availability = 'locked';
       } else if (exam.startTime && exam.endTime) {
         if (now < exam.startTime) {

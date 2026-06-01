@@ -10,6 +10,7 @@ const { parseExamFile } = require('../utils/fileParser');
 const { gradeOpenEndedAnswer, generateModelAnswers } = require('../utils/aiGrading');
 const { gradeQuestionByType } = require('../utils/enhancedGrading');
 const cacheService = require('../utils/cacheService');
+const ExamRequest = require('../models/ExamRequest');
 const { batchUpdateAnswers, batchGradeAnswers, bulkFetchQuestions } = require('../utils/batchOperations');
 
 /**
@@ -601,23 +602,29 @@ const getExamById = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    // If user is a student and exam is locked, return the exam with a locked flag
-    // This allows the frontend to display a proper message
+    // If user is a student and exam is locked, check if they have an approved request before blocking
     if (req.user.role === 'student' && exam.isLocked) {
-      console.log(`Student ${req.user._id} attempted to access locked exam ${exam._id}`);
-
-      // Return basic exam info without questions
-      return res.json({
-        _id: exam._id,
-        title: exam.title,
-        description: exam.description,
-        timeLimit: exam.timeLimit,
-        isLocked: true,
-        allowSelectiveAnswering: exam.allowSelectiveAnswering,
-        sectionBRequiredQuestions: exam.sectionBRequiredQuestions,
-        sectionCRequiredQuestions: exam.sectionCRequiredQuestions,
-        message: 'This exam is currently locked by the administrator'
+      const approvedRequest = await ExamRequest.findOne({
+        student: req.user._id,
+        exam: exam._id,
+        status: 'approved'
       });
+
+      if (!approvedRequest) {
+        console.log(`Student ${req.user._id} attempted to access locked exam ${exam._id}`);
+        return res.json({
+          _id: exam._id,
+          title: exam.title,
+          description: exam.description,
+          timeLimit: exam.timeLimit,
+          isLocked: true,
+          allowSelectiveAnswering: exam.allowSelectiveAnswering,
+          sectionBRequiredQuestions: exam.sectionBRequiredQuestions,
+          sectionCRequiredQuestions: exam.sectionCRequiredQuestions,
+          message: 'This exam is currently locked by the administrator'
+        });
+      }
+      console.log(`Student ${req.user._id} has approved request for locked exam ${exam._id} - allowing access`);
     }
 
     // Check if the exam has any questions

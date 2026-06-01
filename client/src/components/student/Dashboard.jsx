@@ -584,13 +584,13 @@ const Dashboard = () => {
               {availableExams.map((exam) => {
                 // Check if there's an approved or pending retake request for this exam
                 const approvedRetakeRequest = pendingRequests.find(
-                  r => r.exam?._id === exam._id && r.status === 'approved' && r.isRetake
+                  r => r.exam?._id?.toString() === exam._id?.toString() && r.status === 'approved' && r.isRetake
                 );
                 const pendingRetakeRequest = pendingRequests.find(
-                  r => r.exam?._id === exam._id && r.status === 'pending' && r.isRetake
+                  r => r.exam?._id?.toString() === exam._id?.toString() && r.status === 'pending' && r.isRetake
                 );
 
-                const canStart = !exam.isLocked && exam.status !== 'in-progress' && (exam.status !== 'completed' || approvedRetakeRequest);
+                const canStart = !exam.isLocked && exam.status !== 'in-progress' && exam.status !== 'completed';
                 const getStatusLabel = () => {
                   if (approvedRetakeRequest) return 'Retake Approved';
                   if (pendingRetakeRequest) return 'Retake Pending';
@@ -602,25 +602,26 @@ const Dashboard = () => {
                   return 'Available';
                 };
                 const getStatusColor = () => {
-                  if (approvedRetakeRequest) return 'success';
+                  if (approvedRetakeRequest) return 'warning';
                   if (pendingRetakeRequest) return 'warning';
-                  if (exam.status === 'completed') return 'success';
+                  if (exam.status === 'completed') return 'default';
                   if (exam.status === 'in-progress') return 'warning';
                   if (exam.isLocked || exam.availability === 'expired') return 'error';
                   if (exam.availability === 'upcoming') return 'info';
                   return 'success';
                 };
+                const isStartable = canStart || approvedRetakeRequest;
                 return (
                   <Card
                     key={exam._id}
-                    elevation={canStart ? 3 : 1}
+                    elevation={isStartable ? 3 : 1}
                     sx={{
                       mb: 0,
                       bgcolor: 'background.paper',
-                      border: canStart ? '2px solid' : '1px solid',
-                      borderColor: canStart ? 'primary.main' : 'divider',
+                      border: isStartable ? '2px solid' : '1px solid',
+                      borderColor: approvedRetakeRequest ? 'warning.main' : isStartable ? 'primary.main' : 'divider',
                       transition: 'all 0.2s ease-in-out',
-                      '&:hover': canStart ? {
+                      '&:hover': isStartable ? {
                         transform: 'translateY(-4px)',
                         boxShadow: 6
                       } : {}
@@ -656,7 +657,7 @@ const Dashboard = () => {
                             size="medium"
                             sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}
                           />
-                          {canStart ? (
+                          {isStartable ? (
                             <Button
                               variant="contained"
                               component={RouterLink}
@@ -664,6 +665,7 @@ const Dashboard = () => {
                               size={isMobile ? 'medium' : 'large'}
                               startIcon={<PlayArrow />}
                               fullWidth={isMobile}
+                              color={approvedRetakeRequest ? 'warning' : 'primary'}
                               sx={{
                                 fontWeight: 'bold',
                                 px: { xs: 2, sm: 3 },
@@ -671,7 +673,7 @@ const Dashboard = () => {
                                 textTransform: 'none'
                               }}
                             >
-                              Start Exam
+                              {approvedRetakeRequest ? 'Start Retake' : 'Start Exam'}
                             </Button>
                           ) : (
                             <Button

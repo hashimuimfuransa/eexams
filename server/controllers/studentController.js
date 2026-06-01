@@ -37,7 +37,11 @@ const getAvailableExams = async (req, res) => {
     }).select('exam isRetake accessCodeUsed');
     // Only count retake as active if the access code hasn't been used (i.e. retake not yet completed)
     const approvedRetakeExamIds = approvedRequests.filter(r => r.isRetake && !r.accessCodeUsed).map(r => r.exam.toString());
-    const approvedAccessExamIds = approvedRequests.map(r => r.exam.toString());
+    // For unlocking exams: include non-retake requests AND retakes that haven't been used yet
+    // This ensures exams get locked again after retake is completed (accessCodeUsed = true)
+    const approvedAccessExamIds = approvedRequests
+      .filter(r => !r.isRetake || !r.accessCodeUsed)
+      .map(r => r.exam.toString());
 
     // Map results to exam IDs (exclude approved retake exams from completed list)
     const completedExams = results
@@ -47,6 +51,12 @@ const getAvailableExams = async (req, res) => {
     const inProgressExams = results
       .filter(result => !result.isCompleted)
       .map(result => result.exam.toString());
+
+    // Debug logging for retake status
+    console.log(`[getAvailableExams] Student: ${req.user._id}`);
+    console.log(`[getAvailableExams] All results: ${results.length}, Completed: ${results.filter(r => r.isCompleted).length}, In-progress: ${results.filter(r => !r.isCompleted).length}`);
+    console.log(`[getAvailableExams] Approved retake exams (not used): ${approvedRetakeExamIds}`);
+    console.log(`[getAvailableExams] Completed exams (after filtering): ${completedExams}`);
 
     // Current time for availability check
     const now = new Date();
@@ -189,7 +199,7 @@ const getExamById = async (req, res) => {
           exam = await Exam.findById(req.params.examId)
             .populate('createdBy', 'firstName lastName')
             .populate('sections.questions')
-            .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
+            .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections calculatorEnabled');
         }
       }
     }
@@ -202,7 +212,7 @@ const getExamById = async (req, res) => {
       })
         .populate('createdBy', 'firstName lastName')
         .populate('sections.questions')
-        .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
+        .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections calculatorEnabled');
     }
 
     if (!exam) {
@@ -885,13 +895,18 @@ const requestExamRetake = async (req, res) => {
     // If retake is free, auto-approve and provide access
     if (retakeFee === 0) {
       console.log(`Auto-approving free retake request for exam ${examId}, student ${req.user._id}`);
-      
+
       // Delete the previous completed result to allow retake
-      await Result.findOneAndDelete({
+      const deletedResult = await Result.findOneAndDelete({
         student: req.user._id,
         exam: examId,
         isCompleted: true
       });
+      if (deletedResult) {
+        console.log(`✅ Free retake - Deleted previous result: ${deletedResult._id}`);
+      } else {
+        console.log(`⚠️ Free retake - No completed result found to delete`);
+      }
 
       return res.status(201).json({
         message: 'Retake request approved automatically. This retake is free!',

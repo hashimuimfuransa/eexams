@@ -40,7 +40,7 @@ import api from '../../services/api';
 import usePlan from '../../hooks/usePlan';
 
 const MarketplaceManager = ({ exam }) => {
-  const { hasMarketplaceAccess, planName } = usePlan();
+  const { hasMarketplaceAccess, planName, isEnterprise } = usePlan();
   const [settings, setSettings] = useState({
     isPubliclyListed: exam?.isPubliclyListed || false,
     publicPrice: exam?.publicPrice || 0,
@@ -589,15 +589,28 @@ const MarketplaceManager = ({ exam }) => {
             </Grid>
 
             <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Retake Price (optional)"
-                type="number"
-                value={settings.retakePrice || 0}
-                onChange={(e) => handleSettingsChange('retakePrice', parseFloat(e.target.value) || 0)}
-                InputProps={{ startAdornment: 'RWF ' }}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
+              {isEnterprise ? (
+                <TextField
+                  fullWidth
+                  label="Retake Price (RWF)"
+                  type="number"
+                  value={settings.retakePrice ?? 0}
+                  onChange={(e) => handleSettingsChange('retakePrice', parseFloat(e.target.value) || 0)}
+                  InputProps={{ startAdornment: 'RWF ' }}
+                  helperText="Set 0 to allow free retakes"
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              ) : (
+                <Tooltip title="Upgrade to Enterprise plan to set a custom retake price">
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px dashed #CBD5E1', bgcolor: 'rgba(99,102,241,0.04)', display: 'flex', alignItems: 'center', gap: 1, cursor: 'not-allowed' }}>
+                    <Upgrade sx={{ color: '#6366F1', fontSize: 18 }} />
+                    <Box>
+                      <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>Retake Price</Typography>
+                      <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>Enterprise plan required</Typography>
+                    </Box>
+                  </Box>
+                </Tooltip>
+              )}
             </Grid>
 
             <Grid item xs={12}>

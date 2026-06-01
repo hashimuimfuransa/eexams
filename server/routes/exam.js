@@ -9,8 +9,6 @@ const {
   createExam,
   getExams,
   getExamById,
-  updateExam,
-  deleteExam,
   toggleExamLock,
   allowStudentRetake,
   startExam,
@@ -167,19 +165,6 @@ router.get(
   cacheExam,
   getExamById
 );
-router.put(
-  '/:id',
-  authLimiter,
-  isAdmin,
-  upload.fields([
-    { name: 'examFile', maxCount: 1 },
-    { name: 'answerFile', maxCount: 1 }
-  ]),
-  handleMulterError,
-  invalidateExamCache,
-  updateExam
-);
-router.delete('/:id', authLimiter, isAdmin, invalidateExamCache, deleteExam);
 router.put('/:id/toggle-lock', authLimiter, isAdminOrTeacher, invalidateExamCache, toggleExamLock);
 router.post('/:examId/allow-retake/:studentId', authLimiter, isAdminOrTeacher, allowStudentRetake);
 router.post('/grade/:resultId', authLimiter, isAdmin, gradeManually);

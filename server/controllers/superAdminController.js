@@ -2474,7 +2474,7 @@ const getExamUsageDetails = async (req, res) => {
 // @access  Private/SuperAdmin
 const updateExamMarketplaceSettings = async (req, res) => {
   try {
-    const { isPubliclyListed, publicPrice, publicDescription, targetAudience, status } = req.body;
+    const { isPubliclyListed, publicPrice, retakePrice, publicDescription, targetAudience, status, levelId, subLevel } = req.body;
 
     const exam = await Exam.findById(req.params.id);
 
@@ -2485,9 +2485,12 @@ const updateExamMarketplaceSettings = async (req, res) => {
     // Update fields (super admin can override any setting)
     if (isPubliclyListed !== undefined) exam.isPubliclyListed = isPubliclyListed;
     if (publicPrice !== undefined) exam.publicPrice = parseFloat(publicPrice);
+    if (retakePrice !== undefined) exam.retakePrice = parseFloat(retakePrice);
     if (publicDescription !== undefined) exam.publicDescription = publicDescription;
     if (targetAudience !== undefined) exam.targetAudience = targetAudience;
     if (status !== undefined) exam.status = status;
+    if (levelId !== undefined) exam.level = levelId || null;
+    if (subLevel !== undefined) exam.subLevel = subLevel || null;
 
     await exam.save();
 

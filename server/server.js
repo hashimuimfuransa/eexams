@@ -116,13 +116,10 @@ const examRoutes = require('./routes/exam');
 const profileRoutes = require('./routes/profile');
 const superAdminRoutes = require('./routes/superAdmin');
 const shareRoutes = require('./routes/share');
-const resultsRoutes = require('./routes/results');
 const studentListRoutes = require('./routes/studentList');
-const publicExamRoutes = require('./routes/publicExam');
 const marketplaceRoutes = require('./routes/marketplace');
 const questionBankRoutes = require('./routes/questionBank');
 const contactRoutes = require('./routes/contact');
-const sitemapRoutes = require('./routes/sitemap');
 const seoController = require('./controllers/seoController');
 
 // Import subscription expiration middleware
@@ -136,13 +133,10 @@ app.use('/api/exam', blockExpiredUsers, examRoutes);
 app.use('/api/profile', blockExpiredUsers, profileRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/share', shareRoutes);
-app.use('/api/results', blockExpiredUsers, resultsRoutes);
 app.use('/api/student-lists', blockExpiredUsers, studentListRoutes);
-app.use('/api/public', publicExamRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/question-bank', questionBankRoutes);
 app.use('/api/contact', contactRoutes);
-app.use('/sitemap.xml', sitemapRoutes);
 
 // Log registered routes for debugging
 console.log('Registered API routes:');

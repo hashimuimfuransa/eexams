@@ -4700,7 +4700,7 @@ const updateExam = async (req, res) => {
     const exam = await Exam.findOne(query).lean();
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
 
-    const { title, description, timeLimit, passingScore, sections, status, isLocked, questions } = req.body;
+    const { title, description, timeLimit, passingScore, sections, status, isLocked, questions, calculatorEnabled } = req.body;
 
     // Handle direct questions array update (for editing individual questions like matching)
     if (questions && Array.isArray(questions)) {
@@ -4865,6 +4865,7 @@ const updateExam = async (req, res) => {
           passingScore: passingScore ? Number(passingScore) : exam.passingScore,
           status: status || exam.status,
           isLocked: typeof isLocked === 'boolean' ? isLocked : exam.isLocked,
+          calculatorEnabled: typeof calculatorEnabled === 'boolean' ? calculatorEnabled : exam.calculatorEnabled,
           sections: updatedSectionQuestions
         }
       );
@@ -4878,7 +4879,8 @@ const updateExam = async (req, res) => {
           timeLimit: timeLimit ? Number(timeLimit) : exam.timeLimit,
           passingScore: passingScore ? Number(passingScore) : exam.passingScore,
           status: status || exam.status,
-          isLocked: typeof isLocked === 'boolean' ? isLocked : exam.isLocked
+          isLocked: typeof isLocked === 'boolean' ? isLocked : exam.isLocked,
+          calculatorEnabled: typeof calculatorEnabled === 'boolean' ? calculatorEnabled : exam.calculatorEnabled
         }
       );
     }

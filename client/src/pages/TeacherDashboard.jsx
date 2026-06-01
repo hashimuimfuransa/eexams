@@ -10,7 +10,7 @@ import {
   TableContainer, TableHead, TableRow, LinearProgress,
   IconButton, Tooltip, Avatar, Select, MenuItem, FormControl, InputLabel, FormHelperText,
   Tabs, Tab, Alert, Snackbar, Accordion, AccordionSummary, AccordionDetails,
-  Divider, Checkbox, ListItemText, Radio, FormControlLabel, RadioGroup
+  Divider, Checkbox, ListItemText, Radio, FormControlLabel, RadioGroup, Switch
 } from '@mui/material';
 import {
   AutoAwesome, CloudUpload, Assignment, People, BarChart, Settings,
@@ -5797,7 +5797,11 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
   const handleEditClick = async (exam) => {
     try {
       const res = await api.get(`/admin/exams/${exam._id}`);
-      setEditExam(res.data);
+      const data = res.data;
+      setEditExam({
+        ...data,
+        calculatorEnabled: data.calculatorEnabled !== false
+      });
     } catch { }
   };
 
@@ -5808,7 +5812,8 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
         description: updated.description,
         timeLimit: updated.timeLimit,
         passingScore: updated.passingScore,
-        sections: updated.sections
+        sections: updated.sections,
+        calculatorEnabled: updated.calculatorEnabled === true
       };
       const res = await api.put(`/admin/exams/${updated._id}`, payload);
       setExams(p => p.map(e => e._id === updated._id ? { ...e, ...res.data } : e));
@@ -5953,7 +5958,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                   <FormControlLabel
                     control={
                       <Switch
-                        checked={editExam.calculatorEnabled !== false}
+                        checked={editExam.calculatorEnabled === true}
                         onChange={e => setEditExam(p => ({ ...p, calculatorEnabled: e.target.checked }))}
                         color="primary"
                       />

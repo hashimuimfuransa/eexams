@@ -95,6 +95,8 @@ const Dashboard = () => {
           index === self.findIndex((e) => e._id === exam._id)
         ) : [];
         setAvailableExams(uniqueExams);
+        // Debug: log exams with their status
+        console.log('[Dashboard] Available exams:', uniqueExams.map(e => ({ id: e._id, title: e.title, status: e.status, isLocked: e.isLocked })));
       } else {
         setAvailableExams([]);
       }
@@ -217,14 +219,28 @@ const Dashboard = () => {
     try {
       setRequestingExam(examId);
       const response = await api.post(`/student/exams/${examId}/retake-request`);
-      // Refresh the data to update the pending requests list
+
+      // Check if retake was auto-approved (free retake)
+      const isAutoApproved = response.data?.autoApproved;
+
+      // Small delay to ensure database deletion is committed before refresh
+      if (isAutoApproved) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Refresh the data to update the exam status
       await fetchData(true);
-      // Show success message
-      alert(`Retake request for "${examTitle}" submitted successfully! The teacher will review your request.`);
+
+      // Show appropriate success message
+      if (isAutoApproved) {
+        alert(`Retake for "${examTitle}" approved automatically! The exam is now available in the "Approved Retake Exams" section.`);
+      } else {
+        alert(`Retake request for "${examTitle}" submitted successfully! The teacher will review your request.`);
+      }
     } catch (err) {
       console.error('Error requesting retake:', err);
       const errorMessage = err.response?.data?.message || 'Failed to submit retake request. Please try again.';
-      
+
       // Check if error is due to pending request
       if (errorMessage.includes('pending') || errorMessage.includes('already')) {
         alert(errorMessage + ' You can view your pending requests in the Pending Exam Requests section above.');
@@ -303,8 +319,9 @@ const Dashboard = () => {
   }
 
   // Approved retake requests (marketplace or assigned exam retakes)
+  // Only show retakes that haven't been used yet (accessCodeUsed = false)
   const approvedRetakeRequests = pendingRequests.filter(
-    r => r.status === 'approved' && r.isRetake
+    r => r.status === 'approved' && r.isRetake && !r.accessCodeUsed
   );
   const approvedRetakeExamIds = approvedRetakeRequests.map(r => r.exam?._id?.toString()).filter(Boolean);
 

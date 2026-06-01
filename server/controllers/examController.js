@@ -809,7 +809,8 @@ const updateExam = async (req, res) => {
       status,
       questions,
       publicPrice,
-      retakePrice
+      retakePrice,
+      calculatorEnabled
     } = req.body;
 
     const exam = await Exam.findById(req.params.id);
@@ -829,6 +830,9 @@ const updateExam = async (req, res) => {
     if (status) exam.status = status;
     if (publicPrice !== undefined) exam.publicPrice = parseInt(publicPrice);
     if (retakePrice !== undefined) exam.retakePrice = parseInt(retakePrice);
+    if (calculatorEnabled !== undefined) {
+      exam.calculatorEnabled = calculatorEnabled === true || calculatorEnabled === 'true';
+    }
 
     // Handle file uploads
     if (req.files) {
@@ -1328,16 +1332,119 @@ const startExam = async (req, res) => {
                   correctAnswer = 'Not provided';
                 }
 
-                // Create the question with valid data
-                const question = await Question.create({
+                // Detect question type from data structure if not explicitly set
+                let questionType = questionData.type;
+                if (!questionType || questionType === 'multiple-choice') {
+                  // Check for drag-drop questions
+                  if (questionData.dragDropData || 
+                      (questionData.items && questionData.zones) ||
+                      questionData.text?.toLowerCase().includes('drag') && questionData.text?.toLowerCase().includes('drop')) {
+                    questionType = 'drag-drop';
+                    console.log(`Auto-detected drag-drop type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for ordering questions
+                  else if (questionData.itemsToOrder || 
+                           questionData.correctOrder ||
+                           (questionData.items && questionData.items.length >= 2 && !questionData.options) ||
+                           questionData.text?.toLowerCase().includes('order') ||
+                           questionData.text?.toLowerCase().includes('sequence') ||
+                           questionData.text?.toLowerCase().includes('arrange')) {
+                    questionType = 'ordering';
+                    console.log(`Auto-detected ordering type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for matching questions
+                  else if (questionData.matchingPairs || 
+                      (questionData.leftItems && questionData.rightItems) ||
+                      (correctAnswer && typeof correctAnswer === 'string' && 
+                       correctAnswer.includes(' - ') && 
+                       correctAnswer.split(',').length >= 2)) {
+                    questionType = 'matching';
+                    console.log(`Auto-detected matching type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for image-based questions
+                  else if (questionData.imageUrl || questionData.image || 
+                           questionData.text?.toLowerCase().includes('image') ||
+                           questionData.text?.toLowerCase().includes('picture') ||
+                           questionData.text?.toLowerCase().includes('diagram')) {
+                    questionType = 'image-based';
+                    console.log(`Auto-detected image-based type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for structured questions (have subQuestions)
+                  else if (questionData.subQuestions?.length > 0 || 
+                           questionData.subQuestionConfig ||
+                           questionData.parts?.length > 0) {
+                    questionType = 'structured';
+                    console.log(`Auto-detected structured type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for essay/extended-response (long text, no options)
+                  else if (!questionData.options?.length && 
+                           (questionData.text?.length > 200 || 
+                            questionData.text?.toLowerCase().includes('essay') ||
+                            questionData.text?.toLowerCase().includes('discuss') ||
+                            questionData.text?.toLowerCase().includes('explain in detail') ||
+                            questionData.text?.toLowerCase().includes('write about'))) {
+                    questionType = 'essay';
+                    console.log(`Auto-detected essay type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for short-answer (medium text, no options)
+                  else if (!questionData.options?.length && 
+                           questionData.text?.includes('?') &&
+                           (questionData.points <= 5 || questionData.text?.length < 150)) {
+                    questionType = 'short-answer';
+                    console.log(`Auto-detected short-answer type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for open-ended (no options, free text answer expected)
+                  else if (!questionData.options?.length && 
+                           (correctAnswer?.length > 20 || questionData.text?.includes('?'))) {
+                    questionType = 'open-ended';
+                    console.log(`Auto-detected open-ended type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for fill-in-blank
+                  else if (questionData.text?.includes('_____') || questionData.text?.includes('____') ||
+                           questionData.wordBank?.length > 0) {
+                    questionType = 'fill-in-blank';
+                    console.log(`Auto-detected fill-in-blank type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                  // Check for true-false (exactly 2 options: True/False)
+                  else if (questionData.options?.length === 2 && 
+                           questionData.options.every(opt => 
+                             ['true', 'false'].includes(opt.text?.toLowerCase()))) {
+                    questionType = 'true-false';
+                    console.log(`Auto-detected true-false type for question ${questionData.text?.substring(0, 50)}...`);
+                  }
+                }
+
+                // Create the question with valid data - preserve ALL type-specific fields
+                const questionCreateData = {
                   text: questionData.text,
-                  type: questionData.type || 'multiple-choice',
+                  type: questionType || 'multiple-choice',
                   options: questionData.options || [],
                   correctAnswer: correctAnswer,
                   points: questionData.points || 1,
                   exam: exam._id,
-                  section: section.name
+                  section: section.name,
+                  // Preserve ALL question-type-specific data
+                  matchingPairs: questionData.matchingPairs,
+                  leftItems: questionData.leftItems,
+                  rightItems: questionData.rightItems,
+                  correctMatches: questionData.correctMatches,
+                  itemsToOrder: questionData.itemsToOrder,
+                  dragDropData: questionData.dragDropData,
+                  wordBank: questionData.wordBank,
+                  subQuestions: questionData.subQuestions,
+                  subQuestionConfig: questionData.subQuestionConfig,
+                  imageUrl: questionData.imageUrl || questionData.image
+                };
+
+                // Remove undefined fields to keep database clean
+                Object.keys(questionCreateData).forEach(key => {
+                  if (questionCreateData[key] === undefined) {
+                    delete questionCreateData[key];
+                  }
                 });
+
+                const question = await Question.create(questionCreateData);
+                console.log(`Created ${question.type} question ${question._id} in section ${section.name}`);
 
                 console.log(`Created question ${question._id} in section ${section.name}`);
 
@@ -1461,21 +1568,27 @@ const startExam = async (req, res) => {
       );
     }
 
+    // Build dynamic section counts for logging
+    const sectionCounts = {};
+    for (const sectionName in shuffledQuestionsBySection) {
+      sectionCounts[`section${sectionName}`] = shuffledQuestionsBySection[sectionName].length;
+    }
+    
     console.log(`Exam ${exam._id} question distribution (shuffled for student ${req.user._id}):`, {
-      sectionA: shuffledQuestionsBySection.A.length,
-      sectionB: shuffledQuestionsBySection.B.length,
-      sectionC: shuffledQuestionsBySection.C.length,
+      ...sectionCounts,
+      totalSections: Object.keys(shuffledQuestionsBySection).length,
+      totalQuestions: allQuestions.length,
       allowSelectiveAnswering: exam.allowSelectiveAnswering,
       sectionBRequired: exam.sectionBRequiredQuestions || 3,
       sectionCRequired: exam.sectionCRequiredQuestions || 1
     });
 
     // Create a new result with proper selection initialization using shuffled questions
-    const allShuffledQuestions = [
-      ...shuffledQuestionsBySection.A,
-      ...shuffledQuestionsBySection.B,
-      ...shuffledQuestionsBySection.C
-    ];
+    // Include ALL sections, not just A, B, C
+    const allShuffledQuestions = [];
+    for (const sectionName in shuffledQuestionsBySection) {
+      allShuffledQuestions.push(...shuffledQuestionsBySection[sectionName]);
+    }
 
     const result = await Result.create({
       student: req.user._id,
@@ -1648,7 +1761,19 @@ const submitAnswer = async (req, res) => {
     }
 
     // Determine the actual question type (use frontend detection if provided)
-    const actualQuestionType = sanitizedData.questionType || question.type;
+    let actualQuestionType = sanitizedData.questionType || question.type;
+
+    // Detect true-false questions that were incorrectly stored as multiple-choice
+    const isTrueFalseQuestion = question.options?.length === 2 &&
+      question.options.every(opt =>
+        ['true', 'false'].includes(opt.text?.toLowerCase())
+      );
+
+    // Override type if it's actually a true-false question
+    if ((actualQuestionType === 'multiple-choice' || question.type === 'multiple-choice') && isTrueFalseQuestion) {
+      actualQuestionType = 'true-false';
+      console.log(`🔍 Detected true-false question ${question._id} stored as multiple-choice, using true-false type`);
+    }
 
     console.log(`Processing answer for question type: ${actualQuestionType}`);
 
@@ -2227,7 +2352,16 @@ const completeExam = async (req, res) => {
         'fallback_keyword_matching', 'not_selected', 'fast_grading', 'fast_multiple_choice',
         'fast_ai_grading', 'fast_similarity', 'fast_keywords', 'no_selection',
         'unsupported_type', 'fallback_error', 'exact_match', 'error',
-        'enhanced_ai_grading_section', 'letter_comparison_failed', 'letter_comparison'
+        'enhanced_ai_grading_section', 'letter_comparison_failed', 'letter_comparison',
+        // Fast grading methods that were missing
+        'ai_determined_correct', 'ai_determined_incorrect',
+        'meaningless_answer', 'meaningless_answer_short', 'meaningless_answer_fallback',
+        'matching_grading', 'ordering_grading', 'drag_drop_grading',
+        'numerical_match', 'numerical_partial', 'keyword_matching_poor',
+        'ai_no_model_answer', 'default_fallback_insufficient',
+        'incomplete_multipart', 'incomplete_multipart_fallback',
+        'answer_validation_failed', 'letter_based', 'isCorrect_flag', 'modelAnswer_comparison',
+        'sub_question_grading', 'groq_ai', 'subquestion_all', 'subquestion_choose-n'
       ];
 
       // Ensure all grading methods are valid

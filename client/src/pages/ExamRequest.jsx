@@ -45,9 +45,10 @@ const ExamRequest = () => {
     fetchExamDetails();
   }, [examId, isAuthenticated, user]);
 
-  // Auto-handle free exams (but not for retakes)
+  // Auto-handle free exams and free retakes
   useEffect(() => {
-    if (exam && exam.publicPrice === 0 && isAuthenticated && user?.role === 'student' && !isRetake) {
+    const effectivePrice = isRetake ? (exam?.retakePrice ?? 0) : (exam?.publicPrice ?? 0);
+    if (exam && effectivePrice === 0 && isAuthenticated && user?.role === 'student') {
       handleAutoAccess();
     }
   }, [exam, isAuthenticated, user, isRetake]);
@@ -100,17 +101,27 @@ const ExamRequest = () => {
 
       setSuccess(true);
 
+      // Check if auto-approved (free exam/retake)
+      const isAutoApproved = response.data?.autoApproved;
+
+      // For auto-approved retakes, add delay to ensure DB deletion is committed
+      if (isAutoApproved && isRetake) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
       setTimeout(() => {
         navigate('/student/dashboard');
       }, 3000);
     } catch (err) {
       console.error('Error submitting request:', err);
       const errorMessage = err.response?.data?.message || 'Failed to submit request. Please try again.';
-      
-      // Check if error is due to pending request
-      if (errorMessage.includes('pending') || errorMessage.includes('already')) {
-        // Redirect to dashboard to see pending requests
-        alert(errorMessage + ' Redirecting to dashboard to view your pending requests...');
+
+      // Check if error is due to pending request or already approved
+      if (errorMessage.toLowerCase().includes('pending') ||
+          errorMessage.toLowerCase().includes('already') ||
+          errorMessage.toLowerCase().includes('approved')) {
+        // Show user-friendly message and redirect to dashboard
+        setError(errorMessage + ' Redirecting to your dashboard...');
         setTimeout(() => {
           navigate('/student/dashboard');
         }, 2000);
@@ -125,15 +136,19 @@ const ExamRequest = () => {
   const handleAutoAccess = async () => {
     try {
       setSubmitting(true);
-      const response = await api.post(`/marketplace/exams/${examId}/request`, formData);
+      const response = await api.post(`/marketplace/exams/${examId}/request`, { ...formData, isRetake });
       setSuccess(true);
 
       // For free exams, backend returns autoApproved: true with shareToken
-      // Redirect directly to the exam instead of dashboard - no delay for instant access
+      // Redirect directly to the exam instead of dashboard
       const { shareToken, autoApproved } = response.data;
 
       if (autoApproved && shareToken) {
-        // Redirect directly to exam for instant access - no delay
+        // Small delay to ensure database deletion is committed (for retakes)
+        if (isRetake) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        // Redirect directly to exam for instant access
         navigate(`/exam/${shareToken}`);
       } else {
         // Fallback to dashboard if something went wrong
@@ -141,7 +156,19 @@ const ExamRequest = () => {
       }
     } catch (err) {
       console.error('Error auto-granting access:', err);
-      setError(err.response?.data?.message || 'Failed to grant access. Please try again.');
+      const errorMessage = err.response?.data?.message || 'Failed to grant access. Please try again.';
+
+      // Check if error is due to pending request or already approved
+      if (errorMessage.toLowerCase().includes('pending') ||
+          errorMessage.toLowerCase().includes('already') ||
+          errorMessage.toLowerCase().includes('approved')) {
+        setError(errorMessage + ' Redirecting to your dashboard...');
+        setTimeout(() => {
+          navigate('/student/dashboard');
+        }, 2000);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -151,12 +178,12 @@ const ExamRequest = () => {
     return sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
   };
 
-  // Calculate effective price (500 RWF for retakes of free exams)
+  // Calculate effective price based on actual exam pricing
   const getEffectivePrice = () => {
-    if (isRetake && exam?.publicPrice === 0) {
-      return 500;
+    if (isRetake) {
+      return exam?.retakePrice ?? 0;
     }
-    return exam?.publicPrice || 0;
+    return exam?.publicPrice ?? 0;
   };
 
   if (loading) {
@@ -265,7 +292,7 @@ const ExamRequest = () => {
               sx={{ mb: 3 }}
               icon={<CheckCircle />}
             >
-              {exam?.publicPrice === 0 && !isRetake
+              {getEffectivePrice() === 0
                 ? 'Access granted! Redirecting to exam...'
                 : 'Request submitted successfully! The teacher will review your request. Redirecting to dashboard...'}
             </Alert>

@@ -2890,6 +2890,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
       await api.put(`/superadmin/marketplace-exams/${editDialog._id}/settings`, {
         isPubliclyListed: editDialog.isPubliclyListed,
         publicPrice: editDialog.publicPrice,
+        retakePrice: editDialog.retakePrice ?? 0,
         publicDescription: editDialog.publicDescription,
         targetAudience: editDialog.targetAudience,
         levelId: editDialog.levelId,
@@ -3270,8 +3271,11 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
-              <TextField fullWidth label="Price (RWF)" type="number" size="small" value={editDialog?.publicPrice || 0} onChange={(e) => setEditDialog(d => ({ ...d, publicPrice: e.target.value }))} sx={{ borderRadius: 2 }} />
+            <Grid item xs={6}>
+              <TextField fullWidth label="Price (RWF)" type="number" size="small" value={editDialog?.publicPrice ?? 0} onChange={(e) => setEditDialog(d => ({ ...d, publicPrice: e.target.value }))} helperText="0 for free" sx={{ borderRadius: 2 }} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField fullWidth label="Retake Price (RWF)" type="number" size="small" value={editDialog?.retakePrice ?? 0} onChange={(e) => setEditDialog(d => ({ ...d, retakePrice: e.target.value }))} helperText="0 for free retake" sx={{ borderRadius: 2 }} />
             </Grid>
             <Grid item xs={12}>
               <TextField fullWidth label="Public Description" multiline rows={3} size="small" value={editDialog?.publicDescription || ''} onChange={(e) => setEditDialog(d => ({ ...d, publicDescription: e.target.value }))} sx={{ borderRadius: 2 }} />

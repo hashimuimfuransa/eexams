@@ -186,8 +186,23 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
   try {
     console.log(`🚀 Fast grading ${question.type} question ${question._id}`);
 
+    // Detect true-false questions that were incorrectly stored as multiple-choice
+    const isTrueFalseQuestion = question.options?.length === 2 &&
+      question.options.every(opt =>
+        ['true', 'false'].includes(opt.text?.toLowerCase())
+      );
+
+    // Override type if it's actually a true-false question
+    const effectiveType = (question.type === 'multiple-choice' && isTrueFalseQuestion)
+      ? 'true-false'
+      : question.type;
+
+    if (isTrueFalseQuestion && question.type === 'multiple-choice') {
+      console.log(`🔍 Detected true-false question ${question._id} stored as multiple-choice, using true-false grading`);
+    }
+
     // Handle different question types
-    switch (question.type) {
+    switch (effectiveType) {
       case 'multiple-choice':
         return await gradeMultipleChoiceFast(question, answer, modelAnswer);
 
@@ -721,7 +736,8 @@ Return JSON: {score,feedback,correctedAnswer}`;
  * Fast short answer grading
  */
 async function gradeShortAnswerFast(question, answer, modelAnswer) {
-  const studentAnswer = (answer.textAnswer || '').trim().toLowerCase();
+  // Check both textAnswer and selectedOption as answer may be stored in either field
+  const studentAnswer = (answer.textAnswer || answer.selectedOption || '').trim().toLowerCase();
   let correctAnswer = (modelAnswer || '').toLowerCase();
 
   // Use AI to determine the correct answer for true/false questions (like regrading does)

@@ -71,7 +71,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
-import { getStudentProgress } from '../../services/studentService';
+import api from '../../services/api';
 
 const drawerWidth = 260;
 
@@ -142,7 +142,8 @@ const StudentLayout = ({ children }) => {
       if (user && user.role === 'student') {
         try {
           setLoadingProgress(true);
-          const data = await getStudentProgress();
+          const res = await api.get('/student/progress');
+          const data = res.data;
           setProgressData(data);
         } catch (error) {
           console.error('Error fetching progress:', error);

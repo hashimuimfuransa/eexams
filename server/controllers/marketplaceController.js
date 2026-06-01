@@ -14,7 +14,7 @@ const getMarketplaceExams = async (req, res) => {
       .populate('createdBy', 'fullName')
       .populate('sections.questions')
       .populate('level', 'name description subLevels')
-      .select('title description timeLimit publicPrice publicDescription targetAudience level subLevel createdAt createdBy sections isPubliclyListed isLocked status')
+      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections isPubliclyListed isLocked status')
       .sort({ createdAt: -1 });
 
     console.log('Marketplace exams count:', exams.length); // Debug log
@@ -38,7 +38,7 @@ const getMarketplaceExamById = async (req, res) => {
       isLocked: false
     })
       .populate('createdBy', 'fullName')
-      .select('title description timeLimit publicPrice publicDescription createdAt createdBy sections');
+      .select('title description timeLimit publicPrice retakePrice publicDescription createdAt createdBy sections');
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found or not available on marketplace' });
@@ -170,12 +170,16 @@ const processExamApproval = async (request, waivePayment = false) => {
 
   // If this is a retake approval, delete the previous completed result so the student can retake
   if (request.isRetake) {
-    await Result.findOneAndDelete({
+    const deletedResult = await Result.findOneAndDelete({
       student: studentUser._id,
       exam: request.exam,
       isCompleted: true
     });
-    console.log(`Marketplace approval - Deleted previous completed result for retake: student ${studentUser._id}, exam ${request.exam}`);
+    if (deletedResult) {
+      console.log(`✅ Retake approval - Deleted previous completed result: ${deletedResult._id}, student ${studentUser._id}, exam ${request.exam}`);
+    } else {
+      console.log(`⚠️ Retake approval - No completed result found to delete: student ${studentUser._id}, exam ${request.exam}`);
+    }
   }
 
   // Send email notification to student about exam approval
@@ -260,13 +264,45 @@ const requestMarketplaceExam = async (req, res) => {
         if (completedResult) {
           // User has completed the exam, allow re-request by updating the existing request
           existingRequest.status = 'pending';
+          existingRequest.isRetake = isRetake;
           existingRequest.processedAt = null;
           existingRequest.shareToken = null;
           existingRequest.sharedExam = null;
           existingRequest.paymentStatus = 'pending';
           await existingRequest.save();
 
-          console.log(`Re-request allowed for completed exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
+          console.log(`Re-request allowed for completed exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}, isRetake: ${isRetake}`);
+
+          // For free retakes, auto-approve immediately
+          const retakeIsFree = isRetake
+            ? (exam.retakePrice === 0 || exam.retakePrice === null || exam.retakePrice === undefined)
+            : (exam.publicPrice === 0);
+
+          if (retakeIsFree) {
+            console.log(`Auto-approving free retake (existing request path): ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
+            const approvalResult = await processExamApproval(existingRequest, false);
+            return res.status(201).json({
+              message: isRetake ? 'Retake request approved automatically. This retake is free!' : 'Request approved automatically. This exam is free!',
+              requestId: existingRequest._id,
+              shareToken: approvalResult.shareToken,
+              accessCode: approvalResult.accessCode,
+              autoApproved: true
+            });
+          }
+
+          // For paid retakes, send notification and return pending
+          emailService.sendSuperAdminPendingRequestEmail(existingRequest, exam, {
+            name, email, phone
+          }).catch(err => {
+            console.error('[Marketplace] Failed to send super admin notification for re-request:', err);
+          });
+
+          return res.status(201).json({
+            message: isRetake
+              ? `Retake request submitted successfully. Please pay ${exam.retakePrice || 0} RWF to complete your request.`
+              : 'Request submitted successfully. The teacher will review your request.',
+            requestId: existingRequest._id
+          });
         } else {
           // User is approved but hasn't completed - check if exam is assigned
           const isAssigned = await Exam.findOne({

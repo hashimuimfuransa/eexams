@@ -386,30 +386,49 @@ const ExamResult = () => {
         Detailed Results
       </Typography>
 
-      {exam.sections.map((section) => (
-        <Accordion key={section.name} defaultExpanded sx={{ mb: 2, borderRadius: 0, overflow: 'hidden' }}>
-          <AccordionSummary
-            expandIcon={<ExpandMore />}
-            sx={{
-              bgcolor: 'background.paper',
-              borderLeft: '4px solid',
-              borderColor: 'primary.main',
-            }}
-          >
-            <Typography variant="h6" fontWeight="bold">
-              Section {section.name}
-              {section.description && (
-                <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                  - {section.description}
-                </Typography>
-              )}
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            <List sx={{ width: '100%' }}>
-              {section.questions.map((question, index) => {
-                const answer = result.answers.find(a => a.question._id === question._id);
-                const isCorrect = answer?.isCorrect;
+      {/* Build a map of all shown question IDs to avoid duplicates */}
+      {(() => {
+        const shownQuestionIds = new Set();
+        
+        // First, collect all question IDs from exam sections
+        exam.sections?.forEach(section => {
+          section.questions?.forEach(q => {
+            if (q._id) shownQuestionIds.add(q._id);
+          });
+        });
+
+        // Find answers not in exam sections (orphaned questions)
+        const orphanedAnswers = result.answers.filter(a => 
+          a.question?._id && !shownQuestionIds.has(a.question._id)
+        );
+
+        return (
+          <>
+            {/* Render exam sections */}
+            {exam.sections?.map((section) => (
+              <Accordion key={section.name} defaultExpanded sx={{ mb: 2, borderRadius: 0, overflow: 'hidden' }}>
+                <AccordionSummary
+                  expandIcon={<ExpandMore />}
+                  sx={{
+                    bgcolor: 'background.paper',
+                    borderLeft: '4px solid',
+                    borderColor: 'primary.main',
+                  }}
+                >
+                  <Typography variant="h6" fontWeight="bold">
+                    Section {section.name}
+                    {section.description && (
+                      <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                        - {section.description}
+                      </Typography>
+                    )}
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <List sx={{ width: '100%' }}>
+                    {section.questions?.map((question, index) => {
+                      const answer = result.answers.find(a => a.question?._id === question._id);
+                      const isCorrect = answer?.isCorrect;
 
                 return (
                   <React.Fragment key={question._id}>
@@ -456,7 +475,7 @@ const ExamResult = () => {
                         <Typography variant="body2" color="text.secondary" gutterBottom>
                           Your Answer:
                         </Typography>
-                        {question.type === 'multiple-choice' ? (
+                        {question.type === 'multiple-choice' || question.type === 'true-false' ? (
                           <Box
                             sx={{
                               p: 2,
@@ -476,8 +495,32 @@ const ExamResult = () => {
                                 {answer.selectedOption || 'No answer provided'}
                               </>
                             ) : (
-                              answer?.selectedOption || 'No answer provided'
+                              answer?.selectedOption || answer?.textAnswer || 'No answer provided'
                             )}
+                          </Box>
+                        ) : question.type === 'matching' ? (
+                          <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, mb: 2 }}>
+                            {answer?.matchingAnswers && answer.matchingAnswers.length > 0 ? (
+                              <Typography variant="body2">
+                                {answer.matchingAnswers.map((match, idx) => (
+                                  <span key={idx}>Match {idx + 1}: Item {match.left + 1} → Item {match.right + 1}<br /></span>
+                                ))}
+                              </Typography>
+                            ) : (
+                              'No matching answer provided'
+                            )}
+                          </Box>
+                        ) : question.type === 'fill-in-blank' || question.type === 'fill-blank' ? (
+                          <Box
+                            sx={{
+                              p: 2,
+                              bgcolor: 'background.paper',
+                              borderRadius: 1,
+                              mb: 2,
+                              fontWeight: isCorrect ? 'bold' : 'normal'
+                            }}
+                          >
+                            {answer?.textAnswer || 'No answer provided'}
                           </Box>
                         ) : (
                           <Typography
@@ -490,7 +533,7 @@ const ExamResult = () => {
                               fontWeight: isCorrect ? 'bold' : 'normal'
                             }}
                           >
-                            {answer?.textAnswer || 'No answer provided'}
+                            {answer?.textAnswer || answer?.selectedOption || 'No answer provided'}
                           </Typography>
                         )}
 
@@ -878,6 +921,177 @@ const ExamResult = () => {
           </AccordionDetails>
         </Accordion>
       ))}
+
+            {/* Render orphaned questions (those not in exam sections) */}
+            {orphanedAnswers.length > 0 && (
+              <Accordion defaultExpanded sx={{ mb: 2, borderRadius: 0, overflow: 'hidden' }}>
+                <AccordionSummary
+                  expandIcon={<ExpandMore />}
+                  sx={{
+                    bgcolor: 'background.paper',
+                    borderLeft: '4px solid',
+                    borderColor: 'warning.main',
+                  }}
+                >
+                  <Typography variant="h6" fontWeight="bold">
+                    Additional Questions
+                    <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                      - Fill-in-blank, Matching, and Other Question Types
+                    </Typography>
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <List sx={{ width: '100%' }}>
+                    {orphanedAnswers.map((answer, index) => {
+                      const question = answer.question;
+                      const isCorrect = answer?.isCorrect;
+
+                      return (
+                        <React.Fragment key={question._id || index}>
+                          <ListItem
+                            alignItems="flex-start"
+                            sx={{
+                              flexDirection: 'column',
+                              p: 2,
+                              bgcolor: isCorrect ? 'success.lighter' : 'error.lighter',
+                              borderRadius: 1,
+                              mb: 2
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', width: '100%', mb: 1 }}>
+                              <ListItemIcon sx={{ minWidth: 36 }}>
+                                {isCorrect ? (
+                                  <CheckCircle color="success" />
+                                ) : (
+                                  <Cancel color="error" />
+                                )}
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={
+                                  <Typography variant="subtitle1" fontWeight="bold">
+                                    Question {index + 1}: {question.text || 'Question text not available'}
+                                  </Typography>
+                                }
+                                secondary={
+                                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                    Type: {question.type || 'unknown'} | {question.points || 1} point{question.points !== 1 ? 's' : ''}
+                                  </Typography>
+                                }
+                              />
+                              <Chip
+                                label={`${answer?.score || 0}/${question.points || 1}`}
+                                color={isCorrect ? "success" : "error"}
+                                size="small"
+                                sx={{ minWidth: 60 }}
+                              />
+                            </Box>
+
+                            <Box sx={{ pl: 7, width: '100%' }}>
+                              {/* Student's Answer */}
+                              <Typography variant="body2" color="text.secondary" gutterBottom>
+                                Your Answer:
+                              </Typography>
+                              {question.type === 'multiple-choice' || question.type === 'true-false' ? (
+                                <Box
+                                  sx={{
+                                    p: 2,
+                                    bgcolor: 'background.paper',
+                                    borderRadius: 1,
+                                    mb: 2,
+                                    fontWeight: isCorrect ? 'bold' : 'normal',
+                                    typography: 'body1'
+                                  }}
+                                >
+                                  {answer?.selectedOption || answer?.textAnswer || 'No answer provided'}
+                                </Box>
+                              ) : question.type === 'matching' ? (
+                                <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, mb: 2 }}>
+                                  {answer?.matchingAnswers ? (
+                                    <Typography variant="body2">
+                                      {answer.matchingAnswers.map((match, idx) => (
+                                        <span key={idx}>Match {idx + 1}: {match.left} → {match.right}<br /></span>
+                                      ))}
+                                    </Typography>
+                                  ) : (
+                                    'No matching answer provided'
+                                  )}
+                                </Box>
+                              ) : question.type === 'fill-in-blank' || question.type === 'fill-blank' ? (
+                                <Box
+                                  sx={{
+                                    p: 2,
+                                    bgcolor: 'background.paper',
+                                    borderRadius: 1,
+                                    mb: 2,
+                                    fontWeight: isCorrect ? 'bold' : 'normal'
+                                  }}
+                                >
+                                  {answer?.textAnswer || 'No answer provided'}
+                                </Box>
+                              ) : (
+                                <Typography
+                                  variant="body1"
+                                  sx={{
+                                    p: 2,
+                                    bgcolor: 'background.paper',
+                                    borderRadius: 1,
+                                    mb: 2,
+                                    fontWeight: isCorrect ? 'bold' : 'normal'
+                                  }}
+                                >
+                                  {answer?.textAnswer || answer?.selectedOption || 'No answer provided'}
+                                </Typography>
+                              )}
+
+                              {/* Correct Answer (only shown if student's answer is incorrect) */}
+                              {!isCorrect && question.correctAnswer && (
+                                <>
+                                  <Typography variant="body2" color="success.main" fontWeight="bold" gutterBottom>
+                                    Correct Answer:
+                                  </Typography>
+                                  <Typography
+                                    variant="body1"
+                                    sx={{
+                                      p: 2,
+                                      bgcolor: 'success.lighter',
+                                      borderRadius: 1,
+                                      mb: 2,
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    {question.correctAnswer}
+                                  </Typography>
+                                </>
+                              )}
+
+                              {/* Feedback */}
+                              {answer?.feedback && (
+                                <Alert
+                                  severity={isCorrect ? "success" : "info"}
+                                  icon={isCorrect ? <Check /> : <Psychology />}
+                                  sx={{ mb: 2 }}
+                                >
+                                  <AlertTitle>
+                                    {isCorrect ? "Correct" : "Feedback"}
+                                  </AlertTitle>
+                                  <Typography variant="body2" fontWeight="medium">
+                                    {answer.feedback}
+                                  </Typography>
+                                </Alert>
+                              )}
+                            </Box>
+                          </ListItem>
+                          {index < orphanedAnswers.length - 1 && <Divider />}
+                        </React.Fragment>
+                      );
+                    })}
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+            )}
+          </>
+        );
+      })()}
 
       <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center', gap: 2 }}>
         <Button

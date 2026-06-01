@@ -3355,22 +3355,26 @@ const ExamInterface = () => {
               </Box>
             </Box>
 
-            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Calculate color="success" />
-              Tools Available
-            </Typography>
-            <Box component="ul" sx={{ pl: 2, mb: 3 }}>
-              <Box component="li" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  A <strong>calculator</strong> is available for all question types
+            {exam?.calculatorEnabled === true && (
+              <>
+                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Calculate color="success" />
+                  Tools Available
                 </Typography>
-              </Box>
-              <Box component="li">
-                <Typography variant="body2">
-                  Click the calculator button to access mathematical functions
-                </Typography>
-              </Box>
-            </Box>
+                <Box component="ul" sx={{ pl: 2, mb: 3 }}>
+                  <Box component="li" sx={{ mb: 1 }}>
+                    <Typography variant="body2">
+                      A <strong>calculator</strong> is available for all question types
+                    </Typography>
+                  </Box>
+                  <Box component="li">
+                    <Typography variant="body2">
+                      Click the calculator button to access mathematical functions
+                    </Typography>
+                  </Box>
+                </Box>
+              </>
+            )}
 
             {selectiveAnswering && (
               <>
@@ -4109,7 +4113,7 @@ const ExamInterface = () => {
                         <Typography variant="h6" fontWeight="bold" color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main'}>
                           {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
                         </Typography>
-                        {exam?.calculatorEnabled !== false && (
+                        {exam?.calculatorEnabled === true && (
                           <Tooltip title="Open Calculator">
                             <Button
                               variant="contained"
@@ -5237,7 +5241,7 @@ const ExamInterface = () => {
       </Dialog>
 
       {/* Calculator - Draggable Box */}
-      {calculatorOpen && (
+      {calculatorOpen && exam?.calculatorEnabled === true && (
         <>
           {/* Minimized State - Small Floating Button */}
           {calculatorMinimized && (

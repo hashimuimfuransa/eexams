@@ -740,78 +740,29 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
   const studentAnswer = (answer.textAnswer || answer.selectedOption || '').trim().toLowerCase();
   let correctAnswer = (modelAnswer || '').toLowerCase();
 
-  // Use AI to determine the correct answer for true/false questions (like regrading does)
-  // This ensures consistency between initial grading and regrading
+  // For true/false questions, use the stored correct answer from the database
+  // Do NOT use AI to determine the correct answer - trust the teacher's provided answer
   if (question.type === 'true-false' && question.options && Array.isArray(question.options) && question.options.length >= 2) {
-    try {
-      const { generateContent } = require('./aiService');
-      const questionText = question.text;
-      const options = question.options.map(opt => ({
-        letter: opt.letter || '',
-        text: opt.text || ''
-      }));
+    // Find the correct option from the question's options (isCorrect flag or matching text)
+    const correctOption = question.options.find(opt =>
+      opt.isCorrect === true ||
+      (question.correctAnswer && opt.text?.toLowerCase() === question.correctAnswer.toLowerCase())
+    );
 
-      const prompt = `
-You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
-
-I have a true/false question from a computer systems exam:
-Question: ${questionText}
-
-Options:
-${options.map(opt => `${opt.letter}. ${opt.text}`).join('\n')}
-
-Please determine the correct answer based on current, modern technology standards and practices.
-
-Only respond with the letter of the correct option (A or B).
-`;
-
-      const response = await generateContent(prompt);
-
-      if (response && response.text) {
-        const letterMatch = response.text.match(/\b([A-B])\b/i);
-        if (letterMatch) {
-          const correctLetter = letterMatch[1].toUpperCase();
-          const correctOption = question.options.find(opt =>
-            opt.letter && opt.letter.toUpperCase() === correctLetter
-          );
-          if (correctOption) {
-            correctAnswer = correctOption.text;
-            console.log(`AI determined correct answer for true/false question ${question._id}: ${correctLetter} (${correctAnswer})`);
-            
-            // Update the question's correct answer in the database
-            const Question = require('../models/Question');
-            try {
-              const updatedOptions = question.options.map((opt, index) => {
-                if (!opt.letter) {
-                  opt.letter = String.fromCharCode(65 + index);
-                }
-                if (!opt.value) {
-                  opt.value = opt.letter.toLowerCase();
-                }
-                opt.isCorrect = (opt.letter && opt.letter.toUpperCase() === correctLetter);
-                return opt;
-              });
-
-              await Question.findByIdAndUpdate(
-                question._id,
-                {
-                  $set: {
-                    options: updatedOptions,
-                    correctAnswer: correctOption.text
-                  }
-                },
-                { new: true }
-              );
-              console.log(`Updated true/false question ${question._id} with AI-determined correct answer`);
-            } catch (updateError) {
-              console.error(`Error updating true/false question in database: ${updateError.message}`);
-            }
-          }
-        }
+    if (correctOption) {
+      correctAnswer = correctOption.text.toLowerCase();
+      console.log(`Using stored correct answer for true/false question ${question._id}: ${correctOption.text}`);
+    } else if (correctAnswer) {
+      // If we have a correctAnswer string but no matching option, use it directly
+      console.log(`Using stored correctAnswer text for true/false question ${question._id}: ${correctAnswer}`);
+    } else {
+      // Fallback: try to find option with text matching "true" or "false" in correctAnswer
+      const matchingOption = question.options.find(opt =>
+        opt.text?.toLowerCase() === question.correctAnswer?.toLowerCase()
+      );
+      if (matchingOption) {
+        correctAnswer = matchingOption.text.toLowerCase();
       }
-    } catch (aiError) {
-      console.error(`Error using AI to determine correct answer for true/false: ${aiError.message}`);
-      // Fall back to modelAnswer if AI fails
     }
   }
 
@@ -844,7 +795,19 @@ Only respond with the letter of the correct option (A or B).
     }
   }
 
-  // Quick exact match
+  // For true/false questions: use exact match only (no partial credit)
+  if (question.type === 'true-false') {
+    const isCorrect = studentAnswer === correctAnswer;
+    return {
+      score: isCorrect ? question.points : 0,
+      feedback: isCorrect ? 'Correct!' : `Incorrect. The correct answer is: ${correctAnswer}`,
+      correctedAnswer: correctAnswer,
+      gradingMethod: isCorrect ? 'exact_match' : 'incorrect',
+      isCorrect
+    };
+  }
+
+  // Quick exact match for other question types
   if (studentAnswer === correctAnswer) {
     return {
       score: question.points,
@@ -855,7 +818,7 @@ Only respond with the letter of the correct option (A or B).
     };
   }
 
-  // Quick similarity check
+  // Quick similarity check (for fill-in-blank and other short answer)
   const similarity = calculateSimilarity(studentAnswer, correctAnswer);
   let score = similarity > 0.8 ? question.points :
                 similarity > 0.6 ? Math.round(question.points * 0.8) :

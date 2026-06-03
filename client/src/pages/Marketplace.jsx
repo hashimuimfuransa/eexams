@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails, Collapse } from '@mui/material';
 import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp, ArrowBack } from '@mui/icons-material';
@@ -11,7 +11,38 @@ import api from '../services/api';
 const Marketplace = () => {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
+
+  // Infinite scroll
+  const observerRef = useRef(null);
+  const sentinelRef = useRef(null);
+  const setSentinelRef = useRef((node) => {
+    if (sentinelRef.current && observerRef.current) {
+      observerRef.current.unobserve(sentinelRef.current);
+    }
+    sentinelRef.current = node;
+    if (node && observerRef.current) {
+      observerRef.current.observe(node);
+    }
+  }).current;
+
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+          setPage(p => p + 1);
+        }
+      },
+      { threshold: 0.1, rootMargin: '300px' }
+    );
+    if (sentinelRef.current) {
+      observerRef.current.observe(sentinelRef.current);
+    }
+    return () => observerRef.current?.disconnect();
+  }, [hasMore, loading, loadingMore]);
   const [searchTerm, setSearchTerm] = useState('');
   const [targetAudienceFilter, setTargetAudienceFilter] = useState('all');
   const [priceFilter, setPriceFilter] = useState('all');
@@ -47,6 +78,13 @@ const Marketplace = () => {
     }
   }, [isAuthenticated, user]);
 
+  // Fetch next page when page increments
+  useEffect(() => {
+    if (page > 1) {
+      fetchMarketplaceExams(page);
+    }
+  }, [page]);
+
   const fetchLevels = async () => {
     try {
       const response = await api.get('/marketplace/levels');
@@ -65,16 +103,22 @@ const Marketplace = () => {
     return selectedLevel?.subLevels?.filter(s => s.isActive) || [];
   };
 
-  const fetchMarketplaceExams = async () => {
+  const fetchMarketplaceExams = async (pageNum = 1) => {
     try {
-      setLoading(true);
-      const response = await api.get('/marketplace/exams');
-      setExams(response.data);
+      if (pageNum === 1) setLoading(true);
+      else setLoadingMore(true);
+      const response = await api.get('/marketplace/exams', {
+        params: { page: pageNum, limit: 50 }
+      });
+      const newExams = response.data;
+      setExams(prev => pageNum === 1 ? newExams : [...prev, ...newExams]);
+      setHasMore(newExams.length >= 50);
     } catch (err) {
       console.error('Error fetching marketplace exams:', err);
       setError('Failed to load marketplace exams. Please try again later.');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -228,8 +272,8 @@ const Marketplace = () => {
     }
   });
 
-  const calculateTotalQuestions = (sections) => {
-    return sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
+  const calculateTotalQuestions = (exam) => {
+    return exam.totalQuestions || exam.sections?.reduce((sum, section) => sum + (section.questionCount || section.questions?.length || 0), 0) || 0;
   };
 
   const clearFilters = () => {
@@ -538,7 +582,7 @@ const Marketplace = () => {
             </Typography>
             <Grid container spacing={2}>
               {recommendations.slice(0, 3).map((exam) => {
-                const totalQuestions = exam.sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
+                const totalQuestions = calculateTotalQuestions(exam);
                 const isCompleted = completedExamIds.includes(exam._id);
                 return (
                   <Grid item xs={12} sm={6} md={4} key={`rec-${exam._id}`}>
@@ -724,7 +768,7 @@ const Marketplace = () => {
                     }}>
                       <Box sx={{ textAlign: 'center' }}>
                         <Typography sx={{ fontSize: 24, fontWeight: 800, color: '#0D406C', lineHeight: 1, mb: 0.5 }}>
-                          {calculateTotalQuestions(exam.sections)}
+                          {calculateTotalQuestions(exam)}
                         </Typography>
                         <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           Questions
@@ -856,6 +900,13 @@ const Marketplace = () => {
               </Grid>
             ))}
           </Grid>
+        )}
+
+        {/* Infinite scroll sentinel */}
+        {hasMore && !loading && (
+          <Box ref={setSentinelRef} sx={{ display: 'flex', justifyContent: 'center', mt: 4, py: 2 }}>
+            {loadingMore && <CircularProgress size={28} />}
+          </Box>
         )}
       </Box>
     </Box>

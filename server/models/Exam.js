@@ -173,6 +173,7 @@ ExamSchema.index({ createdBy: 1, createdAt: -1 }); // For getting user's exams s
 ExamSchema.index({ status: 1, isLocked: 1 }); // For filtering by status and lock state
 ExamSchema.index({ assignedTo: 1 }); // For finding exams assigned to students
 ExamSchema.index({ isPubliclyListed: 1, status: 1 }); // For public exam listings
+ExamSchema.index({ isPubliclyListed: 1, isLocked: 1, createdAt: -1 }); // For marketplace listing sorted by date
 ExamSchema.index({ level: 1, subLevel: 1 }); // For filtering by education level
 ExamSchema.index({ createdAt: -1 }); // For recent exams
 ExamSchema.index({ title: 'text', description: 'text' }); // For text search

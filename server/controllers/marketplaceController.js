@@ -10,17 +10,30 @@ const emailService = require('../utils/emailService');
 // @access  Public
 const getMarketplaceExams = async (req, res) => {
   try {
+    const { page = 1, limit = 50 } = req.query;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
     const exams = await Exam.find({ isPubliclyListed: true, isLocked: false })
       .populate('createdBy', 'fullName')
-      .populate('sections.questions')
       .populate('level', 'name description subLevels')
-      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections isPubliclyListed isLocked status')
-      .sort({ createdAt: -1 });
+      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections.name sections.questions sections.questionCount isPubliclyListed isLocked status')
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
 
-    console.log('Marketplace exams count:', exams.length); // Debug log
-    console.log('Marketplace exams:', exams.map(e => ({ id: e._id, title: e.title, isPubliclyListed: e.isPubliclyListed, isLocked: e.isLocked, status: e.status }))); // Debug log
+    // Compute totalQuestions from sections.questions array length (ObjectId refs, not populated)
+    const examsWithCounts = exams.map(exam => ({
+      ...exam,
+      totalQuestions: exam.sections?.reduce((sum, s) => sum + (s.questions?.length || s.questionCount || 0), 0) || 0,
+      sections: exam.sections?.map(s => ({
+        name: s.name,
+        questionCount: s.questions?.length || s.questionCount || 0
+      }))
+    }));
 
-    res.json(exams);
+    res.json(examsWithCounts);
   } catch (error) {
     console.error('Get marketplace exams error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -1129,9 +1142,11 @@ const getPersonalizedRecommendations = async (req, res) => {
           { targetAudience: { $in: completedLevels } }
         ]
       })
+        .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections.name sections.questions sections.questionCount')
         .populate('createdBy', 'fullName')
         .populate('level', 'name description')
-        .limit(6);
+        .limit(6)
+        .lean();
 
       if (levelRecommendations.length >= 3) {
         return res.json({
@@ -1144,10 +1159,12 @@ const getPersonalizedRecommendations = async (req, res) => {
 
     // Fallback: return newest exams
     const fallbackRecommendations = await Exam.find(recommendationQuery)
+      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections.name sections.questions sections.questionCount')
       .populate('createdBy', 'fullName')
       .populate('level', 'name description')
       .sort({ createdAt: -1 })
-      .limit(6);
+      .limit(6)
+      .lean();
 
     res.json({
       recommendations: fallbackRecommendations,
@@ -1167,32 +1184,20 @@ const getExamCompletionStatus = async (req, res) => {
   try {
     const studentId = req.user._id;
 
-    // Get all completed exams by this student
-    const completedResults = await Result.find({
-      student: studentId,
-      isCompleted: true
-    }).select('exam');
+    // Run all 3 queries in parallel for speed
+    const [completedResults, approvedRequests, pendingRetakeRequests] = await Promise.all([
+      Result.find({ student: studentId, isCompleted: true }).select('exam').lean(),
+      ExamRequest.find({ student: studentId, status: 'approved' }).select('exam').lean(),
+      ExamRequest.find({ student: studentId, status: 'pending', isRetake: true }).select('exam').lean()
+    ]);
 
     const completedExamIds = completedResults.map(r => r.exam.toString());
-
-    // Get approved exam requests
-    const approvedRequests = await ExamRequest.find({
-      student: studentId,
-      status: 'approved'
-    }).select('exam');
 
     // Filter out completed exams from approved list
     // Students should only see exams as "approved" if they haven't completed them yet
     const approvedExamIds = approvedRequests
       .map(r => r.exam.toString())
       .filter(examId => !completedExamIds.includes(examId));
-
-    // Get pending retake requests
-    const pendingRetakeRequests = await ExamRequest.find({
-      student: studentId,
-      status: 'pending',
-      isRetake: true
-    }).select('exam');
 
     const pendingRetakeExamIds = pendingRetakeRequests.map(r => r.exam.toString());
 

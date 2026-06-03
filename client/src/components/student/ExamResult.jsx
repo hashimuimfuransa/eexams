@@ -492,7 +492,7 @@ const ExamResult = () => {
                                 <Typography component="span" fontWeight="bold" color="primary.main">
                                   {answer.selectedOptionLetter}.{' '}
                                 </Typography>
-                                {answer.selectedOption || 'No answer provided'}
+                                {answer.selectedOption || answer?.textAnswer || 'No answer provided'}
                               </>
                             ) : (
                               answer?.selectedOption || answer?.textAnswer || 'No answer provided'
@@ -543,7 +543,7 @@ const ExamResult = () => {
                             <Typography variant="body2" color="success.main" fontWeight="bold" gutterBottom>
                               Correct Answer:
                             </Typography>
-                            {question.type === 'multiple-choice' && answer?.correctOptionLetter ? (
+                            {(question.type === 'multiple-choice' || question.type === 'true-false') && answer?.correctOptionLetter ? (
                               <Box
                                 sx={{
                                   p: 2,

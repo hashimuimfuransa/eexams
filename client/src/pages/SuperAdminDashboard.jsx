@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Chip, Button, Paper, Grid, TextField,
   CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -2773,10 +2773,61 @@ function ExamBankMarketplaceSection({ searchQuery }) {
   const [reviewData, setReviewData] = useState(null);
 
   // Filter states
+  const [localSearch, setLocalSearch] = useState(searchQuery || '');
   const [statusFilter, setStatusFilter] = useState('');
   const [sortBy, setSortBy] = useState('createdAt');
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const observerRef = useRef(null);
+
+  // Callback ref for sentinel element - triggers observe/unobserve automatically
+  const sentinelRef = useRef(null);
+  const setSentinelRef = useRef((node) => {
+    if (sentinelRef.current && observerRef.current) {
+      observerRef.current.unobserve(sentinelRef.current);
+    }
+    sentinelRef.current = node;
+    if (node && observerRef.current) {
+      observerRef.current.observe(node);
+    }
+  }).current;
+
+  // Infinite scroll with IntersectionObserver
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+          setPage(p => p + 1);
+        }
+      },
+      { threshold: 0.1, rootMargin: '300px' }
+    );
+    if (sentinelRef.current) {
+      observerRef.current.observe(sentinelRef.current);
+    }
+    return () => observerRef.current?.disconnect();
+  }, [hasMore, loading, loadingMore]);
+
+  // Sync local search with parent searchQuery prop
+  useEffect(() => {
+    setLocalSearch(searchQuery || '');
+  }, [searchQuery]);
+
+  // Filter exams client-side by search term
+  const filteredExams = exams.filter(exam => {
+    if (!localSearch) return true;
+    const q = localSearch.toLowerCase();
+    return (
+      exam.title?.toLowerCase().includes(q) ||
+      exam.createdBy?.organization?.toLowerCase().includes(q) ||
+      exam.createdBy?.firstName?.toLowerCase().includes(q) ||
+      exam.createdBy?.lastName?.toLowerCase().includes(q) ||
+      exam.targetAudience?.toLowerCase().includes(q) ||
+      exam.level?.name?.toLowerCase().includes(q) ||
+      exam.publicDescription?.toLowerCase().includes(q)
+    );
+  });
 
   // Helper to get option display text (handles both string and object formats)
   const getOptionText = (opt) => {
@@ -2814,15 +2865,17 @@ function ExamBankMarketplaceSection({ searchQuery }) {
       setHasMore(true);
       setExams([]);
     }
-    setLoading(true);
+    const isFirstPage = reset || page === 1;
+    if (isFirstPage) setLoading(true);
+    else setLoadingMore(true);
     try {
       const res = await api.get('/superadmin/marketplace-exams', {
-        params: { status: statusFilter, sortBy, page, limit: 20 }
+        params: { status: statusFilter, sortBy, page: reset ? 1 : page, limit: 50 }
       });
       const newExams = res.data.exams || [];
       setExams(prev => reset ? newExams : [...prev, ...newExams]);
-      setStats(res.data.stats);
-      setHasMore(newExams.length >= 20);
+      if (res.data.stats) setStats(res.data.stats);
+      setHasMore(newExams.length >= 50);
     } catch (err) {
       console.error('Failed to fetch marketplace exams:', err);
       console.error('Error details:', {
@@ -2833,12 +2886,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadMore = () => {
-    if (!loading && hasMore) {
-      setPage(p => p + 1);
+      setLoadingMore(false);
     }
   };
 
@@ -2891,6 +2939,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
     setSaving(true);
     try {
       await api.put(`/superadmin/marketplace-exams/${editDialog._id}/settings`, {
+        title: editDialog.title,
         isPubliclyListed: editDialog.isPubliclyListed,
         publicPrice: editDialog.publicPrice,
         retakePrice: editDialog.retakePrice ?? 0,
@@ -3018,8 +3067,9 @@ function ExamBankMarketplaceSection({ searchQuery }) {
             <TextField
               fullWidth
               size="small"
-              placeholder="Search exams..."
-              value={searchQuery}
+              placeholder="Search exams by title, creator, level..."
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
               InputProps={{
                 startAdornment: <Box component="span" sx={{ color: tokens.textMuted, mr: 1 }}>🔍</Box>
               }}
@@ -3048,7 +3098,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
             </FormControl>
           </Grid>
           <Grid item xs={12} md={2}>
-            <Button fullWidth variant="outlined" onClick={fetchExams} sx={{ borderRadius: 2, height: 37, textTransform: 'none', fontWeight: 600 }}>Refresh</Button>
+            <Button fullWidth variant="outlined" onClick={() => fetchExams(true)} sx={{ borderRadius: 2, height: 37, textTransform: 'none', fontWeight: 600 }}>Refresh</Button>
           </Grid>
         </Grid>
       </Paper>
@@ -3057,13 +3107,13 @@ function ExamBankMarketplaceSection({ searchQuery }) {
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
           <CircularProgress sx={{ color: tokens.accent }} />
         </Box>
-      ) : exams.length === 0 ? (
+      ) : filteredExams.length === 0 ? (
         <Paper elevation={0} sx={{ p: 4, borderRadius: 3, border: `1px dashed ${tokens.surfaceBorder}`, bgcolor: '#FAFBFC', textAlign: 'center' }}>
-          <Typography sx={{ color: tokens.textMuted }}>No exams found in marketplace.</Typography>
+          <Typography sx={{ color: tokens.textMuted }}>{localSearch ? `No exams matching "${localSearch}"` : 'No exams found in marketplace.'}</Typography>
         </Paper>
       ) : (
         <Grid container spacing={2}>
-          {exams.map((exam) => (
+          {filteredExams.map((exam) => (
             <Grid item xs={12} md={6} lg={4} key={exam._id}>
               <Paper elevation={0} sx={{
                 p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white',
@@ -3110,9 +3160,14 @@ function ExamBankMarketplaceSection({ searchQuery }) {
 
                 {/* Footer */}
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pt: 1.5, borderTop: `1px solid ${tokens.surfaceBorder}` }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {exam.publicPrice > 0 && (
-                      <Typography variant="body2" fontWeight={700} sx={{ color: tokens.accent }}>{exam.publicPrice} RWF</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography variant="body2" fontWeight={700} sx={{ color: tokens.accent }}>
+                      {exam.publicPrice > 0 ? `${exam.publicPrice} RWF` : 'Free'}
+                    </Typography>
+                    {exam.retakePrice > 0 && (
+                      <Typography variant="caption" fontWeight={600} sx={{ color: tokens.warning }}>
+                        Retake: {exam.retakePrice} RWF
+                      </Typography>
                     )}
                     {exam.level && (
                       <Chip label={exam.level.name} size="small" sx={{ height: 20, fontSize: '10px', bgcolor: 'rgba(99,102,241,0.1)', color: '#6366F1', fontWeight: 600 }} />
@@ -3142,17 +3197,10 @@ function ExamBankMarketplaceSection({ searchQuery }) {
         </Grid>
       )}
 
-      {/* Load More Button */}
-      {!loading && hasMore && exams.length > 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Button
-            variant="outlined"
-            onClick={loadMore}
-            disabled={loading}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            {loading ? 'Loading...' : 'Load More'}
-          </Button>
+      {/* Infinite scroll sentinel */}
+      {hasMore && !loading && (
+        <Box ref={setSentinelRef} sx={{ display: 'flex', justifyContent: 'center', mt: 3, py: 2 }}>
+          {loadingMore && <CircularProgress size={28} sx={{ color: tokens.accent }} />}
         </Box>
       )}
 
@@ -3266,6 +3314,9 @@ function ExamBankMarketplaceSection({ searchQuery }) {
         <DialogContent sx={{ pt: '20px !important' }}>
           <Grid container spacing={2}>
             <Grid item xs={12}>
+              <TextField fullWidth label="Exam Title" size="small" value={editDialog?.title || ''} onChange={(e) => setEditDialog(d => ({ ...d, title: e.target.value }))} sx={{ borderRadius: 2 }} />
+            </Grid>
+            <Grid item xs={12}>
               <FormControl fullWidth size="small">
                 <InputLabel sx={{ fontWeight: 600 }}>Visibility</InputLabel>
                 <Select label="Visibility" value={editDialog?.isPubliclyListed || false} onChange={(e) => setEditDialog(d => ({ ...d, isPubliclyListed: e.target.value }))} sx={{ borderRadius: 2 }}>
@@ -3275,7 +3326,7 @@ function ExamBankMarketplaceSection({ searchQuery }) {
               </FormControl>
             </Grid>
             <Grid item xs={6}>
-              <TextField fullWidth label="Price (RWF)" type="number" size="small" value={editDialog?.publicPrice ?? 0} onChange={(e) => setEditDialog(d => ({ ...d, publicPrice: e.target.value }))} helperText="0 for free" sx={{ borderRadius: 2 }} />
+              <TextField fullWidth label="Take Price (RWF)" type="number" size="small" value={editDialog?.publicPrice ?? 0} onChange={(e) => setEditDialog(d => ({ ...d, publicPrice: e.target.value }))} helperText="0 for free" sx={{ borderRadius: 2 }} />
             </Grid>
             <Grid item xs={6}>
               <TextField fullWidth label="Retake Price (RWF)" type="number" size="small" value={editDialog?.retakePrice ?? 0} onChange={(e) => setEditDialog(d => ({ ...d, retakePrice: e.target.value }))} helperText="0 for free retake" sx={{ borderRadius: 2 }} />

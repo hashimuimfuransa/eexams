@@ -547,6 +547,75 @@ const Results = () => {
           </Box>
         )}
 
+        {/* ── True / False ── */}
+        {qType === 'true-false' && (
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={labelStyle}>Answer Options</Typography>
+            {['True', 'False'].map((optText, oi) => {
+              const letter = oi === 0 ? 'A' : 'B';
+              const isStudentAnswer =
+                answer.selectedOptionLetter === letter ||
+                answer.selectedOption?.toLowerCase() === optText.toLowerCase() ||
+                answer.textAnswer?.toLowerCase() === optText.toLowerCase();
+              const isCorrectOpt =
+                answer.correctOptionLetter === letter ||
+                answer.question?.correctAnswer?.toLowerCase() === optText.toLowerCase() ||
+                answer.correctedAnswer?.toLowerCase() === optText.toLowerCase();
+              const highlight = isCorrectOpt || isStudentAnswer;
+              return (
+                <Box key={oi} sx={{
+                  display: 'flex', alignItems: 'center', gap: 1,
+                  p: { xs: 1, sm: 1.25 }, mb: 0.75, borderRadius: 2,
+                  bgcolor: isCorrectOpt
+                    ? alpha('#2e7d32', 0.1)
+                    : isStudentAnswer
+                      ? alpha('#d32f2f', 0.09)
+                      : 'grey.50',
+                  border: '1.5px solid',
+                  borderColor: isCorrectOpt ? 'success.light' : isStudentAnswer ? 'error.light' : 'transparent'
+                }}>
+                  <Box sx={{
+                    width: 26, height: 26, minWidth: 26, borderRadius: '50%', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12,
+                    bgcolor: isCorrectOpt ? 'success.main' : isStudentAnswer ? 'error.main' : 'grey.300',
+                    color: highlight ? 'white' : 'text.primary'
+                  }}>
+                    {letter}
+                  </Box>
+                  <Typography variant="body2" sx={{ flex: 1, fontWeight: highlight ? 600 : 400 }}>
+                    {optText}
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.4, flexShrink: 0 }}>
+                    {isCorrectOpt && isStudentAnswer && (
+                      <Chip label="✓ Your answer" size="small" color="success" sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
+                    )}
+                    {isCorrectOpt && !isStudentAnswer && (
+                      <Chip label="✓ Correct" size="small" color="success" sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
+                    )}
+                    {isStudentAnswer && !isCorrectOpt && (
+                      <Chip label="✗ Your answer" size="small" color="error" sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+
+            {/* Always show correct answer clearly when wrong */}
+            {!answer.isCorrect && (
+              <Box sx={{ mt: 1.5, p: 1.25, bgcolor: alpha('#2e7d32', 0.08), borderRadius: 2,
+                border: '1px solid', borderColor: 'success.light',
+                display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TaskAlt fontSize="small" sx={{ color: 'success.main', flexShrink: 0 }} />
+                <Typography variant="body2" fontWeight={700} color="success.dark">
+                  Correct answer:{' '}
+                  {answer.correctOptionLetter ? `${answer.correctOptionLetter}. ` : ''}
+                  {String(answer.question?.correctAnswer || answer.correctedAnswer || 'See highlighted option above')}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        )}
+
         {/* ── Matching ── */}
         {qType === 'matching' && (() => {
           const leftItems = answer.question?.leftItems || answer.question?.matchingPairs?.leftColumn || [];

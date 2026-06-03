@@ -2194,7 +2194,6 @@ const getMarketplaceExamsWithStats = async (req, res) => {
   try {
     const { page = 1, limit = 50, status, search, sortBy = 'createdAt' } = req.query;
 
-    console.log('[SuperAdmin] Fetching marketplace exams with params:', { page, limit, status, search, sortBy });
 
     // Build query
     const query = {};
@@ -2209,8 +2208,9 @@ const getMarketplaceExamsWithStats = async (req, res) => {
       ];
     }
 
-    // Get exams with creator info
+    // Get exams with creator info - use lean() for faster serialization
     let examsQuery = Exam.find(query)
+      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience isPubliclyListed isLocked status createdAt createdBy level subLevel')
       .populate('createdBy', 'firstName lastName email organization')
       .populate('level', 'name subLevels');
 
@@ -2226,13 +2226,10 @@ const getMarketplaceExamsWithStats = async (req, res) => {
     }
 
     const exams = await examsQuery
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .lean();
 
-    console.log('[SuperAdmin] Found exams:', exams.length);
-
-    // Get total count
-    const total = await Exam.countDocuments(query);
 
     // Get comprehensive stats for each exam using aggregation for better performance
     const ExamRequest = require('../models/ExamRequest');
@@ -2241,29 +2238,30 @@ const getMarketplaceExamsWithStats = async (req, res) => {
     // Get all exam IDs for batch querying
     const examIds = exams.map(e => e._id);
 
-    // Batch fetch all request stats at once
-    const requestStats = await ExamRequest.aggregate([
-      { $match: { exam: { $in: examIds } } },
-      { $group: {
-        _id: '$exam',
-        total: { $sum: 1 },
-        approved: { $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] } },
-        pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
-        rejected: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } },
-        uniqueRequesters: { $addToSet: '$student' }
-      }}
-    ]);
-
-    // Batch fetch all result stats at once
-    const resultStats = await Result.aggregate([
-      { $match: { exam: { $in: examIds } } },
-      { $group: {
-        _id: '$exam',
-        completed: { $sum: { $cond: [{ $eq: ['$isCompleted', true] }, 1, 0] } },
-        inProgress: { $sum: { $cond: [{ $eq: ['$isCompleted', false] }, 1, 0] } },
-        totalScore: { $sum: '$totalScore' },
-        maxScore: { $sum: '$maxPossibleScore' }
-      }}
+    // Run count + both aggregations in parallel for speed
+    const [total, requestStats, resultStats] = await Promise.all([
+      Exam.countDocuments(query),
+      ExamRequest.aggregate([
+        { $match: { exam: { $in: examIds } } },
+        { $group: {
+          _id: '$exam',
+          total: { $sum: 1 },
+          approved: { $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] } },
+          pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+          rejected: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } },
+          uniqueRequesters: { $addToSet: '$student' }
+        }}
+      ]),
+      Result.aggregate([
+        { $match: { exam: { $in: examIds } } },
+        { $group: {
+          _id: '$exam',
+          completed: { $sum: { $cond: [{ $eq: ['$isCompleted', true] }, 1, 0] } },
+          inProgress: { $sum: { $cond: [{ $eq: ['$isCompleted', false] }, 1, 0] } },
+          totalScore: { $sum: '$totalScore' },
+          maxScore: { $sum: '$maxPossibleScore' }
+        }}
+      ])
     ]);
 
     // Create lookup maps
@@ -2287,7 +2285,7 @@ const getMarketplaceExamsWithStats = async (req, res) => {
       });
     });
 
-    // Combine stats with exams
+    // Combine stats with exams (already lean, no toObject needed)
     const examsWithStats = exams.map(exam => {
       const reqStats = requestStatsMap.get(exam._id.toString()) || {
         requestCount: 0,
@@ -2303,36 +2301,39 @@ const getMarketplaceExamsWithStats = async (req, res) => {
       };
 
       return {
-        ...exam.toObject(),
+        ...exam,
         stats: {
           ...reqStats,
           ...resStats,
           completionRate: reqStats.requestCount > 0 ? Math.round((resStats.completedCount / reqStats.requestCount) * 100) : 0
-        },
-        recentRequests: [] // Skip recent requests for performance
+        }
       };
     });
 
-    // Get overall marketplace stats
-    const totalMarketplaceExams = await Exam.countDocuments({ isPubliclyListed: true });
-    const totalRequests = await ExamRequest.countDocuments();
-    const totalCompletions = await Result.countDocuments({ isCompleted: true });
-
-    console.log('[SuperAdmin] Successfully fetched marketplace exams');
-
-    res.json({
-      exams: examsWithStats,
-      stats: {
+    // Only fetch overall stats on first page to reduce DB load
+    let overallStats = null;
+    if (parseInt(page) === 1) {
+      const [totalMarketplaceExams, totalRequests, totalCompletions] = await Promise.all([
+        Exam.countDocuments({ isPubliclyListed: true }),
+        ExamRequest.countDocuments(),
+        Result.countDocuments({ isCompleted: true })
+      ]);
+      overallStats = {
         totalMarketplaceExams,
         totalRequests,
         totalCompletions,
         overallCompletionRate: totalRequests > 0 ? Math.round((totalCompletions / totalRequests) * 100) : 0
-      },
+      };
+    }
+
+    res.json({
+      exams: examsWithStats,
+      ...(overallStats && { stats: overallStats }),
       pagination: {
         total,
         page: parseInt(page),
         limit: parseInt(limit),
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil(total / parseInt(limit))
       }
     });
   } catch (error) {
@@ -2474,7 +2475,7 @@ const getExamUsageDetails = async (req, res) => {
 // @access  Private/SuperAdmin
 const updateExamMarketplaceSettings = async (req, res) => {
   try {
-    const { isPubliclyListed, publicPrice, retakePrice, publicDescription, targetAudience, status, levelId, subLevel } = req.body;
+    const { title, description, isPubliclyListed, publicPrice, retakePrice, publicDescription, targetAudience, status, levelId, subLevel } = req.body;
 
     const exam = await Exam.findById(req.params.id);
 
@@ -2483,6 +2484,8 @@ const updateExamMarketplaceSettings = async (req, res) => {
     }
 
     // Update fields (super admin can override any setting)
+    if (title !== undefined && title.trim()) exam.title = title.trim();
+    if (description !== undefined) exam.description = description;
     if (isPubliclyListed !== undefined) exam.isPubliclyListed = isPubliclyListed;
     if (publicPrice !== undefined) exam.publicPrice = parseFloat(publicPrice);
     if (retakePrice !== undefined) exam.retakePrice = parseFloat(retakePrice);

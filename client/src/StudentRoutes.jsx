@@ -5,6 +5,7 @@ import StudentExams from './components/student/Exams';
 import StudentResults from './components/student/Results';
 import StudentHistory from './components/student/History';
 import StudentProfile from './components/student/Profile';
+import StudentLeaderboard from './components/student/Leaderboard';
 import ExamInterface from './components/student/ExamInterface';
 import ExamCountdown from './components/student/ExamCountdown';
 import SelectiveAnsweringDebug from './components/student/SelectiveAnsweringDebug';
@@ -38,6 +39,9 @@ const StudentRoutes = () => {
 
       {/* History Route */}
       <Route path="/history" element={<StudentHistory />} />
+
+      {/* Leaderboard Route */}
+      <Route path="/leaderboard" element={<StudentLeaderboard />} />
 
       {/* Profile Route */}
       <Route path="/profile" element={<StudentProfile />} />

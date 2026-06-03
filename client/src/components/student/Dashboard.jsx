@@ -14,7 +14,8 @@ import {
   Divider,
   useTheme,
   IconButton,
-  useMediaQuery
+  useMediaQuery,
+  alpha
 } from '@mui/material';
 import {
   Assessment,
@@ -29,7 +30,12 @@ import {
   ArrowForward,
   AddCircle,
   Psychology,
-  Replay
+  Replay,
+  EmojiEvents,
+  Leaderboard as LeaderboardIcon,
+  WorkspacePremium,
+  ExpandMore,
+  ExpandLess
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -65,6 +71,9 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [requestingExam, setRequestingExam] = useState(null);
   const [timeRemainingMap, setTimeRemainingMap] = useState({});
+  const [leaderboards, setLeaderboards] = useState({});
+  const [leaderboardLoading, setLeaderboardLoading] = useState({});
+  const [expandedLeaderboard, setExpandedLeaderboard] = useState(null);
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -249,6 +258,29 @@ const Dashboard = () => {
       }
     } finally {
       setRequestingExam(null);
+    }
+  };
+
+  const fetchLeaderboard = async (examId) => {
+    if (leaderboards[examId] || leaderboardLoading[examId]) return;
+    setLeaderboardLoading(prev => ({ ...prev, [examId]: true }));
+    try {
+      const res = await api.get(`/student/leaderboard/exam/${examId}`);
+      setLeaderboards(prev => ({ ...prev, [examId]: res.data }));
+    } catch (err) {
+      console.error('Leaderboard fetch error:', err);
+      setLeaderboards(prev => ({ ...prev, [examId]: { leaderboard: [], examTitle: '' } }));
+    } finally {
+      setLeaderboardLoading(prev => ({ ...prev, [examId]: false }));
+    }
+  };
+
+  const handleToggleLeaderboard = (examId) => {
+    if (expandedLeaderboard === examId) {
+      setExpandedLeaderboard(null);
+    } else {
+      setExpandedLeaderboard(examId);
+      fetchLeaderboard(examId);
     }
   };
 
@@ -1040,69 +1072,316 @@ const Dashboard = () => {
           </Box>
         )}
 
+        {/* Leaderboard Section — always show if student has completed exams */}
+        {results.length > 0 && (
+          <Box sx={{ mt: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <LeaderboardIcon color="primary" />
+                <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold">
+                  Exam Leaderboards
+                </Typography>
+                <Chip label="Compare with classmates" size="small" color="info" variant="outlined" sx={{ ml: 1 }} />
+              </Box>
+              <Button
+                variant="contained"
+                component={RouterLink}
+                to="/student/leaderboard"
+                startIcon={<LeaderboardIcon />}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                View Full Leaderboard
+              </Button>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Showing your 3 most recent exams. Click an exam to see rankings, or view the full leaderboard page.
+            </Typography>
+
+            {results.slice(0, 3).map((result) => {
+              const examId = result.exam?._id || result.exam;
+              if (!examId) return null;
+              const examTitle = result.examTitle || result.exam?.title || 'Exam';
+              const percentage = calculatePercentage(result.totalScore, result.maxPossibleScore);
+              const isPassed = percentage >= 70;
+              const isExpanded = expandedLeaderboard === examId;
+              const lbData = leaderboards[examId];
+              const lbLoading = leaderboardLoading[examId];
+              const myEntry = lbData?.leaderboard?.find(e => e.isCurrentUser);
+
+              return (
+                <Card key={result._id} elevation={2} sx={{ mb: 2, borderRadius: 2,
+                  border: isExpanded ? '2px solid' : '1px solid',
+                  borderColor: isExpanded ? 'primary.main' : 'divider' }}>
+                  {/* Exam header row */}
+                  <CardContent sx={{ pb: '12px !important', cursor: 'pointer' }}
+                    onClick={() => handleToggleLeaderboard(examId)}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="subtitle1" fontWeight="bold" noWrap>{examTitle}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Completed: {formatDate(result.endTime)}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+                        <Chip
+                          icon={isPassed ? <CheckCircle /> : <Cancel />}
+                          label={`${percentage}%`}
+                          color={isPassed ? 'success' : 'error'}
+                          size="small" sx={{ fontWeight: 'bold' }}
+                        />
+                        {myEntry && (
+                          <Chip
+                            icon={<EmojiEvents fontSize="small" />}
+                            label={`Rank #${myEntry.rank}`}
+                            size="small"
+                            sx={{
+                              fontWeight: 'bold',
+                              bgcolor: myEntry.rank === 1 ? '#FFD700' : myEntry.rank === 2 ? '#C0C0C0' : myEntry.rank === 3 ? '#CD7F32' : undefined,
+                              color: myEntry.rank <= 3 ? 'black' : undefined
+                            }}
+                          />
+                        )}
+                        <Button size="small" variant="outlined" endIcon={isExpanded ? <ExpandLess /> : <ExpandMore />}
+                          sx={{ textTransform: 'none', fontSize: 12 }}>
+                          {isExpanded ? 'Hide' : 'Leaderboard'}
+                        </Button>
+                      </Box>
+                    </Box>
+                  </CardContent>
+
+                  {/* Leaderboard panel */}
+                  {isExpanded && (
+                    <Box sx={{ px: 2, pb: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <Box sx={{ display: 'flex', gap: 1.5, pt: 1.5, mb: 1.5 }}>
+                        <Button variant="outlined" size="small" component={RouterLink}
+                          to={`/student/results/${result._id}`} sx={{ textTransform: 'none' }}>
+                          View My Detailed Result
+                        </Button>
+                      </Box>
+
+                      {lbLoading ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                          <CircularProgress size={32} />
+                        </Box>
+                      ) : !lbData || lbData.leaderboard.length === 0 ? (
+                        <Box sx={{ py: 3, textAlign: 'center' }}>
+                          <Typography variant="body2" color="text.secondary">
+                            No other students have completed this exam yet.
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Box>
+                          {/* Top 3 podium */}
+                          {lbData.leaderboard.length >= 2 && (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', gap: { xs: 1, sm: 2 }, mb: 2, mt: 1 }}>
+                              {[1, 0, 2].filter(i => lbData.leaderboard[i]).map((podiumIdx) => {
+                                const entry = lbData.leaderboard[podiumIdx];
+                                const podiumRank = podiumIdx + 1;
+                                const podiumColors = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
+                                const podiumHeights = { 1: 90, 2: 70, 3: 60 };
+                                return (
+                                  <Box key={podiumIdx} sx={{ textAlign: 'center', flex: podiumRank === 1 ? '0 0 120px' : '0 0 100px' }}>
+                                    <Box sx={{ width: 44, height: 44, borderRadius: '50%', bgcolor: podiumColors[podiumRank],
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 0.5,
+                                      border: entry.isCurrentUser ? '3px solid #0D406C' : 'none',
+                                      boxShadow: entry.isCurrentUser ? '0 0 0 2px white, 0 0 0 4px #0D406C' : 'none' }}>
+                                      <Typography variant="body2" fontWeight={800} sx={{ fontSize: 11 }}>
+                                        {podiumRank === 1 ? '🥇' : podiumRank === 2 ? '🥈' : '🥉'}
+                                      </Typography>
+                                    </Box>
+                                    <Box sx={{ height: podiumHeights[podiumRank], bgcolor: podiumColors[podiumRank],
+                                      borderRadius: '4px 4px 0 0', opacity: 0.85, display: 'flex', alignItems: 'flex-start',
+                                      justifyContent: 'center', pt: 0.75 }}>
+                                      <Typography variant="caption" fontWeight={800} sx={{ px: 0.5, lineHeight: 1.2, textAlign: 'center', fontSize: 10 }}>
+                                        {entry.name.split(' ')[0]}
+                                        <br />{entry.percentage}%
+                                      </Typography>
+                                    </Box>
+                                    {entry.isCurrentUser && (
+                                      <Chip label="You" size="small" color="primary" sx={{ mt: 0.5, height: 16, fontSize: 9 }} />
+                                    )}
+                                  </Box>
+                                );
+                              })}
+                            </Box>
+                          )}
+
+                          {/* Top 5 ranking preview */}
+                          {(() => {
+                            const examId = result.exam?._id || result.exam;
+                            const previewEntries = lbData.leaderboard.slice(0, 5);
+                            const myEntryOutsideTop5 = myEntry && myEntry.rank > 5;
+                            return (
+                              <Box>
+                                {previewEntries.map((entry, idx) => (
+                                  <Box key={entry.id} sx={{
+                                    display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1,
+                                    borderRadius: 1.5, mb: 0.5,
+                                    bgcolor: entry.isCurrentUser ? alpha('#0D406C', 0.1) : idx % 2 === 0 ? 'grey.50' : 'white',
+                                    border: entry.isCurrentUser ? '1.5px solid' : '1px solid transparent',
+                                    borderColor: entry.isCurrentUser ? 'primary.main' : 'transparent'
+                                  }}>
+                                    <Box sx={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      bgcolor: entry.rank === 1 ? '#FFD700' : entry.rank === 2 ? '#C0C0C0' : entry.rank === 3 ? '#CD7F32' : 'grey.200' }}>
+                                      {entry.rank <= 3
+                                        ? (entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : '🥉')
+                                        : <Typography variant="caption" fontWeight={800}>#{entry.rank}</Typography>}
+                                    </Box>
+                                    <Typography variant="body2" sx={{ flex: 1, fontWeight: entry.isCurrentUser ? 700 : 400 }} noWrap>
+                                      {entry.name}
+                                      {entry.isCurrentUser && (
+                                        <Chip label="You" size="small" color="primary" sx={{ ml: 0.75, height: 16, fontSize: 9 }} />
+                                      )}
+                                    </Typography>
+                                    <Box sx={{ width: { xs: 60, sm: 100 }, display: { xs: 'none', sm: 'block' } }}>
+                                      <Box sx={{ height: 6, borderRadius: 3, bgcolor: 'grey.200', overflow: 'hidden' }}>
+                                        <Box sx={{ height: '100%', width: `${entry.percentage}%`, borderRadius: 3,
+                                          bgcolor: entry.percentage >= 80 ? 'success.main' : entry.percentage >= 60 ? 'warning.main' : 'error.main' }} />
+                                      </Box>
+                                    </Box>
+                                    <Chip label={`${entry.percentage}%`} size="small"
+                                      color={entry.percentage >= 80 ? 'success' : entry.percentage >= 60 ? 'warning' : 'error'}
+                                      sx={{ fontWeight: 700, minWidth: 54, flexShrink: 0 }} />
+                                  </Box>
+                                ))}
+
+                                {/* Show current user's position if outside top 5 */}
+                                {myEntryOutsideTop5 && (
+                                  <Box sx={{ px: 1.5, py: 0.5, textAlign: 'center' }}>
+                                    <Typography variant="caption" color="text.secondary">· · ·</Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1,
+                                      borderRadius: 1.5, bgcolor: alpha('#0D406C', 0.1), border: '1.5px solid', borderColor: 'primary.main', mt: 0.5 }}>
+                                      <Box sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: 'grey.200', flexShrink: 0,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Typography variant="caption" fontWeight={800}>#{myEntry.rank}</Typography>
+                                      </Box>
+                                      <Typography variant="body2" fontWeight={700} sx={{ flex: 1 }} noWrap>
+                                        {myEntry.name} <Chip label="You" size="small" color="primary" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />
+                                      </Typography>
+                                      <Chip label={`${myEntry.percentage}%`} size="small"
+                                        color={myEntry.percentage >= 80 ? 'success' : myEntry.percentage >= 60 ? 'warning' : 'error'}
+                                        sx={{ fontWeight: 700, minWidth: 54, flexShrink: 0 }} />
+                                    </Box>
+                                  </Box>
+                                )}
+
+                                {lbData.leaderboard.length > 5 && (
+                                  <Box sx={{ mt: 1.5, textAlign: 'center' }}>
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      component={RouterLink}
+                                      to={`/student/leaderboard?exam=${examId}`}
+                                      endIcon={<ArrowForward />}
+                                      sx={{ textTransform: 'none', fontWeight: 600 }}
+                                    >
+                                      View all {lbData.leaderboard.length} students
+                                    </Button>
+                                  </Box>
+                                )}
+                              </Box>
+                            );
+                          })()}
+
+                          {myEntry && (
+                            <Box sx={{ mt: 1.5, p: 1.5, bgcolor: alpha('#0D406C', 0.06), borderRadius: 2, textAlign: 'center' }}>
+                              <Typography variant="body2" fontWeight={700} color="primary.main">
+                                Your rank: #{myEntry.rank} out of {lbData.leaderboard.length} students · {myEntry.percentage}%
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </Card>
+              );
+            })}
+          </Box>
+        )}
+
         {/* Completed Exams Section - Only show when no available exams */}
         {!hasAvailableExams && (
           <>
             <Divider sx={{ my: 4 }} />
-            <Typography variant="h5" fontWeight="bold" gutterBottom>
-              Completed Exams
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold">
+                Completed Exams
+              </Typography>
+              {results.length > 0 && (
+                <Button
+                  variant="outlined"
+                  component={RouterLink}
+                  to="/student/results"
+                  endIcon={<ArrowForward />}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  View All ({results.length})
+                </Button>
+              )}
+            </Box>
 
             {results.length === 0 ? (
-              <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mt: 4 }}>
+              <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mt: 2 }}>
                 <Assessment sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary">
-                  No results yet
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Complete an exam to see your results here.
-                </Typography>
+                <Typography variant="h6" color="text.secondary">No results yet</Typography>
+                <Typography variant="body2" color="text.secondary">Complete an exam to see your results here.</Typography>
               </Paper>
             ) : (
-              <Box sx={{ mt: 2 }}>
-                {results.map((result) => {
+              <Box sx={{ mt: 1 }}>
+                {results.slice(0, 3).map((result) => {
                   const percentage = calculatePercentage(result.totalScore, result.maxPossibleScore);
                   const isPassed = percentage >= 70;
-
                   return (
-                    <Card key={result._id} elevation={2} sx={{ mb: 3 }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-                          <Box sx={{ flex: 1, minWidth: 200 }}>
-                            <Typography variant="h6" fontWeight="bold" gutterBottom>
+                    <Card key={result._id} elevation={2} sx={{ mb: 2, borderRadius: 2 }}>
+                      <CardContent sx={{ pb: '12px !important' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography variant="subtitle1" fontWeight="bold" noWrap>
                               {result.examTitle || result.exam?.title || 'Exam'}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant="caption" color="text.secondary">
                               Completed: {formatDate(result.endTime)}
                             </Typography>
                           </Box>
-
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
                             <Chip
                               icon={isPassed ? <CheckCircle /> : <Cancel />}
-                              label={`${percentage}%`}
+                              label={`${percentage}% · ${result.totalScore}/${result.maxPossibleScore} pts`}
                               color={isPassed ? 'success' : 'error'}
-                              size="medium"
-                              sx={{ fontWeight: 'bold' }}
+                              size="small" sx={{ fontWeight: 'bold' }}
                             />
-                            <Typography variant="body2" color="text.secondary">
-                              {result.totalScore} / {result.maxPossibleScore} points
-                            </Typography>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              component={RouterLink}
+                              to={`/student/results/${result._id}`}
+                              endIcon={<ArrowForward />}
+                              sx={{ textTransform: 'none', fontSize: 12, fontWeight: 600 }}
+                            >
+                              Details
+                            </Button>
                           </Box>
                         </Box>
-
-                        <Button
-                          variant="outlined"
-                          component={RouterLink}
-                          to={`/student/results/${result._id}`}
-                          sx={{ mt: 2 }}
-                        >
-                          View Details
-                        </Button>
                       </CardContent>
                     </Card>
                   );
                 })}
+
+                {results.length > 3 && (
+                  <Box sx={{ textAlign: 'center', mt: 1 }}>
+                    <Button
+                      variant="contained"
+                      component={RouterLink}
+                      to="/student/results"
+                      endIcon={<ArrowForward />}
+                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                    >
+                      View All {results.length} Completed Exams
+                    </Button>
+                  </Box>
+                )}
               </Box>
             )}
           </>

@@ -7,6 +7,7 @@ const {
   getDetailedResult,
   getCurrentExamSession,
   getClassLeaderboard,
+  getExamLeaderboard,
   debugStudentResults,
   checkSpecificResult,
   getScheduledExams,
@@ -37,8 +38,9 @@ router.get('/check-result/:resultId', apiLimiter, checkSpecificResult);
 // Scheduled exams route
 router.get('/scheduled-exams', apiLimiter, getScheduledExams);
 
-// Leaderboard route
+// Leaderboard routes
 router.get('/leaderboard', apiLimiter, getClassLeaderboard);
+router.get('/leaderboard/exam/:examId', apiLimiter, getExamLeaderboard);
 
 // Progress route
 router.get('/progress', apiLimiter, getStudentProgress);

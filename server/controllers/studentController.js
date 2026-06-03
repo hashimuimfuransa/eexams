@@ -932,6 +932,72 @@ const requestExamRetake = async (req, res) => {
   }
 };
 
+// @desc    Get per-exam leaderboard — ranks all students who completed a specific exam
+// @route   GET /api/student/leaderboard/exam/:examId
+// @access  Private/Student
+const getExamLeaderboard = async (req, res) => {
+  try {
+    const { examId } = req.params;
+
+    // Verify the requesting student has completed this exam (strongest access proof)
+    const [exam, studentResult] = await Promise.all([
+      Exam.findById(examId).select('title'),
+      Result.findOne({ exam: examId, student: req.user._id, isCompleted: true }).select('_id').lean()
+    ]);
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    if (!studentResult) {
+      return res.status(403).json({ message: 'Not authorized to view this exam leaderboard' });
+    }
+
+    // Get all completed results for this exam
+    const results = await Result.find({ exam: examId, isCompleted: true })
+      .populate('student', 'firstName lastName')
+      .select('student totalScore maxPossibleScore endTime')
+      .lean();
+
+    if (!results.length) {
+      return res.json({ leaderboard: [], examTitle: exam.title });
+    }
+
+    // Keep only the best result per student
+    const bestByStudent = {};
+    results.forEach(r => {
+      if (!r.student) return;
+      const sid = r.student._id.toString();
+      const pct = r.maxPossibleScore > 0 ? (r.totalScore / r.maxPossibleScore) * 100 : 0;
+      if (!bestByStudent[sid] || pct > bestByStudent[sid].percentage) {
+        bestByStudent[sid] = {
+          id: sid,
+          name: `${r.student.firstName} ${r.student.lastName}`,
+          totalScore: r.totalScore,
+          maxPossibleScore: r.maxPossibleScore,
+          percentage: Math.round(pct),
+          completedAt: r.endTime,
+          isCurrentUser: sid === req.user._id.toString()
+        };
+      }
+    });
+
+    // Sort by percentage desc, then by completedAt asc (faster finisher ranks higher on tie)
+    const leaderboard = Object.values(bestByStudent).sort((a, b) => {
+      if (b.percentage !== a.percentage) return b.percentage - a.percentage;
+      return new Date(a.completedAt) - new Date(b.completedAt);
+    });
+
+    // Assign ranks
+    leaderboard.forEach((entry, i) => { entry.rank = i + 1; });
+
+    res.json({ leaderboard, examTitle: exam.title });
+  } catch (error) {
+    console.error('Get exam leaderboard error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAvailableExams,
   getExamById,
@@ -939,6 +1005,7 @@ module.exports = {
   getDetailedResult,
   getCurrentExamSession,
   getClassLeaderboard,
+  getExamLeaderboard,
   debugStudentResults,
   checkSpecificResult,
   getScheduledExams,

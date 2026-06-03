@@ -67,7 +67,8 @@ import {
   Support,
   Email,
   Phone,
-  QuestionAnswer
+  QuestionAnswer,
+  Leaderboard as LeaderboardIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
@@ -656,6 +657,93 @@ const StudentLayout = ({ children }) => {
                     }
                   }}
                 />
+              )}
+            </ListItemButton>
+          </ListItem>
+        </Zoom>
+
+        <Zoom in={true} style={{ transitionDelay: '150ms' }}>
+          <ListItem disablePadding sx={{ mb: 1.5 }}>
+            <ListItemButton
+              component={RouterLink}
+              to="/student/leaderboard"
+              selected={isActive('/student/leaderboard')}
+              sx={{
+                borderRadius: 3,
+                py: 2,
+                px: 2,
+                position: 'relative',
+                overflow: 'hidden',
+                transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  background: `linear-gradient(135deg, ${alpha('#e65100', 0.05)}, ${alpha('#ff6d00', 0.04)})`,
+                  opacity: 0,
+                  transition: 'opacity 0.3s ease'
+                },
+                '&.Mui-selected': {
+                  background: `linear-gradient(135deg, ${alpha('#e65100', 0.12)}, ${alpha('#ff6d00', 0.08)})`,
+                  color: '#e65100',
+                  borderLeft: '4px solid',
+                  borderColor: '#e65100',
+                  boxShadow: `0 4px 12px ${alpha('#e65100', 0.2)}`,
+                  transform: 'translateX(4px)',
+                  '&:hover': {
+                    background: `linear-gradient(135deg, ${alpha('#e65100', 0.15)}, ${alpha('#ff6d00', 0.1)})`,
+                    transform: 'translateX(6px) scale(1.02)',
+                  },
+                  '& .MuiListItemIcon-root': { color: '#e65100', transform: 'scale(1.1)' },
+                  '&::before': { opacity: 1 }
+                },
+                '&:hover': {
+                  background: alpha('#e65100', 0.06),
+                  transform: 'translateX(6px) scale(1.02)',
+                  boxShadow: `0 4px 12px ${alpha('#e65100', 0.1)}`,
+                  '&::before': { opacity: 1 }
+                }
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 48, transition: 'all 0.3s ease' }}>
+                <Box sx={{
+                  width: 40, height: 40, borderRadius: 2,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: isActive('/student/leaderboard')
+                    ? `linear-gradient(135deg, ${alpha('#e65100', 0.15)}, ${alpha('#ff6d00', 0.1)})`
+                    : alpha(theme.palette.grey[100], 0.5),
+                  transition: 'all 0.3s ease'
+                }}>
+                  <LeaderboardIcon sx={{
+                    fontSize: '1.2rem',
+                    color: isActive('/student/leaderboard') ? '#e65100' : 'text.secondary',
+                    transition: 'all 0.3s ease'
+                  }} />
+                </Box>
+              </ListItemIcon>
+              <ListItemText
+                primary="Leaderboard"
+                primaryTypographyProps={{
+                  fontWeight: isActive('/student/leaderboard') ? 'bold' : 'medium',
+                  fontSize: '0.95rem',
+                  transition: 'all 0.3s ease'
+                }}
+              />
+              {isActive('/student/leaderboard') && (
+                <Box sx={{
+                  position: 'absolute', right: 12,
+                  width: 6, height: 6, borderRadius: '50%',
+                  bgcolor: '#e65100',
+                  boxShadow: `0 0 8px #e65100`,
+                  animation: 'activeIndicator 2s ease-in-out infinite',
+                  '@keyframes activeIndicator': {
+                    '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+                    '50%': { opacity: 0.7, transform: 'scale(1.2)' }
+                  }
+                }} />
               )}
             </ListItemButton>
           </ListItem>

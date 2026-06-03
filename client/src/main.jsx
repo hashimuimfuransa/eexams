@@ -7,6 +7,15 @@ import AppRoutes from './Routes.jsx';
 import { ThemeProvider } from './context/ThemeContext';
 import { HelmetProvider } from 'react-helmet-async';
 
+// Restore path encoded by 404.html SPA redirect (e.g. /?p=%2Fsome%2Fpath)
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const redirect = params.get('p');
+  if (redirect) {
+    window.history.replaceState(null, '', decodeURIComponent(redirect));
+  }
+})();
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HelmetProvider>

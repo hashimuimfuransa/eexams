@@ -3,27 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Redirecting...</title>
+  <title>Page Not Found | eexams</title>
+  <meta name="robots" content="noindex, nofollow" />
   <script>
-    // Single Page Apps for GitHub Pages or Vercel
-    // This script takes the current URL and redirects to the root with a path parameter
-    // https://github.com/rafgraph/spa-github-pages
+    // SPA fallback: preserve the path so React Router renders the correct route (including NotFound).
+    // Encode the path into a query parameter that main.jsx can decode and replay via history.
     (function(l) {
-      if (l.search[1] === '/' ) {
-        var decoded = l.search.slice(1).split('&').map(function(s) { 
-          return s.replace(/~and~/g, '&')
-        }).join('?');
-        window.history.replaceState(null, null,
-            l.pathname.slice(0, -1) + decoded + l.hash
-        );
-      }
-    }(window.location))
-    
-    // Redirect to the root with the current path
-    window.location.href = window.location.origin;
+      var path = l.pathname + l.search + l.hash;
+      var redirectUrl = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        '/?p=' + encodeURIComponent(path);
+      window.location.replace(redirectUrl);
+    }(window.location));
   </script>
 </head>
 <body>
-  <p>Redirecting to the homepage...</p>
+  <p>Loading eexams...</p>
 </body>
 </html>

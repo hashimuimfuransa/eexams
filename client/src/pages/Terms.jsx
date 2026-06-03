@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
+import SEO from '../components/SEO';
 
 const Terms = () => {
   const { mode } = useThemeMode();
@@ -31,6 +32,12 @@ const Terms = () => {
 
   return (
     <>
+      <SEO
+        title="Terms of Service | eexams"
+        description="Read eexams' Terms of Service. Understand the rules and guidelines for using Rwanda's leading online exam management platform."
+        canonical="https://www.eexams.net/terms"
+        ogUrl="https://www.eexams.net/terms"
+      />
       <Nav
         scrolled={scrolled > 20}
         mode={mode}

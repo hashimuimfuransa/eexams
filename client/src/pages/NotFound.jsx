@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography, Button, Container, Paper } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { SentimentVeryDissatisfied as SadIcon } from '@mui/icons-material';
+import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
@@ -26,6 +27,10 @@ const NotFound = () => {
 
   return (
     <>
+      <Helmet>
+        <title>404 - Page Not Found | eexams</title>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
       <Nav
         scrolled={scrolled > 20}
         mode={mode}

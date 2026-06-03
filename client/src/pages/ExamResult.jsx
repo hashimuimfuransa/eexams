@@ -21,6 +21,7 @@ import {
   Snackbar
 } from '@mui/material';
 import { CheckCircle, Cancel, Home } from '@mui/icons-material';
+import { Helmet } from 'react-helmet-async';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -93,6 +94,10 @@ const ExamResult = () => {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F9', py: 4 }}>
+      <Helmet>
+        <title>Exam Result | eexams</title>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
       <Snackbar
         open={logoutWarning}
         autoHideDuration={10000}

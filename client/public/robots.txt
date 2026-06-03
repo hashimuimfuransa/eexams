@@ -13,15 +13,21 @@ Disallow: /org-admin/
 Disallow: /super-admin/
 Disallow: /dashboard
 Disallow: /login
+Disallow: /forgot-password
+Disallow: /reset-password
 Disallow: /register
+Disallow: /student-register
 Disallow: /pending-approval
 Disallow: /complete-registration
+
+# Disallow dynamic result and exam-session pages (private, generate soft 404s)
+Disallow: /exam-result/
+Disallow: /access-code
 
 # Allow public exam pages
 Allow: /exam/
 Allow: /join/
 Allow: /marketplace
-Allow: /public-exams
 
 # Sitemap location
 Sitemap: https://www.eexams.net/sitemap.xml

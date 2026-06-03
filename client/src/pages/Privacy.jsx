@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
+import SEO from '../components/SEO';
 
 const Privacy = () => {
   const { mode } = useThemeMode();
@@ -31,6 +32,12 @@ const Privacy = () => {
 
   return (
     <>
+      <SEO
+        title="Privacy Policy | eexams"
+        description="Read eexams' Privacy Policy. Learn how we collect, use, and protect your personal data on Rwanda's leading online exam platform."
+        canonical="https://www.eexams.net/privacy"
+        ogUrl="https://www.eexams.net/privacy"
+      />
       <Nav
         scrolled={scrolled > 20}
         mode={mode}

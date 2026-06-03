@@ -48,6 +48,7 @@ const {
   useTemplate,
   deleteTemplate,
   getReportsSummary,
+  getAdminNotifications,
   getQuestionBank,
   reuseQuestionBankExam,
 } = require('../controllers/adminController');
@@ -218,6 +219,9 @@ router.delete('/templates/:id', requireTemplatesAccess, deleteTemplate);
 
 // Reports routes
 router.get('/reports/summary', getReportsSummary);
+
+// Notifications route
+router.get('/notifications', apiLimiter, getAdminNotifications);
 
 // Single question image upload → returns Cloudinary URL
 router.post(

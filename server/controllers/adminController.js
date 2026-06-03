@@ -6,6 +6,7 @@ const SecurityAlert = require('../models/SecurityAlert');
 const ActivityLog = require('../models/ActivityLog');
 const SharedExam = require('../models/SharedExam');
 const Question = require('../models/Question');
+const ExamRequest = require('../models/ExamRequest');
 
 /**
  * Parse subquestions from an object with letter keys (a, b, c, etc.)
@@ -4354,6 +4355,101 @@ const reuseQuestionBankExam = async (req, res) => {
 
 // @desc    Get report summary for this admin's students and exams
 // @route   GET /api/admin/reports/summary
+// @desc    Get real notifications for admin/teacher
+// @route   GET /api/admin/notifications
+// @access  Private/Admin or Teacher
+const getAdminNotifications = async (req, res) => {
+  try {
+    const orgAdminId = req.orgAdminId;
+    const now = new Date();
+    const notifications = [];
+
+    // 1. Pending exam requests
+    const pendingRequests = await ExamRequest.find({
+      teacher: orgAdminId,
+      status: 'pending'
+    })
+      .populate('exam', 'title')
+      .sort({ requestedAt: -1 })
+      .limit(5)
+      .lean();
+
+    for (const req_ of pendingRequests) {
+      const examTitle = req_.examTitle || req_.exam?.title || 'Exam';
+      notifications.push({
+        _id: `req-${req_._id}`,
+        type: 'warning',
+        title: 'New exam request',
+        message: `${req_.userInfo?.name || 'A student'} requested access to "${examTitle}"`,
+        link: null,
+        read: false,
+        createdAt: req_.requestedAt
+      });
+    }
+
+    // 2. Recently submitted (graded) results in the last 7 days
+    const recentResults = await Result.find({
+      isCompleted: true,
+      endTime: { $gte: new Date(now - 7 * 24 * 60 * 60 * 1000) }
+    })
+      .populate({ path: 'exam', match: { createdBy: orgAdminId }, select: 'title' })
+      .populate('student', 'firstName lastName')
+      .sort({ endTime: -1 })
+      .limit(10)
+      .lean();
+
+    for (const result of recentResults) {
+      if (!result.exam) continue;
+      const studentName = result.student
+        ? `${result.student.firstName || ''} ${result.student.lastName || ''}`.trim()
+        : 'A student';
+      const pct = result.maxPossibleScore > 0
+        ? Math.round((result.totalScore / result.maxPossibleScore) * 100)
+        : 0;
+      notifications.push({
+        _id: `result-${result._id}`,
+        type: 'info',
+        title: 'Exam submitted',
+        message: `${studentName} completed "${result.exam.title}" with ${pct}%`,
+        link: null,
+        read: false,
+        createdAt: result.endTime
+      });
+    }
+
+    // 3. Exams scheduled in the next 24 hours
+    const upcoming = await Exam.find({
+      createdBy: orgAdminId,
+      scheduledFor: { $gte: now, $lte: new Date(now.getTime() + 24 * 60 * 60 * 1000) },
+      status: 'active'
+    })
+      .select('title scheduledFor')
+      .sort({ scheduledFor: 1 })
+      .limit(3)
+      .lean();
+
+    for (const exam of upcoming) {
+      const hoursAway = Math.round((new Date(exam.scheduledFor) - now) / (1000 * 60 * 60));
+      notifications.push({
+        _id: `upcoming-${exam._id}`,
+        type: 'success',
+        title: 'Exam starting soon',
+        message: `"${exam.title}" starts in ${hoursAway < 1 ? 'less than an hour' : `${hoursAway} hour${hoursAway === 1 ? '' : 's'}`}`,
+        link: null,
+        read: false,
+        createdAt: new Date()
+      });
+    }
+
+    notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const sliced = notifications.slice(0, 10);
+    res.json({ notifications: sliced, unreadCount: sliced.length });
+  } catch (error) {
+    console.error('Error fetching admin notifications:', error);
+    res.status(500).json({ message: 'Failed to fetch notifications', notifications: [], unreadCount: 0 });
+  }
+};
+
 // @access  Private/Admin or Teacher
 const getReportsSummary = async (req, res) => {
   try {
@@ -4522,6 +4618,7 @@ module.exports = {
   useTemplate,
   deleteTemplate,
   getReportsSummary,
+  getAdminNotifications,
 };
 
 /* ── EXAM SHARING ── */

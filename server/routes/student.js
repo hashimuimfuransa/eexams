@@ -13,7 +13,8 @@ const {
   getScheduledExams,
   getInProgressExams,
   getStudentProgress,
-  requestExamRetake
+  requestExamRetake,
+  getStudentNotifications
 } = require('../controllers/studentController');
 const auth = require('../middleware/auth');
 const { isStudent } = require('../middleware/role');
@@ -44,5 +45,8 @@ router.get('/leaderboard/exam/:examId', apiLimiter, getExamLeaderboard);
 
 // Progress route
 router.get('/progress', apiLimiter, getStudentProgress);
+
+// Notifications route
+router.get('/notifications', apiLimiter, getStudentNotifications);
 
 module.exports = router;

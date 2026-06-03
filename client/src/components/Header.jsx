@@ -31,6 +31,7 @@ import {
   Notifications
 } from '@mui/icons-material';
 import { AuthContext } from '../context/AuthContext';
+import api from '../services/api';
 
 // Hide app bar on scroll
 function HideOnScroll(props) {
@@ -69,12 +70,19 @@ const Header = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Simulate notifications (in a real app, this would come from an API)
+  // Fetch real notification count
   useEffect(() => {
-    if (user) {
-      // For demo purposes, student gets 2 notifications, admin gets 3
-      setNotifications(user.role === 'student' ? 2 : 3);
-    }
+    const fetchCount = async () => {
+      if (!user) return;
+      try {
+        const endpoint = user.role === 'student' ? '/student/notifications' : '/admin/notifications';
+        const res = await api.get(endpoint);
+        setNotifications(res.data.unreadCount || 0);
+      } catch {
+        setNotifications(0);
+      }
+    };
+    fetchCount();
   }, [user]);
 
   const handleProfileMenuOpen = (event) => {

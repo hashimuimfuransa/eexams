@@ -998,6 +998,105 @@ const getExamLeaderboard = async (req, res) => {
   }
 };
 
+// @desc    Get real notifications for the logged-in student
+// @route   GET /api/student/notifications
+// @access  Private/Student
+const getStudentNotifications = async (req, res) => {
+  try {
+    const studentId = req.user._id;
+    const now = new Date();
+    const notifications = [];
+
+    // 1. Recently completed results (last 14 days)
+    const recentResults = await Result.find({
+      student: studentId,
+      isCompleted: true,
+      endTime: { $gte: new Date(now - 14 * 24 * 60 * 60 * 1000) }
+    })
+      .populate('exam', 'title passingScore')
+      .sort({ endTime: -1 })
+      .limit(5)
+      .lean();
+
+    for (const result of recentResults) {
+      const pct = result.maxPossibleScore > 0
+        ? Math.round((result.totalScore / result.maxPossibleScore) * 100)
+        : 0;
+      const passed = pct >= (result.exam?.passingScore || 70);
+      notifications.push({
+        _id: `result-${result._id}`,
+        type: 'result',
+        title: 'Exam result available',
+        message: `${result.exam?.title || 'Exam'} — you scored ${pct}% (${passed ? 'Passed' : 'Failed'})`,
+        link: `/student/results/${result._id}`,
+        read: false,
+        createdAt: result.endTime
+      });
+    }
+
+    // 2. Exam request status changes (approved/rejected in last 14 days)
+    const recentRequests = await ExamRequest.find({
+      student: studentId,
+      status: { $in: ['approved', 'rejected'] },
+      processedAt: { $gte: new Date(now - 14 * 24 * 60 * 60 * 1000) }
+    })
+      .populate('exam', 'title')
+      .sort({ processedAt: -1 })
+      .limit(5)
+      .lean();
+
+    for (const req_ of recentRequests) {
+      const examTitle = req_.examTitle || req_.exam?.title || 'Exam';
+      notifications.push({
+        _id: `request-${req_._id}`,
+        type: req_.status === 'approved' ? 'success' : 'warning',
+        title: req_.status === 'approved' ? 'Exam request approved' : 'Exam request rejected',
+        message: req_.status === 'approved'
+          ? `Your request for "${examTitle}" was approved. You can now access it.`
+          : `Your request for "${examTitle}" was rejected.${req_.teacherNotes ? ` Reason: ${req_.teacherNotes}` : ''}`,
+        link: req_.status === 'approved' ? `/student/exams` : null,
+        read: false,
+        createdAt: req_.processedAt
+      });
+    }
+
+    // 3. Upcoming scheduled exams in the next 48 hours
+    const upcoming = await Exam.find({
+      'students.user': studentId,
+      scheduledFor: { $gte: now, $lte: new Date(now.getTime() + 48 * 60 * 60 * 1000) },
+      status: 'active'
+    })
+      .select('title scheduledFor')
+      .sort({ scheduledFor: 1 })
+      .limit(3)
+      .lean();
+
+    for (const exam of upcoming) {
+      const hoursAway = Math.round((new Date(exam.scheduledFor) - now) / (1000 * 60 * 60));
+      notifications.push({
+        _id: `upcoming-${exam._id}`,
+        type: 'info',
+        title: 'Upcoming exam',
+        message: `"${exam.title}" starts in ${hoursAway < 1 ? 'less than an hour' : `${hoursAway} hour${hoursAway === 1 ? '' : 's'}`}`,
+        link: `/student/exams`,
+        read: false,
+        createdAt: new Date()
+      });
+    }
+
+    // Sort all by date descending
+    notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json({
+      notifications: notifications.slice(0, 10),
+      unreadCount: notifications.length
+    });
+  } catch (error) {
+    console.error('Error fetching student notifications:', error);
+    res.status(500).json({ message: 'Failed to fetch notifications', notifications: [], unreadCount: 0 });
+  }
+};
+
 module.exports = {
   getAvailableExams,
   getExamById,
@@ -1011,5 +1110,6 @@ module.exports = {
   getScheduledExams,
   getInProgressExams,
   getStudentProgress,
-  requestExamRetake
+  requestExamRetake,
+  getStudentNotifications
 };

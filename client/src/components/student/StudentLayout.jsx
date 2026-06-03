@@ -34,7 +34,8 @@ import {
   DialogActions,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  CircularProgress
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -75,6 +76,7 @@ import { useThemeMode } from '../../context/ThemeContext';
 import api from '../../services/api';
 
 const drawerWidth = 260;
+const mobileDrawerWidth = 240;
 
 const StudentLayout = ({ children }) => {
   const theme = useTheme();
@@ -88,6 +90,9 @@ const StudentLayout = ({ children }) => {
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
   const [examSubmenuOpen, setExamSubmenuOpen] = useState(true);
   const [helpDialogOpen, setHelpDialogOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notifUnread, setNotifUnread] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
   const [progressData, setProgressData] = useState({
     totalExams: 0,
     completedExams: 0,
@@ -97,7 +102,11 @@ const StudentLayout = ({ children }) => {
   const [loadingProgress, setLoadingProgress] = useState(true);
 
   const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
+    setMobileOpen(prev => !prev);
+  };
+
+  const handleNavClick = () => {
+    if (isMobile) setMobileOpen(false);
   };
 
   const handleProfileMenuOpen = (event) => {
@@ -136,6 +145,23 @@ const StudentLayout = ({ children }) => {
   const isActive = (path) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
+
+  // Fetch real notifications
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        setNotifLoading(true);
+        const res = await api.get('/student/notifications');
+        setNotifications(res.data.notifications || []);
+        setNotifUnread(res.data.unreadCount || 0);
+      } catch (err) {
+        console.error('Failed to fetch notifications:', err);
+      } finally {
+        setNotifLoading(false);
+      }
+    };
+    if (user) fetchNotifications();
+  }, [user]);
 
   // Fetch student progress data
   useEffect(() => {
@@ -194,7 +220,7 @@ const StudentLayout = ({ children }) => {
         sx={{
           display: 'flex',
           alignItems: 'center',
-          padding: theme.spacing(3),
+          padding: { xs: theme.spacing(1.5, 2), sm: theme.spacing(2, 2.5) },
           background: `linear-gradient(135deg,
             ${theme.palette.primary.dark} 0%,
             ${theme.palette.primary.main} 50%,
@@ -202,7 +228,7 @@ const StudentLayout = ({ children }) => {
           color: 'white',
           position: 'relative',
           overflow: 'hidden',
-          minHeight: 80
+          minHeight: { xs: 60, sm: 72 }
         }}
       >
         {/* Enhanced decorative elements */}
@@ -274,8 +300,8 @@ const StudentLayout = ({ children }) => {
             alt="Logo"
             sx={{
               bgcolor: 'background.paper',
-              width: 60,
-              height: 60,
+              width: { xs: 44, sm: 56 },
+              height: { xs: 44, sm: 56 },
               boxShadow: '0 6px 16px rgba(0,0,0,0.3)',
               border: '3px solid white',
               position: 'relative',
@@ -291,7 +317,7 @@ const StudentLayout = ({ children }) => {
 
         {isMobile && (
           <IconButton
-            onClick={handleDrawerToggle}
+            onClick={handleNavClick}
             sx={{
               color: 'white',
               bgcolor: 'rgba(255,255,255,0.15)',
@@ -542,6 +568,7 @@ const StudentLayout = ({ children }) => {
             <ListItemButton
               component={RouterLink}
               to="/student/dashboard"
+              onClick={handleNavClick}
               selected={isActive('/student/dashboard') || isActive('/student')}
               sx={{
                 borderRadius: 3,
@@ -667,6 +694,7 @@ const StudentLayout = ({ children }) => {
             <ListItemButton
               component={RouterLink}
               to="/student/leaderboard"
+              onClick={handleNavClick}
               selected={isActive('/student/leaderboard')}
               sx={{
                 borderRadius: 3,
@@ -753,9 +781,10 @@ const StudentLayout = ({ children }) => {
           <ListItemButton
             onClick={toggleExamSubmenu}
             sx={{
-              borderRadius: 0, // Remove rounded corners
-              py: 1.5, // Increase padding for better touch targets
-              mb: 0.5, // Add margin between items
+              borderRadius: 2,
+              py: 1.5,
+              px: 2,
+              mb: 0.5,
               ...(isActive('/student/exams') || isActive('/student/exam') || isActive('/student/results') || isActive('/student/history') ? {
                 background: 'linear-gradient(90deg, rgba(13, 64, 108, 0.1) 0%, rgba(13, 64, 108, 0.2) 100%)',
                 color: 'primary.main',
@@ -797,111 +826,42 @@ const StudentLayout = ({ children }) => {
         </ListItem>
 
         <Collapse in={examSubmenuOpen} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding sx={{ ml: 2, mt: 1 }}>
-            <ListItemButton
-              component={RouterLink}
-              to="/student/exams"
-              selected={isActive('/student/exams')}
-              sx={{
-                pl: 2,
-                borderRadius: 0, // Remove rounded corners
-                mb: 1,
-                py: 1.2, // Increase padding for better touch targets
-                '&.Mui-selected': {
-                  backgroundColor: 'primary.lighter',
-                  color: 'primary.main',
-                  borderLeft: '3px solid', // Add left border for selected items
-                  borderColor: 'primary.main',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-                },
-                '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                  borderLeft: '3px solid', // Add left border on hover
-                  borderColor: 'rgba(13, 64, 108, 0.3)',
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                <School fontSize="small" color={isActive('/student/exams') ? 'primary' : 'inherit'} />
-              </ListItemIcon>
-              <ListItemText
-                primary="Available Exams"
-                primaryTypographyProps={{
-                  fontSize: '0.9rem',
-                  fontWeight: isActive('/student/exams') ? 'bold' : 'medium'
+          <List component="div" disablePadding sx={{ ml: 1.5, mt: 0.5 }}>
+            {[
+              { to: '/student/exams', label: 'Available Exams', icon: <School fontSize="small" /> },
+              { to: '/student/results', label: 'Results', icon: <EmojiEvents fontSize="small" /> },
+              { to: '/student/history', label: 'Exam History', icon: <History fontSize="small" /> },
+            ].map(({ to, label, icon }) => (
+              <ListItemButton
+                key={to}
+                component={RouterLink}
+                to={to}
+                onClick={handleNavClick}
+                selected={isActive(to)}
+                sx={{
+                  pl: 2, borderRadius: 2, mb: 0.75, py: 1.1,
+                  '&.Mui-selected': {
+                    background: alpha(theme.palette.primary.main, 0.1),
+                    color: 'primary.main',
+                    borderLeft: '3px solid',
+                    borderColor: 'primary.main',
+                    '& .MuiListItemIcon-root': { color: 'primary.main' }
+                  },
+                  '&:hover': {
+                    background: alpha(theme.palette.primary.main, 0.06),
+                    borderLeft: '3px solid',
+                    borderColor: alpha(theme.palette.primary.main, 0.3)
+                  }
                 }}
-              />
-            </ListItemButton>
-
-            <ListItemButton
-              component={RouterLink}
-              to="/student/results"
-              selected={isActive('/student/results')}
-              sx={{
-                pl: 2,
-                borderRadius: 0, // Remove rounded corners
-                mb: 1,
-                py: 1.2, // Increase padding for better touch targets
-                '&.Mui-selected': {
-                  backgroundColor: 'primary.lighter',
-                  color: 'primary.main',
-                  borderLeft: '3px solid', // Add left border for selected items
-                  borderColor: 'primary.main',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-                },
-                '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                  borderLeft: '3px solid', // Add left border on hover
-                  borderColor: 'rgba(13, 64, 108, 0.3)',
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                <EmojiEvents fontSize="small" color={isActive('/student/results') ? 'primary' : 'inherit'} />
-              </ListItemIcon>
-              <ListItemText
-                primary="Results"
-                primaryTypographyProps={{
-                  fontSize: '0.9rem',
-                  fontWeight: isActive('/student/results') ? 'bold' : 'medium'
-                }}
-              />
-            </ListItemButton>
-
-            <ListItemButton
-              component={RouterLink}
-              to="/student/history"
-              selected={isActive('/student/history')}
-              sx={{
-                pl: 2,
-                borderRadius: 0, // Remove rounded corners
-                mb: 1,
-                py: 1.2, // Increase padding for better touch targets
-                '&.Mui-selected': {
-                  backgroundColor: 'primary.lighter',
-                  color: 'primary.main',
-                  borderLeft: '3px solid', // Add left border for selected items
-                  borderColor: 'primary.main',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-                },
-                '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                  borderLeft: '3px solid', // Add left border on hover
-                  borderColor: 'rgba(13, 64, 108, 0.3)',
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                <History fontSize="small" color={isActive('/student/history') ? 'primary' : 'inherit'} />
-              </ListItemIcon>
-              <ListItemText
-                primary="Exam History"
-                primaryTypographyProps={{
-                  fontSize: '0.9rem',
-                  fontWeight: isActive('/student/history') ? 'bold' : 'medium'
-                }}
-              />
-            </ListItemButton>
+              >
+                <ListItemIcon sx={{ minWidth: 36, color: isActive(to) ? 'primary.main' : 'text.secondary' }}>
+                  {icon}
+                </ListItemIcon>
+                <ListItemText primary={label}
+                  primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: isActive(to) ? 700 : 500 }}
+                />
+              </ListItemButton>
+            ))}
           </List>
         </Collapse>
 
@@ -950,6 +910,7 @@ const StudentLayout = ({ children }) => {
             <ListItemButton
               component={RouterLink}
               to="/student/profile"
+              onClick={handleNavClick}
               selected={isActive('/student/profile')}
               sx={{
                 borderRadius: 3,
@@ -1140,75 +1101,72 @@ const StudentLayout = ({ children }) => {
             variant="h6"
             component="h1"
             sx={{
-              display: { xs: 'none', sm: 'block' },
               fontWeight: 'bold',
               letterSpacing: '0.5px',
-              textShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              textShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              fontSize: { xs: '0.95rem', sm: '1.1rem' }
             }}
           >
-            Student Portal
+            {(() => {
+              const p = location.pathname;
+              if (p.includes('/dashboard')) return 'Dashboard';
+              if (p.includes('/leaderboard')) return 'Leaderboard';
+              if (p.includes('/history')) return 'Exam History';
+              if (p.includes('/results')) return 'My Results';
+              if (p.includes('/exams')) return 'Available Exams';
+              if (p.includes('/profile')) return 'My Profile';
+              if (p.includes('/exam/')) return 'Exam';
+              return 'Student Portal';
+            })()}
           </Typography>
 
           <Box sx={{ flexGrow: 1 }} />
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1 } }}>
             <Tooltip title="Notifications">
               <IconButton
-                size="large"
+                size={isMobile ? 'small' : 'large'}
                 color="inherit"
                 onClick={handleNotificationsOpen}
-                sx={{
-                  bgcolor: 'rgba(255,255,255,0.1)',
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
-                }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}
               >
-                <Badge badgeContent={3} color="error">
-                  <Notifications />
+                <Badge badgeContent={notifUnread || null} color="error">
+                  <Notifications fontSize={isMobile ? 'small' : 'medium'} />
                 </Badge>
               </IconButton>
             </Tooltip>
 
             <Tooltip title={`Switch to ${mode === 'dark' ? 'light' : 'dark'} mode`}>
               <IconButton
-                size="large"
+                size={isMobile ? 'small' : 'large'}
                 color="inherit"
                 onClick={toggleMode}
-                sx={{
-                  bgcolor: 'rgba(255,255,255,0.1)',
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
-                  transition: 'all 0.3s ease',
-                }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }, transition: 'all 0.3s ease', display: { xs: 'none', sm: 'flex' } }}
               >
-                {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+                {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
 
             <Tooltip title="Help">
               <IconButton
-                size="large"
+                size={isMobile ? 'small' : 'large'}
                 color="inherit"
                 onClick={handleHelpOpen}
-                sx={{
-                  bgcolor: 'rgba(255,255,255,0.1)',
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
-                }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }, display: { xs: 'none', sm: 'flex' } }}
               >
-                <Help />
+                <Help fontSize="small" />
               </IconButton>
             </Tooltip>
 
             <Tooltip title="Account">
               <IconButton
-                size="large"
+                size={isMobile ? 'small' : 'large'}
                 edge="end"
                 onClick={handleProfileMenuOpen}
                 color="inherit"
-                sx={{
-                  bgcolor: 'rgba(255,255,255,0.1)',
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
-                }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}
               >
-                <AccountCircle />
+                <AccountCircle fontSize={isMobile ? 'small' : 'medium'} />
               </IconButton>
             </Tooltip>
           </Box>
@@ -1230,9 +1188,9 @@ const StudentLayout = ({ children }) => {
             display: { xs: 'block', md: 'none' },
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
-              width: drawerWidth,
+              width: { xs: mobileDrawerWidth, sm: drawerWidth },
               boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-              borderRadius: 0 // Remove rounded corners
+              borderRadius: 0
             },
           }}
         >
@@ -1259,7 +1217,7 @@ const StudentLayout = ({ children }) => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 1.5, sm: 2, md: 3 },
+          p: { xs: 1, sm: 1.5, md: 3 },
           width: { md: `calc(100% - ${drawerWidth}px)` },
           minHeight: '100vh',
           backgroundColor: 'background.default',
@@ -1346,12 +1304,12 @@ const StudentLayout = ({ children }) => {
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
         PaperProps={{
-          elevation: 3,
+          elevation: 4,
           sx: {
             mt: 1.5,
-            width: 320,
-            borderRadius: 0, // Remove rounded corners
-            overflow: 'visible',
+            width: { xs: 300, sm: 360 },
+            borderRadius: 2,
+            overflow: 'hidden',
             '&:before': {
               content: '""',
               display: 'block',
@@ -1367,36 +1325,68 @@ const StudentLayout = ({ children }) => {
           }
         }}
       >
-        <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="subtitle1" fontWeight="bold">Notifications</Typography>
+        <Box sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="subtitle1" fontWeight={700}>Notifications</Typography>
+          {notifUnread > 0 && (
+            <Chip label={`${notifUnread} new`} size="small" color="error"
+              sx={{ height: 20, fontSize: 10, fontWeight: 700 }} />
+          )}
         </Box>
-        <MenuItem onClick={handleNotificationsClose}>
-          <Box sx={{ width: '100%' }}>
-            <Typography variant="body2" fontWeight="medium">New exam assigned</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Mathematics 101 exam has been assigned to you
-            </Typography>
+
+        {notifLoading ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <CircularProgress size={24} />
           </Box>
-        </MenuItem>
-        <MenuItem onClick={handleNotificationsClose}>
-          <Box sx={{ width: '100%' }}>
-            <Typography variant="body2" fontWeight="medium">Exam results available</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Your Physics 202 exam results are now available
-            </Typography>
+        ) : notifications.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <Notifications sx={{ fontSize: 32, color: 'text.disabled', mb: 1 }} />
+            <Typography variant="body2" color="text.secondary">No new notifications</Typography>
           </Box>
-        </MenuItem>
-        <MenuItem onClick={handleNotificationsClose}>
-          <Box sx={{ width: '100%' }}>
-            <Typography variant="body2" fontWeight="medium">Upcoming exam reminder</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Chemistry 101 exam starts in 2 days
-            </Typography>
-          </Box>
-        </MenuItem>
-        <Box sx={{ p: 1, borderTop: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
-          <Button size="small" onClick={handleNotificationsClose}>
-            View all notifications
+        ) : (
+          notifications.map(notif => {
+            const iconColor = notif.type === 'result' ? 'primary.main'
+              : notif.type === 'success' ? 'success.main'
+              : notif.type === 'warning' ? 'warning.main'
+              : 'info.main';
+            const bgColor = notif.type === 'result' ? alpha(theme.palette.primary.main, 0.06)
+              : notif.type === 'success' ? alpha(theme.palette.success.main, 0.06)
+              : notif.type === 'warning' ? alpha(theme.palette.warning.main, 0.06)
+              : alpha(theme.palette.info.main, 0.06);
+            return (
+              <MenuItem
+                key={notif._id}
+                component={notif.link ? RouterLink : 'li'}
+                to={notif.link || undefined}
+                onClick={handleNotificationsClose}
+                sx={{ px: 2.5, py: 1.5, alignItems: 'flex-start', gap: 1.5,
+                  bgcolor: bgColor, borderBottom: '1px solid', borderColor: 'divider',
+                  '&:last-child': { borderBottom: 'none' },
+                  whiteSpace: 'normal' }}
+              >
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: iconColor,
+                  flexShrink: 0, mt: 0.75 }} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body2" fontWeight={700} sx={{ lineHeight: 1.3 }}>
+                    {notif.title}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary"
+                    sx={{ display: 'block', mt: 0.25, lineHeight: 1.4 }}>
+                    {notif.message}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 10, mt: 0.5 }}>
+                    {new Date(notif.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            );
+          })
+        )}
+
+        <Box sx={{ p: 1.5, borderTop: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
+          <Button size="small" component={RouterLink} to="/student/history" onClick={handleNotificationsClose}
+            sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.8rem' }}>
+            View Exam History
           </Button>
         </Box>
       </Menu>

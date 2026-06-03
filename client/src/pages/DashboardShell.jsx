@@ -2,13 +2,13 @@
  * DashboardShell — shared layout used by all 4 role dashboards.
  * Provides: Sidebar, Topbar, StatCard, and the page wrapper.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, Avatar, IconButton, Divider, Chip, Button, Paper,
   TextField, CircularProgress, Drawer, List, ListItemButton,
   ListItemIcon, ListItemText, InputAdornment, useMediaQuery, Menu, MenuItem,
-  Dialog, DialogTitle, DialogContent, DialogActions
+  Dialog, DialogTitle, DialogContent, DialogActions, Badge
 } from '@mui/material';
 import {
   NotificationsNone, Menu as MenuIcon, Close, Search, Logout, Star,
@@ -256,16 +256,37 @@ export function Topbar({ greeting, sub, user, onMenuClick, onLogout, roleLabel, 
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationAnchorEl, setNotificationAnchorEl] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [notifications, setNotifications] = useState([]);
+  const [notifUnread, setNotifUnread] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (!user) return;
+      try {
+        setNotifLoading(true);
+        const res = await api.get('/admin/notifications');
+        setNotifications(res.data.notifications || []);
+        setNotifUnread(res.data.unreadCount || 0);
+      } catch (err) {
+        console.error('Failed to fetch admin notifications:', err);
+      } finally {
+        setNotifLoading(false);
+      }
+    };
+    fetchNotifications();
+  }, [user]);
 
   const handleSearchChange = (e) => {
     setSearchQuery(e.target.value);
-    if (onSearch) {
-      onSearch(e.target.value);
-    }
+    if (onSearch) onSearch(e.target.value);
   };
 
-  const handleNotificationClick = (e) => {
-    setNotificationAnchorEl(e.currentTarget);
+  const typeColor = (type) => {
+    if (type === 'warning') return '#ed6c02';
+    if (type === 'success') return '#2e7d32';
+    if (type === 'info') return '#0288d1';
+    return tokens.primary;
   };
 
   return (
@@ -281,9 +302,9 @@ export function Topbar({ greeting, sub, user, onMenuClick, onLogout, roleLabel, 
         <Typography fontWeight={700} noWrap sx={{ color: tokens.textPrimary, lineHeight: 1.25, fontSize: { xs: '0.9rem', sm: '1.05rem' }, fontFamily: "'DM Sans',sans-serif" }}>{greeting}</Typography>
         {sub && <Typography variant="caption" noWrap sx={{ color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif", display: { xs: 'none', sm: 'block' } }}>{sub}</Typography>}
       </Box>
-      <TextField 
-        size="small" 
-        placeholder="Search anything…" 
+      <TextField
+        size="small"
+        placeholder="Search anything…"
         value={searchQuery}
         onChange={handleSearchChange}
         InputProps={{
@@ -292,24 +313,71 @@ export function Topbar({ greeting, sub, user, onMenuClick, onLogout, roleLabel, 
         }}
         sx={{ width: 220, display: { xs: 'none', md: 'block' } }}
       />
-      <IconButton 
-        size="small" 
-        sx={{ bgcolor: 'rgba(13,64,108,0.06)', position: 'relative' }}
-        onClick={handleNotificationClick}
+
+      {/* Notifications button */}
+      <IconButton
+        size="small"
+        sx={{ bgcolor: 'rgba(13,64,108,0.06)', '&:hover': { bgcolor: 'rgba(13,64,108,0.11)' } }}
+        onClick={e => setNotificationAnchorEl(e.currentTarget)}
       >
-        <NotificationsNone fontSize="small" sx={{ color: tokens.primary }} />
-        <Box sx={{ width: 8, height: 8, bgcolor: '#EF4444', borderRadius: '50%', position: 'absolute', top: 6, right: 6, border: '1.5px solid white' }} />
+        <Badge badgeContent={notifUnread || null} color="error" sx={{ '& .MuiBadge-badge': { fontSize: 10, minWidth: 16, height: 16 } }}>
+          <NotificationsNone fontSize="small" sx={{ color: tokens.primary }} />
+        </Badge>
       </IconButton>
+
       <Menu
         anchorEl={notificationAnchorEl}
         open={Boolean(notificationAnchorEl)}
         onClose={() => setNotificationAnchorEl(null)}
-        PaperProps={{ sx: { borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 280 } }}
+        PaperProps={{ sx: { borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: { xs: 290, sm: 340 }, overflow: 'hidden' } }}
       >
-        <MenuItem disabled sx={{ fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: tokens.textMuted }}>
-          No new notifications
-        </MenuItem>
+        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography fontWeight={700} sx={{ fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", color: tokens.textPrimary }}>Notifications</Typography>
+          {notifUnread > 0 && (
+            <Chip label={`${notifUnread} new`} size="small" color="error"
+              sx={{ height: 18, fontSize: 9.5, fontWeight: 700 }} />
+          )}
+        </Box>
+
+        {notifLoading ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <CircularProgress size={22} />
+          </Box>
+        ) : notifications.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <NotificationsNone sx={{ fontSize: 28, color: '#ccc', mb: 0.75 }} />
+            <Typography sx={{ fontSize: 13, color: tokens.textMuted, fontFamily: "'DM Sans',sans-serif" }}>No new notifications</Typography>
+          </Box>
+        ) : (
+          <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+            {notifications.map(notif => (
+              <MenuItem
+                key={notif._id}
+                onClick={() => setNotificationAnchorEl(null)}
+                sx={{ px: 2, py: 1.25, alignItems: 'flex-start', gap: 1.25, borderBottom: '1px solid #f5f5f5',
+                  '&:last-child': { borderBottom: 'none' }, whiteSpace: 'normal' }}
+              >
+                <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: typeColor(notif.type),
+                  flexShrink: 0, mt: 0.6 }} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.textPrimary,
+                    fontFamily: "'DM Sans',sans-serif", lineHeight: 1.3 }}>
+                    {notif.title}
+                  </Typography>
+                  <Typography sx={{ fontSize: 11.5, color: tokens.textMuted,
+                    fontFamily: "'DM Sans',sans-serif", mt: 0.2, lineHeight: 1.4 }}>
+                    {notif.message}
+                  </Typography>
+                  <Typography sx={{ fontSize: 10.5, color: '#aaa', fontFamily: "'DM Sans',sans-serif", mt: 0.4 }}>
+                    {new Date(notif.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))}
+          </Box>
+        )}
       </Menu>
+
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={e => setAnchorEl(e.currentTarget)}>
         <Avatar sx={{ width: 34, height: 34, background: gradients.brand, fontSize: 13, fontWeight: 700 }}>{user?.firstName?.charAt(0)}</Avatar>
         <Box sx={{ display: { xs: 'none', sm: 'block' } }}>

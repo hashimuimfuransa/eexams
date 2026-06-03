@@ -267,15 +267,12 @@ const getStudents = async (req, res) => {
       return res.json(students);
     }
 
-    // For teachers: show ALL students in the same organization OR created by the teacher
-    const teacher = await User.findById(req.user._id).select('organization');
-    
+    // For teachers: show students created by themselves or by their parent admin
     let query = User.find({
       role: 'student',
       $or: [
-        { organization: teacher.organization },
         { createdBy: req.user._id },
-        { parentAdmin: req.user._id }
+        { createdBy: req.orgAdminId }
       ]
     });
     
@@ -644,17 +641,23 @@ const getExamResults = async (req, res) => {
   try {
     const { examId } = req.params;
 
-    // Check if exam exists and belongs to this admin
-    const exam = await Exam.findOne({
-      _id: examId,
-      createdBy: req.orgAdminId
-    });
+    // Check if exam exists and belongs to this admin, any of their org teachers, or the teacher themselves
+    let examOwnerQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      examOwnerQuery = { _id: examId };
+    } else if (req.user.role === 'admin') {
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      examOwnerQuery = { _id: examId, $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }] };
+    } else {
+      examOwnerQuery = { _id: examId, $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
+    const exam = await Exam.findOne(examOwnerQuery);
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found or not authorized' });
     }
 
-    // For public exams, show ALL results regardless of who created the student
+    // For public/marketplace exams, show ALL results regardless of who created the student
     // For private exams, only show results from students created by this admin or their teachers
     let results;
     if (exam.isPubliclyListed) {
@@ -795,8 +798,17 @@ const getOverallLeaderboard = async (req, res) => {
 
     console.log(`Found ${studentIds.length} students for admin`);
 
-    // Get exams created by this admin with lean query
-    const exams = await Exam.find({ createdBy: req.orgAdminId }).select('_id').lean();
+    // Get exams for this org: admin sees own + all teachers'; teacher sees own + parent admin's
+    let overallExamQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      overallExamQuery = {};
+    } else if (req.user.role === 'admin') {
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      overallExamQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }] };
+    } else {
+      overallExamQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
+    const exams = await Exam.find(overallExamQuery).select('_id').lean();
     const examIds = exams.map(exam => exam._id);
     console.log(`Found ${examIds.length} exams for admin`);
 
@@ -933,17 +945,23 @@ const getExamLeaderboard = async (req, res) => {
       return res.json(cachedData);
     }
 
-    // Check if exam exists and belongs to this admin
-    const exam = await Exam.findOne({
-      _id: examId,
-      createdBy: req.orgAdminId
-    }).lean();
+    // Check if exam exists and belongs to this admin, any of their teachers, or the teacher themselves
+    let examAccessQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      examAccessQuery = { _id: examId };
+    } else if (req.user.role === 'admin') {
+      const teacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      examAccessQuery = { _id: examId, $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: teacherIds } }] };
+    } else {
+      examAccessQuery = { _id: examId, $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
+    const exam = await Exam.findOne(examAccessQuery).lean();
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found or access denied' });
     }
 
-    // For public exams, show ALL results regardless of who created the student
+    // For public/marketplace exams, show ALL results regardless of who created the student
     // For private exams, only show results from students created by this admin or their teachers
     let results;
     if (exam.isPubliclyListed) {
@@ -1097,30 +1115,39 @@ const getDetailedResult = async (req, res) => {
     // Check if this result belongs to an exam created by this organization or teacher
     const exam = await Exam.findById(result.exam._id);
 
-    // Allow access if exam was created by org admin or by the teacher themselves
-    const isExamAuthorized = exam && (
-      exam.createdBy.toString() === req.orgAdminId.toString() ||
-      exam.createdBy.toString() === req.user._id.toString()
-    );
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Build list of authorized creator IDs for this role
+    let authorizedCreatorIds = [];
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      // Super admin: access everything — skip creator check
+      authorizedCreatorIds = null;
+    } else if (req.user.role === 'admin') {
+      // Admin: own exams + all exams by teachers in their org
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id.toString());
+      authorizedCreatorIds = [req.orgAdminId.toString(), ...orgTeacherIds];
+    } else {
+      // Teacher: own exams + parent admin's exams
+      authorizedCreatorIds = [req.orgAdminId.toString(), req.user._id.toString()];
+    }
+
+    const isExamAuthorized = authorizedCreatorIds === null ||
+      authorizedCreatorIds.includes(exam.createdBy.toString());
 
     if (!isExamAuthorized) {
       return res.status(403).json({ message: 'Not authorized to view this result' });
     }
 
     // For admins: also check if the student belongs to their organization (created by admin or by teachers under admin)
-    if (req.user.role === 'admin') {
-      // Find all teachers under this admin
-      const teachers = await User.find({
-        role: 'teacher',
-        parentAdmin: req.orgAdminId
-      }).select('_id').lean();
+    // Exception: marketplace/public exams — any student's result is accessible to the exam owner
+    if (req.user.role === 'admin' && !exam.isPubliclyListed) {
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id.toString());
 
-      const teacherIds = teachers.map(t => t._id);
-
-      // Check if student was created by admin or by any teacher under the admin
       const isStudentAuthorized = result.student.createdBy && (
         result.student.createdBy.toString() === req.orgAdminId.toString() ||
-        teacherIds.some(tid => tid.toString() === result.student.createdBy.toString())
+        orgTeacherIds.includes(result.student.createdBy.toString())
       );
 
       if (!isStudentAuthorized) {
@@ -1450,15 +1477,16 @@ const getExamById = async (req, res) => {
     console.log('Get exam by ID - req.orgAdminId:', req.orgAdminId);
     console.log('Get exam by ID - req.user.role:', req.user.role);
 
-    // For teachers, allow accessing their own drafts; for admins, use orgAdminId
+    // Build ownership query based on role
     let query = { _id: id };
-    if (req.user.role === 'teacher' && req.orgAdminId) {
-      query.$or = [
-        { createdBy: req.orgAdminId },  // Exams created by their admin
-        { createdBy: req.user._id }    // Drafts created by the teacher themselves
-      ];
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      // Super admin sees any exam — no extra filter
+    } else if (req.user.role === 'admin') {
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      query.$or = [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }];
     } else {
-      query.createdBy = req.orgAdminId || req.user._id;
+      // Teacher: own drafts + parent admin's exams
+      query.$or = [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }];
     }
 
     // Find the exam by ID with populated sections and questions
@@ -1494,16 +1522,16 @@ const getAllExams = async (req, res) => {
 
     // Check if user is super admin - if so, return all exams
     // For superadmin: req.orgAdminId is null, so show all data
-    let query = isSuperAdmin(req.user) || !req.orgAdminId ? {} : { createdBy: req.orgAdminId };
-    
-    // For teachers, also include exams they created themselves (their drafts)
-    if (req.user.role === 'teacher' && req.orgAdminId) {
-      query = {
-        $or: [
-          { createdBy: req.orgAdminId },  // Exams created by their admin
-          { createdBy: req.user._id }    // Exams/drafts created by the teacher themselves
-        ]
-      };
+    let query;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      query = {};
+    } else if (req.user.role === 'admin') {
+      // For admins: include exams created by themselves + all teachers under them
+      const teacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      query = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: teacherIds } }] };
+    } else {
+      // For teachers: their own drafts + exams created by their parent admin
+      query = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
     }
     
     console.log('getAllExams - query:', query);
@@ -1569,12 +1597,17 @@ const getAllExams = async (req, res) => {
 // @access  Private/Admin
 const getScheduledExams = async (req, res) => {
   try {
-    // Get all scheduled exams created by this admin (with scheduledFor date in the future)
-    const scheduledExams = await Exam.find({
-      scheduledFor: { $ne: null },
-      status: 'scheduled',
-      createdBy: req.orgAdminId
-    })
+    // Get all scheduled exams for this org (admin sees own + all teachers' scheduled exams)
+    let scheduledQuery = { scheduledFor: { $ne: null }, status: 'scheduled' };
+    if (!isSuperAdmin(req.user) && req.orgAdminId) {
+      if (req.user.role === 'admin') {
+        const teacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+        scheduledQuery.$or = [{ createdBy: req.orgAdminId }, { createdBy: { $in: teacherIds } }];
+      } else {
+        scheduledQuery.$or = [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }];
+      }
+    }
+    const scheduledExams = await Exam.find(scheduledQuery)
       .populate('createdBy', 'firstName lastName')
       .sort({ scheduledFor: 1 });
 
@@ -1609,8 +1642,17 @@ const getScheduledExams = async (req, res) => {
 // @access  Private/Admin
 const getRecentExams = async (req, res) => {
   try {
-    // Get 5 most recent exams created by this admin
-    const recentExams = await Exam.find({ createdBy: req.orgAdminId })
+    // Get 5 most recent exams for this org (admin sees own + all teachers' exams)
+    let recentQuery = {};
+    if (!isSuperAdmin(req.user) && req.orgAdminId) {
+      if (req.user.role === 'admin') {
+        const teacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+        recentQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: teacherIds } }] };
+      } else {
+        recentQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+      }
+    }
+    const recentExams = await Exam.find(recentQuery)
       .populate('createdBy', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(5);
@@ -1673,11 +1715,17 @@ const getRecentExams = async (req, res) => {
 // @access  Private/Admin
 const getRecentStudents = async (req, res) => {
   try {
-    // Get 5 most recently registered students created by this admin
-    const recentStudents = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId
-    })
+    // Get 5 most recently registered students for this org (admin sees own + all teachers')
+    let recentStudentQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      recentStudentQuery = { role: 'student' };
+    } else if (req.user.role === 'admin') {
+      const teacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      recentStudentQuery = { role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: teacherIds } }] };
+    } else {
+      recentStudentQuery = { role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
+    const recentStudents = await User.find(recentStudentQuery)
       .select('-password')
       .sort({ createdAt: -1 })
       .limit(5);
@@ -2884,20 +2932,34 @@ const getAllResults = async (req, res) => {
       studentIds = students.map(student => student._id);
     }
 
-    // Get all exams created by this admin or teacher
-    const examQuery = isSuperAdmin(req.user) || !req.orgAdminId
-      ? {}
-      : { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    // Get all exams for this org: admin sees own + all teachers'; teacher sees own + parent admin's
+    let examQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      examQuery = {};
+    } else if (req.user.role === 'admin') {
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      examQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }] };
+    } else {
+      examQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
 
-    const exams = await Exam.find(examQuery).select('_id');
+    const exams = await Exam.find(examQuery).select('_id isPubliclyListed');
     const examIds = exams.map(exam => exam._id);
+    const marketplaceExamIds = exams.filter(e => e.isPubliclyListed).map(e => e._id);
 
-    // Get all results for students created by this admin taking exams created by this admin
-    const results = await Result.find({
-      isCompleted: true,
-      student: { $in: studentIds },
-      exam: { $in: examIds }
-    })
+    // For marketplace exams (isPubliclyListed), include ALL students' results.
+    // For private exams, restrict to students created by this admin/teacher.
+    const resultQuery = isSuperAdmin(req.user) || !req.orgAdminId
+      ? { isCompleted: true, exam: { $in: examIds } }
+      : {
+          isCompleted: true,
+          $or: [
+            { exam: { $in: marketplaceExamIds } }, // all results for marketplace exams
+            { student: { $in: studentIds }, exam: { $in: examIds } } // own students for private exams
+          ]
+        };
+
+    const results = await Result.find(resultQuery)
       .populate('student', 'firstName lastName fullName email organization studentClass studentId')
       .populate('exam', 'title totalPoints')
       .sort({ endTime: -1 });
@@ -3000,10 +3062,16 @@ const getStudentManagementData = async (req, res) => {
 
     const studentIds = students.map(s => s._id);
 
-    // Get all exams accessible to this org
-    const examQuery = isSuperAdmin(req.user) || !req.orgAdminId
-      ? {}
-      : { $or: [{ createdBy: req.orgAdminId }] };
+    // Get all exams accessible to this org (admin sees own + all teachers' exams)
+    let examQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      examQuery = {};
+    } else if (req.user.role === 'admin') {
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      examQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }] };
+    } else {
+      examQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
     const examIds = (await Exam.find(examQuery).select('_id').lean()).map(e => e._id);
 
     // Get all completed results for these students
@@ -3107,11 +3175,20 @@ const getStudentPerformanceAnalytics = async (req, res) => {
 
     const studentIds = students.map(student => student._id);
 
-    // Get exams created by this admin
-    const exams = await Exam.find({ createdBy: req.orgAdminId }).select('_id title');
+    // Get all exams for this org (admin sees own + all teachers' exams)
+    let perfExamQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      perfExamQuery = {};
+    } else if (req.user.role === 'admin') {
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      perfExamQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }] };
+    } else {
+      perfExamQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
+    const exams = await Exam.find(perfExamQuery).select('_id title');
     const examIds = exams.map(exam => exam._id);
 
-    // Get all results for students created by this admin taking exams created by this admin
+    // Get all results for org students taking org exams
     const results = await Result.find({
       isCompleted: true,
       student: { $in: studentIds },
@@ -3346,33 +3423,35 @@ const getStudentResultsForRegrade = async (req, res) => {
     // Build query for results
     let query = { isCompleted: true };
 
-    // Get students created by this admin
-    const students = await User.find({
-      role: 'student',
-      createdBy: req.orgAdminId
-    }).select('_id');
-
-    const studentIds = students.map(student => student._id);
-
-    // Get exams created by this admin
-    const exams = await Exam.find({ createdBy: req.orgAdminId }).select('_id');
-    const examIds = exams.map(exam => exam._id);
-
-    console.log(`Admin ${req.user._id} has ${studentIds.length} students and ${examIds.length} exams`);
-
-    // Filter by admin's students and exams - but be more flexible
-    if (studentIds.length > 0 && examIds.length > 0) {
-      query.$or = [
-        { student: { $in: studentIds }, exam: { $in: examIds } }, // Both student and exam by admin
-        { student: { $in: studentIds } }, // Student by admin (any exam)
-        { exam: { $in: examIds } } // Exam by admin (any student)
-      ];
-    } else if (studentIds.length > 0) {
-      query.student = { $in: studentIds };
-    } else if (examIds.length > 0) {
-      query.exam = { $in: examIds };
+    // Get students: admin sees students created by themselves + all teachers under them
+    let regradeStudentIds;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      regradeStudentIds = (await User.find({ role: 'student' }).select('_id')).map(s => s._id);
+    } else if (req.user.role === 'admin') {
+      const teacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      regradeStudentIds = (await User.find({ role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: teacherIds } }] }).select('_id')).map(s => s._id);
     } else {
-      // Admin has no students or exams, return empty results
+      regradeStudentIds = (await User.find({ role: 'student', $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] }).select('_id')).map(s => s._id);
+    }
+    const studentIds = regradeStudentIds;
+
+    // Get exams: admin sees own + all teachers' exams
+    let regradeExamQuery;
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      regradeExamQuery = {};
+    } else if (req.user.role === 'admin') {
+      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      regradeExamQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }] };
+    } else {
+      regradeExamQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
+    }
+    const exams = await Exam.find(regradeExamQuery).select('_id isPubliclyListed');
+    const examIds = exams.map(exam => exam._id);
+    const marketplaceExamIds = exams.filter(e => e.isPubliclyListed).map(e => e._id);
+
+    console.log(`Admin ${req.user._id} has ${studentIds.length} students, ${examIds.length} exams (${marketplaceExamIds.length} marketplace)`);
+
+    if (examIds.length === 0 && studentIds.length === 0) {
       return res.json({
         results: [],
         summary: {
@@ -3384,6 +3463,23 @@ const getStudentResultsForRegrade = async (req, res) => {
         },
         filters: { examId: examId || null, studentId: studentId || null, status: status || null, sortBy, sortOrder }
       });
+    }
+
+    // For marketplace exams: include ALL students' results.
+    // For private exams: restrict to admin's own students.
+    const orClauses = [];
+    if (marketplaceExamIds.length > 0) {
+      orClauses.push({ exam: { $in: marketplaceExamIds } });
+    }
+    if (examIds.length > 0 && studentIds.length > 0) {
+      orClauses.push({ student: { $in: studentIds }, exam: { $in: examIds } });
+    } else if (examIds.length > 0) {
+      orClauses.push({ exam: { $in: examIds } });
+    } else if (studentIds.length > 0) {
+      orClauses.push({ student: { $in: studentIds } });
+    }
+    if (orClauses.length > 0) {
+      query.$or = orClauses;
     }
 
     // Apply additional filters

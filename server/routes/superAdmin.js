@@ -38,7 +38,8 @@ const {
   getExamRequestStats,
   getAllMarketplaceResults,
   getResultDetails,
-  getExamForReview
+  getExamForReview,
+  getSystemLeaderboard
 } = require('../controllers/superAdminController');
 const auth = require('../middleware/auth');
 
@@ -122,6 +123,9 @@ router.put('/exam-requests/:requestId/reject', superAdminRejectExamRequest);
 
 // Marketplace results route (super admin can view all marketplace exam results)
 router.get('/marketplace/results', getAllMarketplaceResults);
+
+// System-wide leaderboard route
+router.get('/leaderboard', getSystemLeaderboard);
 
 // 404 handler for unmatched superadmin routes
 router.use((req, res) => {

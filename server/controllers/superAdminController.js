@@ -2982,6 +2982,88 @@ const getAllMarketplaceResults = async (req, res) => {
   }
 };
 
+// @desc    Get system-wide leaderboard (all exams, all students)
+// @route   GET /api/superadmin/leaderboard
+// @access  Private/SuperAdmin
+const getSystemLeaderboard = async (req, res) => {
+  try {
+    const { examId, limit = 100 } = req.query;
+
+    // Get all completed results
+    let resultQuery = { isCompleted: true };
+    if (examId) {
+      resultQuery.exam = examId;
+    }
+
+    const results = await Result.find(resultQuery)
+      .populate({
+        path: 'student',
+        select: 'firstName lastName email organization class',
+        options: { virtuals: true }
+      })
+      .populate('exam', 'title maxPossibleScore')
+      .select('totalScore maxPossibleScore startTime endTime')
+      .sort({ totalScore: -1, endTime: -1 })
+      .limit(parseInt(limit));
+
+    // Format the results for the leaderboard
+    const leaderboardData = results.map(result => {
+      if (!result.student || !result.exam) return null;
+
+      const percentage = result.maxPossibleScore > 0
+        ? Math.round((result.totalScore / result.maxPossibleScore) * 100)
+        : 0;
+
+      const startTime = new Date(result.startTime);
+      const endTime = new Date(result.endTime || startTime);
+      const timeTakenMs = endTime - startTime;
+      const timeTakenMinutes = Math.round(timeTakenMs / (1000 * 60));
+
+      const fullName = `${result.student.firstName || ''} ${result.student.lastName || ''}`.trim();
+
+      return {
+        id: result.student._id,
+        resultId: result._id,
+        name: fullName,
+        firstName: result.student.firstName || '',
+        lastName: result.student.lastName || '',
+        email: result.student.email || '',
+        organization: result.student.organization || '',
+        studentClass: result.student.class || '',
+        score: result.totalScore || 0,
+        maxScore: result.maxPossibleScore || 0,
+        percentage,
+        timeTaken: timeTakenMinutes,
+        completedAt: result.endTime,
+        startTime: result.startTime,
+        examId: result.exam._id,
+        examTitle: result.exam.title || 'Unknown',
+        uniqueId: `${result.student._id}-${result._id}`
+      };
+    }).filter(Boolean);
+
+    // Sort by percentage (highest first), then by time taken (shortest first)
+    leaderboardData.sort((a, b) => {
+      if (b.percentage !== a.percentage) {
+        return b.percentage - a.percentage;
+      }
+      return a.timeTaken - b.timeTaken;
+    });
+
+    // Get all exams for the dropdown
+    const exams = await Exam.find({}).select('_id title').sort({ title: 1 });
+
+    res.json({
+      leaderboard: leaderboardData,
+      exams,
+      examTitle: examId ? (await Exam.findById(examId).select('title'))?.title || 'Selected Exam' : 'All Exams'
+    });
+  } catch (error) {
+    console.error('Get system leaderboard error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   createSuperAdmin,
   getAllOrganizations,
@@ -3020,5 +3102,6 @@ module.exports = {
   superAdminApproveExamRequest,
   superAdminRejectExamRequest,
   getExamRequestStats,
-  getAllMarketplaceResults
+  getAllMarketplaceResults,
+  getSystemLeaderboard
 };

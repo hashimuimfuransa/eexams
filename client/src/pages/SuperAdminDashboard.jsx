@@ -11,12 +11,13 @@ import {
   Dashboard as DashIcon, Business, People, Settings, AttachMoney,
   SupervisorAccount, School, TrendingUp,
   CheckCircle, Block, Edit, Add, ArrowForward, Delete, InfoOutlined, Close,
-  Visibility, VisibilityOff, Assessment, Person, Email
+  Visibility, VisibilityOff, Assessment, Person, Email, EmojiEvents
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { tokens, gradients, planColors as PLAN_COLORS } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
+import LeaderboardSection from '../components/admin/LeaderboardSection';
 
 const nav = [
   { id: 'home',          label: 'Overview',                icon: <DashIcon sx={{ fontSize: 20 }} /> },
@@ -25,9 +26,10 @@ const nav = [
   { id: 'exam-requests', label: 'Exam Requests',           icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'subscriptions', label: 'Subscriptions',             icon: <AttachMoney sx={{ fontSize: 20 }} /> },
   { id: 'marketplace',   label: 'Exam Bank Marketplace',    icon: <School sx={{ fontSize: 20 }} /> },
-  { id: 'student-results', label: 'Student Results',         icon: <Assessment sx={{ fontSize: 20 }} /> },
-  { id: 'analytics',     label: 'Analytics',               icon: <TrendingUp sx={{ fontSize: 20 }} /> },
-  { id: 'settings',      label: 'Settings',                icon: <Settings sx={{ fontSize: 20 }} /> },
+  { id: 'student-results', label: 'Student Results',  icon: <Assessment sx={{ fontSize: 20 }} /> },
+  { id: 'leaderboard',     label: 'Leaderboard',      icon: <EmojiEvents sx={{ fontSize: 20 }} /> },
+  { id: 'analytics',       label: 'Analytics',        icon: <TrendingUp sx={{ fontSize: 20 }} /> },
+  { id: 'settings',        label: 'Settings',         icon: <Settings sx={{ fontSize: 20 }} /> },
 ];
 
 function AreaChart({ data = [], color = tokens.accent }) {
@@ -77,7 +79,8 @@ export default function SuperAdminDashboard() {
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
       {activeSection === 'marketplace'   && <ExamBankMarketplaceSection searchQuery={searchQuery} />}
       {activeSection === 'student-results' && <StudentResultsSection searchQuery={searchQuery} />}
-      {activeSection === 'analytics'     && <AnalyticsSection stats={stats} />}
+      {activeSection === 'leaderboard'     && <LeaderboardSection systemWide={true} />}
+      {activeSection === 'analytics'       && <AnalyticsSection stats={stats} />}
       {activeSection === 'settings'      && <SettingsSection user={user} />}
     </DashboardShell>
   );

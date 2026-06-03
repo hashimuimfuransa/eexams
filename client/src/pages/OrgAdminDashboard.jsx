@@ -10,22 +10,25 @@ import {
 import {
   Dashboard as DashIcon, People, Assignment, BarChart, Settings,
   SupervisorAccount, TrendingUp, PersonAdd, CheckCircle,
-  Delete, Edit, Close, Add, ArrowForward, Visibility, VisibilityOff, Male, Female
+  Delete, Edit, Close, Add, ArrowForward, Visibility, VisibilityOff, Male, Female,
+  EmojiEvents
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
 import SubscriptionWarning from '../components/SubscriptionWarning';
+import LeaderboardSection from '../components/admin/LeaderboardSection';
 
 const nav = [
   { id: 'home',     label: 'Overview',   icon: <DashIcon sx={{ fontSize: 20 }} /> },
   { id: 'teachers', label: 'Teachers',   icon: <SupervisorAccount sx={{ fontSize: 20 }} /> },
   { id: 'students', label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
   { id: 'exams',    label: 'Exams',      icon: <Assignment sx={{ fontSize: 20 }} /> },
-  { id: 'results',  label: 'Results',    icon: <BarChart sx={{ fontSize: 20 }} /> },
-  { id: 'analytics',label: 'Analytics',  icon: <TrendingUp sx={{ fontSize: 20 }} /> },
-  { id: 'settings', label: 'Settings',   icon: <Settings sx={{ fontSize: 20 }} /> },
+  { id: 'results',     label: 'Results',     icon: <BarChart sx={{ fontSize: 20 }} /> },
+  { id: 'leaderboard', label: 'Leaderboard', icon: <EmojiEvents sx={{ fontSize: 20 }} /> },
+  { id: 'analytics',   label: 'Analytics',   icon: <TrendingUp sx={{ fontSize: 20 }} /> },
+  { id: 'settings',    label: 'Settings',    icon: <Settings sx={{ fontSize: 20 }} /> },
 ];
 
 function AreaChart({ data = [], color = tokens.accent }) {
@@ -68,7 +71,7 @@ export default function OrgAdminDashboard() {
     
     api.get('/admin/dashboard-stats').then(r => setStats(r.data)).catch(() => setStats({})).finally(() => setStatsLoading(false));
     api.get('/admin/teachers').then(r => setTeachers(r.data || [])).catch(() => {});
-    api.get('/admin/exams').then(r => setExams((r.data || []).slice(0, 10))).catch(() => {});
+    api.get('/admin/exams').then(r => setExams(r.data || [])).catch(() => {});
     api.get('/admin/results').then(r => setResults(Array.isArray(r.data) ? r.data : (r.data?.results || []))).catch(() => {});
   }, [user]);
 
@@ -95,8 +98,9 @@ export default function OrgAdminDashboard() {
       {activeSection === 'teachers'  && <TeachersSection teachers={filteredTeachers} setTeachers={setTeachers} />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} />}
-      {activeSection === 'results'   && <ResultsSection results={results} />}
-      {activeSection === 'analytics' && <AnalyticsSection results={results} exams={filteredExams} teachers={filteredTeachers} />}
+      {activeSection === 'results'     && <ResultsSection results={results} exams={exams} />}
+      {activeSection === 'leaderboard'  && <LeaderboardSection exams={exams} />}
+      {activeSection === 'analytics'    && <AnalyticsSection results={results} exams={filteredExams} teachers={filteredTeachers} />}
       {activeSection === 'settings'  && <SettingsSection user={user} />}
     </DashboardShell>
   );

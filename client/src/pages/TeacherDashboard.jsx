@@ -21,7 +21,8 @@ import {
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
-  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info, Article
+  DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info, Article,
+  EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -31,6 +32,7 @@ import StudentManagement from '../components/teacher/StudentManagement';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
 import usePlan from '../hooks/usePlan';
 import SubscriptionWarning from '../components/SubscriptionWarning';
+import LeaderboardSection from '../components/admin/LeaderboardSection';
 
 // Memoized StudentRow component to prevent unnecessary re-renders
 const StudentRow = memo(({ row, index, fields, onUpdate, onRemove, disabled, canRemove }) => {
@@ -1212,8 +1214,9 @@ const getNavigationItems = (user, hasTemplatesAccess) => {
     { id: 'home',      label: 'Dashboard',  icon: <DashboardCustomize sx={{ fontSize: 20 }} /> },
     { id: 'exams',     label: 'My Exams',   icon: <Assignment sx={{ fontSize: 20 }} /> },
     { id: 'students',  label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
-    { id: 'results',   label: 'Results',    icon: <ListAlt sx={{ fontSize: 20 }} /> },
-    { id: 'settings',  label: 'Settings',   icon: <Settings sx={{ fontSize: 20 }} /> },
+    { id: 'results',     label: 'Results',      icon: <ListAlt sx={{ fontSize: 20 }} /> },
+    { id: 'leaderboard', label: 'Leaderboard',  icon: <LeaderboardIcon sx={{ fontSize: 20 }} /> },
+    { id: 'settings',    label: 'Settings',     icon: <Settings sx={{ fontSize: 20 }} /> },
   ];
 
   // Only show templates if user has access (Basic plan or higher)
@@ -1367,7 +1370,8 @@ export default function TeacherDashboard() {
       {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} user={user} />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
       {activeSection === 'students'  && <StudentsSection />}
-      {activeSection === 'results'   && <ResultsSection results={results} />}
+      {activeSection === 'results'   && <ResultsSection results={results} exams={exams} />}
+      {activeSection === 'leaderboard' && <LeaderboardSection exams={exams} />}
       {activeSection === 'templates' && <TemplatesSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} />}
       {activeSection === 'reports'   && <ReportsSection />}
       {activeSection === 'settings'  && <SettingsSection user={user} />}
@@ -6428,10 +6432,10 @@ function StudentsSection() {
   );
 }
 
-function ResultsSection({ results }) {
+function ResultsSection({ results, exams = [] }) {
+  const isXs = useMediaQuery('(max-width:600px)');
   const [data, setData] = useState(results);
   const [loading, setLoading] = useState(!results.length);
-  const [selectedResult, setSelectedResult] = useState(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
@@ -6441,7 +6445,71 @@ function ResultsSection({ results }) {
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
 
-  useEffect(()=>{if(!results.length)api.get('/admin/results').then(r=>setData(Array.isArray(r.data)?r.data:(r.data?.results||[]))).finally(()=>setLoading(false));else setData(results);},[results]);
+  // ── Filters ──
+  const [filterExam, setFilterExam] = useState('all');
+  const [filterGrade, setFilterGrade] = useState('all');
+  const [filterMinScore, setFilterMinScore] = useState('');
+  const [filterMaxScore, setFilterMaxScore] = useState('');
+  const [filterSearch, setFilterSearch] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [sortBy, setSortBy] = useState('date_desc');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    if (!results.length) {
+      api.get('/admin/results')
+        .then(r => setData(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+        .finally(() => setLoading(false));
+    } else {
+      setData(results);
+    }
+  }, [results]);
+
+  const clearFilters = () => {
+    setFilterExam('all'); setFilterGrade('all'); setFilterMinScore('');
+    setFilterMaxScore(''); setFilterSearch(''); setFilterDateFrom(''); setFilterDateTo('');
+    setSortBy('date_desc');
+  };
+
+  const uniqueExams = [...new Map(data.map(r => [r.exam?._id, r.exam]).filter(([k]) => k)).values()];
+
+  const filtered = data
+    .filter(r => {
+      const pct = Math.round(r.percentage ?? r.scores?.percentage ?? 0);
+      const name = `${r.student?.firstName || ''} ${r.student?.lastName || ''}`.toLowerCase();
+      const examTitle = (r.exam?.title || '').toLowerCase();
+      const date = new Date(r.endTime || r.submittedAt || r.createdAt);
+      let grade = 'F';
+      if (pct >= 90) grade = 'A';
+      else if (pct >= 80) grade = 'B';
+      else if (pct >= 70) grade = 'C';
+      else if (pct >= 60) grade = 'D';
+
+      if (filterExam !== 'all' && r.exam?._id !== filterExam) return false;
+      if (filterGrade !== 'all' && grade !== filterGrade) return false;
+      if (filterMinScore !== '' && pct < Number(filterMinScore)) return false;
+      if (filterMaxScore !== '' && pct > Number(filterMaxScore)) return false;
+      if (filterSearch && !name.includes(filterSearch.toLowerCase()) && !examTitle.includes(filterSearch.toLowerCase())) return false;
+      if (filterDateFrom && date < new Date(filterDateFrom)) return false;
+      if (filterDateTo && date > new Date(filterDateTo + 'T23:59:59')) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const pA = Math.round(a.percentage ?? 0), pB = Math.round(b.percentage ?? 0);
+      const dA = new Date(a.endTime || a.createdAt), dB = new Date(b.endTime || b.createdAt);
+      if (sortBy === 'date_desc') return dB - dA;
+      if (sortBy === 'date_asc') return dA - dB;
+      if (sortBy === 'score_desc') return pB - pA;
+      if (sortBy === 'score_asc') return pA - pB;
+      if (sortBy === 'name_asc') return (a.student?.firstName || '').localeCompare(b.student?.firstName || '');
+      return 0;
+    });
+
+  const activeFilterCount = [
+    filterExam !== 'all', filterGrade !== 'all', filterMinScore, filterMaxScore,
+    filterSearch, filterDateFrom, filterDateTo, sortBy !== 'date_desc'
+  ].filter(Boolean).length;
 
   const handleViewDetails = async (resultId) => {
     try {
@@ -6655,35 +6723,222 @@ function ResultsSection({ results }) {
     return weaknesses;
   };
 
+  const avgScore = filtered.length ? Math.round(filtered.reduce((s,r)=>s+(r.percentage??0),0)/filtered.length) : 0;
+  const passCount = filtered.filter(r=>(r.percentage??0)>=70).length;
+  const gradeColor = g => ({ A:'#16a34a', B:'#0284c7', C:'#d97706', D:'#ea580c', F:'#dc2626' }[g] || '#6b7280');
+  const getGrade = pct => pct>=90?'A':pct>=80?'B':pct>=70?'C':pct>=60?'D':'F';
+
   return(
     <Box>
-      <SectionTitle>Results</SectionTitle>
-      {loading?<Box sx={{display:'flex',justifyContent:'center',mt:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>:(
+      <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', mb:2, flexWrap:'wrap', gap:1 }}>
+        <Typography fontWeight={700} sx={{ fontSize:18, fontFamily:"'DM Sans',sans-serif", color:tokens.textPrimary }}>
+          Results
+        </Typography>
+        <Box sx={{ display:'flex', gap:1 }}>
+          <Button
+            size="small"
+            variant={filtersOpen ? 'contained' : 'outlined'}
+            startIcon={<FilterList fontSize="small" />}
+            onClick={() => setFiltersOpen(v=>!v)}
+            sx={{ textTransform:'none', fontWeight:600, borderRadius:2, fontSize:12,
+              ...(filtersOpen ? { bgcolor:tokens.accent, borderColor:tokens.accent } : {}) }}
+          >
+            Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+          </Button>
+          {activeFilterCount > 0 && (
+            <Button size="small" startIcon={<ClearAll fontSize="small" />} onClick={clearFilters}
+              sx={{ textTransform:'none', fontSize:12, color:'#ef4444', borderRadius:2 }}>
+              Clear
+            </Button>
+          )}
+          <Button size="small" startIcon={<Refresh fontSize="small" />} onClick={() => {
+            setLoading(true);
+            api.get('/admin/results').then(r=>setData(Array.isArray(r.data)?r.data:(r.data?.results||[]))).finally(()=>setLoading(false));
+          }} sx={{ textTransform:'none', fontSize:12, borderRadius:2 }}>Refresh</Button>
+        </Box>
+      </Box>
+
+      {/* ── Filter Panel ── */}
+      {filtersOpen && (
+        <Paper elevation={0} sx={{ p:2.5, mb:2, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'#FAFBFC' }}>
+          <Grid container spacing={1.5} alignItems="flex-end">
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                size="small" fullWidth label="Search student / exam"
+                value={filterSearch} onChange={e=>setFilterSearch(e.target.value)}
+                InputProps={{ startAdornment: <InputAdornment position="start"><Search sx={{fontSize:16,color:tokens.textMuted}}/></InputAdornment> }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl size="small" fullWidth>
+                <InputLabel sx={{fontSize:13}}>Exam</InputLabel>
+                <Select value={filterExam} onChange={e=>setFilterExam(e.target.value)} label="Exam"
+                  sx={{ borderRadius:2, fontSize:13 }}>
+                  <MenuItem value="all">All Exams</MenuItem>
+                  {uniqueExams.map(e=><MenuItem key={e._id} value={e._id} sx={{fontSize:13}}>{e.title}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6} sm={3} md={1.5}>
+              <FormControl size="small" fullWidth>
+                <InputLabel sx={{fontSize:13}}>Grade</InputLabel>
+                <Select value={filterGrade} onChange={e=>setFilterGrade(e.target.value)} label="Grade"
+                  sx={{ borderRadius:2, fontSize:13 }}>
+                  {['all','A','B','C','D','F'].map(g=><MenuItem key={g} value={g} sx={{fontSize:13}}>{g==='all'?'All Grades':g}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6} sm={3} md={1.5}>
+              <TextField size="small" fullWidth label="Min %" type="number"
+                value={filterMinScore} onChange={e=>setFilterMinScore(e.target.value)}
+                inputProps={{ min:0, max:100 }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }} />
+            </Grid>
+            <Grid item xs={6} sm={3} md={1.5}>
+              <TextField size="small" fullWidth label="Max %" type="number"
+                value={filterMaxScore} onChange={e=>setFilterMaxScore(e.target.value)}
+                inputProps={{ min:0, max:100 }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }} />
+            </Grid>
+            <Grid item xs={6} sm={3} md={1.5}>
+              <FormControl size="small" fullWidth>
+                <InputLabel sx={{fontSize:13}}>Sort by</InputLabel>
+                <Select value={sortBy} onChange={e=>setSortBy(e.target.value)} label="Sort by"
+                  sx={{ borderRadius:2, fontSize:13 }}>
+                  <MenuItem value="date_desc" sx={{fontSize:13}}>Newest first</MenuItem>
+                  <MenuItem value="date_asc" sx={{fontSize:13}}>Oldest first</MenuItem>
+                  <MenuItem value="score_desc" sx={{fontSize:13}}>Highest score</MenuItem>
+                  <MenuItem value="score_asc" sx={{fontSize:13}}>Lowest score</MenuItem>
+                  <MenuItem value="name_asc" sx={{fontSize:13}}>Name A–Z</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6} sm={3} md={2}>
+              <TextField size="small" fullWidth label="From date" type="date"
+                value={filterDateFrom} onChange={e=>setFilterDateFrom(e.target.value)}
+                InputLabelProps={{ shrink:true }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }} />
+            </Grid>
+            <Grid item xs={6} sm={3} md={2}>
+              <TextField size="small" fullWidth label="To date" type="date"
+                value={filterDateTo} onChange={e=>setFilterDateTo(e.target.value)}
+                InputLabelProps={{ shrink:true }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }} />
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
+
+      {/* ── Summary Stats ── */}
+      {!loading && data.length > 0 && (
+        <Grid container spacing={1.5} sx={{ mb:2 }}>
+          {[
+            { label:'Total Results', value:filtered.length, color:tokens.accent, bg:'rgba(12,189,115,0.08)' },
+            { label:'Average Score', value:`${avgScore}%`, color:'#6366F1', bg:'rgba(99,102,241,0.08)' },
+            { label:'Passed (≥70%)', value:passCount, color:'#0284c7', bg:'rgba(2,132,199,0.08)' },
+            { label:'Failed (<70%)', value:filtered.length-passCount, color:'#ef4444', bg:'rgba(239,68,68,0.08)' },
+          ].map((s,i)=>(
+            <Grid item xs={6} md={3} key={i}>
+              <Paper elevation={0} sx={{ p:1.5, borderRadius:2.5, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white',
+                display:'flex', alignItems:'center', gap:1.5 }}>
+                <Box sx={{ width:36, height:36, borderRadius:2, bgcolor:s.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Typography fontWeight={800} sx={{ fontSize:14, color:s.color }}>{s.value}</Typography>
+                </Box>
+                <Typography sx={{ fontSize:12, color:tokens.textMuted, fontFamily:"'DM Sans',sans-serif", lineHeight:1.3 }}>{s.label}</Typography>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {loading ? (
+        <Box sx={{display:'flex',justifyContent:'center',mt:6}}><CircularProgress sx={{color:tokens.accent}}/></Box>
+      ) : (
         <Paper elevation={0} sx={{borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',overflow:'hidden'}}>
-          <TableContainer sx={{overflowX:'auto'}}><Table sx={{minWidth:500}}>
-            <TableHead><TableRow sx={{bgcolor:'#F8FAFC'}}>{['Student','Exam','Score','Time','Date','Actions'].map(h=><TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12}}>{h}</TableCell>)}</TableRow></TableHead>
-            <TableBody>
-              {data.length===0?<TableRow><TableCell colSpan={6} align="center" sx={{py:5,color:tokens.textMuted}}>No results.</TableCell></TableRow>:
-              data.slice(0,50).map(r=>{const pct=Math.round(r.percentage??r.scores?.percentage??0);return(
-                <TableRow key={r._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
-                  <TableCell sx={{fontSize:13}}>{r.student?.firstName} {r.student?.lastName}</TableCell>
-                  <TableCell sx={{fontSize:13,color:tokens.textMuted}}>{r.exam?.title}</TableCell>
-                  <TableCell><Box sx={{display:'flex',alignItems:'center',gap:1}}><LinearProgress variant="determinate" value={pct} sx={{width:60,height:6,borderRadius:3,bgcolor:'#EEF2FF','& .MuiLinearProgress-bar':{bgcolor:pct>=70?tokens.accent:'#EF4444',borderRadius:3}}}/><Typography sx={{fontSize:12,fontWeight:700,color:pct>=70?tokens.accentDark:'#EF4444'}}>{pct}%</Typography></Box></TableCell>
-                  <TableCell><Typography variant="caption" sx={{color:tokens.textMuted}}>{r.timeTaken?`${r.timeTaken}min`:'-'}</Typography></TableCell>
-                  <TableCell><Typography variant="caption" sx={{color:tokens.textMuted}}>{new Date(r.submittedAt||r.createdAt).toLocaleDateString()}</Typography></TableCell>
-                  <TableCell>
-                    <Button 
-                      size="small" 
-                      variant="outlined"
-                      onClick={() => handleViewDetails(r._id)}
-                      sx={{fontSize:11,py:0.5}}
-                    >
-                      View Details
-                    </Button>
-                  </TableCell>
-                </TableRow>);})}
-            </TableBody>
-          </Table></TableContainer>
+          {filtered.length === 0 ? (
+            <Box sx={{ py:8, textAlign:'center' }}>
+              <FilterList sx={{ fontSize:40, color:'#ccc', mb:1 }} />
+              <Typography sx={{ color:tokens.textMuted, fontSize:14 }}>
+                {data.length === 0 ? 'No results yet.' : 'No results match the current filters.'}
+              </Typography>
+              {activeFilterCount > 0 && <Button size="small" onClick={clearFilters} sx={{ mt:1, textTransform:'none' }}>Clear Filters</Button>}
+            </Box>
+          ) : (
+            <TableContainer sx={{overflowX:'auto'}}>
+              <Table sx={{minWidth:500}}>
+                <TableHead>
+                  <TableRow sx={{bgcolor:'#F8FAFC'}}>
+                    {['#','Student','Exam','Score','Grade','Time','Date','Actions'].map(h=>(
+                      <TableCell key={h} sx={{fontWeight:700,color:tokens.textSecondary,fontSize:12,py:1.5}}>{h}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filtered.slice(0,100).map((r,idx)=>{
+                    const pct=Math.round(r.percentage??r.scores?.percentage??0);
+                    const grade=getGrade(pct);
+                    const passed=pct>=70;
+                    return(
+                      <TableRow key={r._id} sx={{'&:hover':{bgcolor:'#F8FAFC'}}}>
+                        <TableCell sx={{fontSize:12,color:tokens.textMuted,py:1.25}}>{idx+1}</TableCell>
+                        <TableCell sx={{py:1.25}}>
+                          <Box sx={{display:'flex',alignItems:'center',gap:1}}>
+                            <Avatar sx={{width:28,height:28,bgcolor:tokens.accent,fontSize:11,fontWeight:700}}>
+                              {(r.student?.firstName||'?').charAt(0)}
+                            </Avatar>
+                            <Box>
+                              <Typography sx={{fontSize:13,fontWeight:600,lineHeight:1.2}}>
+                                {r.student?.firstName} {r.student?.lastName}
+                              </Typography>
+                              {r.student?.email && !isXs && (
+                                <Typography variant="caption" sx={{color:tokens.textMuted}}>{r.student.email}</Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{fontSize:13,color:tokens.textMuted,py:1.25,maxWidth:180}}>
+                          <Typography sx={{fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:180}}>
+                            {r.exam?.title}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{py:1.25}}>
+                          <Box sx={{display:'flex',alignItems:'center',gap:1}}>
+                            <LinearProgress variant="determinate" value={pct}
+                              sx={{width:56,height:5,borderRadius:3,bgcolor:'#EEF2FF',
+                                '& .MuiLinearProgress-bar':{bgcolor:passed?tokens.accent:'#EF4444',borderRadius:3}}}/>
+                            <Typography sx={{fontSize:12,fontWeight:700,color:passed?tokens.accentDark:'#EF4444',minWidth:36}}>
+                              {pct}%
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{py:1.25}}>
+                          <Chip label={grade} size="small"
+                            sx={{height:20,fontSize:11,fontWeight:700,bgcolor:`${gradeColor(grade)}18`,color:gradeColor(grade)}}/>
+                        </TableCell>
+                        <TableCell sx={{py:1.25}}>
+                          <Typography variant="caption" sx={{color:tokens.textMuted}}>
+                            {r.timeTaken?`${r.timeTaken}m`:'-'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{py:1.25}}>
+                          <Typography variant="caption" sx={{color:tokens.textMuted}}>
+                            {new Date(r.endTime||r.submittedAt||r.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{py:1.25}}>
+                          <Button size="small" variant="outlined" onClick={()=>handleViewDetails(r._id)}
+                            sx={{fontSize:11,py:0.4,borderRadius:1.5,textTransform:'none'}}>
+                            Details
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </Paper>
       )}
 
@@ -6845,6 +7100,347 @@ function ResultsSection({ results }) {
           </Button>
         </DialogActions>
       </Dialog>
+    </Box>
+  );
+}
+
+// LeaderboardSection imported from ../components/admin/LeaderboardSection — see that file.
+// eslint-disable-next-line no-unused-vars
+function _LeaderboardSection_DEAD_CODE_DO_NOT_USE({ exams = [] }) {
+  const isXs = useMediaQuery('(max-width:600px)');
+  const [selectedExam, setSelectedExam] = useState('');
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [examTitle, setExamTitle] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [searchStudent, setSearchStudent] = useState('');
+  const [filterPassed, setFilterPassed] = useState('all');
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = () => {
+    setDownloadingPdf(true);
+    try {
+      const gradeColor = g => ({ A:'#16a34a', B:'#0284c7', C:'#d97706', D:'#ea580c', F:'#dc2626' }[g] || '#6b7280');
+      const getGrade = pct => pct>=90?'A':pct>=80?'B':pct>=70?'C':pct>=60?'D':'F';
+      const rows = filtered.map((e, i) => {
+        const pct = Math.round(e.percentage ?? 0);
+        const grade = getGrade(pct);
+        const rank = e.rank ?? (i + 1);
+        const fn = e.firstName || e.student?.firstName || '—';
+        const ln = e.lastName || e.student?.lastName || '';
+        const sc = e.studentClass || e.student?.studentClass || '';
+        const medal = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':String(rank);
+        const passed = pct >= 70;
+        return `
+          <tr>
+            <td style="text-align:center;font-size:16px">${medal}</td>
+            <td><strong>${fn} ${ln}</strong>${sc ? `<br/><small style="color:#6b7280">Class ${sc}</small>` : ''}</td>
+            <td style="text-align:center;font-weight:700;color:${passed?'#16a34a':'#dc2626'}">${pct}%</td>
+            <td style="text-align:center">
+              <span style="background:${gradeColor(grade)}20;color:${gradeColor(grade)};font-weight:700;padding:2px 8px;border-radius:4px">${grade}</span>
+            </td>
+            <td style="text-align:center;color:#6b7280">${e.timeTaken != null ? e.timeTaken + ' min' : '—'}</td>
+            <td style="text-align:center;color:#6b7280">${(e.completedAt||e.endTime) ? new Date(e.completedAt||e.endTime).toLocaleDateString() : '—'}</td>
+          </tr>`;
+      }).join('');
+
+      const avgScore = leaderboard.length ? Math.round(leaderboard.reduce((s,e)=>s+(e.percentage??0),0)/leaderboard.length) : 0;
+      const passRate = leaderboard.length ? Math.round((leaderboard.filter(e=>(e.percentage??0)>=70).length/leaderboard.length)*100) : 0;
+      const topPct = leaderboard.length ? Math.round(leaderboard[0]?.percentage??0) : 0;
+
+      const html = `
+        <html><head><title>Leaderboard — ${examTitle}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 28px; color: #1e293b; }
+          h1 { margin: 0 0 4px; font-size: 22px; }
+          .subtitle { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+          .stats { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+          .stat { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 18px; }
+          .stat-value { font-size: 20px; font-weight: 800; color: #0c3b5e; }
+          .stat-label { font-size: 11px; color: #94a3b8; }
+          table { width: 100%; border-collapse: collapse; font-size: 13px; }
+          th { background: #f8fafc; text-align: left; padding: 10px 12px; font-weight: 700; color: #64748b; border-bottom: 2px solid #e2e8f0; }
+          td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+          tr:hover td { background: #f8fafc; }
+          .footer { margin-top: 24px; text-align: center; font-size: 11px; color: #94a3b8; }
+        </style></head><body>
+        <h1>🏆 Leaderboard</h1>
+        <div class="subtitle">${examTitle} &nbsp;·&nbsp; Generated ${new Date().toLocaleDateString()}</div>
+        <div class="stats">
+          <div class="stat"><div class="stat-value">${leaderboard.length}</div><div class="stat-label">Students</div></div>
+          <div class="stat"><div class="stat-value">${avgScore}%</div><div class="stat-label">Average Score</div></div>
+          <div class="stat"><div class="stat-value">${passRate}%</div><div class="stat-label">Pass Rate</div></div>
+          <div class="stat"><div class="stat-value">${topPct}%</div><div class="stat-label">Top Score</div></div>
+        </div>
+        <table>
+          <thead><tr><th>Rank</th><th>Student</th><th>Score</th><th>Grade</th><th>Time</th><th>Date</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="footer">eExams Platform &nbsp;·&nbsp; ${new Date().toLocaleString()}</div>
+        </body></html>`;
+
+      const win = window.open('', '_blank');
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); }, 400);
+    } catch (err) {
+      console.error('PDF error:', err);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedExam) { setLeaderboard([]); setExamTitle(''); return; }
+    setLoading(true); setError('');
+    api.get(`/admin/exams/${selectedExam}/leaderboard`)
+      .then(res => {
+        setLeaderboard(res.data.leaderboard || []);
+        setExamTitle(res.data.examTitle || '');
+      })
+      .catch(err => setError(err.response?.data?.message || 'Failed to load leaderboard'))
+      .finally(() => setLoading(false));
+  }, [selectedExam]);
+
+  const gradeColor = g => ({ A:'#16a34a', B:'#0284c7', C:'#d97706', D:'#ea580c', F:'#dc2626' }[g] || '#6b7280');
+  const getGrade = pct => pct>=90?'A':pct>=80?'B':pct>=70?'C':pct>=60?'D':'F';
+  const medalColor = rank => rank===1?'#F59E0B':rank===2?'#94A3B8':rank===3?'#B45309':'transparent';
+
+  const filtered = leaderboard
+    .filter(e => {
+      const name = `${e.firstName||e.student?.firstName||''} ${e.lastName||e.student?.lastName||''}`.toLowerCase();
+      if (searchStudent && !name.includes(searchStudent.toLowerCase())) return false;
+      const pct = Math.round(e.percentage ?? 0);
+      if (filterPassed === 'passed' && pct < 70) return false;
+      if (filterPassed === 'failed' && pct >= 70) return false;
+      return true;
+    });
+
+  const avgScore = leaderboard.length ? Math.round(leaderboard.reduce((s,e)=>s+(e.percentage??0),0)/leaderboard.length) : 0;
+  const passRate = leaderboard.length ? Math.round((leaderboard.filter(e=>(e.percentage??0)>=70).length/leaderboard.length)*100) : 0;
+
+  return (
+    <Box>
+      <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', mb:2, flexWrap:'wrap', gap:1 }}>
+        <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+          <EmojiEvents sx={{ color:'#F59E0B', fontSize:24 }} />
+          <Typography fontWeight={700} sx={{ fontSize:18, fontFamily:"'DM Sans',sans-serif", color:tokens.textPrimary }}>
+            Leaderboard
+          </Typography>
+        </Box>
+        {leaderboard.length > 0 && (
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={downloadingPdf ? <CircularProgress size={14} /> : <Download fontSize="small" />}
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            sx={{ textTransform:'none', fontWeight:600, borderRadius:2, fontSize:12 }}
+          >
+            {downloadingPdf ? 'Preparing…' : 'Download PDF'}
+          </Button>
+        )}
+      </Box>
+
+      {/* Exam picker */}
+      <Paper elevation={0} sx={{ p:2.5, mb:2, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white' }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={6} md={4}>
+            <FormControl size="small" fullWidth>
+              <InputLabel sx={{ fontSize:13 }}>Select Exam</InputLabel>
+              <Select value={selectedExam} onChange={e => setSelectedExam(e.target.value)} label="Select Exam"
+                sx={{ borderRadius:2, fontSize:13 }}>
+                <MenuItem value="" sx={{ fontSize:13 }}>— Choose an exam —</MenuItem>
+                {exams.map(e => <MenuItem key={e._id} value={e._id} sx={{ fontSize:13 }}>{e.title}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </Grid>
+          {selectedExam && (
+            <>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField size="small" fullWidth placeholder="Search student…"
+                  value={searchStudent} onChange={e=>setSearchStudent(e.target.value)}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><Search sx={{fontSize:16,color:tokens.textMuted}}/></InputAdornment> }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel sx={{fontSize:13}}>Status</InputLabel>
+                  <Select value={filterPassed} onChange={e=>setFilterPassed(e.target.value)} label="Status"
+                    sx={{ borderRadius:2, fontSize:13 }}>
+                    <MenuItem value="all" sx={{fontSize:13}}>All</MenuItem>
+                    <MenuItem value="passed" sx={{fontSize:13}}>Passed</MenuItem>
+                    <MenuItem value="failed" sx={{fontSize:13}}>Failed</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </>
+          )}
+        </Grid>
+      </Paper>
+
+      {!selectedExam ? (
+        <Paper elevation={0} sx={{ p:6, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white', textAlign:'center' }}>
+          <LeaderboardIcon sx={{ fontSize:48, color:'#ccc', mb:1.5 }} />
+          <Typography sx={{ color:tokens.textMuted, fontSize:14, fontFamily:"'DM Sans',sans-serif" }}>
+            Select an exam above to view the student leaderboard and performance tracking
+          </Typography>
+        </Paper>
+      ) : loading ? (
+        <Box sx={{ display:'flex', justifyContent:'center', mt:6 }}><CircularProgress sx={{ color:tokens.accent }} /></Box>
+      ) : error ? (
+        <Alert severity="error" sx={{ borderRadius:2 }}>{error}</Alert>
+      ) : (
+        <>
+          {/* Summary stats */}
+          {leaderboard.length > 0 && (
+            <Grid container spacing={1.5} sx={{ mb:2 }}>
+              {[
+                { label:'Students Completed', value:leaderboard.length, color:tokens.accent, bg:'rgba(12,189,115,0.08)' },
+                { label:'Average Score', value:`${avgScore}%`, color:'#6366F1', bg:'rgba(99,102,241,0.08)' },
+                { label:'Pass Rate', value:`${passRate}%`, color:'#0284c7', bg:'rgba(2,132,199,0.08)' },
+                { label:'Top Score', value:`${Math.round(leaderboard[0]?.percentage??0)}%`, color:'#F59E0B', bg:'rgba(245,158,11,0.08)' },
+              ].map((s,i) => (
+                <Grid item xs={6} md={3} key={i}>
+                  <Paper elevation={0} sx={{ p:1.5, borderRadius:2.5, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white',
+                    display:'flex', alignItems:'center', gap:1.5 }}>
+                    <Box sx={{ width:38, height:38, borderRadius:2, bgcolor:s.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <Typography fontWeight={800} sx={{ fontSize:13, color:s.color }}>{s.value}</Typography>
+                    </Box>
+                    <Typography sx={{ fontSize:11.5, color:tokens.textMuted, fontFamily:"'DM Sans',sans-serif", lineHeight:1.3 }}>{s.label}</Typography>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+
+          {/* Top 3 podium */}
+          {leaderboard.length >= 3 && !searchStudent && filterPassed==='all' && (
+            <Paper elevation={0} sx={{ p:3, mb:2, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white' }}>
+              <Typography fontWeight={700} sx={{ fontSize:13, color:tokens.textMuted, mb:2, fontFamily:"'DM Sans',sans-serif" }}>
+                🏆 TOP PERFORMERS — {examTitle}
+              </Typography>
+              <Box sx={{ display:'flex', justifyContent:'center', alignItems:'flex-end', gap:{xs:1,sm:3} }}>
+                {[leaderboard[1], leaderboard[0], leaderboard[2]].map((e, podiumIdx) => {
+                  if (!e) return null;
+                  const rank = podiumIdx===1?1:podiumIdx===0?2:3;
+                  const pct = Math.round(e.percentage??0);
+                  const heights = [96, 120, 80];
+                  const medal = ['🥈','🥇','🥉'][podiumIdx];
+                  const fn = e.firstName||e.student?.firstName||'?';
+                  const ln = e.lastName||e.student?.lastName||'';
+                  return (
+                    <Box key={e.uniqueId||e._id} sx={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1, maxWidth:120 }}>
+                      <Avatar sx={{ width:rank===1?46:36, height:rank===1?46:36, bgcolor:medalColor(rank), fontWeight:700, fontSize:rank===1?18:14, mb:0.5 }}>
+                        {fn.charAt(0)}
+                      </Avatar>
+                      <Typography sx={{ fontSize:12, fontWeight:700, textAlign:'center', lineHeight:1.2, mb:0.5 }}>
+                        {fn} {ln.charAt(0)}.
+                      </Typography>
+                      <Typography sx={{ fontSize:13, fontWeight:800, color:medalColor(rank) }}>{pct}%</Typography>
+                      <Box sx={{ width:'100%', height:heights[podiumIdx], bgcolor:rank===1?'#FEF3C7':rank===2?'#F1F5F9':'#FFF7ED',
+                        border:`2px solid ${medalColor(rank)}`, borderRadius:'6px 6px 0 0',
+                        display:'flex', alignItems:'center', justifyContent:'center', mt:0.5 }}>
+                        <Typography sx={{ fontSize:rank===1?22:18 }}>{medal}</Typography>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Paper>
+          )}
+
+          {/* Full ranked table */}
+          <Paper elevation={0} sx={{ borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white', overflow:'hidden' }}>
+            {filtered.length === 0 ? (
+              <Box sx={{ py:6, textAlign:'center' }}>
+                <Typography sx={{ color:tokens.textMuted, fontSize:14 }}>No students match the filters.</Typography>
+              </Box>
+            ) : (
+              <TableContainer sx={{ overflowX:'auto' }}>
+                <Table sx={{ minWidth:400 }}>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor:'#F8FAFC' }}>
+                      {['Rank','Student','Score','Grade','Time Taken','Completed'].map(h => (
+                        <TableCell key={h} sx={{ fontWeight:700, color:tokens.textSecondary, fontSize:12, py:1.5 }}>{h}</TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filtered.map((e, i) => {
+                      const pct = Math.round(e.percentage??0);
+                      const grade = getGrade(pct);
+                      const rank = e.rank ?? (i+1);
+                      const passed = pct >= 70;
+                      const fn = e.firstName||e.student?.firstName||'?';
+                      const ln = e.lastName||e.student?.lastName||'';
+                      const sc = e.studentClass||e.student?.studentClass||'';
+                      return (
+                        <TableRow key={e.uniqueId||e._id||i} sx={{ '&:hover':{ bgcolor:'#F8FAFC' } }}>
+                          <TableCell sx={{ py:1.25 }}>
+                            <Box sx={{ display:'flex', alignItems:'center', gap:0.75 }}>
+                              {rank <= 3 ? (
+                                <Typography sx={{ fontSize:16 }}>
+                                  {rank===1?'🥇':rank===2?'🥈':'🥉'}
+                                </Typography>
+                              ) : (
+                                <Box sx={{ width:24, height:24, borderRadius:'50%', bgcolor:'#F1F5F9',
+                                  display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                  <Typography sx={{ fontSize:11, fontWeight:700, color:tokens.textSecondary }}>{rank}</Typography>
+                                </Box>
+                              )}
+                            </Box>
+                          </TableCell>
+                          <TableCell sx={{ py:1.25 }}>
+                            <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                              <Avatar sx={{ width:28, height:28, bgcolor:passed?tokens.accent:'#EF4444', fontSize:11, fontWeight:700 }}>
+                                {fn.charAt(0)}
+                              </Avatar>
+                              <Box>
+                                <Typography sx={{ fontSize:13, fontWeight:600, lineHeight:1.2 }}>
+                                  {fn} {ln}
+                                </Typography>
+                                {sc && (
+                                  <Typography variant="caption" sx={{ color:tokens.textMuted }}>Class {sc}</Typography>
+                                )}
+                              </Box>
+                            </Box>
+                          </TableCell>
+                          <TableCell sx={{ py:1.25 }}>
+                            <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                              <LinearProgress variant="determinate" value={pct}
+                                sx={{ width:56, height:5, borderRadius:3, bgcolor:'#EEF2FF',
+                                  '& .MuiLinearProgress-bar':{ bgcolor:passed?tokens.accent:'#EF4444', borderRadius:3 } }} />
+                              <Typography sx={{ fontSize:12, fontWeight:700, color:passed?tokens.accentDark:'#EF4444', minWidth:36 }}>
+                                {pct}%
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell sx={{ py:1.25 }}>
+                            <Chip label={grade} size="small"
+                              sx={{ height:20, fontSize:11, fontWeight:700, bgcolor:`${gradeColor(grade)}18`, color:gradeColor(grade) }} />
+                          </TableCell>
+                          <TableCell sx={{ py:1.25 }}>
+                            <Typography variant="caption" sx={{ color:tokens.textMuted }}>
+                              {e.timeTaken != null ? `${e.timeTaken}m` : '-'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell sx={{ py:1.25 }}>
+                            <Typography variant="caption" sx={{ color:tokens.textMuted }}>
+                              {(e.completedAt||e.endTime) ? new Date(e.completedAt||e.endTime).toLocaleDateString() : '-'}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </>
+      )}
     </Box>
   );
 }

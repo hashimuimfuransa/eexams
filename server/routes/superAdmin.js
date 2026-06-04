@@ -39,7 +39,10 @@ const {
   getAllMarketplaceResults,
   getResultDetails,
   getExamForReview,
-  getSystemLeaderboard
+  getSystemLeaderboard,
+  getOrganizationActivity,
+  getAllTeachers,
+  getTeacherActivity
 } = require('../controllers/superAdminController');
 const auth = require('../middleware/auth');
 
@@ -75,6 +78,7 @@ router.post('/create-superadmin', createSuperAdmin);
 // Organization management routes
 router.get('/organizations', getAllOrganizations);
 router.get('/organizations/:id', getOrganizationById);
+router.get('/organizations/:id/activity', getOrganizationActivity);
 router.put('/organizations/:id/subscription', updateOrganizationSubscription);
 router.put('/organizations/:id/toggle-block', toggleOrganizationBlock);
 router.delete('/organizations/:id', deleteOrganization);
@@ -85,6 +89,10 @@ router.get('/users/:id', getUserById);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
 router.put('/users/:id/toggle-block', toggleUserBlock);
+
+// Teacher management routes
+router.get('/teachers', getAllTeachers);
+router.get('/teachers/:id/activity', getTeacherActivity);
 
 router.get('/exams', getAllExams);
 router.get('/exams/:id', getExamById);

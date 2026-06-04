@@ -61,6 +61,8 @@ export default function OrgAdminDashboard() {
   const [exams, setExams] = useState([]);
   const [results, setResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [resultsPage, setResultsPage] = useState(1);
+  const [resultsTotal, setResultsTotal] = useState(0);
 
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -72,8 +74,16 @@ export default function OrgAdminDashboard() {
     api.get('/admin/dashboard-stats').then(r => setStats(r.data)).catch(() => setStats({})).finally(() => setStatsLoading(false));
     api.get('/admin/teachers').then(r => setTeachers(r.data || [])).catch(() => {});
     api.get('/admin/exams').then(r => setExams(r.data || [])).catch(() => {});
-    api.get('/admin/results').then(r => setResults(Array.isArray(r.data) ? r.data : (r.data?.results || []))).catch(() => {});
-  }, [user]);
+    
+    // OPTIMIZATION: Use pagination for results to fetch data faster
+    api.get('/admin/results', { params: { page: resultsPage, limit: 50 } })
+      .then(r => {
+        const resultsData = Array.isArray(r.data) ? r.data : (r.data?.results || []);
+        setResults(resultsData);
+        setResultsTotal(r.data?.pagination?.total || resultsData.length);
+      })
+      .catch(() => {});
+  }, [user, resultsPage]);
 
   const filteredExams = exams.filter(exam =>
     !searchQuery ||
@@ -98,7 +108,7 @@ export default function OrgAdminDashboard() {
       {activeSection === 'teachers'  && <TeachersSection teachers={filteredTeachers} setTeachers={setTeachers} />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} />}
-      {activeSection === 'results'     && <ResultsSection results={results} exams={exams} />}
+      {activeSection === 'results'     && <ResultsSection results={results} resultsTotal={resultsTotal} resultsPage={resultsPage} setResultsPage={setResultsPage} exams={exams} />}
       {activeSection === 'leaderboard'  && <LeaderboardSection exams={exams} />}
       {activeSection === 'analytics'    && <AnalyticsSection results={results} exams={filteredExams} teachers={filteredTeachers} />}
       {activeSection === 'settings'  && <SettingsSection user={user} />}
@@ -1009,7 +1019,7 @@ function gradeColor(grade) {
   return { color: '#EF4444', bg: 'rgba(239,68,68,0.08)' };
 }
 
-function ResultsSection({ results }) {
+function ResultsSection({ results, resultsTotal, resultsPage, setResultsPage }) {
   const [search, setSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const [examFilter, setExamFilter] = useState('');
@@ -1017,6 +1027,7 @@ function ResultsSection({ results }) {
   const [selectedResult, setSelectedResult] = useState(null);
   const [detailedResult, setDetailedResult] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Unique exam titles for filter dropdown
   const examTitles = [...new Set(results.map(r => r.exam?.title).filter(Boolean))].sort();
@@ -1067,6 +1078,15 @@ function ResultsSection({ results }) {
       console.error('Error fetching detailed result:', error);
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  // LAZY LOADING: Load more results
+  const handleLoadMore = () => {
+    if (!loadingMore && resultsPage * 50 < resultsTotal) {
+      setLoadingMore(true);
+      setResultsPage(resultsPage + 1);
+      setLoadingMore(false);
     }
   };
 
@@ -1130,7 +1150,7 @@ function ResultsSection({ results }) {
           <TableBody>
             {filtered.length === 0
               ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>No results match your filters.</TableCell></TableRow>
-              : filtered.slice(0, 100).map(r => {
+              : filtered.map(r => {
                   const pct = Math.round(r.percentage ?? 0);
                   const band = r.grade || getGradeBand(pct);
                   const gc = gradeColor(band);
@@ -1183,9 +1203,19 @@ function ResultsSection({ results }) {
                 })}
           </TableBody>
         </Table></TableContainer>
-        {filtered.length > 100 && (
-          <Box sx={{ p: 1.5, borderTop: `1px solid ${tokens.surfaceBorder}`, textAlign: 'center' }}>
-            <Typography variant="caption" sx={{ color: tokens.textMuted }}>Showing 100 of {filtered.length} results — use filters to narrow down</Typography>
+        
+        {/* LAZY LOADING: Load More button */}
+        {resultsPage * 50 < resultsTotal && (
+          <Box sx={{ p: 2, borderTop: `1px solid ${tokens.surfaceBorder}`, textAlign: 'center' }}>
+            <Button
+              variant="outlined"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              size="small"
+              sx={{ borderRadius: 2 }}
+            >
+              {loadingMore ? 'Loading...' : `Load More (${resultsTotal - results.length} remaining)`}
+            </Button>
           </Box>
         )}
       </Paper>

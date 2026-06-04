@@ -21,7 +21,8 @@ import LeaderboardSection from '../components/admin/LeaderboardSection';
 
 const nav = [
   { id: 'home',          label: 'Overview',                icon: <DashIcon sx={{ fontSize: 20 }} /> },
-  { id: 'organizations', label: 'Organizations & Teachers', icon: <Business sx={{ fontSize: 20 }} /> },
+  { id: 'organizations', label: 'Organizations',           icon: <Business sx={{ fontSize: 20 }} /> },
+  { id: 'teachers',      label: 'Teachers',               icon: <SupervisorAccount sx={{ fontSize: 20 }} /> },
   { id: 'users',         label: 'All Users',               icon: <People sx={{ fontSize: 20 }} /> },
   { id: 'exam-requests', label: 'Exam Requests',           icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'subscriptions', label: 'Subscriptions',             icon: <AttachMoney sx={{ fontSize: 20 }} /> },
@@ -74,6 +75,7 @@ export default function SuperAdminDashboard() {
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
       {activeSection === 'home'          && <OverviewSection stats={stats} statsLoading={statsLoading} searchQuery={searchQuery} setActiveSection={setActiveSection} />}
       {activeSection === 'organizations' && <OrganizationsSection searchQuery={searchQuery} />}
+      {activeSection === 'teachers'      && <TeachersSection searchQuery={searchQuery} />}
       {activeSection === 'users'         && <AllUsersSection searchQuery={searchQuery} />}
       {activeSection === 'exam-requests' && <ExamRequestsSection searchQuery={searchQuery} />}
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
@@ -213,6 +215,12 @@ function OrganizationsSection() {
   const [deleteDialog, setDeleteDialog] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Activity dialog state
+  const [activityDialog, setActivityDialog] = useState(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityData, setActivityData] = useState(null);
+  const [activityPeriod, setActivityPeriod] = useState('30d');
+
   useEffect(()=>{
     api.get('/superadmin/organizations').then(r=>{
       const data = (r.data||[]).map(o => {
@@ -264,9 +272,13 @@ function OrganizationsSection() {
     return true;
   });
 
+  // Show all categories by default to match dashboard stats
   const organizations = filterOrgs(filteredAllOrgs.filter(o => o.category === 'organization'));
   const orgTeachers = filterOrgs(filteredAllOrgs.filter(o => o.category === 'org_teacher'));
   const individuals = filterOrgs(filteredAllOrgs.filter(o => o.category === 'individual'));
+
+  // Combined list for "All" view (matches dashboard stats count)
+  const allCombined = filterOrgs(filteredAllOrgs);
 
   const handleOpen=(o)=>{setSelected(o);setPlan(o.subscriptionPlan||'free');setStatus(o.subscriptionStatus||'pending');};
   const handleSave=async()=>{
@@ -289,6 +301,27 @@ function OrganizationsSection() {
       console.error('Delete organization error:',err);
     }finally{
       setDeleting(false);
+    }
+  };
+
+  const handleViewActivity=async(org)=>{
+    setActivityDialog(org);
+    setActivityLoading(true);
+    setActivityData(null);
+    try{
+      const response=await api.get(`/superadmin/organizations/${org._id}/activity?period=${activityPeriod}`);
+      setActivityData(response.data);
+    }catch(err){
+      console.error('Fetch activity error:',err);
+    }finally{
+      setActivityLoading(false);
+    }
+  };
+
+  const handleActivityPeriodChange=(period)=>{
+    setActivityPeriod(period);
+    if(activityDialog){
+      handleViewActivity(activityDialog);
     }
   };
 
@@ -375,6 +408,11 @@ function OrganizationsSection() {
                       }}/>
                     </Box>
                     <Box sx={{display:'flex',gap:0.5}}>
+                      <Tooltip title="View Activity">
+                        <IconButton size="small" onClick={()=>handleViewActivity(o)} sx={{color:tokens.textSecondary,bgcolor:`${tokens.textSecondary}10`,'&:hover':{bgcolor:`${tokens.textSecondary}20`},width:32,height:32}}>
+                          <Assessment fontSize="small"/>
+                        </IconButton>
+                      </Tooltip>
                       {!isIndividual && (
                         <Tooltip title="Edit subscription">
                           <IconButton size="small" onClick={()=>handleOpen(o)} sx={{color:tokens.primary,bgcolor:`${tokens.primary}10`,'&:hover':{bgcolor:`${tokens.primary}20`},width:32,height:32}}>
@@ -418,11 +456,16 @@ function OrganizationsSection() {
   return(
     <Box>
       <SectionTitle action={
-        hasActiveFilters && (
-          <Button size="small" onClick={clearFilters} sx={{color:tokens.textMuted,textTransform:'none',fontWeight:600}}>
-            Clear Filters
-          </Button>
-        )
+        <Box sx={{display:'flex',alignItems:'center',gap:2}}>
+          <Typography variant="caption" sx={{color:tokens.textMuted,fontWeight:600}}>
+            Total: {allCombined.length} (Orgs: {organizations.length}, Org Teachers: {orgTeachers.length}, Individual: {individuals.length})
+          </Typography>
+          {hasActiveFilters && (
+            <Button size="small" onClick={clearFilters} sx={{color:tokens.textMuted,textTransform:'none',fontWeight:600}}>
+              Clear Filters
+            </Button>
+          )}
+        </Box>
       }>Organizations & Teachers</SectionTitle>
 
       {/* Filter Bar */}
@@ -582,6 +625,314 @@ function OrganizationsSection() {
           >
             {deleting?'Deleting...':'Delete Permanently'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Activity Dialog */}
+      <Dialog open={!!activityDialog} onClose={()=>setActivityDialog(null)} maxWidth="md" fullWidth PaperProps={{sx:{borderRadius:3}}}>
+        <DialogTitle sx={{fontWeight:700,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <Box>
+            <Typography variant="h6">Activity Log</Typography>
+            {activityDialog && <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mt:0.5}}>{activityDialog.organization||`${activityDialog.firstName} ${activityDialog.lastName}`}</Typography>}
+          </Box>
+          <IconButton onClick={()=>setActivityDialog(null)}><Close/></IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {/* Period Selector */}
+          <Box sx={{display:'flex',gap:1,mb:3}}>
+            {['7d','30d','90d','1y'].map(period=>(
+              <Button
+                key={period}
+                size="small"
+                variant={activityPeriod===period?'contained':'outlined'}
+                onClick={()=>handleActivityPeriodChange(period)}
+                sx={{textTransform:'none',borderRadius:2}}
+              >
+                {period==='7d'?'7 Days':period==='30d'?'30 Days':period==='90d'?'90 Days':'1 Year'}
+              </Button>
+            ))}
+          </Box>
+
+          {activityLoading?(
+            <Box sx={{display:'flex',justifyContent:'center',py:8}}>
+              <CircularProgress sx={{color:tokens.accent}}/>
+            </Box>
+          ):activityData?(
+            <Box>
+              {/* Activity Summary */}
+              <Paper elevation={0} sx={{p:2,mb:3,borderRadius:2,bgcolor:'#F8FAFC'}}>
+                <Typography variant="body2" fontWeight={600} sx={{mb:1.5,color:tokens.textMuted}}>Activity Summary ({activityData.totalActivities} activities)</Typography>
+                <Grid container spacing={1}>
+                  {Object.entries(activityData.summary).map(([action,count])=>(
+                    <Grid item xs={6} md={4} key={action}>
+                      <Box sx={{display:'flex',alignItems:'center',gap:0.75,p:1,bgcolor:'white',borderRadius:1.5,border:`1px solid ${tokens.surfaceBorder}`}}>
+                        <Typography variant="caption" fontWeight={700} sx={{color:tokens.primary}}>{count}</Typography>
+                        <Typography variant="caption" sx={{color:tokens.textMuted,textTransform:'capitalize'}}>{action.replace(/_/g,' ')}</Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Paper>
+
+              {/* Activity List */}
+              <Typography variant="body2" fontWeight={600} sx={{mb:2,color:tokens.textMuted}}>Recent Activities</Typography>
+              {activityData.activities.length===0?(
+                <Paper elevation={0} sx={{p:4,borderRadius:2,border:`1px dashed ${tokens.surfaceBorder}`,bgcolor:'#FAFBFC',textAlign:'center'}}>
+                  <Typography sx={{color:tokens.textMuted}}>No activities found in this period.</Typography>
+                </Paper>
+              ):(
+                <Box sx={{maxHeight:400,overflowY:'auto'}}>
+                  {activityData.activities.map((activity,index)=>(
+                    <Box key={index} sx={{display:'flex',alignItems:'flex-start',gap:2,p:2,borderBottom:`1px solid ${tokens.surfaceBorder}`,'&:last-child':{borderBottom:'none'}}}>
+                      <Avatar sx={{width:36,height:36,fontSize:14,bgcolor:`${tokens.primary}15`,color:tokens.primary}}>
+                        {activity.user?.firstName?.charAt(0)||'?'}
+                      </Avatar>
+                      <Box sx={{flex:1}}>
+                        <Typography variant="body2" fontWeight={600}>{activity.user?.firstName} {activity.user?.lastName}</Typography>
+                        <Typography variant="caption" sx={{color:tokens.textMuted,display:'block'}}>{activity.action.replace(/_/g,' ').toUpperCase()}</Typography>
+                        <Typography variant="caption" sx={{color:tokens.textMuted}}>{new Date(activity.timestamp).toLocaleString()}</Typography>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          ):(
+            <Paper elevation={0} sx={{p:4,borderRadius:2,border:`1px dashed ${tokens.surfaceBorder}`,bgcolor:'#FAFBFC',textAlign:'center'}}>
+              <Typography sx={{color:tokens.textMuted}}>Failed to load activity data.</Typography>
+            </Paper>
+          )}
+        </DialogContent>
+        <DialogActions sx={{px:3,pb:2}}>
+          <Button onClick={()=>setActivityDialog(null)} sx={{textTransform:'none'}}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+/* ── TEACHERS SECTION ── */
+function TeachersSection({ searchQuery: initialSearchQuery }) {
+  const [teachers, setTeachers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
+  const [activityDialog, setActivityDialog] = useState(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityData, setActivityData] = useState(null);
+  const [activityPeriod, setActivityPeriod] = useState('30d');
+
+  useEffect(() => {
+    api.get('/superadmin/teachers').then(r => {
+      setTeachers(r.data || []);
+    }).catch(err => {
+      console.error('Fetch teachers error:', err);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const handleViewActivity = async (teacher) => {
+    setActivityDialog(teacher);
+    setActivityLoading(true);
+    setActivityData(null);
+    try {
+      const response = await api.get(`/superadmin/teachers/${teacher._id}/activity?period=${activityPeriod}`);
+      setActivityData(response.data);
+    } catch (err) {
+      console.error('Fetch activity error:', err);
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  const handleActivityPeriodChange = (period) => {
+    setActivityPeriod(period);
+    if (activityDialog) {
+      handleViewActivity(activityDialog);
+    }
+  };
+
+  const filteredTeachers = teachers.filter(t => {
+    const searchLower = searchQuery.toLowerCase();
+    return !searchQuery ||
+      (t.firstName?.toLowerCase().includes(searchLower)) ||
+      (t.lastName?.toLowerCase().includes(searchLower)) ||
+      (t.email?.toLowerCase().includes(searchLower)) ||
+      (t.organization?.toLowerCase().includes(searchLower));
+  });
+
+  const StatBadge = ({ icon, value, label, color }) => (
+    <Box sx={{display:'flex',alignItems:'center',gap:0.75,bgcolor:`${color}15`,px:1.5,py:0.5,borderRadius:2}}>
+      {icon}
+      <Typography variant="caption" fontWeight={700} sx={{color}}>{value}</Typography>
+      <Typography variant="caption" sx={{color:tokens.textMuted,fontSize:'10px'}}>{label}</Typography>
+    </Box>
+  );
+
+  return (
+    <Box>
+      <SectionTitle>Teachers</SectionTitle>
+
+      {/* Filter Bar */}
+      <Paper elevation={0} sx={{p:2,mb:3,borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white'}}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search teachers by name, email, organization..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: <Box component="span" sx={{color:tokens.textMuted,mr:1}}>🔍</Box>
+          }}
+          sx={{'& .MuiOutlinedInput-root':{borderRadius:2,bgcolor:'#FAFBFC'}}}
+        />
+      </Paper>
+
+      {loading ? (
+        <Box sx={{display:'flex',justifyContent:'center',py:8}}>
+          <CircularProgress sx={{color:tokens.accent}}/>
+        </Box>
+      ) : filteredTeachers.length === 0 ? (
+        <Paper elevation={0} sx={{p:8,borderRadius:3,border:`1px dashed ${tokens.surfaceBorder}`,bgcolor:'#FAFBFC',textAlign:'center'}}>
+          <SupervisorAccount sx={{fontSize:48,color:tokens.textMuted,mb:2}}/>
+          <Typography variant="h6" sx={{color:tokens.textMuted,mb:1}}>No teachers found</Typography>
+          <Typography variant="body2" sx={{color:tokens.textMuted}}>
+            {searchQuery ? 'No teachers match your search criteria' : 'There are no teachers in the system yet'}
+          </Typography>
+        </Paper>
+      ) : (
+        <Grid container spacing={2}>
+          {filteredTeachers.map(teacher => (
+            <Grid item xs={12} md={6} lg={4} key={teacher._id}>
+              <Paper elevation={0} sx={{
+                p:2.5,borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',
+                transition:'all 0.2s ease','&:hover':{boxShadow:'0 8px 30px rgba(13,64,108,0.12)',transform:'translateY(-2px)'}
+              }}>
+                {/* Header */}
+                <Box sx={{display:'flex',alignItems:'flex-start',gap:1.5,mb:2}}>
+                  <Avatar sx={{
+                    width:44,height:44,fontSize:16,fontWeight:700,
+                    background:`linear-gradient(135deg,${tokens.accent}20,${tokens.accent}40)`,
+                    color:tokens.accent
+                  }}>
+                    {teacher.firstName?.charAt(0)}
+                  </Avatar>
+                  <Box sx={{flex:1,minWidth:0}}>
+                    <Typography variant="body1" fontWeight={700} sx={{fontFamily:"'DM Sans',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                      {teacher.firstName} {teacher.lastName}
+                    </Typography>
+                    <Typography variant="caption" sx={{color:tokens.textMuted,display:'block'}}>{teacher.email}</Typography>
+                    {teacher.organization && (
+                      <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mt:0.5}}>{teacher.organization}</Typography>
+                    )}
+                  </Box>
+                </Box>
+
+                {/* Stats */}
+                <Box sx={{display:'flex',flexWrap:'wrap',gap:1,mb:2}}>
+                  <StatBadge icon={<People sx={{fontSize:14,color:tokens.warning}}/>} value={teacher.stats?.studentCount??0} label="Students" color={tokens.warning}/>
+                  <StatBadge icon={<School sx={{fontSize:14,color:'#6366F1'}}/>} value={teacher.stats?.examCount??0} label="Exams" color="#6366F1"/>
+                  <StatBadge icon={<Assessment sx={{fontSize:14,color:tokens.primary}}/>} value={teacher.stats?.activityCount??0} label="Activities" color={tokens.primary}/>
+                </Box>
+
+                {/* Footer */}
+                <Box sx={{display:'flex',alignItems:'center',justifyContent:'space-between',pt:1.5,borderTop:`1px solid ${tokens.surfaceBorder}`}}>
+                  <Box sx={{display:'flex',alignItems:'center',gap:1}}>
+                    <Chip label={teacher.isBlocked?'Blocked':'Active'} size="small" sx={{
+                      height:22,fontSize:'11px',fontWeight:600,
+                      bgcolor:teacher.isBlocked?'rgba(239,68,68,0.1)':'rgba(12,189,115,0.1)',
+                      color:teacher.isBlocked?'#EF4444':tokens.accentDark
+                    }}/>
+                  </Box>
+                  <Box sx={{display:'flex',gap:0.5}}>
+                    <Tooltip title="View Activity">
+                      <IconButton size="small" onClick={()=>handleViewActivity(teacher)} sx={{color:tokens.textSecondary,bgcolor:`${tokens.textSecondary}10`,'&:hover':{bgcolor:`${tokens.textSecondary}20`},width:32,height:32}}>
+                        <Assessment fontSize="small"/>
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Activity Dialog */}
+      <Dialog open={!!activityDialog} onClose={()=>setActivityDialog(null)} maxWidth="md" fullWidth PaperProps={{sx:{borderRadius:3}}}>
+        <DialogTitle sx={{fontWeight:700,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <Box>
+            <Typography variant="h6">Teacher Activity Log</Typography>
+            {activityDialog && <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mt:0.5}}>{activityDialog.firstName} {activityDialog.lastName}</Typography>}
+          </Box>
+          <IconButton onClick={()=>setActivityDialog(null)}><Close/></IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {/* Period Selector */}
+          <Box sx={{display:'flex',gap:1,mb:3}}>
+            {['7d','30d','90d','1y'].map(period=>(
+              <Button
+                key={period}
+                size="small"
+                variant={activityPeriod===period?'contained':'outlined'}
+                onClick={()=>handleActivityPeriodChange(period)}
+                sx={{textTransform:'none',borderRadius:2}}
+              >
+                {period==='7d'?'7 Days':period==='30d'?'30 Days':period==='90d'?'90 Days':'1 Year'}
+              </Button>
+            ))}
+          </Box>
+
+          {activityLoading?(
+            <Box sx={{display:'flex',justifyContent:'center',py:8}}>
+              <CircularProgress sx={{color:tokens.accent}}/>
+            </Box>
+          ):activityData?(
+            <Box>
+              {/* Activity Summary */}
+              <Paper elevation={0} sx={{p:2,mb:3,borderRadius:2,bgcolor:'#F8FAFC'}}>
+                <Typography variant="body2" fontWeight={600} sx={{mb:1.5,color:tokens.textMuted}}>Activity Summary ({activityData.totalActivities} activities)</Typography>
+                <Grid container spacing={1}>
+                  {Object.entries(activityData.summary).map(([action,count])=>(
+                    <Grid item xs={6} md={4} key={action}>
+                      <Box sx={{display:'flex',alignItems:'center',gap:0.75,p:1,bgcolor:'white',borderRadius:1.5,border:`1px solid ${tokens.surfaceBorder}`}}>
+                        <Typography variant="caption" fontWeight={700} sx={{color:tokens.primary}}>{count}</Typography>
+                        <Typography variant="caption" sx={{color:tokens.textMuted,textTransform:'capitalize'}}>{action.replace(/_/g,' ')}</Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Paper>
+
+              {/* Activity List */}
+              <Typography variant="body2" fontWeight={600} sx={{mb:2,color:tokens.textMuted}}>Recent Activities</Typography>
+              {activityData.activities.length===0?(
+                <Paper elevation={0} sx={{p:4,borderRadius:2,border:`1px dashed ${tokens.surfaceBorder}`,bgcolor:'#FAFBFC',textAlign:'center'}}>
+                  <Typography sx={{color:tokens.textMuted}}>No activities found in this period.</Typography>
+                </Paper>
+              ):(
+                <Box sx={{maxHeight:400,overflowY:'auto'}}>
+                  {activityData.activities.map((activity,index)=>(
+                    <Box key={index} sx={{display:'flex',alignItems:'flex-start',gap:2,p:2,borderBottom:`1px solid ${tokens.surfaceBorder}`,'&:last-child':{borderBottom:'none'}}}>
+                      <Avatar sx={{width:36,height:36,fontSize:14,bgcolor:`${tokens.accent}15`,color:tokens.accent}}>
+                        {activityData.teacher?.firstName?.charAt(0)||'?'}
+                      </Avatar>
+                      <Box sx={{flex:1}}>
+                        <Typography variant="body2" fontWeight={600}>{activityData.teacher?.firstName} {activityData.teacher?.lastName}</Typography>
+                        <Typography variant="caption" sx={{color:tokens.textMuted,display:'block'}}>{activity.action.replace(/_/g,' ').toUpperCase()}</Typography>
+                        <Typography variant="caption" sx={{color:tokens.textMuted}}>{new Date(activity.timestamp).toLocaleString()}</Typography>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          ):(
+            <Paper elevation={0} sx={{p:4,borderRadius:2,border:`1px dashed ${tokens.surfaceBorder}`,bgcolor:'#FAFBFC',textAlign:'center'}}>
+              <Typography sx={{color:tokens.textMuted}}>Failed to load activity data.</Typography>
+            </Paper>
+          )}
+        </DialogContent>
+        <DialogActions sx={{px:3,pb:2}}>
+          <Button onClick={()=>setActivityDialog(null)} sx={{textTransform:'none'}}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -3696,28 +4047,70 @@ function ExamRequestsSection({ searchQuery }) {
   const [rejectDialog, setRejectDialog] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+  
+  // LAZY LOADING: Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pageSize = 20;
 
   useEffect(() => {
-    fetchRequests();
+    fetchRequests(1, false);
     fetchStats();
   }, [statusFilter, orgFilter]);
 
-  const fetchRequests = async () => {
-    setLoading(true);
+  const fetchRequests = async (page = 1, append = false) => {
+    if (!append) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     try {
       const params = new URLSearchParams();
+      params.append('page', page);
+      params.append('limit', pageSize);
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (orgFilter) params.append('organizationId', orgFilter);
       
       const response = await api.get(`/superadmin/exam-requests?${params.toString()}`);
-      setRequests(response.data || []);
+      
+      // Handle new API response format with pagination
+      if (response.data.requests && response.data.pagination) {
+        const newRequests = response.data.requests;
+        if (append) {
+          setRequests(prev => [...prev, ...newRequests]);
+        } else {
+          setRequests(newRequests);
+        }
+        setHasMore(page < response.data.pagination.totalPages);
+      } else {
+        // Fallback for old format
+        setRequests(response.data || []);
+        setHasMore(false);
+      }
     } catch (error) {
       console.error('Error fetching exam requests:', error);
       setSnack({ open: true, message: 'Failed to load exam requests', severity: 'error' });
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
+
+  // LAZY LOADING: Load more data
+  const loadMore = () => {
+    if (!loadingMore && hasMore) {
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      fetchRequests(nextPage, true);
+    }
+  };
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+    setHasMore(true);
+  }, [statusFilter, orgFilter]);
 
   const fetchStats = async () => {
     try {
@@ -3736,7 +4129,10 @@ function ExamRequestsSection({ searchQuery }) {
       console.log('[SuperAdmin] Approval response:', response.data);
       setSnack({ open: true, message: response.data.message || 'Exam request approved successfully', severity: 'success' });
       setApproveDialog(null);
-      fetchRequests();
+      // Reset pagination and fetch first page
+      setCurrentPage(1);
+      setHasMore(true);
+      fetchRequests(1, false);
       fetchStats();
     } catch (error) {
       console.error('[SuperAdmin] Error approving request:', error);
@@ -3755,7 +4151,10 @@ function ExamRequestsSection({ searchQuery }) {
       await api.put(`/superadmin/exam-requests/${rejectDialog._id}/reject`, { reason: rejectDialog.reason || 'Rejected by super admin' });
       setSnack({ open: true, message: 'Exam request rejected', severity: 'success' });
       setRejectDialog(null);
-      fetchRequests();
+      // Reset pagination and fetch first page
+      setCurrentPage(1);
+      setHasMore(true);
+      fetchRequests(1, false);
       fetchStats();
     } catch (error) {
       console.error('Error rejecting request:', error);
@@ -3858,7 +4257,7 @@ function ExamRequestsSection({ searchQuery }) {
             <Button
               fullWidth
               variant="outlined"
-              onClick={fetchRequests}
+              onClick={() => fetchRequests(1, false)}
               startIcon={loading ? <CircularProgress size={16} /> : null}
               disabled={loading}
               sx={{ borderRadius: 2 }}
@@ -3883,101 +4282,118 @@ function ExamRequestsSection({ searchQuery }) {
           </Typography>
         </Paper>
       ) : (
-        <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}` }}>
-          <Table>
-            <TableHead>
-              <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Exam</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Student</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Teacher</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Organization</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Requested</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredRequests.map((request) => (
-                <TableRow key={request._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
-                  <TableCell>
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>{request.exam?.title || 'Unknown Exam'}</Typography>
-                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>
-                        {request.exam?.timeLimit ? `${request.exam.timeLimit} min` : 'No time limit'}
-                      </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>{request.userInfo?.name || 'Unknown'}</Typography>
-                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.userInfo?.email || 'No email'}</Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>
-                        {request.teacher ? `${request.teacher.firstName} ${request.teacher.lastName}` : 'Unknown'}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.teacher?.email || 'No email'}</Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>{request.organization?.name || 'N/A'}</Typography>
-                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.organization?.email || ''}</Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={request.status}
-                      size="small"
-                      sx={{
-                        height: 24,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        bgcolor: request.status === 'pending' ? 'rgba(245,158,11,0.1)' :
-                               request.status === 'approved' ? 'rgba(12,189,115,0.1)' :
-                               'rgba(239,68,68,0.1)',
-                        color: request.status === 'pending' ? tokens.warning :
-                               request.status === 'approved' ? tokens.accent :
-                               '#EF4444'
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="caption" sx={{ color: tokens.textMuted }}>
-                      {new Date(request.requestedAt).toLocaleDateString()}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    {request.status === 'pending' && (
-                      <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Tooltip title="Approve">
-                          <IconButton
-                            size="small"
-                            onClick={() => setApproveDialog(request)}
-                            sx={{ color: tokens.accent, bgcolor: `${tokens.accent}10`, '&:hover': { bgcolor: `${tokens.accent}20` } }}
-                          >
-                            <CheckCircle fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Reject">
-                          <IconButton
-                            size="small"
-                            onClick={() => setRejectDialog({ ...request, reason: '' })}
-                            sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.1)', '&:hover': { bgcolor: 'rgba(239,68,68,0.2)' } }}
-                          >
-                            <Block fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    )}
-                  </TableCell>
+        <Box>
+          <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}` }}>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                  <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Exam</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Student</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Teacher</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Organization</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Requested</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12 }}>Actions</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {filteredRequests.map((request) => (
+                  <TableRow key={request._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>
+                    <TableCell>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>{request.exam?.title || 'Unknown Exam'}</Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>
+                          {request.exam?.timeLimit ? `${request.exam.timeLimit} min` : 'No time limit'}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>{request.userInfo?.name || 'Unknown'}</Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.userInfo?.email || 'No email'}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {request.teacher ? `${request.teacher.firstName} ${request.teacher.lastName}` : 'Unknown'}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.teacher?.email || 'No email'}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>{request.organization?.name || 'N/A'}</Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>{request.organization?.email || ''}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={request.status}
+                        size="small"
+                        sx={{
+                          height: 24,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          bgcolor: request.status === 'pending' ? 'rgba(245,158,11,0.1)' :
+                                 request.status === 'approved' ? 'rgba(12,189,115,0.1)' :
+                                 'rgba(239,68,68,0.1)',
+                          color: request.status === 'pending' ? tokens.warning :
+                                 request.status === 'approved' ? tokens.accent :
+                                 '#EF4444'
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="caption" sx={{ color: tokens.textMuted }}>
+                        {new Date(request.requestedAt).toLocaleDateString()}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {request.status === 'pending' && (
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <Tooltip title="Approve">
+                            <IconButton
+                              size="small"
+                              onClick={() => setApproveDialog(request)}
+                              sx={{ color: tokens.accent, bgcolor: 'rgba(12,189,115,0.1)', '&:hover': { bgcolor: 'rgba(12,189,115,0.2)' } }}
+                            >
+                              <CheckCircle fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Reject">
+                            <IconButton
+                              size="small"
+                              onClick={() => setRejectDialog({ ...request, reason: '' })}
+                              sx={{ color: '#EF4444', bgcolor: 'rgba(239,68,68,0.1)', '&:hover': { bgcolor: 'rgba(239,68,68,0.2)' } }}
+                            >
+                              <Block fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          
+          {/* LAZY LOADING: Load More button */}
+          {hasMore && !loading && (
+            <Box sx={{ p: 2, textAlign: 'center' }}>
+              <Button
+                variant="outlined"
+                onClick={loadMore}
+                disabled={loadingMore}
+                size="small"
+                sx={{ borderRadius: 2 }}
+              >
+                {loadingMore ? 'Loading...' : 'Load More'}
+              </Button>
+            </Box>
+          )}
+        </Box>
       )}
 
       {/* Approve Dialog */}
@@ -4055,7 +4471,7 @@ function ExamRequestsSection({ searchQuery }) {
       </Dialog>
 
       <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert severity={snack.severity} variant="filled">{snack.message}</Alert>
+        <Alert severity={snack.severity}>{snack.message}</Alert>
       </Snackbar>
     </Box>
   );
@@ -4489,6 +4905,7 @@ function StudentResultsSection({ searchQuery }) {
                         const isSelected = isOptionSelected(option, selectedAnswer);
                         const isCorrect = isOptionCorrect(option, correctAnswer);
                         const optionText = getOptionText(option);
+                        const optionLetter = String.fromCharCode(65 + optIndex);
                         return (
                           <Box
                             key={optIndex}
@@ -4513,6 +4930,7 @@ function StudentResultsSection({ searchQuery }) {
                           >
                             {isSelected && <CheckCircle fontSize="small" sx={{ color: answer.isCorrect ? tokens.accent : '#EF4444' }} />}
                             {isCorrect && !isSelected && <CheckCircle fontSize="small" sx={{ color: tokens.accent, opacity: 0.5 }} />}
+                            <Typography variant="body2" fontWeight="600" sx={{ minWidth: 20 }}>{optionLetter}.</Typography>
                             <Typography variant="body2">{optionText}</Typography>
                           </Box>
                         );
@@ -4547,6 +4965,135 @@ function StudentResultsSection({ searchQuery }) {
                           <Typography variant="body2" sx={{ color: tokens.accent }}>{correctAnswer}</Typography>
                         </Box>
                       )}
+                    </Box>
+                  )}
+
+                  {questionType === 'matching' && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
+                      <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                        {answer?.matchingAnswers && answer.matchingAnswers.length > 0 ? (
+                          <Typography variant="body2">
+                            {answer.matchingAnswers.map((match, idx) => (
+                              <span key={idx}>Match {idx + 1}: Item {match.left + 1} → Item {match.right + 1}<br /></span>
+                            ))}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2">No matching answer provided</Typography>
+                        )}
+                      </Paper>
+                    </Box>
+                  )}
+
+                  {questionType === 'fill-in-blank' && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
+                      <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                        <Typography variant="body2">{selectedAnswer || 'No answer provided'}</Typography>
+                      </Paper>
+                      {correctAnswer && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 0.5 }}>Correct Answer:</Typography>
+                          <Typography variant="body2" sx={{ color: tokens.accent }}>{correctAnswer}</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+
+                  {questionType === 'open-ended' && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
+                      <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                        <Typography variant="body2">{selectedAnswer || 'No answer provided'}</Typography>
+                      </Paper>
+                      {answer?.feedback && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>AI Feedback:</Typography>
+                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'rgba(59,130,246,0.05)', borderRadius: 1 }}>
+                            <Typography variant="body2">{answer.feedback}</Typography>
+                          </Paper>
+                        </Box>
+                      )}
+                      {answer?.conceptsPresent && answer.conceptsPresent.length > 0 && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Key Concepts Covered:</Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {answer.conceptsPresent.map((concept, idx) => (
+                              <Chip key={idx} label={concept} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent }} />
+                            ))}
+                          </Box>
+                        </Box>
+                      )}
+                      {answer?.conceptsMissing && answer.conceptsMissing.length > 0 && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Concepts to Improve:</Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {answer.conceptsMissing.map((concept, idx) => (
+                              <Chip key={idx} label={concept} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.1)', color: '#EF4444' }} />
+                            ))}
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+
+                  {answer?.feedback && questionType !== 'open-ended' && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Feedback:</Typography>
+                      <Paper elevation={0} sx={{ p: 2, bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.05)' : 'rgba(59,130,246,0.05)', borderRadius: 1 }}>
+                        <Typography variant="body2">{answer.feedback}</Typography>
+                      </Paper>
+                    </Box>
+                  )}
+
+                  {(answer?.subQuestionAnswers && answer.subQuestionAnswers.length > 0) && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Sub-Questions:</Typography>
+                      {answer.subQuestionAnswers.map((subAnswer, subIdx) => {
+                        const subResult = answer.subQuestionResults?.[subIdx];
+                        const isCorrect = subResult?.isCorrect;
+                        return (
+                          <Box key={subIdx} sx={{ p: 1.5, mb: 1, bgcolor: 'white', borderRadius: 1, borderLeft: '3px solid', borderColor: isCorrect ? tokens.accent : '#EF4444' }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <Typography variant="body2" fontWeight="600" sx={{ flex: 1 }}>
+                                Part {subIdx + 1}
+                              </Typography>
+                              {subResult && (
+                                <Chip
+                                  label={`${subResult.score}/${subResult.maxPoints || 1}`}
+                                  size="small"
+                                  sx={{
+                                    fontWeight: 600,
+                                    bgcolor: isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
+                                    color: isCorrect ? tokens.accent : '#EF4444'
+                                  }}
+                                />
+                              )}
+                            </Box>
+                            {subAnswer?.answered ? (
+                              <Box sx={{ mt: 1 }}>
+                                <Typography variant="body2" sx={{ color: tokens.textMuted }}>
+                                  Your answer: {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                </Typography>
+                                {subResult && !isCorrect && subResult.correctedAnswer && (
+                                  <Typography variant="body2" sx={{ color: tokens.accent, mt: 0.5 }}>
+                                    Correct answer: {subResult.correctedAnswer}
+                                  </Typography>
+                                )}
+                                {subResult && subResult.feedback && (
+                                  <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                                    {subResult.feedback}
+                                  </Typography>
+                                )}
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" sx={{ color: '#EF4444', mt: 1 }}>
+                                Not answered
+                              </Typography>
+                            )}
+                          </Box>
+                        );
+                      })}
                     </Box>
                   )}
 

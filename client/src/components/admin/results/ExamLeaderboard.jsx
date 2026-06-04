@@ -281,12 +281,12 @@ const ExamLeaderboard = ({ examId: propExamId, allExams = [], isOverall = false 
         url = `/admin/exams/${id}/leaderboard`;
       }
 
-      // Add a timeout to the request to prevent hanging
+      // OPTIMIZATION: Reduced timeout to 3 seconds for faster response
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
         console.log('Leaderboard request timed out, aborting');
-      }, 2000); // Reduced to 2 second timeout for faster response
+      }, 3000);
 
       try {
         // The api instance already includes the /api prefix, so we don't need to include it again

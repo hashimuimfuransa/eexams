@@ -69,7 +69,7 @@ const Leaderboard = () => {
   const [loading, setLoading] = useState(true);
   const [lbLoading, setLbLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [tabValue, setTabValue] = useState(0); // 0 = class, 1 = per-exam
+  const [tabValue, setTabValue] = useState(0); // 0 = per-exam, 1 = class
   const [selectedExamId, setSelectedExamId] = useState('');
 
   // Pre-select exam from URL query param ?exam=...
@@ -87,9 +87,8 @@ const Leaderboard = () => {
       setResults(fetchedResults);
       setClassLeaderboard(classRes.data);
 
-      // If URL has ?exam=... switch to per-exam tab and pre-select
+      // If URL has ?exam=... pre-select exam (per-exam is already default)
       if (paramExamId) {
-        setTabValue(1);
         setSelectedExamId(paramExamId);
       } else if (fetchedResults.length > 0) {
         const firstExamId = fetchedResults[0]?.exam?._id || fetchedResults[0]?.exam;
@@ -374,54 +373,25 @@ const Leaderboard = () => {
               variant="fullWidth" indicatorColor="primary" textColor="primary">
               <Tab label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <People sx={{ fontSize: { xs: 16, sm: 20 } }} />
-                  <Typography variant="body2" fontWeight={700} sx={{ fontSize: { xs: '0.78rem', sm: '0.875rem' } }}>
-                    {isMobile ? 'Class' : 'Class Leaderboard'}
-                  </Typography>
-                </Box>
-              } />
-              <Tab label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <Assessment sx={{ fontSize: { xs: 16, sm: 20 } }} />
                   <Typography variant="body2" fontWeight={700} sx={{ fontSize: { xs: '0.78rem', sm: '0.875rem' } }}>
                     {isMobile ? 'Per Exam' : 'Per-Exam Leaderboard'}
                   </Typography>
                 </Box>
               } />
+              <Tab label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <People sx={{ fontSize: { xs: 16, sm: 20 } }} />
+                  <Typography variant="body2" fontWeight={700} sx={{ fontSize: { xs: '0.78rem', sm: '0.875rem' } }}>
+                    {isMobile ? 'Class' : 'Class Leaderboard'}
+                  </Typography>
+                </Box>
+              } />
             </Tabs>
           </Box>
 
-          {/* ── Tab 0: Class Leaderboard ── */}
+          {/* ── Tab 0: Per-Exam Leaderboard ── */}
           {tabValue === 0 && (
-            <Box sx={{ p: { xs: 2, sm: 3 } }}>
-              {!classLeaderboard || classLeaderboard.leaderboard?.length === 0 ? (
-                <Box sx={{ py: 6, textAlign: 'center' }}>
-                  <People sx={{ fontSize: 56, color: 'text.disabled', mb: 2 }} />
-                  <Typography variant="h6" color="text.secondary">No class leaderboard yet</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {classLeaderboard?.message || 'Complete exams to appear on the leaderboard.'}
-                  </Typography>
-                </Box>
-              ) : (
-                <>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle1" fontWeight={700}>
-                      Class: {classLeaderboard.classInfo?.name || '—'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {classLeaderboard.leaderboard.length} students ranked by overall average score
-                    </Typography>
-                  </Box>
-                  {renderPodium(classLeaderboard.leaderboard)}
-                  <Divider sx={{ my: 2 }} />
-                  {renderLeaderboardTable(classLeaderboard.leaderboard)}
-                </>
-              )}
-            </Box>
-          )}
-
-          {/* ── Tab 1: Per-Exam Leaderboard ── */}
-          {tabValue === 1 && (
             <Box sx={{ p: { xs: 2, sm: 3 } }}>
               {results.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -511,6 +481,35 @@ const Leaderboard = () => {
                       <CircularProgress size={28} />
                     </Box>
                   )}
+                </>
+              )}
+            </Box>
+          )}
+
+          {/* ── Tab 1: Class Leaderboard ── */}
+          {tabValue === 1 && (
+            <Box sx={{ p: { xs: 2, sm: 3 } }}>
+              {!classLeaderboard || classLeaderboard.leaderboard?.length === 0 ? (
+                <Box sx={{ py: 6, textAlign: 'center' }}>
+                  <People sx={{ fontSize: 56, color: 'text.disabled', mb: 2 }} />
+                  <Typography variant="h6" color="text.secondary">No class leaderboard yet</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {classLeaderboard?.message || 'Complete exams to appear on the leaderboard.'}
+                  </Typography>
+                </Box>
+              ) : (
+                <>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Class: {classLeaderboard.classInfo?.name || '—'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {classLeaderboard.leaderboard.length} students ranked by overall average score
+                    </Typography>
+                  </Box>
+                  {renderPodium(classLeaderboard.leaderboard)}
+                  <Divider sx={{ my: 2 }} />
+                  {renderLeaderboardTable(classLeaderboard.leaderboard)}
                 </>
               )}
             </Box>

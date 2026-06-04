@@ -759,167 +759,253 @@ const getOverallLeaderboard = async (req, res) => {
     console.log(`Admin ${req.user._id} requesting overall leaderboard`);
     const startTime = Date.now();
 
-    // Check cache first
-    const cacheKey = getCacheKey(req.user._id, 'all');
+    // LAZY LOADING: Support pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // Check cache first (only for page 1)
+    const cacheKey = getCacheKey(req.user._id, `all_${page}_${limit}`);
     const cachedData = getCachedData(cacheKey);
-    if (cachedData) {
+    if (cachedData && page === 1) {
       console.log(`Returning cached overall leaderboard for admin ${req.user._id}`);
       return res.json(cachedData);
     }
 
-    // Get students created by this admin OR by teachers under this admin
-    let studentIds;
-    if (req.user.role === 'admin') {
-      // For admins: include students created by teachers under this admin
-      const teachers = await User.find({
-        role: 'teacher',
-        parentAdmin: req.orgAdminId
-      }).select('_id').lean();
+    // Build student and exam filters based on user role
+    let studentFilter, examFilter;
 
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      // Super admin: all students and exams
+      studentFilter = { role: 'student' };
+      examFilter = {};
+    } else if (req.user.role === 'admin') {
+      // Admin: get teachers first
+      const teachers = await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean();
       const teacherIds = teachers.map(t => t._id);
-      const students = await User.find({
+      
+      studentFilter = {
         role: 'student',
         $or: [
           { createdBy: req.orgAdminId },
           { createdBy: { $in: teacherIds } }
         ]
-      }).select('_id').lean();
-
-      studentIds = students.map(student => student._id);
+      };
+      examFilter = {
+        $or: [
+          { createdBy: req.orgAdminId },
+          { createdBy: { $in: teacherIds } }
+        ]
+      };
     } else {
-      // For teachers: show students created by themselves or by their admin
-      const students = await User.find({
+      // Teacher
+      studentFilter = {
         role: 'student',
         $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
-      }).select('_id').lean();
-
-      studentIds = students.map(student => student._id);
-    }
-
-    console.log(`Found ${studentIds.length} students for admin`);
-
-    // Get exams for this org: admin sees own + all teachers'; teacher sees own + parent admin's
-    let overallExamQuery;
-    if (isSuperAdmin(req.user) || !req.orgAdminId) {
-      overallExamQuery = {};
-    } else if (req.user.role === 'admin') {
-      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
-      overallExamQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }] };
-    } else {
-      overallExamQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
-    }
-    const exams = await Exam.find(overallExamQuery).select('_id').lean();
-    const examIds = exams.map(exam => exam._id);
-    console.log(`Found ${examIds.length} exams for admin`);
-
-    // Get all completed results for students created by this admin taking exams created by this admin
-    const results = await Result.find({
-      isCompleted: true,
-      student: { $in: studentIds },
-      exam: { $in: examIds }
-    })
-      .populate({
-        path: 'student',
-        select: 'firstName lastName email organization class',
-        options: { virtuals: true }
-      })
-      .populate('exam', 'title maxPossibleScore')
-      .select('totalScore maxPossibleScore startTime endTime exam');
-
-    // Group results by student
-    const studentResults = {};
-
-    results.forEach(result => {
-      if (!result.student) return;
-
-      const studentId = result.student._id.toString();
-
-      if (!studentResults[studentId]) {
-        studentResults[studentId] = {
-          id: studentId,
-          name: `${result.student.firstName || ''} ${result.student.lastName || ''}`.trim(),
-          firstName: result.student.firstName || '',
-          lastName: result.student.lastName || '',
-          email: result.student.email || '',
-          organization: result.student.organization || '',
-          studentClass: result.student.class || '',
-          exams: [],
-          totalScore: 0,
-          totalMaxScore: 0,
-          totalTimeTaken: 0,
-          examCount: 0
-        };
-      }
-
-      // Calculate percentage score
-      const percentage = result.maxPossibleScore > 0
-        ? Math.round((result.totalScore / result.maxPossibleScore) * 100)
-        : 0;
-
-      // Calculate time taken in minutes
-      const startTime = new Date(result.startTime);
-      const endTime = new Date(result.endTime || startTime);
-      const timeTakenMs = endTime - startTime;
-      const timeTakenMinutes = Math.round(timeTakenMs / (1000 * 60));
-
-      // Add exam result
-      studentResults[studentId].exams.push({
-        examId: result.exam._id,
-        examTitle: result.exam.title,
-        score: result.totalScore,
-        maxScore: result.maxPossibleScore,
-        percentage,
-        timeTaken: timeTakenMinutes,
-        completedAt: result.endTime
-      });
-
-      // Update totals
-      studentResults[studentId].totalScore += result.totalScore;
-      studentResults[studentId].totalMaxScore += result.maxPossibleScore;
-      studentResults[studentId].totalTimeTaken += timeTakenMinutes;
-      studentResults[studentId].examCount += 1;
-    });
-
-    // Convert to array and calculate overall percentage
-    const leaderboardData = Object.values(studentResults).map(student => {
-      const overallPercentage = student.totalMaxScore > 0
-        ? Math.round((student.totalScore / student.totalMaxScore) * 100)
-        : 0;
-
-      const avgTimeTaken = student.examCount > 0
-        ? Math.round(student.totalTimeTaken / student.examCount)
-        : 0;
-
-      return {
-        ...student,
-        percentage: overallPercentage,
-        timeTaken: avgTimeTaken,
-        // Add a unique identifier for each student in the overall leaderboard
-        uniqueId: `overall-${student.id}`
       };
-    });
+      examFilter = {
+        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+      };
+    }
 
-    // Sort by percentage score (highest first), then by time taken (shortest first)
-    leaderboardData.sort((a, b) => {
-      if (b.percentage !== a.percentage) {
-        return b.percentage - a.percentage;
-      }
-      return a.timeTaken - b.timeTaken;
-    });
+    // OPTIMIZATION: Use aggregation pipeline for database-level pagination
+    // This avoids fetching all results and processing in-memory
+    const aggregationPipeline = [
+      // Match completed results
+      {
+        $match: {
+          isCompleted: true
+        }
+      },
+      // Lookup student details
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'student',
+          foreignField: '_id',
+          as: 'student',
+          pipeline: [
+            { $match: studentFilter },
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                email: 1,
+                organization: 1,
+                class: 1
+              }
+            }
+          ]
+        }
+      },
+      // Lookup exam details
+      {
+        $lookup: {
+          from: 'exams',
+          localField: 'exam',
+          foreignField: '_id',
+          as: 'exam',
+          pipeline: [
+            { $match: examFilter },
+            {
+              $project: {
+                title: 1,
+                maxPossibleScore: 1
+              }
+            }
+          ]
+        }
+      },
+      // Unwind the arrays
+      { $unwind: '$student' },
+      { $unwind: '$exam' },
+      // Group by student
+      {
+        $group: {
+          _id: '$student._id',
+          firstName: { $first: '$student.firstName' },
+          lastName: { $first: '$student.lastName' },
+          email: { $first: '$student.email' },
+          organization: { $first: '$student.organization' },
+          studentClass: { $first: '$student.class' },
+          totalScore: { $sum: '$totalScore' },
+          totalMaxScore: { $sum: '$maxPossibleScore' },
+          examCount: { $sum: 1 },
+          exams: {
+            $push: {
+              examId: '$exam._id',
+              examTitle: '$exam.title',
+              score: '$totalScore',
+              maxScore: '$maxPossibleScore',
+              percentage: {
+                $cond: [
+                  { $gt: ['$maxPossibleScore', 0] },
+                  { $multiply: [{ $divide: ['$totalScore', '$maxPossibleScore'] }, 100] },
+                  0
+                ]
+              },
+              timeTaken: {
+                $round: [
+                  { $divide: [{ $subtract: ['$endTime', '$startTime'] }, 60000] },
+                  0
+                ]
+              },
+              completedAt: '$endTime'
+            }
+          }
+        }
+      },
+      // Calculate overall percentage and average time
+      {
+        $addFields: {
+          percentage: {
+            $cond: [
+              { $gt: ['$totalMaxScore', 0] },
+              { $round: [{ $multiply: [{ $divide: ['$totalScore', '$totalMaxScore'] }, 100] }, 0] },
+              0
+            ]
+          },
+          totalTimeTaken: {
+            $sum: '$exams.timeTaken'
+          }
+        }
+      },
+      {
+        $addFields: {
+          timeTaken: {
+            $cond: [
+              { $gt: ['$examCount', 0] },
+              { $round: [{ $divide: ['$totalTimeTaken', '$examCount'] }, 0] },
+              0
+            ]
+          }
+        }
+      },
+      // Sort by percentage (descending), then by time taken (ascending)
+      {
+        $sort: {
+          percentage: -1,
+          timeTaken: 1
+        }
+      },
+      // Pagination: skip and limit at database level
+      { $skip: skip },
+      { $limit: limit }
+    ];
 
-    // Limit to top 50 for better performance
-    const limitedData = leaderboardData.slice(0, 50);
+    // Execute aggregation
+    const paginatedData = await Result.aggregate(aggregationPipeline);
+
+    // Get total count for pagination metadata
+    const countPipeline = [
+      { $match: { isCompleted: true } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'student',
+          foreignField: '_id',
+          as: 'student',
+          pipeline: [{ $match: studentFilter }]
+        }
+      },
+      {
+        $lookup: {
+          from: 'exams',
+          localField: 'exam',
+          foreignField: '_id',
+          as: 'exam',
+          pipeline: [{ $match: examFilter }]
+        }
+      },
+      { $unwind: '$student' },
+      { $unwind: '$exam' },
+      {
+        $group: {
+          _id: '$student._id'
+        }
+      },
+      { $count: 'total' }
+    ];
+
+    const countResult = await Result.aggregate(countPipeline);
+    const total = countResult[0]?.total || 0;
+
+    // Format the response
+    const leaderboardData = paginatedData.map(student => ({
+      id: student._id,
+      name: `${student.firstName || ''} ${student.lastName || ''}`.trim(),
+      firstName: student.firstName || '',
+      lastName: student.lastName || '',
+      email: student.email || '',
+      organization: student.organization || '',
+      studentClass: student.studentClass || '',
+      exams: student.exams,
+      totalScore: student.totalScore,
+      totalMaxScore: student.totalMaxScore,
+      percentage: student.percentage,
+      timeTaken: student.timeTaken,
+      examCount: student.examCount,
+      uniqueId: `overall-${student._id}`
+    }));
 
     const endTime = Date.now();
-    console.log(`Overall leaderboard generated in ${endTime - startTime}ms with ${limitedData.length} students`);
+    console.log(`Overall leaderboard generated in ${endTime - startTime}ms with ${leaderboardData.length} students (page ${page}, total: ${total})`);
 
     const responseData = {
       examTitle: "All Exams",
-      leaderboard: limitedData
+      leaderboard: leaderboardData,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
     };
 
-    // Cache the response
-    setCachedData(cacheKey, responseData);
+    // Cache the response for page 1
+    if (page === 1) {
+      setCachedData(cacheKey, responseData);
+    }
 
     res.json(responseData);
   } catch (error) {
@@ -1520,6 +1606,14 @@ const getAllExams = async (req, res) => {
     console.log('getAllExams - req.user._id:', req.user?._id);
     console.log('getAllExams - req.user.role:', req.user?.role);
 
+    // Check cache first for faster response
+    const cacheKey = `exams_${req.user._id}_${req.orgAdminId || 'all'}`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) {
+      console.log(`Returning cached exams for user ${req.user._id}`);
+      return res.json(cachedData);
+    }
+
     // Check if user is super admin - if so, return all exams
     // For superadmin: req.orgAdminId is null, so show all data
     let query;
@@ -1536,56 +1630,75 @@ const getAllExams = async (req, res) => {
     
     console.log('getAllExams - query:', query);
 
-    // Get all exams (or only this admin's exams) with populated creator, sections, and questions
+    // OPTIMIZATION: Only populate creator, NOT sections.questions (too heavy for leaderboard)
+    // Use lean() for faster performance
     const exams = await Exam.find(query)
       .populate('createdBy', 'firstName lastName')
-      .populate({ path: 'sections.questions', model: 'Question' })
-      .sort({ createdAt: -1 });
+      .select('-sections.questions') // Exclude questions from population
+      .sort({ createdAt: -1 })
+      .lean();
     
     console.log('getAllExams - exams found:', exams.length);
-    console.log('getAllExams - exam IDs:', exams.map(e => ({ _id: e._id, title: e.title, status: e.status, createdBy: e.createdBy })));
 
-    // Count students for each exam and calculate question count
-    const examsWithStudentCount = await Promise.all(
-      exams.map(async (exam) => {
-        const studentCount = await Result.countDocuments({ exam: exam._id });
+    // OPTIMIZATION: Use aggregation to count students/completions in a single query instead of per-exam queries
+    const examIds = exams.map(e => e._id);
+    const resultStats = await Result.aggregate([
+      { $match: { exam: { $in: examIds } } },
+      {
+        $group: {
+          _id: '$exam',
+          totalStudents: { $sum: 1 },
+          completedStudents: {
+            $sum: { $cond: [{ $eq: ['$isCompleted', true] }, 1, 0] }
+          }
+        }
+      }
+    ]);
 
-        // Calculate completion rate
-        const completedCount = await Result.countDocuments({
-          exam: exam._id,
-          isCompleted: true
-        });
+    // Create a map for quick lookup
+    const statsMap = {};
+    resultStats.forEach(stat => {
+      statsMap[stat._id.toString()] = {
+        students: stat.totalStudents,
+        completedStudents: stat.completedStudents,
+        completionRate: stat.totalStudents > 0
+          ? Math.round((stat.completedStudents / stat.totalStudents) * 100)
+          : 0
+      };
+    });
 
-        const completionRate = studentCount > 0
-          ? Math.round((completedCount / studentCount) * 100)
-          : 0;
+    // Map exams with stats
+    const examsWithStats = exams.map(exam => {
+      const stats = statsMap[exam._id.toString()] || { students: 0, completedStudents: 0, completionRate: 0 };
+      
+      // Count total questions across all sections (from sections array, not populated questions)
+      const questionCount = (exam.sections || []).reduce((sum, sec) => sum + (sec.questions?.length || 0), 0);
 
-        // Count total questions across all sections
-        const questionCount = (exam.sections || []).reduce((sum, sec) => sum + (sec.questions?.length || 0), 0);
+      return {
+        _id: exam._id,
+        title: exam.title,
+        description: exam.description,
+        timeLimit: exam.timeLimit,
+        passingScore: exam.passingScore,
+        totalPoints: exam.totalPoints,
+        isLocked: exam.isLocked,
+        createdAt: exam.createdAt,
+        updatedAt: exam.updatedAt,
+        scheduledFor: exam.scheduledFor,
+        status: exam.status,
+        createdBy: exam.createdBy ? `${exam.createdBy.firstName} ${exam.createdBy.lastName}` : 'Unknown',
+        students: stats.students,
+        completionRate: stats.completionRate,
+        assignedTo: exam.assignedTo || [],
+        sections: exam.sections || [],
+        questions: questionCount
+      };
+    });
 
-        return {
-          _id: exam._id,
-          title: exam.title,
-          description: exam.description,
-          timeLimit: exam.timeLimit,
-          passingScore: exam.passingScore,
-          totalPoints: exam.totalPoints,
-          isLocked: exam.isLocked,
-          createdAt: exam.createdAt,
-          updatedAt: exam.updatedAt,
-          scheduledFor: exam.scheduledFor,
-          status: exam.status,
-          createdBy: exam.createdBy ? `${exam.createdBy.firstName} ${exam.createdBy.lastName}` : 'Unknown',
-          students: studentCount,
-          completionRate,
-          assignedTo: exam.assignedTo || [],
-          sections: exam.sections || [],
-          questions: questionCount
-        };
-      })
-    );
+    // Cache the response
+    setCachedData(cacheKey, examsWithStats);
 
-    res.json(examsWithStudentCount);
+    res.json(examsWithStats);
   } catch (error) {
     console.error('Get all exams error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -2899,53 +3012,69 @@ const updateScheduledExam = async (req, res) => {
 // @access  Private/Admin
 const getAllResults = async (req, res) => {
   try {
-    // Get students created by this admin OR by teachers under this admin
-    let studentIds;
-    if (isSuperAdmin(req.user) || !req.orgAdminId) {
-      // For super admin: get all students
-      const students = await User.find({ role: 'student' }).select('_id');
-      studentIds = students.map(student => student._id);
-    } else if (req.user.role === 'admin') {
-      // For admins: include students created by teachers under this admin
-      const teachers = await User.find({
-        role: 'teacher',
-        parentAdmin: req.orgAdminId
-      }).select('_id').lean();
+    // OPTIMIZATION: Add pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
+    // Check cache for non-paginated requests (page 1)
+    const cacheKey = `results_${req.user._id}_${page}_${limit}`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData && page === 1) {
+      console.log(`Returning cached results for admin ${req.user._id}`);
+      return res.json(cachedData);
+    }
+
+    // OPTIMIZATION: Run queries in parallel using Promise.all
+    let studentIds, examIds, marketplaceExamIds;
+
+    if (isSuperAdmin(req.user) || !req.orgAdminId) {
+      // Super admin: get all students and exams in parallel
+      const [students, exams] = await Promise.all([
+        User.find({ role: 'student' }).select('_id').lean(),
+        Exam.find({}).select('_id isPubliclyListed').lean()
+      ]);
+      studentIds = students.map(s => s._id);
+      examIds = exams.map(e => e._id);
+      marketplaceExamIds = exams.filter(e => e.isPubliclyListed).map(e => e._id);
+    } else if (req.user.role === 'admin') {
+      // Admin: get teachers first, then get students and exams in parallel
+      const teachers = await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean();
       const teacherIds = teachers.map(t => t._id);
-      const students = await User.find({
-        role: 'student',
-        $or: [
-          { createdBy: req.orgAdminId },
-          { createdBy: { $in: teacherIds } }
-        ]
-      }).select('_id');
-
-      studentIds = students.map(student => student._id);
+      
+      const [students, exams] = await Promise.all([
+        User.find({
+          role: 'student',
+          $or: [
+            { createdBy: req.orgAdminId },
+            { createdBy: { $in: teacherIds } }
+          ]
+        }).select('_id').lean(),
+        Exam.find({
+          $or: [
+            { createdBy: req.orgAdminId },
+            { createdBy: { $in: teacherIds } }
+          ]
+        }).select('_id isPubliclyListed').lean()
+      ]);
+      studentIds = students.map(s => s._id);
+      examIds = exams.map(e => e._id);
+      marketplaceExamIds = exams.filter(e => e.isPubliclyListed).map(e => e._id);
     } else {
-      // For teachers: show students created by themselves or by their admin
-      const students = await User.find({
-        role: 'student',
-        $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
-      }).select('_id');
-
-      studentIds = students.map(student => student._id);
+      // Teacher: get students and exams in parallel
+      const [students, exams] = await Promise.all([
+        User.find({
+          role: 'student',
+          $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+        }).select('_id').lean(),
+        Exam.find({
+          $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }]
+        }).select('_id isPubliclyListed').lean()
+      ]);
+      studentIds = students.map(s => s._id);
+      examIds = exams.map(e => e._id);
+      marketplaceExamIds = exams.filter(e => e.isPubliclyListed).map(e => e._id);
     }
-
-    // Get all exams for this org: admin sees own + all teachers'; teacher sees own + parent admin's
-    let examQuery;
-    if (isSuperAdmin(req.user) || !req.orgAdminId) {
-      examQuery = {};
-    } else if (req.user.role === 'admin') {
-      const orgTeacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
-      examQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: { $in: orgTeacherIds } }] };
-    } else {
-      examQuery = { $or: [{ createdBy: req.orgAdminId }, { createdBy: req.user._id }] };
-    }
-
-    const exams = await Exam.find(examQuery).select('_id isPubliclyListed');
-    const examIds = exams.map(exam => exam._id);
-    const marketplaceExamIds = exams.filter(e => e.isPubliclyListed).map(e => e._id);
 
     // For marketplace exams (isPubliclyListed), include ALL students' results.
     // For private exams, restrict to students created by this admin/teacher.
@@ -2959,10 +3088,17 @@ const getAllResults = async (req, res) => {
           ]
         };
 
-    const results = await Result.find(resultQuery)
-      .populate('student', 'firstName lastName fullName email organization studentClass studentId')
-      .populate('exam', 'title totalPoints')
-      .sort({ endTime: -1 });
+    // OPTIMIZATION: Get total count and paginated results in parallel
+    const [totalCount, results] = await Promise.all([
+      Result.countDocuments(resultQuery),
+      Result.find(resultQuery)
+        .populate('student', 'firstName lastName fullName email organization studentClass studentId')
+        .populate('exam', 'title totalPoints')
+        .sort({ endTime: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+    ]);
 
     // Format the results with enhanced data
     const formattedResults = results.map(result => {
@@ -3014,7 +3150,7 @@ const getAllResults = async (req, res) => {
 
     // Add summary statistics
     const summary = {
-      totalResults: formattedResults.length,
+      totalResults: totalCount,
       averageScore: formattedResults.length > 0
         ? Math.round(formattedResults.reduce((sum, result) => sum + result.percentage, 0) / formattedResults.length)
         : 0,
@@ -3024,10 +3160,23 @@ const getAllResults = async (req, res) => {
       poorCount: formattedResults.filter(r => r.percentage < 50).length
     };
 
-    res.json({
+    const responseData = {
       results: formattedResults,
-      summary
-    });
+      summary,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    };
+
+    // Cache the response for page 1
+    if (page === 1) {
+      setCachedData(cacheKey, responseData);
+    }
+
+    res.json(responseData);
   } catch (error) {
     console.error('Get all results error:', error);
     res.status(500).json({ message: 'Server error' });

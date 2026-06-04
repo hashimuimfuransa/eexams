@@ -54,14 +54,21 @@ const NewLeaderboardPage = () => {
   const [examsLoading, setExamsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [exams, setExams] = useState([]);
-  const [selectedExamId, setSelectedExamId] = useState('all');
+  const [selectedExamId, setSelectedExamId] = useState(null); // Will be set to most recent exam
   const [leaderboardData, setLeaderboardData] = useState({ leaderboard: [] });
   const [searchTerm, setSearchTerm] = useState('');
+  const [examSearchTerm, setExamSearchTerm] = useState(''); // Search for exams
   const [sortField, setSortField] = useState('percentage');
   const [sortDirection, setSortDirection] = useState('desc');
   const [filterClass, setFilterClass] = useState('all');
   const [filterOrganization, setFilterOrganization] = useState('all');
   const [dataCache, setDataCache] = useState({});
+  
+  // LAZY LOADING: Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pageSize = 20;
 
   // Derived state for available filters
   const [availableClasses, setAvailableClasses] = useState([]);
@@ -132,25 +139,20 @@ const NewLeaderboardPage = () => {
     setExamsLoading(true);
 
     try {
-      // First set default "All Exams" option for immediate UI rendering
-      setExams([{
-        _id: 'all',
-        title: 'All Exams',
-        description: 'View performance across all exams'
-      }]);
+      // Check if we have cached data first to avoid multiple setExams calls
+      let examData = [];
 
-      // Check if we have cached data
-      if (localStorage.getItem('cachedExams')) {
-        const cachedExams = JSON.parse(localStorage.getItem('cachedExams'));
-        if (cachedExams && cachedExams.length > 0) {
-          setExams([
-            {
-              _id: 'all',
-              title: 'All Exams',
-              description: 'View performance across all exams'
-            },
-            ...cachedExams
-          ]);
+      const cachedExams = localStorage.getItem('cachedExams');
+      if (cachedExams) {
+        const parsed = JSON.parse(cachedExams);
+        if (parsed && parsed.length > 0) {
+          examData = parsed;
+          setExams(examData); // Set once with cached data
+          // Set default to most recent exam
+          if (!selectedExamId && examData.length > 0) {
+            const mostRecent = examData.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+            setSelectedExamId(mostRecent._id);
+          }
         }
       }
 
@@ -158,17 +160,15 @@ const NewLeaderboardPage = () => {
       const response = await apiCall('get', '/admin/exams');
 
       if (response.data && Array.isArray(response.data)) {
-        const examData = [
-          {
-            _id: 'all',
-            title: 'All Exams',
-            description: 'View performance across all exams'
-          },
-          ...response.data
-        ];
-
-        setExams(examData);
+        examData = response.data;
+        setExams(examData); // Update once with fresh data
         localStorage.setItem('cachedExams', JSON.stringify(response.data));
+        
+        // Set default to most recent exam if not already set
+        if (!selectedExamId && examData.length > 0) {
+          const mostRecent = examData.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+          setSelectedExamId(mostRecent._id);
+        }
       }
     } catch (err) {
       console.error('Error fetching exams:', err);
@@ -176,21 +176,24 @@ const NewLeaderboardPage = () => {
       // If we don't have cached data, show error
       if (!localStorage.getItem('cachedExams')) {
         setError(`Failed to load exams: ${err.message}`);
-      } else {
-        console.log('Using cached exams due to fetch error');
       }
+      // If we have cached data, it's already set above
     } finally {
       setExamsLoading(false);
     }
   };
 
-  // Fetch leaderboard data from API
-  const fetchLeaderboardData = async (examId) => {
-    setLoading(true);
+  // Fetch leaderboard data from API with lazy loading support
+  const fetchLeaderboardData = async (examId, page = 1, append = false) => {
+    if (!append) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     setError(null);
 
-    // Check if we have cached data for this exam
-    if (dataCache[examId]) {
+    // Check if we have cached data for this exam (only for first page)
+    if (!append && dataCache[examId]) {
       console.log(`Using cached data for exam ${examId}`);
       setLeaderboardData(dataCache[examId]);
       setLoading(false);
@@ -205,21 +208,39 @@ const NewLeaderboardPage = () => {
         url = `/admin/exams/${examId}/leaderboard`;
       }
 
-      console.log(`Fetching leaderboard data from: ${url}`);
+      // LAZY LOADING: Add pagination parameters
+      const params = { page, limit: pageSize };
+      console.log(`Fetching leaderboard data from: ${url} with params:`, params);
 
-      // Use the custom hook for API call with timeout handling and retries
-      const response = await apiCall('get', url);
+      // OPTIMIZATION: Use direct API call with shorter timeout for faster response
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await api.get(url, { signal: controller.signal, params });
+      clearTimeout(timeoutId);
 
       if (response.data && response.data.leaderboard) {
-        console.log(`Successfully fetched leaderboard data for exam ${examId}`);
+        console.log(`Successfully fetched leaderboard data for exam ${examId}, page ${page}`);
 
-        // Cache the data
-        setDataCache(prev => ({
-          ...prev,
-          [examId]: response.data
-        }));
+        const newLeaderboard = response.data.leaderboard;
+        
+        // LAZY LOADING: Append data if loading more pages
+        if (append) {
+          setLeaderboardData(prev => ({
+            ...prev,
+            leaderboard: [...prev.leaderboard, ...newLeaderboard]
+          }));
+        } else {
+          // Cache the data for first page
+          setDataCache(prev => ({
+            ...prev,
+            [examId]: response.data
+          }));
+          setLeaderboardData(response.data);
+        }
 
-        setLeaderboardData(response.data);
+        // Update hasMore based on whether we received fewer items than requested
+        setHasMore(newLeaderboard.length === pageSize);
       } else {
         throw new Error('Invalid data format received from server');
       }
@@ -228,7 +249,7 @@ const NewLeaderboardPage = () => {
 
       // Provide more specific error messages
       let errorMessage = 'Failed to load leaderboard data.';
-      if (err.message.includes('timed out')) {
+      if (err.message.includes('timed out') || err.name === 'AbortError') {
         errorMessage = 'Request timed out. The server may be busy. Please try again.';
       } else if (err.message.includes('Network error')) {
         errorMessage = 'Network error. Please check your internet connection.';
@@ -247,13 +268,34 @@ const NewLeaderboardPage = () => {
       }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  // LAZY LOADING: Load more data
+  const loadMore = () => {
+    if (!loadingMore && hasMore) {
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      fetchLeaderboardData(selectedExamId, nextPage, true);
     }
   };
 
   // Handle exam selection change
-  const handleExamChange = (event) => {
-    setSelectedExamId(event.target.value);
+  const handleExamChange = (examId) => {
+    setSelectedExamId(examId);
+    // LAZY LOADING: Reset pagination when exam changes
+    setCurrentPage(1);
+    setHasMore(true);
   };
+
+  // Handle exam search
+  const handleExamSearchChange = (event) => {
+    setExamSearchTerm(event.target.value);
+  };
+
+  // Get selected exam details
+  const selectedExam = exams.find(e => e._id === selectedExamId);
 
   // Handle search input change
   const handleSearchChange = (event) => {
@@ -520,32 +562,72 @@ const NewLeaderboardPage = () => {
         }}
       >
         <Grid container spacing={3} alignItems="center">
-          {/* Exam selector */}
+          {/* Current exam display */}
           <Grid item xs={12} md={4}>
-            <FormControl fullWidth variant="outlined" size="small">
-              <InputLabel id="exam-select-label">Select Exam</InputLabel>
-              <Select
-                labelId="exam-select-label"
-                id="exam-select"
-                value={selectedExamId}
-                onChange={handleExamChange}
-                label="Select Exam"
-                disabled={examsLoading}
-                startAdornment={
-                  examsLoading ? (
-                    <InputAdornment position="start">
-                      <CircularProgress size={20} color="inherit" />
-                    </InputAdornment>
-                  ) : null
-                }
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                Current Exam:
+              </Typography>
+              {selectedExam ? (
+                <Typography variant="body1" sx={{ fontWeight: 700, color: theme.palette.primary.main }}>
+                  {selectedExam.title}
+                </Typography>
+              ) : (
+                <CircularProgress size={20} />
+              )}
+            </Box>
+          </Grid>
+
+          {/* Exam search field */}
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              size="small"
+              placeholder="Search exams to switch..."
+              value={examSearchTerm}
+              onChange={handleExamSearchChange}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                )
+              }}
+            />
+            {/* Exam search results dropdown */}
+            {examSearchTerm && (
+              <Paper
+                elevation={3}
+                sx={{
+                  position: 'absolute',
+                  zIndex: 10,
+                  mt: 1,
+                  maxHeight: 200,
+                  overflow: 'auto',
+                  width: '100%'
+                }}
               >
-                {exams.map((exam) => (
-                  <MenuItem key={`exam-option-${exam._id}`} value={exam._id}>
-                    {exam.title}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                {exams
+                  .filter(exam => 
+                    exam.title?.toLowerCase().includes(examSearchTerm.toLowerCase()) ||
+                    exam.description?.toLowerCase().includes(examSearchTerm.toLowerCase())
+                  )
+                  .slice(0, 10)
+                  .map(exam => (
+                    <MenuItem
+                      key={exam._id}
+                      onClick={() => {
+                        handleExamChange(exam._id);
+                        setExamSearchTerm('');
+                      }}
+                      selected={exam._id === selectedExamId}
+                    >
+                      {exam.title}
+                    </MenuItem>
+                  ))}
+              </Paper>
+            )}
           </Grid>
 
           {/* Search field */}
@@ -1007,6 +1089,21 @@ const NewLeaderboardPage = () => {
             </Box>
           </Box>
         ))}
+
+        {/* LAZY LOADING: Load More button */}
+        {hasMore && !loading && (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <Button
+              variant="outlined"
+              onClick={loadMore}
+              disabled={loadingMore}
+              startIcon={loadingMore ? <CircularProgress size={16} /> : <RefreshIcon />}
+              sx={{ borderRadius: 2 }}
+            >
+              {loadingMore ? 'Loading...' : 'Load More'}
+            </Button>
+          </Box>
+        )}
       </Paper>
     </Box>
   );

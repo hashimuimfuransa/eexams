@@ -2589,7 +2589,12 @@ const getExamForReview = async (req, res) => {
 // @access  Private/SuperAdmin
 const getAllExamRequests = async (req, res) => {
   try {
-    const { status = 'pending', organizationId } = req.query;
+    const { status = 'pending', organizationId, page = 1, limit = 20 } = req.query;
+    
+    // Parse pagination parameters
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 20;
+    const skip = (pageNum - 1) * limitNum;
     
     // Build query filter
     const filter = {};
@@ -2609,72 +2614,156 @@ const getAllExamRequests = async (req, res) => {
       filter.teacher = { $in: teacherIds };
     }
     
-    const requests = await ExamRequest.find(filter)
-      .populate('exam', 'title description timeLimit isPubliclyListed')
-      .populate('teacher', 'firstName lastName email organization parentAdmin createdBy')
-      .populate('student', 'firstName lastName email')
-      .sort({ requestedAt: -1 });
+    // OPTIMIZATION: Use aggregation pipeline to avoid N+1 queries
+    // This fetches organization info in a single query instead of per-request
+    const aggregationPipeline = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'exams',
+          localField: 'exam',
+          foreignField: '_id',
+          as: 'exam',
+          pipeline: [
+            {
+              $project: {
+                title: 1,
+                description: 1,
+                timeLimit: 1,
+                isPubliclyListed: 1
+              }
+            }
+          ]
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'teacher',
+          foreignField: '_id',
+          as: 'teacher',
+          pipeline: [
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                email: 1,
+                organization: 1,
+                parentAdmin: 1,
+                createdBy: 1
+              }
+            }
+          ]
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'student',
+          foreignField: '_id',
+          as: 'student',
+          pipeline: [
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                email: 1
+              }
+            }
+          ]
+        }
+      },
+      { $unwind: '$exam' },
+      { $unwind: '$teacher' },
+      { $unwind: { path: '$student', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'users',
+          let: { createdBy: '$teacher.createdBy', parentAdmin: '$teacher.parentAdmin' },
+          as: 'orgAdmin',
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    { $eq: ['$_id', '$$createdBy'] },
+                    { $eq: ['$_id', '$$parentAdmin'] }
+                  ]
+                }
+              }
+            },
+            {
+              $project: {
+                _id: 1,
+                organization: 1,
+                email: 1
+              }
+            }
+          ]
+        }
+      },
+      { $unwind: { path: '$orgAdmin', preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          teacher: {
+            id: '$teacher._id',
+            firstName: '$teacher.firstName',
+            lastName: '$teacher.lastName',
+            email: '$teacher.email'
+          },
+          organization: {
+            $cond: {
+              if: '$orgAdmin',
+              then: {
+                id: '$orgAdmin._id',
+                name: { $ifNull: ['$orgAdmin.organization', 'Unknown Organization'] },
+                email: '$orgAdmin.email'
+              },
+              else: {
+                $cond: {
+                  if: '$teacher.organization',
+                  then: {
+                    id: '$teacher._id',
+                    name: '$teacher.organization',
+                    email: '$teacher.email'
+                  },
+                  else: {
+                    id: '$teacher._id',
+                    name: {
+                      $concat: [
+                        '$teacher.firstName',
+                        ' ',
+                        '$teacher.lastName',
+                        ' (Individual Teacher)'
+                      ]
+                    },
+                    email: '$teacher.email'
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      { $sort: { requestedAt: -1 } },
+      { $skip: skip },
+      { $limit: limitNum }
+    ];
     
-    // Add organization info to each request
-    const requestsWithOrg = await Promise.all(requests.map(async (request) => {
-      let orgInfo = null;
-      let teacherInfo = request.teacher ? {
-        id: request.teacher._id,
-        firstName: request.teacher.firstName,
-        lastName: request.teacher.lastName,
-        email: request.teacher.email
-      } : null;
-      
-      if (request.teacher) {
-        // Try to get organization info from various sources
-        // 1. Check if teacher has createdBy (organization admin)
-        if (request.teacher.createdBy) {
-          const orgAdmin = await User.findById(request.teacher.createdBy).select('organization email');
-          if (orgAdmin) {
-            orgInfo = {
-              id: orgAdmin._id,
-              name: orgAdmin.organization || 'Unknown Organization',
-              email: orgAdmin.email
-            };
-          }
-        }
-        // 2. Check if teacher has parentAdmin (belongs to an organization)
-        else if (request.teacher.parentAdmin) {
-          const orgAdmin = await User.findById(request.teacher.parentAdmin).select('organization email');
-          if (orgAdmin) {
-            orgInfo = {
-              id: orgAdmin._id,
-              name: orgAdmin.organization || 'Unknown Organization',
-              email: orgAdmin.email
-            };
-          }
-        }
-        // 3. Check if teacher has organization field (individual teacher)
-        else if (request.teacher.organization) {
-          orgInfo = {
-            id: request.teacher._id,
-            name: request.teacher.organization,
-            email: request.teacher.email
-          };
-        }
-        // 4. Individual teacher without organization field
-        else {
-          orgInfo = {
-            id: request.teacher._id,
-            name: `${request.teacher.firstName} ${request.teacher.lastName} (Individual Teacher)`,
-            email: request.teacher.email
-          };
-        }
+    const requests = await ExamRequest.aggregate(aggregationPipeline);
+    
+    // Get total count for pagination
+    const total = await ExamRequest.countDocuments(filter);
+    
+    res.json({
+      requests,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
       }
-      
-      return {
-        ...request.toObject(),
-        teacher: teacherInfo,
-        organization: orgInfo
-      };
-    }));
-    
-    res.json(requestsWithOrg);
+    });
   } catch (error) {
     console.error('Get all exam requests error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -3067,6 +3156,224 @@ const getSystemLeaderboard = async (req, res) => {
   }
 };
 
+// @desc    Get activity logs for a specific organization/teacher
+// @route   GET /api/superadmin/organizations/:id/activity
+// @access  Private/SuperAdmin
+const getOrganizationActivity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 50, period = '30d' } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Get the organization/teacher
+    const entity = await User.findById(id).select('-password');
+    if (!entity) {
+      return res.status(404).json({ message: 'Organization/Teacher not found' });
+    }
+
+    // Get all users under this organization (if it's an org admin)
+    let userIds = [entity._id];
+    if (entity.role === 'admin' || entity.role === 'superadmin') {
+      const teachers = await User.find({ parentAdmin: entity._id, role: 'teacher' }).select('_id');
+      userIds = [...userIds, ...teachers.map(t => t._id)];
+    }
+
+    // Get activity logs for all users in this scope
+    const activities = await ActivityLog.find({
+      user: { $in: userIds },
+      timestamp: { $gte: startDate }
+    })
+      .populate('user', 'firstName lastName email organization')
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+
+    // Group activities by action type for summary
+    const activitySummary = {};
+    activities.forEach(activity => {
+      const action = activity.action;
+      if (!activitySummary[action]) {
+        activitySummary[action] = 0;
+      }
+      activitySummary[action]++;
+    });
+
+    res.json({
+      entity: {
+        _id: entity._id,
+        name: entity.organization || `${entity.firstName} ${entity.lastName}`,
+        email: entity.email,
+        role: entity.role
+      },
+      period,
+      summary: activitySummary,
+      totalActivities: activities.length,
+      activities
+    });
+  } catch (error) {
+    console.error('Get organization activity error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get all teachers with their activity
+// @route   GET /api/superadmin/teachers
+// @access  Private/SuperAdmin
+const getAllTeachers = async (req, res) => {
+  try {
+    const { search, organizationId, period = '30d', limit = 50 } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Build query for teachers
+    const query = { role: 'teacher' };
+    if (search) {
+      query.$or = [
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (organizationId) {
+      query.$or = [
+        { parentAdmin: organizationId },
+        { createdBy: organizationId }
+      ];
+    }
+
+    // Get teachers
+    const teachers = await User.find(query)
+      .select('-password')
+      .populate('parentAdmin', 'firstName lastName organization email')
+      .populate('createdBy', 'firstName lastName organization email')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit));
+
+    // Get activity counts for each teacher
+    const teachersWithActivity = await Promise.all(
+      teachers.map(async (teacher) => {
+        const activityCount = await ActivityLog.countDocuments({
+          user: teacher._id,
+          timestamp: { $gte: startDate }
+        });
+
+        // Get recent activities
+        const recentActivities = await ActivityLog.find({
+          user: teacher._id,
+          timestamp: { $gte: startDate }
+        })
+          .sort({ timestamp: -1 })
+          .limit(5);
+
+        // Get stats
+        const examCount = await Exam.countDocuments({ createdBy: teacher._id });
+        const studentCount = await User.countDocuments({ createdBy: teacher._id, role: 'student' });
+
+        return {
+          _id: teacher._id,
+          firstName: teacher.firstName,
+          lastName: teacher.lastName,
+          email: teacher.email,
+          organization: teacher.organization,
+          parentAdmin: teacher.parentAdmin,
+          createdBy: teacher.createdBy,
+          role: teacher.role,
+          subscriptionPlan: teacher.subscriptionPlan,
+          subscriptionStatus: teacher.subscriptionStatus,
+          isBlocked: teacher.isBlocked,
+          createdAt: teacher.createdAt,
+          lastLogin: teacher.lastLogin,
+          stats: {
+            examCount,
+            studentCount,
+            activityCount
+          },
+          recentActivities
+        };
+      })
+    );
+
+    res.json(teachersWithActivity);
+  } catch (error) {
+    console.error('Get all teachers error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get activity logs for a specific teacher
+// @route   GET /api/superadmin/teachers/:id/activity
+// @access  Private/SuperAdmin
+const getTeacherActivity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 50, period = '30d' } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    const startDate = new Date();
+    if (period === '7d') startDate.setDate(now.getDate() - 7);
+    else if (period === '30d') startDate.setDate(now.getDate() - 30);
+    else if (period === '90d') startDate.setDate(now.getDate() - 90);
+    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
+    else startDate.setDate(now.getDate() - 30);
+
+    // Get the teacher
+    const teacher = await User.findById(id).select('-password');
+    if (!teacher || teacher.role !== 'teacher') {
+      return res.status(404).json({ message: 'Teacher not found' });
+    }
+
+    // Get activity logs
+    const activities = await ActivityLog.find({
+      user: teacher._id,
+      timestamp: { $gte: startDate }
+    })
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+
+    // Group activities by action type for summary
+    const activitySummary = {};
+    activities.forEach(activity => {
+      const action = activity.action;
+      if (!activitySummary[action]) {
+        activitySummary[action] = 0;
+      }
+      activitySummary[action]++;
+    });
+
+    res.json({
+      teacher: {
+        _id: teacher._id,
+        firstName: teacher.firstName,
+        lastName: teacher.lastName,
+        email: teacher.email,
+        organization: teacher.organization
+      },
+      period,
+      summary: activitySummary,
+      totalActivities: activities.length,
+      activities
+    });
+  } catch (error) {
+    console.error('Get teacher activity error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   createSuperAdmin,
   getAllOrganizations,
@@ -3106,5 +3413,8 @@ module.exports = {
   superAdminRejectExamRequest,
   getExamRequestStats,
   getAllMarketplaceResults,
-  getSystemLeaderboard
+  getSystemLeaderboard,
+  getOrganizationActivity,
+  getAllTeachers,
+  getTeacherActivity
 };

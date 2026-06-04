@@ -10,33 +10,58 @@ import api from '../../services/api';
 import { tokens } from '../../pages/dashboardTokens';
 
 export default function LeaderboardSection({ exams: examsProp = [], systemWide = false }) {
-  const [selectedExam, setSelectedExam] = useState('');
+  const [selectedExam, setSelectedExam] = useState(null); // Will be set to most recent exam
   const [leaderboard, setLeaderboard] = useState([]);
   const [examTitle, setExamTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchStudent, setSearchStudent] = useState('');
+  const [examSearchTerm, setExamSearchTerm] = useState(''); // Search for exams
   const [filterPassed, setFilterPassed] = useState('all');
   const [filterClass, setFilterClass] = useState('all');
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [exams, setExams] = useState(examsProp);
   const [examsLoading, setExamsLoading] = useState(false);
+  
+  // LAZY LOADING: Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pageSize = 20;
 
   // Self-fetch exams when none provided by parent
   useEffect(() => {
-    if (examsProp.length > 0) { setExams(examsProp); return; }
+    if (examsProp.length > 0) { 
+      setExams(examsProp);
+      // Set default to most recent exam if not already set
+      if (!selectedExam && examsProp.length > 0) {
+        const mostRecent = examsProp.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+        setSelectedExam(mostRecent._id);
+      }
+      return; 
+    }
     setExamsLoading(true);
     const endpoint = systemWide ? '/superadmin/leaderboard' : '/admin/exams';
     api.get(endpoint)
       .then(r => {
         if (systemWide) {
           setExams(r.data.exams || []);
-          if (!selectedExam) {
+          // Set default to most recent exam if not already set
+          if (!selectedExam && r.data.exams && r.data.exams.length > 0) {
+            const mostRecent = r.data.exams.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+            setSelectedExam(mostRecent._id);
+          } else if (!selectedExam) {
+            // Fallback to showing all exams if no exam selected
             setLeaderboard(r.data.leaderboard || []);
             setExamTitle(r.data.examTitle || 'All Exams');
           }
         } else {
           setExams(r.data || []);
+          // Set default to most recent exam if not already set
+          if (!selectedExam && r.data && r.data.length > 0) {
+            const mostRecent = r.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+            setSelectedExam(mostRecent._id);
+          }
         }
       })
       .catch(() => {})
@@ -46,21 +71,62 @@ export default function LeaderboardSection({ exams: examsProp = [], systemWide =
   useEffect(() => {
     if (!selectedExam && !systemWide) { setLeaderboard([]); setExamTitle(''); return; }
     setLoading(true); setError('');
-    const endpoint = systemWide
-      ? `/superadmin/leaderboard${selectedExam ? `?examId=${selectedExam}` : ''}`
-      : `/admin/exams/${selectedExam}/leaderboard`;
-    api.get(endpoint)
+    // LAZY LOADING: Add pagination parameters
+    const params = { page: currentPage, limit: pageSize };
+    let endpoint;
+    
+    if (systemWide) {
+      // Super admin: use superadmin endpoint with examId as query param
+      endpoint = `/superadmin/leaderboard`;
+      if (selectedExam) {
+        params.examId = selectedExam;
+      }
+    } else {
+      // Regular admin: use admin endpoint with examId in path
+      endpoint = `/admin/exams/${selectedExam}/leaderboard`;
+    }
+    
+    api.get(endpoint, { params })
       .then(res => {
-        setLeaderboard(res.data.leaderboard || []);
+        const newLeaderboard = res.data.leaderboard || [];
+        // LAZY LOADING: Append if loading more pages
+        if (currentPage > 1) {
+          setLeaderboard(prev => [...prev, ...newLeaderboard]);
+        } else {
+          setLeaderboard(newLeaderboard);
+        }
         setExamTitle(res.data.examTitle || '');
+        // Update hasMore based on pagination response
+        setHasMore(res.data.pagination ? currentPage < res.data.pagination.totalPages : newLeaderboard.length === pageSize);
       })
       .catch(err => setError(err.response?.data?.message || 'Failed to load leaderboard'))
-      .finally(() => setLoading(false));
-  }, [selectedExam, systemWide]);
+      .finally(() => {
+        setLoading(false);
+        setLoadingMore(false);
+      });
+  }, [selectedExam, systemWide, currentPage]);
 
   const gradeColor = g => ({ A:'#16a34a', B:'#0284c7', C:'#d97706', D:'#ea580c', F:'#dc2626' }[g] || '#6b7280');
   const getGrade = pct => pct>=90?'A':pct>=80?'B':pct>=70?'C':pct>=60?'D':'F';
   const medalColor = rank => rank===1?'#F59E0B':rank===2?'#94A3B8':rank===3?'#B45309':'transparent';
+
+  // LAZY LOADING: Load more data
+  const loadMore = () => {
+    if (!loadingMore && hasMore) {
+      setLoadingMore(true);
+      setCurrentPage(prev => prev + 1);
+    }
+  };
+
+  // Handle exam selection change
+  const handleExamChange = (examId) => {
+    setSelectedExam(examId);
+    setCurrentPage(1);
+    setHasMore(true);
+  };
+
+  // Get selected exam details
+  const selectedExamObj = exams.find(e => e._id === selectedExam);
 
   const filtered = leaderboard.filter(e => {
     const name = `${e.firstName||e.student?.firstName||''} ${e.lastName||e.student?.lastName||''}`.toLowerCase();
@@ -162,16 +228,64 @@ export default function LeaderboardSection({ exams: examsProp = [], systemWide =
       {/* Exam picker + filters */}
       <Paper elevation={0} sx={{ p:2.5, mb:2, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white' }}>
         <Grid container spacing={2} alignItems="center">
+          {/* Current exam display */}
           <Grid item xs={12} sm={6} md={4}>
-            <FormControl size="small" fullWidth disabled={examsLoading}>
-              <InputLabel sx={{ fontSize:13 }}>{examsLoading ? 'Loading exams…' : 'Select Exam'}</InputLabel>
-              <Select value={selectedExam} onChange={e => setSelectedExam(e.target.value)}
-                label={examsLoading ? 'Loading exams…' : 'Select Exam'}
-                sx={{ borderRadius:2, fontSize:13 }}>
-                <MenuItem value="" sx={{ fontSize:13 }}>— Choose an exam —</MenuItem>
-                {exams.map(e => <MenuItem key={e._id} value={e._id} sx={{ fontSize:13 }}>{e.title}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: 13 }}>
+                Current Exam:
+              </Typography>
+              {selectedExamObj ? (
+                <Typography variant="body1" sx={{ fontWeight: 700, color: '#0c3b5e', fontSize: 13 }}>
+                  {selectedExamObj.title}
+                </Typography>
+              ) : (
+                <CircularProgress size={16} />
+              )}
+            </Box>
+          </Grid>
+
+          {/* Exam search field */}
+          <Grid item xs={12} sm={6} md={4}>
+            <TextField size="small" fullWidth placeholder="Search exams to switch..."
+              value={examSearchTerm} onChange={e => setExamSearchTerm(e.target.value)}
+              InputProps={{ 
+                startAdornment: <InputAdornment position="start"><Search sx={{ fontSize:16, color:tokens.textMuted }}/></InputAdornment>
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }} />
+            {/* Exam search results dropdown */}
+            {examSearchTerm && (
+              <Paper
+                elevation={3}
+                sx={{
+                  position: 'absolute',
+                  zIndex: 10,
+                  mt: 1,
+                  maxHeight: 200,
+                  overflow: 'auto',
+                  width: '100%'
+                }}
+              >
+                {exams
+                  .filter(exam => 
+                    exam.title?.toLowerCase().includes(examSearchTerm.toLowerCase()) ||
+                    exam.description?.toLowerCase().includes(examSearchTerm.toLowerCase())
+                  )
+                  .slice(0, 10)
+                  .map(exam => (
+                    <MenuItem
+                      key={exam._id}
+                      onClick={() => {
+                        handleExamChange(exam._id);
+                        setExamSearchTerm('');
+                      }}
+                      selected={exam._id === selectedExam}
+                      sx={{ fontSize: 13 }}
+                    >
+                      {exam.title}
+                    </MenuItem>
+                  ))}
+              </Paper>
+            )}
           </Grid>
           {selectedExam && (
             <>
@@ -365,6 +479,21 @@ export default function LeaderboardSection({ exams: examsProp = [], systemWide =
                   </TableBody>
                 </Table>
               </TableContainer>
+            )}
+            
+            {/* LAZY LOADING: Load More button */}
+            {hasMore && !loading && (
+              <Box sx={{ p: 2, textAlign: 'center' }}>
+                <Button
+                  variant="outlined"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  size="small"
+                  sx={{ borderRadius: 2 }}
+                >
+                  {loadingMore ? 'Loading...' : 'Load More'}
+                </Button>
+              </Box>
             )}
           </Paper>
         </>

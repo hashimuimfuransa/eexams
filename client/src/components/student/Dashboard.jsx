@@ -1076,19 +1076,21 @@ const Dashboard = () => {
         {results.length > 0 && (
           <Box sx={{ mt: 4 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <LeaderboardIcon color="primary" />
-                <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold">
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+                <LeaderboardIcon color="primary" sx={{ fontSize: { xs: 24, sm: 28 } }} />
+                <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" sx={{ fontSize: { xs: '1.1rem', sm: '1.5rem' } }}>
                   Exam Leaderboards
                 </Typography>
-                <Chip label="Compare with classmates" size="small" color="info" variant="outlined" sx={{ ml: 1 }} />
+                <Chip label="Compare with classmates" size="small" color="info" variant="outlined" sx={{ ml: 1, display: { xs: 'none', sm: 'flex' } }} />
               </Box>
               <Button
                 variant="contained"
                 component={RouterLink}
                 to="/student/leaderboard"
                 startIcon={<LeaderboardIcon />}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
+                size={isMobile ? 'small' : 'medium'}
+                fullWidth={isMobile}
+                sx={{ textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
               >
                 View Full Leaderboard
               </Button>
@@ -1113,21 +1115,21 @@ const Dashboard = () => {
                   border: isExpanded ? '2px solid' : '1px solid',
                   borderColor: isExpanded ? 'primary.main' : 'divider' }}>
                   {/* Exam header row */}
-                  <CardContent sx={{ pb: '12px !important', cursor: 'pointer' }}
+                  <CardContent sx={{ pb: { xs: '8px !important', sm: '12px !important' }, cursor: 'pointer', p: { xs: 1.5, sm: 2 } }}
                     onClick={() => handleToggleLeaderboard(examId)}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap' }}>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="subtitle1" fontWeight="bold" noWrap>{examTitle}</Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="subtitle1" fontWeight="bold" noWrap sx={{ fontSize: { xs: '0.95rem', sm: '1rem' } }}>{examTitle}</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
                           Completed: {formatDate(result.endTime)}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1.5 }, flexShrink: 0, flexWrap: 'wrap' }}>
                         <Chip
                           icon={isPassed ? <CheckCircle /> : <Cancel />}
                           label={`${percentage}%`}
                           color={isPassed ? 'success' : 'error'}
-                          size="small" sx={{ fontWeight: 'bold' }}
+                          size="small" sx={{ fontWeight: 'bold', fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 'auto' } }}
                         />
                         {myEntry && (
                           <Chip
@@ -1136,13 +1138,15 @@ const Dashboard = () => {
                             size="small"
                             sx={{
                               fontWeight: 'bold',
+                              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                              height: { xs: 24, sm: 'auto' },
                               bgcolor: myEntry.rank === 1 ? '#FFD700' : myEntry.rank === 2 ? '#C0C0C0' : myEntry.rank === 3 ? '#CD7F32' : undefined,
                               color: myEntry.rank <= 3 ? 'black' : undefined
                             }}
                           />
                         )}
-                        <Button size="small" variant="outlined" endIcon={isExpanded ? <ExpandLess /> : <ExpandMore />}
-                          sx={{ textTransform: 'none', fontSize: 12 }}>
+                        <Button size={isMobile ? 'small' : 'small'} variant="outlined" endIcon={isExpanded ? <ExpandLess /> : <ExpandMore />}
+                          sx={{ textTransform: 'none', fontSize: { xs: '0.7rem', sm: '0.75rem' }, px: { xs: 1, sm: 1.5 } }}>
                           {isExpanded ? 'Hide' : 'Leaderboard'}
                         </Button>
                       </Box>
@@ -1151,10 +1155,10 @@ const Dashboard = () => {
 
                   {/* Leaderboard panel */}
                   {isExpanded && (
-                    <Box sx={{ px: 2, pb: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <Box sx={{ display: 'flex', gap: 1.5, pt: 1.5, mb: 1.5 }}>
-                        <Button variant="outlined" size="small" component={RouterLink}
-                          to={`/student/results/${result._id}`} sx={{ textTransform: 'none' }}>
+                    <Box sx={{ px: { xs: 1.5, sm: 2 }, pb: { xs: 1.5, sm: 2 }, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <Box sx={{ display: 'flex', gap: 1.5, pt: { xs: 1, sm: 1.5 }, mb: { xs: 1, sm: 1.5 }, flexDirection: { xs: 'column', sm: 'row' } }}>
+                        <Button variant="outlined" size={isMobile ? 'small' : 'small'} component={RouterLink}
+                          to={`/student/results/${result._id}`} sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}>
                           View My Detailed Result
                         </Button>
                       </Box>
@@ -1173,32 +1177,32 @@ const Dashboard = () => {
                         <Box>
                           {/* Top 3 podium */}
                           {lbData.leaderboard.length >= 2 && (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', gap: { xs: 1, sm: 2 }, mb: 2, mt: 1 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'center', gap: { xs: 0.5, sm: 2 }, mb: { xs: 1.5, sm: 2 }, mt: { xs: 0.5, sm: 1 } }}>
                               {[1, 0, 2].filter(i => lbData.leaderboard[i]).map((podiumIdx) => {
                                 const entry = lbData.leaderboard[podiumIdx];
                                 const podiumRank = podiumIdx + 1;
                                 const podiumColors = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
-                                const podiumHeights = { 1: 90, 2: 70, 3: 60 };
+                                const podiumHeights = { 1: { xs: 60, sm: 90 }, 2: { xs: 45, sm: 70 }, 3: { xs: 40, sm: 60 } };
                                 return (
-                                  <Box key={podiumIdx} sx={{ textAlign: 'center', flex: podiumRank === 1 ? '0 0 120px' : '0 0 100px' }}>
-                                    <Box sx={{ width: 44, height: 44, borderRadius: '50%', bgcolor: podiumColors[podiumRank],
-                                      display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 0.5,
-                                      border: entry.isCurrentUser ? '3px solid #0D406C' : 'none',
-                                      boxShadow: entry.isCurrentUser ? '0 0 0 2px white, 0 0 0 4px #0D406C' : 'none' }}>
-                                      <Typography variant="body2" fontWeight={800} sx={{ fontSize: 11 }}>
+                                  <Box key={podiumIdx} sx={{ textAlign: 'center', flex: podiumRank === 1 ? '0 0 { xs: 80px, sm: 120px }' : '0 0 { xs: 60px, sm: 100px }' }}>
+                                    <Box sx={{ width: { xs: 32, sm: 44 }, height: { xs: 32, sm: 44 }, borderRadius: '50%', bgcolor: podiumColors[podiumRank],
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: { xs: 0.25, sm: 0.5 },
+                                      border: entry.isCurrentUser ? '2px solid #0D406C' : 'none',
+                                      boxShadow: entry.isCurrentUser ? '0 0 0 1px white, 0 0 0 3px #0D406C' : 'none' }}>
+                                      <Typography variant="body2" fontWeight={800} sx={{ fontSize: { xs: 9, sm: 11 } }}>
                                         {podiumRank === 1 ? '🥇' : podiumRank === 2 ? '🥈' : '🥉'}
                                       </Typography>
                                     </Box>
                                     <Box sx={{ height: podiumHeights[podiumRank], bgcolor: podiumColors[podiumRank],
                                       borderRadius: '4px 4px 0 0', opacity: 0.85, display: 'flex', alignItems: 'flex-start',
-                                      justifyContent: 'center', pt: 0.75 }}>
-                                      <Typography variant="caption" fontWeight={800} sx={{ px: 0.5, lineHeight: 1.2, textAlign: 'center', fontSize: 10 }}>
+                                      justifyContent: 'center', pt: { xs: 0.5, sm: 0.75 } }}>
+                                      <Typography variant="caption" fontWeight={800} sx={{ px: { xs: 0.25, sm: 0.5 }, lineHeight: 1.2, textAlign: 'center', fontSize: { xs: 8, sm: 10 } }}>
                                         {entry.name.split(' ')[0]}
                                         <br />{entry.percentage}%
                                       </Typography>
                                     </Box>
                                     {entry.isCurrentUser && (
-                                      <Chip label="You" size="small" color="primary" sx={{ mt: 0.5, height: 16, fontSize: 9 }} />
+                                      <Chip label="You" size="small" color="primary" sx={{ mt: { xs: 0.25, sm: 0.5 }, height: { xs: 14, sm: 16 }, fontSize: { xs: 8, sm: 9 } }} />
                                     )}
                                   </Box>
                                 );
@@ -1215,66 +1219,67 @@ const Dashboard = () => {
                               <Box>
                                 {previewEntries.map((entry, idx) => (
                                   <Box key={entry.id} sx={{
-                                    display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1,
+                                    display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1.5 }, px: { xs: 1, sm: 1.5 }, py: { xs: 0.75, sm: 1 },
                                     borderRadius: 1.5, mb: 0.5,
                                     bgcolor: entry.isCurrentUser ? alpha('#0D406C', 0.1) : idx % 2 === 0 ? 'grey.50' : 'white',
                                     border: entry.isCurrentUser ? '1.5px solid' : '1px solid transparent',
                                     borderColor: entry.isCurrentUser ? 'primary.main' : 'transparent'
                                   }}>
-                                    <Box sx={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                                    <Box sx={{ width: { xs: 24, sm: 28 }, height: { xs: 24, sm: 28 }, borderRadius: '50%', flexShrink: 0,
                                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                                       bgcolor: entry.rank === 1 ? '#FFD700' : entry.rank === 2 ? '#C0C0C0' : entry.rank === 3 ? '#CD7F32' : 'grey.200' }}>
                                       {entry.rank <= 3
                                         ? (entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : '🥉')
                                         : <Typography variant="caption" fontWeight={800}>#{entry.rank}</Typography>}
                                     </Box>
-                                    <Typography variant="body2" sx={{ flex: 1, fontWeight: entry.isCurrentUser ? 700 : 400 }} noWrap>
+                                    <Typography variant="body2" sx={{ flex: 1, fontWeight: entry.isCurrentUser ? 700 : 400, fontSize: { xs: '0.85rem', sm: '0.875rem' } }} noWrap>
                                       {entry.name}
                                       {entry.isCurrentUser && (
-                                        <Chip label="You" size="small" color="primary" sx={{ ml: 0.75, height: 16, fontSize: 9 }} />
+                                        <Chip label="You" size="small" color="primary" sx={{ ml: 0.5, height: { xs: 14, sm: 16 }, fontSize: { xs: 8, sm: 9 } }} />
                                       )}
                                     </Typography>
-                                    <Box sx={{ width: { xs: 60, sm: 100 }, display: { xs: 'none', sm: 'block' } }}>
-                                      <Box sx={{ height: 6, borderRadius: 3, bgcolor: 'grey.200', overflow: 'hidden' }}>
+                                    <Box sx={{ width: { xs: 40, sm: 60, md: 100 } }}>
+                                      <Box sx={{ height: { xs: 4, sm: 6 }, borderRadius: 3, bgcolor: 'grey.200', overflow: 'hidden' }}>
                                         <Box sx={{ height: '100%', width: `${entry.percentage}%`, borderRadius: 3,
                                           bgcolor: entry.percentage >= 80 ? 'success.main' : entry.percentage >= 60 ? 'warning.main' : 'error.main' }} />
                                       </Box>
                                     </Box>
                                     <Chip label={`${entry.percentage}%`} size="small"
                                       color={entry.percentage >= 80 ? 'success' : entry.percentage >= 60 ? 'warning' : 'error'}
-                                      sx={{ fontWeight: 700, minWidth: 54, flexShrink: 0 }} />
+                                      sx={{ fontWeight: 700, minWidth: { xs: 45, sm: 54 }, flexShrink: 0, fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 20, sm: 'auto' } }} />
                                   </Box>
                                 ))}
 
                                 {/* Show current user's position if outside top 5 */}
                                 {myEntryOutsideTop5 && (
-                                  <Box sx={{ px: 1.5, py: 0.5, textAlign: 'center' }}>
-                                    <Typography variant="caption" color="text.secondary">· · ·</Typography>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1,
-                                      borderRadius: 1.5, bgcolor: alpha('#0D406C', 0.1), border: '1.5px solid', borderColor: 'primary.main', mt: 0.5 }}>
-                                      <Box sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: 'grey.200', flexShrink: 0,
+                                  <Box sx={{ px: { xs: 1, sm: 1.5 }, py: { xs: 0.25, sm: 0.5 }, textAlign: 'center' }}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>· · ·</Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1.5 }, px: { xs: 1, sm: 1.5 }, py: { xs: 0.75, sm: 1 },
+                                      borderRadius: 1.5, bgcolor: alpha('#0D406C', 0.1), border: '1.5px solid', borderColor: 'primary.main', mt: { xs: 0.25, sm: 0.5 } }}>
+                                      <Box sx={{ width: { xs: 24, sm: 28 }, height: { xs: 24, sm: 28 }, borderRadius: '50%', bgcolor: 'grey.200', flexShrink: 0,
                                         display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <Typography variant="caption" fontWeight={800}>#{myEntry.rank}</Typography>
+                                        <Typography variant="caption" fontWeight={800} sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>#{myEntry.rank}</Typography>
                                       </Box>
-                                      <Typography variant="body2" fontWeight={700} sx={{ flex: 1 }} noWrap>
-                                        {myEntry.name} <Chip label="You" size="small" color="primary" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />
+                                      <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: { xs: '0.85rem', sm: '0.875rem' } }} noWrap>
+                                        {myEntry.name} <Chip label="You" size="small" color="primary" sx={{ ml: 0.5, height: { xs: 14, sm: 16 }, fontSize: { xs: 8, sm: 9 } }} />
                                       </Typography>
                                       <Chip label={`${myEntry.percentage}%`} size="small"
                                         color={myEntry.percentage >= 80 ? 'success' : myEntry.percentage >= 60 ? 'warning' : 'error'}
-                                        sx={{ fontWeight: 700, minWidth: 54, flexShrink: 0 }} />
+                                        sx={{ fontWeight: 700, minWidth: { xs: 45, sm: 54 }, flexShrink: 0, fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 20, sm: 'auto' } }} />
                                     </Box>
                                   </Box>
                                 )}
 
                                 {lbData.leaderboard.length > 5 && (
-                                  <Box sx={{ mt: 1.5, textAlign: 'center' }}>
+                                  <Box sx={{ mt: { xs: 1, sm: 1.5 }, textAlign: 'center' }}>
                                     <Button
                                       variant="outlined"
-                                      size="small"
+                                      size={isMobile ? 'small' : 'small'}
                                       component={RouterLink}
                                       to={`/student/leaderboard?exam=${examId}`}
                                       endIcon={<ArrowForward />}
-                                      sx={{ textTransform: 'none', fontWeight: 600 }}
+                                      fullWidth={isMobile}
+                                      sx={{ textTransform: 'none', fontWeight: 600, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
                                     >
                                       View all {lbData.leaderboard.length} students
                                     </Button>
@@ -1285,8 +1290,8 @@ const Dashboard = () => {
                           })()}
 
                           {myEntry && (
-                            <Box sx={{ mt: 1.5, p: 1.5, bgcolor: alpha('#0D406C', 0.06), borderRadius: 2, textAlign: 'center' }}>
-                              <Typography variant="body2" fontWeight={700} color="primary.main">
+                            <Box sx={{ mt: { xs: 1, sm: 1.5 }, p: { xs: 1, sm: 1.5 }, bgcolor: alpha('#0D406C', 0.06), borderRadius: 2, textAlign: 'center' }}>
+                              <Typography variant="body2" fontWeight={700} color="primary.main" sx={{ fontSize: { xs: '0.85rem', sm: '0.875rem' } }}>
                                 Your rank: #{myEntry.rank} out of {lbData.leaderboard.length} students · {myEntry.percentage}%
                               </Typography>
                             </Box>
@@ -1304,9 +1309,9 @@ const Dashboard = () => {
         {/* Completed Exams Section - Only show when no available exams */}
         {!hasAvailableExams && (
           <>
-            <Divider sx={{ my: 4 }} />
+            <Divider sx={{ my: { xs: 3, sm: 4 } }} />
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-              <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold">
+              <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" sx={{ fontSize: { xs: '1.1rem', sm: '1.5rem' } }}>
                 Completed Exams
               </Typography>
               {results.length > 0 && (
@@ -1315,7 +1320,9 @@ const Dashboard = () => {
                   component={RouterLink}
                   to="/student/results"
                   endIcon={<ArrowForward />}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                  size={isMobile ? 'small' : 'medium'}
+                  fullWidth={isMobile}
+                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
                 >
                   View All ({results.length})
                 </Button>
@@ -1323,10 +1330,10 @@ const Dashboard = () => {
             </Box>
 
             {results.length === 0 ? (
-              <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mt: 2 }}>
-                <Assessment sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary">No results yet</Typography>
-                <Typography variant="body2" color="text.secondary">Complete an exam to see your results here.</Typography>
+              <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', mt: 2 }}>
+                <Assessment sx={{ fontSize: { xs: 48, sm: 64 }, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>No results yet</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.85rem', sm: '0.875rem' } }}>Complete an exam to see your results here.</Typography>
               </Paper>
             ) : (
               <Box sx={{ mt: 1 }}>
@@ -1335,30 +1342,30 @@ const Dashboard = () => {
                   const isPassed = percentage >= 70;
                   return (
                     <Card key={result._id} elevation={2} sx={{ mb: 2, borderRadius: 2 }}>
-                      <CardContent sx={{ pb: '12px !important' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
+                      <CardContent sx={{ pb: { xs: '8px !important', sm: '12px !important' }, p: { xs: 1.5, sm: 2 } }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: { xs: 1, sm: 1.5 } }}>
                           <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Typography variant="subtitle1" fontWeight="bold" noWrap>
+                            <Typography variant="subtitle1" fontWeight="bold" noWrap sx={{ fontSize: { xs: '0.95rem', sm: '1rem' } }}>
                               {result.examTitle || result.exam?.title || 'Exam'}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
                               Completed: {formatDate(result.endTime)}
                             </Typography>
                           </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1.5 }, flexShrink: 0, flexWrap: 'wrap' }}>
                             <Chip
                               icon={isPassed ? <CheckCircle /> : <Cancel />}
                               label={`${percentage}% · ${result.totalScore}/${result.maxPossibleScore} pts`}
                               color={isPassed ? 'success' : 'error'}
-                              size="small" sx={{ fontWeight: 'bold' }}
+                              size="small" sx={{ fontWeight: 'bold', fontSize: { xs: '0.7rem', sm: '0.875rem' }, height: { xs: 24, sm: 'auto' } }}
                             />
                             <Button
                               variant="outlined"
-                              size="small"
+                              size={isMobile ? 'small' : 'small'}
                               component={RouterLink}
                               to={`/student/results/${result._id}`}
                               endIcon={<ArrowForward />}
-                              sx={{ textTransform: 'none', fontSize: 12, fontWeight: 600 }}
+                              sx={{ textTransform: 'none', fontSize: { xs: '0.7rem', sm: '0.75rem' }, fontWeight: 600, px: { xs: 1, sm: 1.5 } }}
                             >
                               Details
                             </Button>
@@ -1376,7 +1383,9 @@ const Dashboard = () => {
                       component={RouterLink}
                       to="/student/results"
                       endIcon={<ArrowForward />}
-                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                      size={isMobile ? 'small' : 'medium'}
+                      fullWidth={isMobile}
+                      sx={{ textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
                     >
                       View All {results.length} Completed Exams
                     </Button>

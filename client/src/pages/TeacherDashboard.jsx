@@ -1298,6 +1298,8 @@ export default function TeacherDashboard() {
   const [results, setResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [resultsPage, setResultsPage] = useState(1);
+  const [resultsTotal, setResultsTotal] = useState(0);
 
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -1323,12 +1325,17 @@ export default function TeacherDashboard() {
         console.error('Error fetching exams in dashboard:', err);
       });
     
-    api.get('/admin/results')
-      .then(r => setResults(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+    // OPTIMIZATION: Use pagination for results to fetch data faster
+    api.get('/admin/results', { params: { page: resultsPage, limit: 50 } })
+      .then(r => {
+        const resultsData = Array.isArray(r.data) ? r.data : (r.data?.results || []);
+        setResults(resultsData);
+        setResultsTotal(r.data?.pagination?.total || resultsData.length);
+      })
       .catch(err => {
         console.error('Error fetching results:', err);
       });
-  }, [user]);
+  }, [user, resultsPage]);
 
   // Auto-refresh pending approvals every 30 seconds (enterprise only)
   const isEnterprise = (user?.subscriptionPlan === 'enterprise' && user?.subscriptionType === 'custom') ||
@@ -1370,7 +1377,7 @@ export default function TeacherDashboard() {
       {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} user={user} />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
       {activeSection === 'students'  && <StudentsSection />}
-      {activeSection === 'results'   && <ResultsSection results={results} exams={exams} />}
+      {activeSection === 'results'   && <ResultsSection results={results} resultsTotal={resultsTotal} resultsPage={resultsPage} setResultsPage={setResultsPage} exams={exams} />}
       {activeSection === 'leaderboard' && <LeaderboardSection exams={exams} />}
       {activeSection === 'templates' && <TemplatesSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} />}
       {activeSection === 'reports'   && <ReportsSection />}

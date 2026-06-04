@@ -597,8 +597,8 @@ function MarketplaceShowcase({ mode }) {
     navigate(`/marketplace/exams/${examId}/request`);
   };
 
-  const calculateTotalQuestions = (sections) => {
-    return sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
+  const calculateTotalQuestions = (exam) => {
+    return exam.totalQuestions || exam.sections?.reduce((sum, section) => sum + (section.questionCount || section.questions?.length || 0), 0) || 0;
   };
 
   if (loading) {
@@ -676,7 +676,7 @@ function MarketplaceShowcase({ mode }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20, padding: '16px', borderRadius: 12, background: isDark ? 'rgba(30,41,59,0.5)' : 'rgba(241,245,249,0.8)' }}>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 24, fontWeight: 800, color: '#0D406C', lineHeight: 1, marginBottom: 4 }}>
-                      {calculateTotalQuestions(exam.sections)}
+                      {calculateTotalQuestions(exam)}
                     </div>
                     <div style={{ fontSize: 11, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       Questions
@@ -692,12 +692,18 @@ function MarketplaceShowcase({ mode }) {
                   </div>
                 </div>
 
-                {/* Price if applicable */}
-                {exam.publicPrice > 0 && (
+                {/* Price or Free indicator */}
+                {exam.publicPrice > 0 ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(245,158,11,0.1)' : 'rgba(245,158,11,0.08)', border: `1px solid ${isDark ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.2)'}` }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B' }}>Price</span>
                   <span style={{ fontSize: 16, fontWeight: 700, color: '#F59E0B' }}>
                     RWF {exam.publicPrice.toLocaleString()}
+                  </span>
+                </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}` }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#0CBD73' }}>
+                    Free
                   </span>
                 </div>
                 )}
@@ -1331,10 +1337,18 @@ function Footer({ mode }) {
           <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: muted }}>
             © {new Date().getFullYear()} eexams. All rights reserved.
           </span>
-          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: secondary, fontWeight: 600 }}>
-            Provided by Excellence Coaching Hub
-          </span>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: secondary, fontWeight: 600 }}>
+              Provided by Excellence Coaching Hub
+            </span>
+            <a href="https://excellencecoachinghub.com" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: muted, textDecoration: 'none', transition: 'color 0.2s' }}
+              onMouseEnter={e => e.target.style.color = 'white'}
+              onMouseLeave={e => e.target.style.color = muted}
+            >
+              Learn more about Excellence Coaching Hub on excellencecoachinghub.com
+            </a>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
             {['🇷🇼 Made in Rwanda', 'Privacy', 'Terms'].map((t, i) => (
               <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: muted, padding: '4px 12px', borderRadius: 100, border: `1px solid ${border}` }}>{t}</span>
             ))}

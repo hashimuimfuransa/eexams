@@ -253,6 +253,7 @@ const createExam = async (req, res) => {
               const sectionIndex = exam.sections.findIndex(s => s.name === section.name);
               if (sectionIndex !== -1) {
                 exam.sections[sectionIndex].questions.push(question._id);
+                exam.sections[sectionIndex].questionCount = exam.sections[sectionIndex].questions.length;
               }
             } catch (questionError) {
               console.error(`Error creating question in section ${section.name}:`, questionError);
@@ -449,7 +450,10 @@ const createExam = async (req, res) => {
 
           const question = await Question.create(questionData);
           const si = exam.sections.findIndex(s => s.name === sec.name);
-          if (si !== -1) exam.sections[si].questions.push(question._id);
+          if (si !== -1) {
+            exam.sections[si].questions.push(question._id);
+            exam.sections[si].questionCount = exam.sections[si].questions.length;
+          }
         }
       }
       await exam.save();

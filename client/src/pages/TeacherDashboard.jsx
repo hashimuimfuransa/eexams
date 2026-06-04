@@ -312,41 +312,87 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
             </Typography>
           </Box>
 
-          {/* Display Context Information (Passage, Word Bank, Instructions) */}
-          {localQ.passage && (
-            <Box sx={{ mb: 2, p: 1.5, bgcolor: '#EFF6FF', borderRadius: 2, border: '1px solid #BFDBFE' }}>
-              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#1E40AF', mb: 0.5, textTransform: 'uppercase' }}>
-                📖 Passage
+          {/* Editable Context Information (Passage, Word Bank, Instructions) */}
+          <Box sx={{ mb: 2, p: 1.5, bgcolor: '#EFF6FF', borderRadius: 2, border: '1px solid #BFDBFE' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#1E40AF', textTransform: 'uppercase' }}>
+                📖 Passage (Optional)
               </Typography>
-              <Typography sx={{ fontSize: 12, color: '#1E3A8A', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                {localQ.passage}
-              </Typography>
+              {localQ.passage && (
+                <IconButton size="small" onClick={() => { setLocalQ({ ...localQ, passage: '' }); setEdited(true); }} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
             </Box>
-          )}
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Add a reading passage for this question..."
+              multiline
+              minRows={2}
+              maxRows={6}
+              value={localQ.passage || ''}
+              onChange={(e) => { setLocalQ({ ...localQ, passage: e.target.value }); setEdited(true); }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, bgcolor: 'white', fontSize: 12, lineHeight: 1.5 } }}
+            />
+          </Box>
           
-          {localQ.wordBank && localQ.wordBank.length > 0 && (
-            <Box sx={{ mb: 2, p: 1.5, bgcolor: '#F0FDF4', borderRadius: 2, border: '1px solid #BBF7D0' }}>
-              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#166534', mb: 0.5, textTransform: 'uppercase' }}>
-                📝 Word Bank
+          <Box sx={{ mb: 2, p: 1.5, bgcolor: '#F0FDF4', borderRadius: 2, border: '1px solid #BBF7D0' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
+                📝 Word Bank (Optional)
               </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {localQ.wordBank && localQ.wordBank.length > 0 && (
+                <IconButton size="small" onClick={() => { setLocalQ({ ...localQ, wordBank: [] }); setEdited(true); }} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Enter words separated by commas (e.g., apple, banana, orange)"
+              value={localQ.wordBank && localQ.wordBank.length > 0 ? localQ.wordBank.join(', ') : ''}
+              onChange={(e) => {
+                const words = e.target.value.split(',').map(w => w.trim()).filter(w => w);
+                setLocalQ({ ...localQ, wordBank: words });
+                setEdited(true);
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, bgcolor: 'white', fontSize: 12 } }}
+              helperText="Separate words with commas"
+            />
+            {localQ.wordBank && localQ.wordBank.length > 0 && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
                 {localQ.wordBank.map((word, idx) => (
                   <Chip key={idx} label={word} size="small" sx={{ bgcolor: '#DCFCE7', color: '#166534', fontSize: 11, fontWeight: 600 }} />
                 ))}
               </Box>
-            </Box>
-          )}
+            )}
+          </Box>
           
-          {localQ.instructions && (
-            <Box sx={{ mb: 2, p: 1.5, bgcolor: '#FEF3C7', borderRadius: 2, border: '1px solid #FDE68A' }}>
-              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#92400E', mb: 0.5, textTransform: 'uppercase' }}>
-                ℹ️ Instructions
+          <Box sx={{ mb: 2, p: 1.5, bgcolor: '#FEF3C7', borderRadius: 2, border: '1px solid #FDE68A' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#92400E', textTransform: 'uppercase' }}>
+                ℹ️ Instructions (Optional)
               </Typography>
-              <Typography sx={{ fontSize: 12, color: '#78350F', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                {localQ.instructions}
-              </Typography>
+              {localQ.instructions && (
+                <IconButton size="small" onClick={() => { setLocalQ({ ...localQ, instructions: '' }); setEdited(true); }} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
             </Box>
-          )}
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Add special instructions for this question..."
+              multiline
+              minRows={1}
+              maxRows={4}
+              value={localQ.instructions || ''}
+              onChange={(e) => { setLocalQ({ ...localQ, instructions: e.target.value }); setEdited(true); }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, bgcolor: 'white', fontSize: 12, lineHeight: 1.5 } }}
+            />
+          </Box>
 
           {localQ.subsectionTitle && (
             <Box sx={{ mb: 2 }}>
@@ -1402,7 +1448,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [aiMode, setAiMode] = useState(canUseAdvancedAI ? 'describe' : 'upload');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, sections: [{ name: 'A', description: 'Section A', questions: [] }] });
   const [manualSection, setManualSection] = useState(0);
-  const [manualQ, setManualQ] = useState({ text: '', type: 'multiple-choice', points: 2, difficulty: 'medium', options: [{ text: '', isCorrect: false, letter: 'A' }, { text: '', isCorrect: false, letter: 'B' }, { text: '', isCorrect: false, letter: 'C' }, { text: '', isCorrect: false, letter: 'D' }], correctAnswer: '' });
+  const [manualQ, setManualQ] = useState({ text: '', type: 'multiple-choice', points: 2, difficulty: 'medium', options: [{ text: '', isCorrect: false, letter: 'A' }, { text: '', isCorrect: false, letter: 'B' }, { text: '', isCorrect: false, letter: 'C' }, { text: '', isCorrect: false, letter: 'D' }], correctAnswer: '', passage: '', wordBank: [], instructions: '', subQuestions: [] });
   const [manualPublishing, setManualPublishing] = useState(false);
   const [manualError, setManualError] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -1886,7 +1932,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     const q = { ...manualQ };
     if (q.type === 'true-false') { q.options = [{ text: 'True', isCorrect: q.correctAnswer === 'True', letter: 'A' }, { text: 'False', isCorrect: q.correctAnswer === 'False', letter: 'B' }]; }
     setManualExam(p => { const secs = [...p.sections]; secs[manualSection] = { ...secs[manualSection], questions: [...(secs[manualSection].questions || []), q] }; return { ...p, sections: secs }; });
-    setManualQ({ text: '', type: 'multiple-choice', points: 2, difficulty: 'medium', options: [{ text: '', isCorrect: false, letter: 'A' }, { text: '', isCorrect: false, letter: 'B' }, { text: '', isCorrect: false, letter: 'C' }, { text: '', isCorrect: false, letter: 'D' }], correctAnswer: '' });
+    setManualQ({ text: '', type: 'multiple-choice', points: 2, difficulty: 'medium', options: [{ text: '', isCorrect: false, letter: 'A' }, { text: '', isCorrect: false, letter: 'B' }, { text: '', isCorrect: false, letter: 'C' }, { text: '', isCorrect: false, letter: 'D' }], correctAnswer: '', passage: '', wordBank: [], instructions: '', subQuestions: [] });
   };
 
   const removeManualQuestion = (secIdx, qIdx) => {
@@ -2701,9 +2747,9 @@ SECTION B: Short Answer (10 marks)
               : exams.slice(0, 3).map((e, i) => {
                   const sc = e.status === 'active' ? tokens.accent : e.status === 'draft' ? tokens.warning : '#6366F1';
                   // Calculate total questions from all sections
-                  const totalQuestions = e.sections?.reduce((total, section) =>
+                  const totalQuestions = e.questions || e.sections?.reduce((total, section) =>
                     total + (section.questions?.length || 0), 0
-                  ) || e.questions?.length || 0;
+                  ) || 0;
                   return (
                     <Box key={e._id || i} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.5, borderBottom: i < 2 ? `1px solid ${tokens.surfaceBorder}` : 'none' }}>
                       <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: 'rgba(12,189,115,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -2912,6 +2958,37 @@ function ExamPreviewPanel({ exam }) {
                     </Box>
                   )}
                 </Paper>
+
+                {/* Question-level passage */}
+                {q.passage && (
+                  <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.primary}`, bgcolor: 'rgba(59,130,246,0.03)', mb: 2.5 }}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.primary, mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>Passage</Typography>
+                    <Typography sx={{ fontSize: 14, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{q.passage}</Typography>
+                  </Paper>
+                )}
+
+                {/* Question-level instructions */}
+                {q.instructions && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: `1px solid ${tokens.warning}`, bgcolor: 'rgba(245,158,11,0.05)', mb: 2.5 }}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.warning, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Info sx={{ fontSize: 16 }} />
+                      Instructions
+                    </Typography>
+                    <Typography sx={{ fontSize: 13, color: tokens.textPrimary, mt: 1, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6 }}>{q.instructions}</Typography>
+                  </Paper>
+                )}
+
+                {/* Question-level word bank */}
+                {q.wordBank && q.wordBank.length > 0 && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: `1px solid ${tokens.accent}`, bgcolor: 'rgba(12,189,115,0.05)', mb: 2.5 }}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: tokens.accent, mb: 1 }}>Word Bank</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                      {q.wordBank.map((word, i) => (
+                        <Chip key={i} label={word} size="small" sx={{ bgcolor: 'white', border: `1px solid ${tokens.accent}`, color: tokens.textPrimary, fontSize: 12 }} />
+                      ))}
+                    </Box>
+                  </Paper>
+                )}
 
                 {/* Multiple choice */}
                 {isMC && !hasSubQuestions && (
@@ -4396,7 +4473,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 onChange={(e) => setEditingQuestion({ ...editingQuestion, type: e.target.value })}
                 sx={{ borderRadius: 2 }}
               >
-                {['multiple-choice', 'true-false', 'short-answer', 'matching', 'ordering', 'fill-blank', 'open-ended', 'image'].map(type => (
+                {['multiple-choice', 'true-false', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'fill-blank', 'open-ended', 'image-based', 'structured'].map(type => (
                   <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type.replace('-', ' ')}</MenuItem>
                 ))}
               </Select>
@@ -4423,6 +4500,76 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               ))}
             </Select>
           </FormControl>
+
+          {/* Passage - Editable */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Passage (Optional)</Typography>
+              {editingQuestion?.passage && (
+                <IconButton size="small" onClick={() => setEditingQuestion({ ...editingQuestion, passage: '' })} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Add a reading passage for this question..."
+              multiline
+              minRows={2}
+              maxRows={4}
+              value={editingQuestion?.passage || ''}
+              onChange={(e) => setEditingQuestion({ ...editingQuestion, passage: e.target.value })}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          </Box>
+
+          {/* Word Bank - Editable */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Word Bank (Optional)</Typography>
+              {editingQuestion?.wordBank && editingQuestion.wordBank.length > 0 && (
+                <IconButton size="small" onClick={() => setEditingQuestion({ ...editingQuestion, wordBank: [] })} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Enter words separated by commas (e.g., apple, banana, orange)"
+              value={editingQuestion?.wordBank && editingQuestion.wordBank.length > 0 ? editingQuestion.wordBank.join(', ') : ''}
+              onChange={(e) => {
+                const words = e.target.value.split(',').map(w => w.trim()).filter(w => w);
+                setEditingQuestion({ ...editingQuestion, wordBank: words });
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              helperText="Separate words with commas"
+            />
+          </Box>
+
+          {/* Instructions - Editable */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Instructions (Optional)</Typography>
+              {editingQuestion?.instructions && (
+                <IconButton size="small" onClick={() => setEditingQuestion({ ...editingQuestion, instructions: '' })} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Add special instructions for this question..."
+              multiline
+              minRows={1}
+              maxRows={3}
+              value={editingQuestion?.instructions || ''}
+              onChange={(e) => setEditingQuestion({ ...editingQuestion, instructions: e.target.value })}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          </Box>
           {editingQuestion?.type === 'multiple-choice' && editingQuestion?.options && (
             <Box>
               <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Options</Typography>
@@ -5015,7 +5162,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 onChange={(e) => handleNewQuestionTypeChange(e.target.value)}
                 sx={{ borderRadius: 2 }}
               >
-                {['multiple-choice', 'true-false', 'short-answer', 'matching', 'ordering', 'fill-blank', 'open-ended', 'image'].map(type => (
+                {['multiple-choice', 'true-false', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'fill-blank', 'open-ended', 'image-based', 'structured'].map(type => (
                   <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type.replace('-', ' ')}</MenuItem>
                 ))}
               </Select>
@@ -5026,6 +5173,76 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               type="number"
               value={newQuestion.points}
               onChange={(e) => setNewQuestion({ ...newQuestion, points: +e.target.value })}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          </Box>
+
+          {/* Passage - Editable */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Passage (Optional)</Typography>
+              {newQuestion?.passage && (
+                <IconButton size="small" onClick={() => setNewQuestion({ ...newQuestion, passage: '' })} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Add a reading passage for this question..."
+              multiline
+              minRows={2}
+              maxRows={4}
+              value={newQuestion?.passage || ''}
+              onChange={(e) => setNewQuestion({ ...newQuestion, passage: e.target.value })}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+          </Box>
+
+          {/* Word Bank - Editable */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Word Bank (Optional)</Typography>
+              {newQuestion?.wordBank && newQuestion.wordBank.length > 0 && (
+                <IconButton size="small" onClick={() => setNewQuestion({ ...newQuestion, wordBank: [] })} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Enter words separated by commas (e.g., apple, banana, orange)"
+              value={newQuestion?.wordBank && newQuestion.wordBank.length > 0 ? newQuestion.wordBank.join(', ') : ''}
+              onChange={(e) => {
+                const words = e.target.value.split(',').map(w => w.trim()).filter(w => w);
+                setNewQuestion({ ...newQuestion, wordBank: words });
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              helperText="Separate words with commas"
+            />
+          </Box>
+
+          {/* Instructions - Editable */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Instructions (Optional)</Typography>
+              {newQuestion?.instructions && (
+                <IconButton size="small" onClick={() => setNewQuestion({ ...newQuestion, instructions: '' })} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              )}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Add special instructions for this question..."
+              multiline
+              minRows={1}
+              maxRows={3}
+              value={newQuestion?.instructions || ''}
+              onChange={(e) => setNewQuestion({ ...newQuestion, instructions: e.target.value })}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             />
           </Box>
@@ -5322,6 +5539,76 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
         <TextField fullWidth size="small" label="Question Text *" multiline minRows={2}
           value={question.text} onChange={e => setQuestion(p => ({ ...p, text: e.target.value }))}
           sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
+
+        {/* Passage */}
+        <Box sx={{ mb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Passage (Optional)</Typography>
+            {question.passage && (
+              <IconButton size="small" onClick={() => setQuestion(p => ({ ...p, passage: '' }))} sx={{ color: '#EF4444', p: 0.5 }}>
+                <Delete sx={{ fontSize: 14 }} />
+              </IconButton>
+            )}
+          </Box>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Add a reading passage for this question..."
+            multiline
+            minRows={2}
+            maxRows={4}
+            value={question.passage || ''}
+            onChange={e => setQuestion(p => ({ ...p, passage: e.target.value }))}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+          />
+        </Box>
+
+        {/* Word Bank */}
+        <Box sx={{ mb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Word Bank (Optional)</Typography>
+            {question.wordBank && question.wordBank.length > 0 && (
+              <IconButton size="small" onClick={() => setQuestion(p => ({ ...p, wordBank: [] }))} sx={{ color: '#EF4444', p: 0.5 }}>
+                <Delete sx={{ fontSize: 14 }} />
+              </IconButton>
+            )}
+          </Box>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Enter words separated by commas (e.g., apple, banana, orange)"
+            value={question.wordBank && question.wordBank.length > 0 ? question.wordBank.join(', ') : ''}
+            onChange={e => {
+              const words = e.target.value.split(',').map(w => w.trim()).filter(w => w);
+              setQuestion(p => ({ ...p, wordBank: words }));
+            }}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+            helperText="Separate words with commas"
+          />
+        </Box>
+
+        {/* Instructions */}
+        <Box sx={{ mb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Instructions (Optional)</Typography>
+            {question.instructions && (
+              <IconButton size="small" onClick={() => setQuestion(p => ({ ...p, instructions: '' }))} sx={{ color: '#EF4444', p: 0.5 }}>
+                <Delete sx={{ fontSize: 14 }} />
+              </IconButton>
+            )}
+          </Box>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Add special instructions for this question..."
+            multiline
+            minRows={1}
+            maxRows={3}
+            value={question.instructions || ''}
+            onChange={e => setQuestion(p => ({ ...p, instructions: e.target.value }))}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+          />
+        </Box>
 
         {/* Image Upload */}
         <Box sx={{ mb: 1.5 }}>
@@ -5679,6 +5966,109 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
             sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
         )}
 
+        {/* Subquestions */}
+        <Box sx={{ mb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Subquestions (Optional)</Typography>
+            {question.subQuestions && question.subQuestions.length > 0 && (
+              <IconButton size="small" onClick={() => setQuestion(p => ({ ...p, subQuestions: [] }))} sx={{ color: '#EF4444', p: 0.5 }}>
+                <Delete sx={{ fontSize: 14 }} />
+              </IconButton>
+            )}
+          </Box>
+          <Typography sx={{ fontSize: 11, color: tokens.textMuted, mb: 1 }}>
+            Add subquestions for structured questions. When subquestions exist, the main question options are hidden.
+          </Typography>
+          {(question.subQuestions || []).map((subQ, idx) => (
+            <Paper key={idx} elevation={0} sx={{ p: 1.5, mb: 1, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Subquestion {idx + 1}</Typography>
+                <IconButton size="small" onClick={() => {
+                  const newSubQs = [...(question.subQuestions || [])];
+                  newSubQs.splice(idx, 1);
+                  setQuestion(p => ({ ...p, subQuestions: newSubQs }));
+                }} sx={{ color: '#EF4444', p: 0.5 }}>
+                  <Delete sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Box>
+              <TextField
+                fullWidth
+                size="small"
+                label="Subquestion Text"
+                multiline
+                minRows={1}
+                value={subQ.text || ''}
+                onChange={e => {
+                  const newSubQs = [...(question.subQuestions || [])];
+                  newSubQs[idx] = { ...newSubQs[idx], text: e.target.value };
+                  setQuestion(p => ({ ...p, subQuestions: newSubQs }));
+                }}
+                sx={{ mb: 1, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+              />
+              <Grid container spacing={1}>
+                <Grid item xs={6} sm={4}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Points"
+                    type="number"
+                    value={subQ.points || 1}
+                    onChange={e => {
+                      const newSubQs = [...(question.subQuestions || [])];
+                      newSubQs[idx] = { ...newSubQs[idx], points: +e.target.value };
+                      setQuestion(p => ({ ...p, subQuestions: newSubQs }));
+                    }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+                  />
+                </Grid>
+                <Grid item xs={6} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Type</InputLabel>
+                    <Select
+                      label="Type"
+                      value={subQ.type || 'short-answer'}
+                      onChange={e => {
+                        const newSubQs = [...(question.subQuestions || [])];
+                        newSubQs[idx] = { ...newSubQs[idx], type: e.target.value };
+                        setQuestion(p => ({ ...p, subQuestions: newSubQs }));
+                      }}
+                      sx={{ borderRadius: 2, bgcolor: 'white' }}
+                    >
+                      {Q_TYPES.map(t => <MenuItem key={t.value} value={t.value} sx={{ textTransform: 'capitalize' }}>{t.label}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Correct Answer"
+                    value={subQ.correctAnswer || ''}
+                    onChange={e => {
+                      const newSubQs = [...(question.subQuestions || [])];
+                      newSubQs[idx] = { ...newSubQs[idx], correctAnswer: e.target.value };
+                      setQuestion(p => ({ ...p, subQuestions: newSubQs }));
+                    }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+                  />
+                </Grid>
+              </Grid>
+            </Paper>
+          ))}
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<Add />}
+            onClick={() => {
+              const newSubQs = [...(question.subQuestions || []), { text: '', type: 'short-answer', points: 1, correctAnswer: '' }];
+              setQuestion(p => ({ ...p, subQuestions: newSubQs }));
+            }}
+            sx={{ textTransform: 'none', borderStyle: 'dashed' }}
+          >
+            Add Subquestion
+          </Button>
+        </Box>
+
         <Button variant="contained" startIcon={<Add />} onClick={onAddQuestion} disabled={!question.text.trim()}
           sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', fontSize: 13 }}>
           Add Question
@@ -5919,9 +6309,9 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
               {filteredExams.length === 0 ? <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: tokens.textMuted }}>{exams.length === 0 ? 'No exams yet.' : 'No exams match your filters.'}</TableCell></TableRow> :
                 filteredExams.map(e => {
                   const sc = e.status === 'active' ? tokens.accent : e.status === 'draft' ? tokens.warning : '#6366F1';
-                  const totalQuestions = e.sections?.reduce((total, section) =>
+                  const totalQuestions = e.questions || e.sections?.reduce((total, section) =>
                     total + (section.questions?.length || 0), 0
-                  ) || e.questions?.length || 0;
+                  ) || 0;
                   const pendingCount = pendingApprovals[e._id] || 0;
                   return (
                   <TableRow key={e._id} sx={{ '&:hover': { bgcolor: '#F8FAFC' } }}>

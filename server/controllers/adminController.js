@@ -1602,17 +1602,19 @@ const getExamById = async (req, res) => {
 // @access  Private/Admin
 const getAllExams = async (req, res) => {
   try {
+    console.log('=== getAllExams CALLED ===');
     console.log('getAllExams - req.orgAdminId:', req.orgAdminId);
     console.log('getAllExams - req.user._id:', req.user?._id);
     console.log('getAllExams - req.user.role:', req.user?.role);
 
+    // TEMPORARILY DISABLED CACHE FOR DEBUGGING
     // Check cache first for faster response
-    const cacheKey = `exams_${req.user._id}_${req.orgAdminId || 'all'}`;
-    const cachedData = getCachedData(cacheKey);
-    if (cachedData) {
-      console.log(`Returning cached exams for user ${req.user._id}`);
-      return res.json(cachedData);
-    }
+    // const cacheKey = `exams_${req.user._id}_${req.orgAdminId || 'all'}_v2`;
+    // const cachedData = getCachedData(cacheKey);
+    // if (cachedData) {
+    //   console.log(`Returning cached exams for user ${req.user._id}`);
+    //   return res.json(cachedData);
+    // }
 
     // Check if user is super admin - if so, return all exams
     // For superadmin: req.orgAdminId is null, so show all data
@@ -1630,11 +1632,11 @@ const getAllExams = async (req, res) => {
     
     console.log('getAllExams - query:', query);
 
-    // OPTIMIZATION: Only populate creator, NOT sections.questions (too heavy for leaderboard)
+    // OPTIMIZATION: Only populate creator, select entire sections object without nested fields to avoid path collision
     // Use lean() for faster performance
     const exams = await Exam.find(query)
       .populate('createdBy', 'firstName lastName')
-      .select('-sections.questions') // Exclude questions from population
+      .select('title description timeLimit passingScore totalPoints isLocked createdAt updatedAt scheduledFor status createdBy sections assignedTo')
       .sort({ createdAt: -1 })
       .lean();
     
@@ -1671,8 +1673,8 @@ const getAllExams = async (req, res) => {
     const examsWithStats = exams.map(exam => {
       const stats = statsMap[exam._id.toString()] || { students: 0, completedStudents: 0, completionRate: 0 };
       
-      // Count total questions across all sections (from sections array, not populated questions)
-      const questionCount = (exam.sections || []).reduce((sum, sec) => sum + (sec.questions?.length || 0), 0);
+      // Count total questions across all sections using questionCount field or questions array length
+      const questionCount = (exam.sections || []).reduce((sum, sec) => sum + (sec.questionCount || sec.questions?.length || 0), 0);
 
       return {
         _id: exam._id,
@@ -1695,8 +1697,9 @@ const getAllExams = async (req, res) => {
       };
     });
 
+    // TEMPORARILY DISABLED CACHE FOR DEBUGGING
     // Cache the response
-    setCachedData(cacheKey, examsWithStats);
+    // setCachedData(cacheKey, examsWithStats);
 
     res.json(examsWithStats);
   } catch (error) {

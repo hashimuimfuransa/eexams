@@ -95,7 +95,7 @@ export default function PlanUsageCard({ user }) {
         />
       </Box>
 
-      {subscriptionExpiresAt && (
+      {subscriptionExpiresAt && plan !== 'enterprise' && (
         <Box sx={{ mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <CalendarToday sx={{ fontSize: 18, color: tokens.textMuted }} />
@@ -104,10 +104,10 @@ export default function PlanUsageCard({ user }) {
             </Typography>
           </Box>
           {daysLeft !== null ? (
-            <Typography 
-              variant="h4" 
-              sx={{ 
-                fontWeight: 700, 
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 700,
                 color: getDaysLeftColor(daysLeft),
                 fontSize: '2rem'
               }}

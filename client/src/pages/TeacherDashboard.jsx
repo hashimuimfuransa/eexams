@@ -3891,7 +3891,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                     {sec.questions && sec.questions.length > 0 ? (
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                         {sec.questions.map((q, qi) => (
-                          <Paper key={qi} elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                          <Paper key={q._id || qi} elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
                             <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
                                 <Chip label={`Q${qi + 1}`} size="small" sx={{ bgcolor: tokens.primary, color: 'white', fontWeight: 700, minWidth: 32 }} />
@@ -6084,7 +6084,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
             Section {sec.name}
           </Typography>
           {sec.questions.map((q, qi) => (
-            <Paper key={qi} elevation={0} sx={{ p: 1.5, mb: 0.75, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, borderLeft: `3px solid ${tokens.accent}`, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Paper key={q._id || qi} elevation={0} sx={{ p: 1.5, mb: 0.75, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, borderLeft: `3px solid ${tokens.accent}`, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Chip label={`Q${qi + 1}`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, minWidth: 36 }} />
               <Chip label={Q_TYPES.find(t => t.value === q.type)?.label || q.type} size="small" sx={{ bgcolor: '#F1F5F9', color: tokens.textSecondary, fontSize: 11 }} />
               <Typography variant="body2" sx={{ flexGrow: 1, fontFamily: "DM Sans,sans-serif", fontSize: 13 }} noWrap>{q.text}</Typography>
@@ -6409,7 +6409,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                         {sec.questions && sec.questions.length > 0 && (
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
                             {sec.questions.slice(0, 5).map((q, qi) => (
-                              <Chip key={qi} label={`Q${qi + 1}`} size="small" sx={{ fontSize: 10, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }} />
+                              <Chip key={q._id || qi} label={`Q${qi + 1}`} size="small" sx={{ fontSize: 10, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }} />
                             ))}
                             {sec.questions.length > 5 && <Chip label={`+${sec.questions.length - 5}`} size="small" sx={{ fontSize: 10, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }} />}
                           </Box>
@@ -9125,7 +9125,7 @@ function TemplatesSection({ exams, setExams, setActiveSection }) {
                       {section.questions && section.questions.length > 0 ? (
                         <Box>
                           {section.questions.map((question, qi) => (
-                            <Paper key={qi} elevation={0} sx={{ p: 1.5, mb: 1, border: `1px solid ${tokens.surfaceBorder}`, borderRadius: 2 }}>
+                            <Paper key={question._id || qi} elevation={0} sx={{ p: 1.5, mb: 1, border: `1px solid ${tokens.surfaceBorder}`, borderRadius: 2 }}>
                               <Typography variant="caption" fontWeight={600} sx={{ color: tokens.primary }}>
                                 Q{qi + 1}:
                               </Typography>

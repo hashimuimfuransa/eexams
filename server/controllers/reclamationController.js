@@ -79,7 +79,16 @@ const getReclamations = async (req, res) => {
     if (userRole === 'teacher') {
       query.teacher = req.user._id;
     } else if (userRole === 'admin') {
-      query.organizationAdmin = req.user._id;
+      // Org admin should see all reclamations for teachers in their organization
+      // Find all teachers under this org admin
+      const teachersInOrg = await User.find({ parentAdmin: req.user._id, role: 'teacher' }).select('_id');
+      const teacherIds = teachersInOrg.map(t => t._id);
+      
+      // Also include reclamations where org admin is explicitly set
+      query.$or = [
+        { teacher: { $in: teacherIds } },
+        { organizationAdmin: req.user._id }
+      ];
     }
     // Super admin can see all reclamations (no filter)
 
@@ -126,8 +135,14 @@ const getReclamationById = async (req, res) => {
     if (userRole === 'teacher' && reclamation.teacher._id.toString() !== userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
-    if (userRole === 'admin' && reclamation.organizationAdmin?._id.toString() !== userId) {
-      return res.status(403).json({ message: 'Access denied' });
+    if (userRole === 'admin') {
+      // Org admin can view if they are the assigned org admin OR if the teacher is under their organization
+      const isAssignedAdmin = reclamation.organizationAdmin?._id.toString() === userId;
+      const isTeacherInOrg = reclamation.teacher?.parentAdmin?.toString() === userId;
+      
+      if (!isAssignedAdmin && !isTeacherInOrg) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
     }
 
     res.json(reclamation);
@@ -160,8 +175,15 @@ const respondToReclamation = async (req, res) => {
     if (userRole === 'teacher' && reclamation.teacher.toString() !== userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
-    if (userRole === 'admin' && reclamation.organizationAdmin?.toString() !== userId) {
-      return res.status(403).json({ message: 'Access denied' });
+    if (userRole === 'admin') {
+      // Org admin can respond if they are the assigned org admin OR if the teacher is under their organization
+      const isAssignedAdmin = reclamation.organizationAdmin?.toString() === userId;
+      const teacher = await User.findById(reclamation.teacher);
+      const isTeacherInOrg = teacher?.parentAdmin?.toString() === userId;
+      
+      if (!isAssignedAdmin && !isTeacherInOrg) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
     }
 
     reclamation.response = response;

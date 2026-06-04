@@ -106,7 +106,7 @@ export default function OrgAdminDashboard() {
       topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Admin')} sub={user?.organization ? `${user.organization} · School Admin` : "Here's what's happening today."} user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="School Admin" onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
       <SubscriptionWarning user={user} onLogout={logout} />
-      {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={filteredTeachers} exams={filteredExams} results={results} setActiveSection={setActiveSection} />}
+      {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={filteredTeachers} exams={filteredExams} results={results} setActiveSection={setActiveSection} user={user} />}
       {activeSection === 'teachers'  && <TeachersSection teachers={filteredTeachers} setTeachers={setTeachers} />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} />}
@@ -120,7 +120,7 @@ export default function OrgAdminDashboard() {
 }
 
 /* ── OVERVIEW ── */
-function OverviewSection({ stats, statsLoading, teachers, exams, results, setActiveSection }) {
+function OverviewSection({ stats, statsLoading, teachers, exams, results, setActiveSection, user }) {
   const avg = results.length ? Math.round(results.reduce((s,r)=>s+(r.percentage??0),0)/results.length) : 0;
   const perfData = results.slice(-7).map(r => Math.round(r.percentage ?? 0));
 

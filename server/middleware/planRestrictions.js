@@ -266,10 +266,10 @@ const getPlanUsage = async (userId) => {
       });
     }
     
-    // Calculate days left
+    // Calculate days left (enterprise plans don't expire)
     let daysLeft = null;
     let subscriptionExpiresAt = null;
-    if (user.subscriptionExpiresAt) {
+    if (user.subscriptionExpiresAt && plan !== 'enterprise') {
       subscriptionExpiresAt = user.subscriptionExpiresAt;
       const now = new Date();
       const diffTime = subscriptionExpiresAt - now;

@@ -32,6 +32,7 @@ import StudentManagement from '../components/teacher/StudentManagement';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
 import usePlan from '../hooks/usePlan';
 import SubscriptionWarning from '../components/SubscriptionWarning';
+import PlanUsageCard from '../components/PlanUsageCard';
 import LeaderboardSection from '../components/admin/LeaderboardSection';
 
 // Memoized StudentRow component to prevent unnecessary re-renders
@@ -2018,6 +2019,11 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           </Grid>
         ))}
       </Grid>
+
+      {/* Plan Usage Card */}
+      <Box sx={{ mb: 2.5 }}>
+        <PlanUsageCard user={user} />
+      </Box>
 
       {/* AI Creator */}
       <Paper elevation={0} sx={{ borderRadius: 3, overflow: 'hidden', mb: 2.5, border: `1px solid ${tokens.surfaceBorder}` }}>
@@ -7520,6 +7526,12 @@ function SettingsSection({ user }) {
   return (
     <Box>
       <SectionTitle>Settings</SectionTitle>
+      
+      {/* Plan Usage Card */}
+      <Box sx={{ mb: 3 }}>
+        <PlanUsageCard user={user} />
+      </Box>
+
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, height: '100%' }}>

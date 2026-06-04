@@ -46,6 +46,7 @@ import {
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
+import PlanUsageCard from '../PlanUsageCard';
 
 const Profile = () => {
   const theme = useTheme();
@@ -323,6 +324,11 @@ const Profile = () => {
             </Box>
           </Paper>
         </Grow>
+
+        {/* Plan Usage Card */}
+        <Box sx={{ mb: 3 }}>
+          <PlanUsageCard user={user} />
+        </Box>
 
         <Grid container spacing={{ xs: 3, sm: 4 }}>
           <Grid item xs={12} md={4}>

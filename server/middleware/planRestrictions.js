@@ -266,9 +266,23 @@ const getPlanUsage = async (userId) => {
       });
     }
     
+    // Calculate days left
+    let daysLeft = null;
+    let subscriptionExpiresAt = null;
+    if (user.subscriptionExpiresAt) {
+      subscriptionExpiresAt = user.subscriptionExpiresAt;
+      const now = new Date();
+      const diffTime = subscriptionExpiresAt - now;
+      daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (daysLeft < 0) daysLeft = 0;
+    }
+    
     return {
       plan,
       planName: planConfig.name,
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionExpiresAt,
+      daysLeft,
       limits: {
         exams: { limit: planConfig.maxExams, used: examCount },
         students: { limit: planConfig.maxStudents, used: studentCount },

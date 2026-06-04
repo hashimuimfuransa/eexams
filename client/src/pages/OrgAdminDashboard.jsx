@@ -18,6 +18,7 @@ import api from '../services/api';
 import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
 import SubscriptionWarning from '../components/SubscriptionWarning';
+import PlanUsageCard from '../components/PlanUsageCard';
 import LeaderboardSection from '../components/admin/LeaderboardSection';
 
 const nav = [
@@ -150,6 +151,11 @@ function OverviewSection({ stats, statsLoading, teachers, exams, results, setAct
           </Grid>
         ))}
       </Grid>
+
+      {/* Plan Usage Card */}
+      <Box sx={{ mb: 2.5 }}>
+        <PlanUsageCard user={user} />
+      </Box>
 
       <Grid container spacing={2.5}>
         {/* Recent Teachers */}
@@ -1372,6 +1378,12 @@ function SettingsSection({ user }) {
   return (
     <Box>
       <SectionTitle>Settings</SectionTitle>
+      
+      {/* Plan Usage Card */}
+      <Box sx={{ mb: 3 }}>
+        <PlanUsageCard user={user} />
+      </Box>
+
       <Grid container spacing={3}>
         {/* Profile Card */}
         <Grid item xs={12} md={6}>

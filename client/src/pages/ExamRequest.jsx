@@ -316,9 +316,6 @@ const ExamRequest = () => {
                         <Typography variant="h5" fontWeight={700} sx={{ color: '#0F172A' }}>
                           {isRetake ? 'Request Retake' : 'Request Access'}
                         </Typography>
-                        <Typography sx={{ color: '#64748B', fontSize: 14 }}>
-                          {isRetake ? 'Submit your retake request for this exam' : 'Fill in your details to request access to this exam'}
-                        </Typography>
                       </Box>
                     </Box>
 
@@ -373,6 +370,18 @@ const ExamRequest = () => {
                             <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
                               📞 +250 781 671 517
                             </Typography>
+                            <Divider sx={{ my: 1 }} />
+                            <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#0F172A', mb: 0.5 }}>
+                              MTN Mobile Money (MoMo) Payment:
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Typography sx={{ fontSize: 13, color: '#64748B' }}>
+                                MoMo Code: <strong>81671517</strong>
+                              </Typography>
+                              <Typography sx={{ fontSize: 13, color: '#64748B' }}>
+                                Account Name: <strong>Excellence Coaching Hub (ECH) LTD</strong>
+                              </Typography>
+                            </Box>
                           </Box>
                         </Box>
 
@@ -398,7 +407,7 @@ const ExamRequest = () => {
                                 Submitting...
                               </Box>
                             ) : (
-                              isRetake ? 'Request Retake' : 'Request Access'
+                              isRetake ? 'Pay Now to Retake' : 'Pay Now to Access'
                             )}
                           </Button>
                         )}
@@ -473,7 +482,7 @@ const ExamRequest = () => {
                                   Submitting...
                                 </Box>
                               ) : (
-                                'Submit Request'
+                                getEffectivePrice() > 0 ? (isRetake ? 'Pay Now to Retake' : 'Pay Now to Access') : 'Submit Request'
                               )}
                             </Button>
                           </Grid>

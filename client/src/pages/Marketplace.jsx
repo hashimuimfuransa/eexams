@@ -784,8 +784,8 @@ const Marketplace = () => {
                       </Box>
                     </Box>
 
-                    {/* Price if applicable */}
-                    {exam.publicPrice > 0 && (
+                    {/* Price or Free indicator */}
+                    {exam.publicPrice > 0 ? (
                       <Box sx={{ 
                         display: 'flex', 
                         alignItems: 'center', 
@@ -799,6 +799,21 @@ const Marketplace = () => {
                         <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>Price</Typography>
                         <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#F59E0B' }}>
                           RWF {exam.publicPrice.toLocaleString()}
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        p: 1.5, 
+                        borderRadius: 2.5, 
+                        background: 'rgba(12,189,115,0.08)', 
+                        border: '1px solid rgba(12,189,115,0.2)',
+                        mb: 2
+                      }}>
+                        <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#0CBD73' }}>
+                          Free
                         </Typography>
                       </Box>
                     )}

@@ -120,6 +120,7 @@ const studentListRoutes = require('./routes/studentList');
 const marketplaceRoutes = require('./routes/marketplace');
 const questionBankRoutes = require('./routes/questionBank');
 const contactRoutes = require('./routes/contact');
+const reclamationRoutes = require('./routes/reclamationRoutes');
 const seoController = require('./controllers/seoController');
 
 // Import subscription expiration middleware
@@ -137,6 +138,7 @@ app.use('/api/student-lists', blockExpiredUsers, studentListRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/question-bank', questionBankRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/reclamations', reclamationRoutes);
 
 // Log registered routes for debugging
 console.log('Registered API routes:');

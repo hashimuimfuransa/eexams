@@ -1320,6 +1320,80 @@ const sendStudentPasswordResetEmail = async (student, newPassword) => {
 };
 
 /**
+ * Send reclamation response notification to student
+ */
+const sendReclamationResponseEmail = async (student, reclamation, response) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, reclamation response email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const statusColor = reclamation.status === 'resolved' ? BRAND.success : 
+                       reclamation.status === 'rejected' ? BRAND.danger : BRAND.warning;
+    const statusIcon = reclamation.status === 'resolved' ? '✅' : 
+                       reclamation.status === 'rejected' ? '❌' : '⏳';
+
+    const content = `
+      <p class="greeting">Hello ${student.firstName || 'there'},</p>
+      
+      <p class="message">
+        Your reclamation for <strong>${reclamation.exam?.title || 'an exam'}</strong> has been updated.
+      </p>
+      
+      <div class="info-box" style="border-color: ${statusColor}; background: ${statusColor}10;">
+        <div class="info-box-title" style="color: ${statusColor};">
+          <span style="font-size: 18px;">${statusIcon}</span> Reclamation Status: ${reclamation.status.toUpperCase()}
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0; line-height: 1.6;">
+            <strong>Your Claim:</strong><br>
+            ${reclamation.claim}
+          </p>
+        </div>
+      </div>
+      
+      <div class="info-box" style="border-color: ${BRAND.accent}; background: rgba(12, 189, 115, 0.05);">
+        <div class="info-box-title" style="color: ${BRAND.accent};">
+          <span style="font-size: 18px;">💬</span> Response
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0; line-height: 1.6;">
+            ${response}
+          </p>
+        </div>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="message" style="text-align: center;">
+        You can view all your reclamations from your student dashboard.
+      </p>
+      
+      <div class="cta-button">
+        <a href="${CLIENT_URL}/student/results" style="color: #FFFFFF;">View My Results</a>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="message" style="font-size: 13px; text-align: center;">
+        If you have any questions about this response, please contact your teacher or organization administrator.
+      </p>
+    `;
+
+    const email = wrapEmail(content, `Reclamation ${reclamation.status === 'resolved' ? 'Resolved' : reclamation.status === 'rejected' ? 'Rejected' : 'Updated'}`);
+    email.to = student.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Reclamation response email sent to ${student.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send reclamation response email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Send exam approval notification to student
  */
 const sendStudentExamApprovedEmail = async (student, exam, shareToken, password = null) => {
@@ -1719,6 +1793,7 @@ module.exports = {
   sendStudentGradesEmail,
   sendSuperAdminPendingRequestEmail,
   sendTeacherRetakeRequestEmail,
+  sendReclamationResponseEmail,
   FROM_EMAIL,
   CLIENT_URL,
 };

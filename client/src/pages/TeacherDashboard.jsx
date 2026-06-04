@@ -22,7 +22,7 @@ import {
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
   DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info, Article,
-  EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll
+  EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll, ReportProblem
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -1262,13 +1262,14 @@ const getNavigationItems = (user, hasTemplatesAccess) => {
     { id: 'exams',     label: 'My Exams',   icon: <Assignment sx={{ fontSize: 20 }} /> },
     { id: 'students',  label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
     { id: 'results',     label: 'Results',      icon: <ListAlt sx={{ fontSize: 20 }} /> },
+    { id: 'reclamations', label: 'Reclamations', icon: <ReportProblem sx={{ fontSize: 20 }} /> },
     { id: 'leaderboard', label: 'Leaderboard',  icon: <LeaderboardIcon sx={{ fontSize: 20 }} /> },
     { id: 'settings',    label: 'Settings',     icon: <Settings sx={{ fontSize: 20 }} /> },
   ];
 
   // Only show templates if user has access (Basic plan or higher)
   if (hasTemplatesAccess) {
-    baseNav.splice(4, 0, { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> });
+    baseNav.splice(5, 0, { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> });
   }
 
   // If not custom enterprise, remove AI-related features from home section
@@ -1425,6 +1426,7 @@ export default function TeacherDashboard() {
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'results'   && <ResultsSection results={results} resultsTotal={resultsTotal} resultsPage={resultsPage} setResultsPage={setResultsPage} exams={exams} />}
+      {activeSection === 'reclamations' && <ReclamationsSection />}
       {activeSection === 'leaderboard' && <LeaderboardSection exams={exams} />}
       {activeSection === 'templates' && <TemplatesSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} />}
       {activeSection === 'reports'   && <ReportsSection />}
@@ -6847,6 +6849,9 @@ function ResultsSection({ results, exams = [] }) {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [manualRegradeMode, setManualRegradeMode] = useState(false);
+  const [manualScores, setManualScores] = useState({});
+  const [savingManualScores, setSavingManualScores] = useState(false);
 
   // ── Filters ──
   const [filterExam, setFilterExam] = useState('all');
@@ -6919,8 +6924,18 @@ function ResultsSection({ results, exams = [] }) {
       setDetailLoading(true);
       setDetailDialogOpen(true);
       setRegradeSuccess('');
+      setManualRegradeMode(false);
+      setManualScores({});
       const response = await api.get(`/admin/results/${resultId}`);
       setDetailData(response.data);
+      // Initialize manual scores with current scores
+      if (response.data?.answers) {
+        const initialScores = {};
+        response.data.answers.forEach((answer, idx) => {
+          initialScores[idx] = answer.score || 0;
+        });
+        setManualScores(initialScores);
+      }
     } catch (err) {
       console.error('Error fetching detailed result:', err);
     } finally {
@@ -6992,6 +7007,38 @@ function ResultsSection({ results, exams = [] }) {
       alert('Failed to reset exam: ' + (err.response?.data?.message || err.message));
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleSaveManualScores = async () => {
+    if (!detailData) return;
+
+    try {
+      setSavingManualScores(true);
+      
+      // Prepare the answer updates
+      const answerUpdates = detailData.answers.map((answer, idx) => ({
+        answerId: answer._id,
+        score: manualScores[idx] || 0
+      }));
+
+      const response = await api.put(`/admin/results/${detailData._id}/manual-grade`, {
+        answerUpdates
+      });
+
+      setRegradeSuccess('✅ Manual scores saved successfully!');
+      setManualRegradeMode(false);
+      
+      // Refresh the detailed result
+      await handleViewDetails(detailData._id);
+      
+      // Refresh the results list
+      api.get('/admin/results').then(r=>setData(Array.isArray(r.data)?r.data:(r.data?.results||[])));
+    } catch (err) {
+      console.error('Error saving manual scores:', err);
+      setRegradeSuccess('❌ Failed to save manual scores. Please try again.');
+    } finally {
+      setSavingManualScores(false);
     }
   };
 
@@ -7395,21 +7442,96 @@ function ResultsSection({ results, exams = [] }) {
 
               {/* Question-by-Question Analysis */}
               <Paper sx={{p:2}}>
-                <Typography variant="subtitle2" fontWeight="bold">Question-by-Question Analysis</Typography>
+                <Box sx={{display:'flex',justifyContent:'space-between',alignItems:'center',mb:1}}>
+                  <Typography variant="subtitle2" fontWeight="bold">Question-by-Question Analysis</Typography>
+                  {!manualRegradeMode && (
+                    <Button 
+                      size="small" 
+                      variant="outlined" 
+                      onClick={() => setManualRegradeMode(true)}
+                      startIcon={<Edit />}
+                    >
+                      Manual Regrade
+                    </Button>
+                  )}
+                  {manualRegradeMode && (
+                    <Box sx={{display:'flex',gap:1}}>
+                      <Button 
+                        size="small" 
+                        onClick={() => setManualRegradeMode(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button 
+                        size="small" 
+                        variant="contained"
+                        onClick={handleSaveManualScores}
+                        disabled={savingManualScores}
+                        startIcon={savingManualScores ? <CircularProgress size={16} /> : <SaveAlt />}
+                      >
+                        {savingManualScores ? 'Saving...' : 'Save Scores'}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
                 <Box sx={{mt:1,maxHeight:400,overflowY:'auto'}}>
                   {detailData.answers?.map((answer, idx) => (
                     <Paper key={idx} sx={{p:1.5,mb:1,bgcolor:answer.isCorrect?'#F0FDF4':'#FEF2F2'}}>
                       <Typography variant="body2" fontWeight="medium">{answer.question?.text || 'Question text not available'}</Typography>
-                      <Box sx={{display:'flex',gap:2,mt:0.5}}>
+                      
+                      {/* Student's Answer */}
+                      <Box sx={{mt:1,p:1,bgcolor:'#F8FAFC',borderRadius:1}}>
+                        <Typography variant="caption" color="text.secondary" fontWeight={600}>Student's Answer:</Typography>
+                        <Typography variant="body2" sx={{mt:0.5,fontSize:13}}>
+                          {answer.text || answer.selectedOption || answer.selectedOptions?.join(', ') || 
+                           (Array.isArray(answer.answer) ? answer.answer.join(', ') : answer.answer) || 
+                           'No answer provided'}
+                        </Typography>
+                      </Box>
+
+                      {/* Correct Answer */}
+                      <Box sx={{mt:1,p:1,bgcolor:'#ECFDF5',borderRadius:1}}>
+                        <Typography variant="caption" color="#065F46" fontWeight={600}>Correct Answer:</Typography>
+                        <Typography variant="body2" sx={{mt:0.5,fontSize:13,color:'#065F46'}}>
+                          {answer.question?.correctAnswer || 
+                           answer.question?.options?.filter(o => o.isCorrect).map(o => o.text).join(', ') || 
+                           answer.question?.answerKey || 
+                           'Not specified'}
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{display:'flex',gap:2,mt:1,alignItems:'center',flexWrap:'wrap'}}>
                         <Typography variant="caption" color="text.secondary">Type: {answer.question?.type}</Typography>
                         <Typography variant="caption" color="text.secondary">Points: {answer.question?.points}</Typography>
                         <Typography variant="caption" sx={{color:answer.isCorrect?'#166534':'#991B1B',fontWeight:600}}>
                           {answer.isCorrect?'Correct':'Incorrect'}
                         </Typography>
+                        {answer.question?.section && (
+                          <Typography variant="caption" color="text.secondary">Section: {answer.question.section}</Typography>
+                        )}
+                        {manualRegradeMode && (
+                          <Box sx={{display:'flex',alignItems:'center',gap:1,ml:'auto'}}>
+                            <Typography variant="caption" color="text.secondary">Score:</Typography>
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={manualScores[idx] || 0}
+                              onChange={(e) => {
+                                const value = Math.max(0, Math.min(answer.question?.points || 0, parseFloat(e.target.value) || 0));
+                                setManualScores(prev => ({...prev, [idx]: value}));
+                              }}
+                              inputProps={{min:0, max:answer.question?.points, step:0.5}}
+                              sx={{width:80}}
+                            />
+                            <Typography variant="caption" color="text.secondary">/ {answer.question?.points}</Typography>
+                          </Box>
+                        )}
+                        {!manualRegradeMode && (
+                          <Typography variant="caption" sx={{ml:'auto',fontWeight:600}}>
+                            Score: {answer.score}/{answer.question?.points}
+                          </Typography>
+                        )}
                       </Box>
-                      {answer.question?.section && (
-                        <Typography variant="caption" color="text.secondary">Section: {answer.question.section}</Typography>
-                      )}
                     </Paper>
                   ))}
                 </Box>
@@ -7873,6 +7995,225 @@ function AnalyticsSection({ results, exams }) {
         <SectionTitle>Score Trend (Last 7 Results)</SectionTitle>
         <AreaChart data={perfData.length>=3?perfData:[50,60,45,75,65,80,72]} color={tokens.accent}/>
       </Paper>
+    </Box>
+  );
+}
+
+/* ── RECLAMATIONS ── */
+function ReclamationsSection() {
+  const [reclamations, setReclamations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedReclamation, setSelectedReclamation] = useState(null);
+  const [responseDialogOpen, setResponseDialogOpen] = useState(false);
+  const [responseText, setResponseText] = useState('');
+  const [responseStatus, setResponseStatus] = useState('resolved');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetchReclamations();
+  }, []);
+
+  const fetchReclamations = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/reclamations');
+      setReclamations(res.data);
+    } catch (err) {
+      console.error('Error fetching reclamations:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResponse = async () => {
+    if (!responseText.trim()) return;
+    setSubmitting(true);
+    try {
+      await api.put(`/reclamations/${selectedReclamation._id}/respond`, {
+        response: responseText,
+        status: responseStatus
+      });
+      setResponseDialogOpen(false);
+      setResponseText('');
+      setResponseStatus('resolved');
+      setSelectedReclamation(null);
+      fetchReclamations();
+    } catch (err) {
+      console.error('Error responding to reclamation:', err);
+      alert('Failed to submit response');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'resolved': return '#10B981';
+      case 'rejected': return '#EF4444';
+      case 'under-review': return '#3B82F6';
+      default: return '#F59E0B';
+    }
+  };
+
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high': return '#EF4444';
+      case 'medium': return '#F59E0B';
+      case 'low': return '#10B981';
+      default: return '#6B7280';
+    }
+  };
+
+  return (
+    <Box>
+      <SectionTitle>Student Reclamations</SectionTitle>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : reclamations.length === 0 ? (
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 3, textAlign: 'center', border: `1px solid ${tokens.surfaceBorder}` }}>
+          <ReportProblem sx={{ fontSize: 48, color: tokens.textMuted, mb: 2 }} />
+          <Typography variant="h6" color="text.secondary">No reclamations found</Typography>
+        </Paper>
+      ) : (
+        <Grid container spacing={2}>
+          {reclamations.map((reclamation) => (
+            <Grid item xs={12} md={6} key={reclamation._id}>
+              <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, cursor: 'pointer', '&:hover': { borderColor: tokens.primary } }}
+                onClick={() => setSelectedReclamation(reclamation)}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Avatar sx={{ width: 32, height: 32, bgcolor: tokens.primary }}>
+                      {reclamation.student?.firstName?.[0] || '?'}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        {reclamation.student?.firstName} {reclamation.student?.lastName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {reclamation.exam?.title}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Chip label={reclamation.status} size="small" sx={{ bgcolor: `${getStatusColor(reclamation.status)}20`, color: getStatusColor(reclamation.status), fontWeight: 600 }} />
+                </Box>
+                <Typography variant="body2" sx={{ mb: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {reclamation.claim}
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Chip label={reclamation.category} size="small" variant="outlined" sx={{ fontSize: 10 }} />
+                    <Chip label={reclamation.priority} size="small" sx={{ bgcolor: `${getPriorityColor(reclamation.priority)}20`, color: getPriorityColor(reclamation.priority), fontSize: 10 }} />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(reclamation.createdAt).toLocaleDateString()}
+                  </Typography>
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Reclamation Detail Dialog */}
+      <Dialog open={!!selectedReclamation} onClose={() => setSelectedReclamation(null)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Reclamation Details</DialogTitle>
+        <DialogContent>
+          {selectedReclamation && (
+            <Box>
+              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                <Avatar sx={{ width: 48, height: 48, bgcolor: tokens.primary }}>
+                  {selectedReclamation.student?.firstName?.[0] || '?'}
+                </Avatar>
+                <Box>
+                  <Typography variant="h6" fontWeight={600}>
+                    {selectedReclamation.student?.firstName} {selectedReclamation.student?.lastName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedReclamation.student?.email}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Paper elevation={0} sx={{ p: 2, mb: 2, bgcolor: '#F8FAFC', borderRadius: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Exam</Typography>
+                <Typography variant="body2" fontWeight={600}>{selectedReclamation.exam?.title}</Typography>
+              </Paper>
+
+              <Paper elevation={0} sx={{ p: 2, mb: 2, bgcolor: '#F8FAFC', borderRadius: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Claim</Typography>
+                <Typography variant="body2">{selectedReclamation.claim}</Typography>
+              </Paper>
+
+              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <Chip label={selectedReclamation.category} size="small" />
+                <Chip label={selectedReclamation.priority} size="small" sx={{ bgcolor: `${getPriorityColor(selectedReclamation.priority)}20`, color: getPriorityColor(selectedReclamation.priority) }} />
+                <Chip label={selectedReclamation.status} size="small" sx={{ bgcolor: `${getStatusColor(selectedReclamation.status)}20`, color: getStatusColor(selectedReclamation.status) }} />
+              </Box>
+
+              {selectedReclamation.response && (
+                <Paper elevation={0} sx={{ p: 2, mb: 2, bgcolor: '#ECFDF5', borderRadius: 2, border: '1px solid #10B981' }}>
+                  <Typography variant="caption" color="#065F46" sx={{ display: 'block', mb: 0.5 }}>Response</Typography>
+                  <Typography variant="body2">{selectedReclamation.response}</Typography>
+                  {selectedReclamation.respondedBy && (
+                    <Typography variant="caption" color="#065F46" sx={{ mt: 1, display: 'block' }}>
+                      Responded by: {selectedReclamation.respondedBy.firstName} {selectedReclamation.respondedBy.lastName}
+                    </Typography>
+                  )}
+                </Paper>
+              )}
+
+              <Typography variant="caption" color="text.secondary">
+                Submitted on {new Date(selectedReclamation.createdAt).toLocaleString()}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedReclamation(null)}>Close</Button>
+          {!selectedReclamation?.response && (
+            <Button variant="contained" onClick={() => { setResponseDialogOpen(true); setResponseStatus(selectedReclamation.status === 'pending' ? 'under-review' : 'resolved'); }}>
+              Respond
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Response Dialog */}
+      <Dialog open={responseDialogOpen} onClose={() => setResponseDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Respond to Reclamation</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Status</InputLabel>
+            <Select
+              value={responseStatus}
+              onChange={(e) => setResponseStatus(e.target.value)}
+              label="Status"
+            >
+              <MenuItem value="under-review">Under Review</MenuItem>
+              <MenuItem value="resolved">Resolved</MenuItem>
+              <MenuItem value="rejected">Rejected</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Your Response"
+            value={responseText}
+            onChange={(e) => setResponseText(e.target.value)}
+            placeholder="Enter your response to the student..."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResponseDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleResponse} disabled={!responseText.trim() || submitting}>
+            {submitting ? 'Submitting...' : 'Submit Response'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -34,6 +34,7 @@ const {
   debugAdminData,
   getStudentResultsForRegrade,
   regradeStudentResult,
+  manualGradeResult,
   registerTeacher,
   getTeachers,
   getTeacherById,
@@ -181,6 +182,7 @@ router.get('/leaderboard', getOverallLeaderboard);
 router.get('/results/:resultId', getDetailedResult);
 router.get('/exams/:examId/results/export', exportExamResults);
 router.get('/results', getAllResults);
+router.put('/results/:resultId/manual-grade', authLimiter, manualGradeResult);
 
 // Student management data (grades + performance, no plan restriction)
 router.get('/student-management', getStudentManagementData);

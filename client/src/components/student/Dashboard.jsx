@@ -40,7 +40,6 @@ import {
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
-import PlanUsageCard from '../PlanUsageCard';
 
 // Google Play Icon SVG
 const GooglePlayIcon = () => (
@@ -380,11 +379,6 @@ const Dashboard = () => {
         <Typography variant="body1" color="text.secondary" paragraph>
           Welcome, {user?.firstName || 'Student'}! Here are your available exams and results.
         </Typography>
-
-        {/* Plan Usage Card */}
-        <Box sx={{ mb: 3 }}>
-          <PlanUsageCard user={user} />
-        </Box>
 
         {/* App Download Recommendation - Only show when no available exams */}
         {!hasAvailableExams && (

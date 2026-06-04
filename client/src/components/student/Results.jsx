@@ -34,7 +34,15 @@ import {
   useMediaQuery,
   alpha,
   Avatar,
-  Slide
+  Slide,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  MenuItem,
+  Select,
+  TextField
 } from '@mui/material';
 import {
   ExpandMore,
@@ -72,7 +80,8 @@ import {
   DragIndicator,
   RadioButtonChecked,
   TextFields,
-  Leaderboard
+  Leaderboard,
+  ReportProblem
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import api from '../../services/api';
@@ -173,6 +182,14 @@ const Results = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
+  const [claimDialogOpen, setClaimDialogOpen] = useState(false);
+  const [claimText, setClaimText] = useState('');
+  const [claimCategory, setClaimCategory] = useState('other');
+  const [claimPriority, setClaimPriority] = useState('medium');
+  const [submittingClaim, setSubmittingClaim] = useState(false);
+  const [myReclamations, setMyReclamations] = useState([]);
+  const [reclamationsLoading, setReclamationsLoading] = useState(false);
+  const [reclamationsDialogOpen, setReclamationsDialogOpen] = useState(false);
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -202,6 +219,18 @@ const Results = () => {
 
     fetchResults();
   }, [resultId]);
+
+  const fetchMyReclamations = async () => {
+    try {
+      setReclamationsLoading(true);
+      const res = await api.get('/reclamations/my-reclamations');
+      setMyReclamations(res.data);
+    } catch (err) {
+      console.error('Error fetching my reclamations:', err);
+    } finally {
+      setReclamationsLoading(false);
+    }
+  };
 
   const fetchDetailedResult = async (id) => {
     try {
@@ -250,6 +279,31 @@ const Results = () => {
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
+  };
+
+  const handleSubmitClaim = async () => {
+    if (!claimText.trim()) return;
+    
+    setSubmittingClaim(true);
+    try {
+      await api.post('/reclamations', {
+        resultId: detailedResult._id,
+        examId: detailedResult.exam._id,
+        claim: claimText,
+        category: claimCategory,
+        priority: claimPriority
+      });
+      setClaimDialogOpen(false);
+      setClaimText('');
+      setClaimCategory('other');
+      setClaimPriority('medium');
+      alert('Reclamation submitted successfully. Your teacher and organization admin will review it.');
+    } catch (err) {
+      console.error('Error submitting claim:', err);
+      alert('Failed to submit reclamation. Please try again.');
+    } finally {
+      setSubmittingClaim(false);
+    }
   };
 
   // Format date
@@ -924,6 +978,16 @@ const Results = () => {
                     sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700 }}>
                     Dashboard
                   </Button>
+                  <Button variant="contained" onClick={() => { fetchMyReclamations(); setReclamationsDialogOpen(true); }}
+                    startIcon={<ReportProblem />}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700 }}>
+                    My Reclamations
+                  </Button>
+                  <Button variant="contained" onClick={() => setClaimDialogOpen(true)}
+                    startIcon={<ReportProblem />}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700 }}>
+                    Claim Result
+                  </Button>
                 </Box>
               </Box>
             </Paper>
@@ -1100,6 +1164,123 @@ const Results = () => {
             </Card>
           </Zoom>
         </Container>
+
+        {/* Claim Dialog */}
+        <Dialog open={claimDialogOpen} onClose={() => setClaimDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ReportProblem color="warning" />
+            Submit a Reclamation
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Your reclamation will be reviewed by your teacher, organization admin, and super admin.
+            </Alert>
+            <Box sx={{ mb: 2 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.5 }}>Category</Typography>
+              <FormControl fullWidth size="small">
+                <Select value={claimCategory} onChange={(e) => setClaimCategory(e.target.value)}>
+                  <MenuItem value="grading-error">Grading Error</MenuItem>
+                  <MenuItem value="technical-issue">Technical Issue</MenuItem>
+                  <MenuItem value="content-error">Content Error</MenuItem>
+                  <MenuItem value="other">Other</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ mb: 2 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.5 }}>Priority</Typography>
+              <FormControl fullWidth size="small">
+                <Select value={claimPriority} onChange={(e) => setClaimPriority(e.target.value)}>
+                  <MenuItem value="low">Low</MenuItem>
+                  <MenuItem value="medium">Medium</MenuItem>
+                  <MenuItem value="high">High</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Describe your claim"
+              placeholder="Please explain why you are submitting this reclamation..."
+              value={claimText}
+              onChange={(e) => setClaimText(e.target.value)}
+              sx={{ mb: 1 }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2.5 }}>
+            <Button onClick={() => setClaimDialogOpen(false)} sx={{ textTransform: 'none', fontWeight: 600 }}>
+              Cancel
+            </Button>
+            <Button 
+              variant="contained" 
+              onClick={handleSubmitClaim}
+              disabled={!claimText.trim() || submittingClaim}
+              sx={{ textTransform: 'none', fontWeight: 700 }}
+            >
+              {submittingClaim ? 'Submitting...' : 'Submit Reclamation'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* My Reclamations Dialog */}
+        <Dialog open={reclamationsDialogOpen} onClose={() => setReclamationsDialogOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ReportProblem color="info" />
+            My Reclamations
+          </DialogTitle>
+          <DialogContent>
+            {reclamationsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : myReclamations.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" color="text.secondary">No reclamations submitted yet</Typography>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {myReclamations.map((reclamation) => (
+                  <Paper key={reclamation._id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                      <Typography variant="subtitle2" fontWeight={600}>
+                        {reclamation.exam?.title || 'Unknown Exam'}
+                      </Typography>
+                      <Chip 
+                        label={reclamation.status} 
+                        size="small" 
+                        sx={{ 
+                          bgcolor: reclamation.status === 'resolved' ? '#10B98120' : 
+                                 reclamation.status === 'rejected' ? '#EF444420' : 
+                                 reclamation.status === 'under-review' ? '#3B82F620' : '#F59E0B20',
+                          color: reclamation.status === 'resolved' ? '#10B981' : 
+                                 reclamation.status === 'rejected' ? '#EF4444' : 
+                                 reclamation.status === 'under-review' ? '#3B82F6' : '#F59E0B',
+                          fontWeight: 600 
+                        }} 
+                      />
+                    </Box>
+                    <Typography variant="body2" sx={{ mb: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {reclamation.claim}
+                    </Typography>
+                    {reclamation.response && (
+                      <Box sx={{ p: 1.5, bgcolor: '#ECFDF5', borderRadius: 1.5, border: '1px solid #10B981', mb: 1 }}>
+                        <Typography variant="caption" color="#065F46" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>Response:</Typography>
+                        <Typography variant="body2" color="#065F46">{reclamation.response}</Typography>
+                      </Box>
+                    )}
+                    <Typography variant="caption" color="text.secondary">
+                      Submitted on {new Date(reclamation.createdAt).toLocaleDateString()}
+                      {reclamation.respondedAt && ` · Responded on ${new Date(reclamation.respondedAt).toLocaleDateString()}`}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setReclamationsDialogOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
       </StudentLayout>
     );
   }
@@ -1264,6 +1445,22 @@ const Results = () => {
                     }
                   }}
                 />
+                <Button
+                  variant="contained"
+                  onClick={() => { fetchMyReclamations(); setReclamationsDialogOpen(true); }}
+                  startIcon={<ReportProblem />}
+                  sx={{
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    '&:hover': {
+                      bgcolor: 'rgba(255,255,255,0.3)'
+                    }
+                  }}
+                >
+                  My Reclamations
+                </Button>
               </Box>
             </Box>
           </Paper>
@@ -1734,6 +1931,123 @@ const Results = () => {
         </Fade>
       )}
       </Container>
+
+      {/* Claim Dialog */}
+      <Dialog open={claimDialogOpen} onClose={() => setClaimDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ReportProblem color="warning" />
+          Submit a Reclamation
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Your reclamation will be reviewed by your teacher, organization admin, and super admin.
+          </Alert>
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.5 }}>Category</Typography>
+            <FormControl fullWidth size="small">
+              <Select value={claimCategory} onChange={(e) => setClaimCategory(e.target.value)}>
+                <MenuItem value="grading-error">Grading Error</MenuItem>
+                <MenuItem value="technical-issue">Technical Issue</MenuItem>
+                <MenuItem value="content-error">Content Error</MenuItem>
+                <MenuItem value="other">Other</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.5 }}>Priority</Typography>
+            <FormControl fullWidth size="small">
+              <Select value={claimPriority} onChange={(e) => setClaimPriority(e.target.value)}>
+                <MenuItem value="low">Low</MenuItem>
+                <MenuItem value="medium">Medium</MenuItem>
+                <MenuItem value="high">High</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Describe your claim"
+            placeholder="Please explain why you are submitting this reclamation..."
+            value={claimText}
+            onChange={(e) => setClaimText(e.target.value)}
+            sx={{ mb: 1 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setClaimDialogOpen(false)} sx={{ textTransform: 'none', fontWeight: 600 }}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSubmitClaim}
+            disabled={!claimText.trim() || submittingClaim}
+            sx={{ textTransform: 'none', fontWeight: 700 }}
+          >
+            {submittingClaim ? 'Submitting...' : 'Submit Reclamation'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* My Reclamations Dialog */}
+      <Dialog open={reclamationsDialogOpen} onClose={() => setReclamationsDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ReportProblem color="info" />
+          My Reclamations
+        </DialogTitle>
+        <DialogContent>
+          {reclamationsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : myReclamations.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Typography variant="body2" color="text.secondary">No reclamations submitted yet</Typography>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {myReclamations.map((reclamation) => (
+                <Paper key={reclamation._id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      {reclamation.exam?.title || 'Unknown Exam'}
+                    </Typography>
+                    <Chip 
+                      label={reclamation.status} 
+                      size="small" 
+                      sx={{ 
+                        bgcolor: reclamation.status === 'resolved' ? '#10B98120' : 
+                               reclamation.status === 'rejected' ? '#EF444420' : 
+                               reclamation.status === 'under-review' ? '#3B82F620' : '#F59E0B20',
+                        color: reclamation.status === 'resolved' ? '#10B981' : 
+                               reclamation.status === 'rejected' ? '#EF4444' : 
+                               reclamation.status === 'under-review' ? '#3B82F6' : '#F59E0B',
+                        fontWeight: 600 
+                      }} 
+                    />
+                  </Box>
+                  <Typography variant="body2" sx={{ mb: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {reclamation.claim}
+                  </Typography>
+                  {reclamation.response && (
+                    <Box sx={{ p: 1.5, bgcolor: '#ECFDF5', borderRadius: 1.5, border: '1px solid #10B981', mb: 1 }}>
+                      <Typography variant="caption" color="#065F46" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>Response:</Typography>
+                      <Typography variant="body2" color="#065F46">{reclamation.response}</Typography>
+                    </Box>
+                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    Submitted on {new Date(reclamation.createdAt).toLocaleDateString()}
+                    {reclamation.respondedAt && ` · Responded on ${new Date(reclamation.respondedAt).toLocaleDateString()}`}
+                  </Typography>
+                </Paper>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReclamationsDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </StudentLayout>
   );
 };

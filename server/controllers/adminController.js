@@ -3797,6 +3797,81 @@ const getStudentResultsForRegrade = async (req, res) => {
   }
 };
 
+// @desc    Manually grade a student result
+// @route   PUT /api/admin/results/:resultId/manual-grade
+// @access  Private/Admin
+const manualGradeResult = async (req, res) => {
+  try {
+    const { resultId } = req.params;
+    const { answerUpdates } = req.body;
+
+    // Find the result
+    const result = await Result.findById(resultId)
+      .populate('exam')
+      .populate('student');
+
+    if (!result) {
+      return res.status(404).json({ message: 'Result not found' });
+    }
+
+    // Verify admin has access to this result
+    const isSuperAdmin = req.user.role === 'superadmin';
+    const hasAccess = isSuperAdmin ||
+                     result.exam.createdBy.toString() === req.user._id.toString() ||
+                     result.student.createdBy.toString() === req.user._id.toString();
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Not authorized to grade this result' });
+    }
+
+    // Update each answer's score
+    for (const update of answerUpdates) {
+      const { answerId, score } = update;
+      const answer = result.answers.id(answerId);
+      if (answer) {
+        answer.score = score;
+        // Update isCorrect based on score
+        const questionPoints = answer.question?.points || 1;
+        answer.isCorrect = score >= questionPoints;
+      }
+    }
+
+    // Recalculate total score
+    let totalScore = 0;
+    result.answers.forEach(answer => {
+      totalScore += answer.score || 0;
+    });
+    result.totalScore = totalScore;
+
+    // Recalculate percentage
+    const percentage = result.maxPossibleScore > 0 
+      ? Math.round((totalScore / result.maxPossibleScore) * 100) 
+      : 0;
+    result.percentage = percentage;
+
+    // Update grade
+    result.grade = percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : 'F';
+
+    // Mark as manually graded
+    result.manuallyGraded = true;
+    result.manuallyGradedBy = req.user._id;
+    result.manuallyGradedAt = Date.now();
+
+    await result.save();
+
+    // Return updated result
+    const updatedResult = await Result.findById(resultId)
+      .populate('student', 'firstName lastName email')
+      .populate('exam', 'title')
+      .populate('answers.question');
+
+    res.json(updatedResult);
+  } catch (error) {
+    console.error('Manual grade error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // @desc    Regrade a specific student result
 // @route   POST /api/admin/regrade-result/:resultId
 // @access  Private/Admin
@@ -4852,6 +4927,7 @@ module.exports = {
   debugAdminData,
   getStudentResultsForRegrade,
   regradeStudentResult,
+  manualGradeResult,
   registerTeacher,
   getTeachers,
   getTeacherById,

@@ -11,7 +11,7 @@ import {
   Dashboard as DashIcon, Business, People, Settings, AttachMoney,
   SupervisorAccount, School, TrendingUp,
   CheckCircle, Block, Edit, Add, ArrowForward, Delete, InfoOutlined, Close,
-  Visibility, VisibilityOff, Assessment, Person, Email, EmojiEvents
+  Visibility, VisibilityOff, Assessment, Person, Email, EmojiEvents, ReportProblem
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -28,6 +28,7 @@ const nav = [
   { id: 'subscriptions', label: 'Subscriptions',             icon: <AttachMoney sx={{ fontSize: 20 }} /> },
   { id: 'marketplace',   label: 'Exam Bank Marketplace',    icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'student-results', label: 'Student Results',  icon: <Assessment sx={{ fontSize: 20 }} /> },
+  { id: 'reclamations',    label: 'Reclamations',        icon: <ReportProblem sx={{ fontSize: 20 }} /> },
   { id: 'leaderboard',     label: 'Leaderboard',      icon: <EmojiEvents sx={{ fontSize: 20 }} /> },
   { id: 'analytics',       label: 'Analytics',        icon: <TrendingUp sx={{ fontSize: 20 }} /> },
   { id: 'settings',        label: 'Settings',         icon: <Settings sx={{ fontSize: 20 }} /> },
@@ -81,6 +82,7 @@ export default function SuperAdminDashboard() {
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
       {activeSection === 'marketplace'   && <ExamBankMarketplaceSection searchQuery={searchQuery} />}
       {activeSection === 'student-results' && <StudentResultsSection searchQuery={searchQuery} />}
+      {activeSection === 'reclamations'    && <ReclamationsSection searchQuery={searchQuery} />}
       {activeSection === 'leaderboard'     && <LeaderboardSection systemWide={true} />}
       {activeSection === 'analytics'       && <AnalyticsSection stats={stats} />}
       {activeSection === 'settings'      && <SettingsSection user={user} />}
@@ -5114,6 +5116,228 @@ function StudentResultsSection({ searchQuery }) {
             </Typography>
           )}
         </DialogContent>
+      </Dialog>
+    </Box>
+  );
+}
+
+/* ── RECLAMATIONS ── */
+function ReclamationsSection({ searchQuery }) {
+  const [reclamations, setReclamations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedReclamation, setSelectedReclamation] = useState(null);
+  const [responseDialogOpen, setResponseDialogOpen] = useState(false);
+  const [responseText, setResponseText] = useState('');
+  const [responseStatus, setResponseStatus] = useState('resolved');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetchReclamations();
+  }, []);
+
+  const fetchReclamations = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/reclamations');
+      setReclamations(res.data);
+    } catch (err) {
+      console.error('Error fetching reclamations:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRespond = async () => {
+    if (!responseText.trim()) return;
+    setSubmitting(true);
+    try {
+      await api.put(`/reclamations/${selectedReclamation._id}/respond`, {
+        response: responseText,
+        status: responseStatus
+      });
+      setResponseDialogOpen(false);
+      setResponseText('');
+      setResponseStatus('resolved');
+      setSelectedReclamation(null);
+      fetchReclamations();
+    } catch (err) {
+      console.error('Error responding to reclamation:', err);
+      alert('Failed to submit response');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'pending': return '#F59E0B';
+      case 'under-review': return '#3B82F6';
+      case 'resolved': return '#10B981';
+      case 'rejected': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
+
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high': return '#EF4444';
+      case 'medium': return '#F59E0B';
+      case 'low': return '#10B981';
+      default: return '#6B7280';
+    }
+  };
+
+  const filteredReclamations = reclamations.filter(r =>
+    !searchQuery || 
+    r.student?.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.student?.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.exam?.title?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <Box>
+      <SectionTitle>Student Reclamations</SectionTitle>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : filteredReclamations.length === 0 ? (
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 3, textAlign: 'center', border: `1px solid ${tokens.surfaceBorder}` }}>
+          <ReportProblem sx={{ fontSize: 48, color: tokens.textMuted, mb: 2 }} />
+          <Typography variant="h6" color="text.secondary">No reclamations found</Typography>
+        </Paper>
+      ) : (
+        <Grid container spacing={2}>
+          {filteredReclamations.map((reclamation) => (
+            <Grid item xs={12} md={6} key={reclamation._id}>
+              <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, cursor: 'pointer', '&:hover': { borderColor: tokens.primary } }}
+                onClick={() => setSelectedReclamation(reclamation)}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Avatar sx={{ width: 32, height: 32, bgcolor: tokens.primary }}>
+                      {reclamation.student?.firstName?.[0] || '?'}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        {reclamation.student?.firstName} {reclamation.student?.lastName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {reclamation.exam?.title}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Chip label={reclamation.status} size="small" sx={{ bgcolor: `${getStatusColor(reclamation.status)}20`, color: getStatusColor(reclamation.status), fontWeight: 600 }} />
+                </Box>
+                <Typography variant="body2" sx={{ mb: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {reclamation.claim}
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Chip label={reclamation.category} size="small" variant="outlined" sx={{ fontSize: 10 }} />
+                    <Chip label={reclamation.priority} size="small" sx={{ bgcolor: `${getPriorityColor(reclamation.priority)}20`, color: getPriorityColor(reclamation.priority), fontSize: 10 }} />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(reclamation.createdAt).toLocaleDateString()}
+                  </Typography>
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Reclamation Detail Dialog */}
+      <Dialog open={!!selectedReclamation} onClose={() => setSelectedReclamation(null)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Reclamation Details</DialogTitle>
+        <DialogContent>
+          {selectedReclamation && (
+            <Box>
+              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                <Avatar sx={{ width: 48, height: 48, bgcolor: tokens.primary }}>
+                  {selectedReclamation.student?.firstName?.[0] || '?'}
+                </Avatar>
+                <Box>
+                  <Typography variant="h6" fontWeight={600}>
+                    {selectedReclamation.student?.firstName} {selectedReclamation.student?.lastName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedReclamation.student?.email}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Paper elevation={0} sx={{ p: 2, mb: 2, bgcolor: '#F8FAFC', borderRadius: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Exam</Typography>
+                <Typography variant="body2" fontWeight={600}>{selectedReclamation.exam?.title}</Typography>
+              </Paper>
+
+              <Paper elevation={0} sx={{ p: 2, mb: 2, bgcolor: '#F8FAFC', borderRadius: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Claim</Typography>
+                <Typography variant="body2">{selectedReclamation.claim}</Typography>
+              </Paper>
+
+              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <Chip label={selectedReclamation.category} size="small" />
+                <Chip label={selectedReclamation.priority} size="small" sx={{ bgcolor: `${getPriorityColor(selectedReclamation.priority)}20`, color: getPriorityColor(selectedReclamation.priority) }} />
+                <Chip label={selectedReclamation.status} size="small" sx={{ bgcolor: `${getStatusColor(selectedReclamation.status)}20`, color: getStatusColor(selectedReclamation.status) }} />
+              </Box>
+
+              {selectedReclamation.response && (
+                <Paper elevation={0} sx={{ p: 2, mb: 2, bgcolor: '#ECFDF5', borderRadius: 2, border: '1px solid #10B981' }}>
+                  <Typography variant="caption" color="#065F46" sx={{ display: 'block', mb: 0.5 }}>Response</Typography>
+                  <Typography variant="body2">{selectedReclamation.response}</Typography>
+                  {selectedReclamation.respondedBy && (
+                    <Typography variant="caption" color="#065F46" sx={{ mt: 1, display: 'block' }}>
+                      Responded by: {selectedReclamation.respondedBy.firstName} {selectedReclamation.respondedBy.lastName}
+                    </Typography>
+                  )}
+                </Paper>
+              )}
+
+              <Typography variant="caption" color="text.secondary">
+                Submitted on {new Date(selectedReclamation.createdAt).toLocaleString()}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedReclamation(null)}>Close</Button>
+          {!selectedReclamation?.response && (
+            <Button variant="contained" onClick={() => { setResponseDialogOpen(true); setResponseStatus(selectedReclamation.status === 'pending' ? 'under-review' : 'resolved'); }}>
+              Respond
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Response Dialog */}
+      <Dialog open={responseDialogOpen} onClose={() => setResponseDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Respond to Reclamation</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Status</InputLabel>
+            <Select value={responseStatus} onChange={(e) => setResponseStatus(e.target.value)} label="Status">
+              <MenuItem value="under-review">Under Review</MenuItem>
+              <MenuItem value="resolved">Resolved</MenuItem>
+              <MenuItem value="rejected">Rejected</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Your Response"
+            value={responseText}
+            onChange={(e) => setResponseText(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResponseDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleRespond} disabled={!responseText.trim() || submitting}>
+            {submitting ? 'Submitting...' : 'Submit Response'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

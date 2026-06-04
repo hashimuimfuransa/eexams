@@ -6,7 +6,7 @@ const PLANS = {
     name: 'Free',
     price: 0,
     priceRWF: 0,
-    maxExams: 5,
+    maxExams: 1,
     maxStudents: 5,
     maxTeachers: 1,
     aiFeatures: false,
@@ -17,10 +17,10 @@ const PLANS = {
     apiAccess: false,
     marketplaceAccess: false,
     templates: false,
-    examPerMonth: 5,
+    examPerMonth: 1,
     storageLimit: 100, // MB
     features: [
-      'Create up to 5 exams',
+      'Create up to 1 exam',
       'Up to 5 students',
       '1 teacher account',
       'Basic question types',
@@ -145,7 +145,7 @@ const ORG_PLANS = {
     name: 'Free Trial',
     price: 0,
     priceRWF: 0,
-    maxExams: 5,
+    maxExams: 1,
     maxStudents: 5,
     maxTeachers: 1,
     aiFeatures: false,
@@ -160,7 +160,7 @@ const ORG_PLANS = {
     features: [
       '1 teacher account',
       'Up to 5 students',
-      '5 exams',
+      '1 exam',
       'Basic support',
       'No credit card required'
     ]

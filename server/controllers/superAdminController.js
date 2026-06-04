@@ -1699,7 +1699,19 @@ const updateUser = async (req, res) => {
       // Set expiration date when activating subscription (enterprise doesn't expire)
       if (subscriptionStatus === 'active') {
         const planToUse = subscriptionPlan || user.subscriptionPlan;
-        const expiresAt = planToUse === 'enterprise' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        let expiresAt;
+        if (planToUse === 'enterprise') {
+          expiresAt = null;
+        } else if (planToUse === 'free') {
+          // Students get 365 days, teachers get 14 days
+          if (user.role === 'student') {
+            expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
+          } else {
+            expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
+          }
+        } else {
+          expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days for paid plans
+        }
         user.subscriptionExpiresAt = expiresAt;
         user.subscriptionEndDate = expiresAt;
         user.subscriptionStartDate = new Date();
@@ -1723,7 +1735,14 @@ const updateUser = async (req, res) => {
         // Set expiration date for teachers when activating
         if (subscriptionStatus === 'active') {
           const planToUse = subscriptionPlan || user.subscriptionPlan;
-          const expiresAt = planToUse === 'enterprise' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          let expiresAt;
+          if (planToUse === 'enterprise') {
+            expiresAt = null;
+          } else if (planToUse === 'free') {
+            expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for free plan
+          } else {
+            expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days for paid plans
+          }
           teacherUpdate.subscriptionExpiresAt = expiresAt;
           teacherUpdate.subscriptionEndDate = expiresAt;
           teacherUpdate.subscriptionStartDate = new Date();

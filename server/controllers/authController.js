@@ -66,7 +66,12 @@ const register = async (req, res) => {
       // Individual accounts (teacher or student): free plan is auto-active
       if (finalSubscriptionPlan === 'free') {
         subscriptionStatus = 'active';
-        subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year for free plan
+        // Students get 365 days, teachers get 14 days
+        if (finalRole === 'student') {
+          subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
+        } else {
+          subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
+        }
       } else {
         subscriptionStatus = 'pending'; // paid plan needs admin approval
         subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -305,7 +310,12 @@ const updateProfile = async (req, res) => {
       // Set subscription status based on plan
       if (subscriptionPlan === 'free') {
         user.subscriptionStatus = 'active';
-        user.subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year for free
+        // Students get 365 days, teachers get 14 days
+        if (user.role === 'student') {
+          user.subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
+        } else {
+          user.subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
+        }
       } else {
         // Paid plans require admin approval
         user.subscriptionStatus = 'pending';
@@ -445,7 +455,14 @@ const googleAuth = async (req, res) => {
         const isOrg = (accountType || user.userType) === 'organization';
         if (subscriptionPlan === 'free') {
           user.subscriptionStatus = 'active';
-          user.subscriptionExpiresAt = new Date(Date.now() + (isOrg ? 30 : 365) * 24 * 60 * 60 * 1000);
+          // Students get 365 days, teachers get 14 days, orgs get 30 days
+          if (user.role === 'student') {
+            user.subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
+          } else if (isOrg) {
+            user.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days for orgs
+          } else {
+            user.subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
+          }
         } else {
           user.subscriptionStatus = 'pending';
           user.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -513,7 +530,12 @@ const googleAuth = async (req, res) => {
       // Individual accounts (teacher or student) get free plan by default
       finalSubscriptionPlan = subscriptionPlan || 'free';
       subscriptionStatus = 'active';
-      subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      // Students get 365 days, teachers get 14 days
+      if (finalRole === 'student') {
+        subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
+      } else {
+        subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
+      }
     }
 
     // Determine role: respect client-provided role for students, otherwise use account type

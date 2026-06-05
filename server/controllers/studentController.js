@@ -10,10 +10,22 @@ const emailService = require('../utils/emailService');
 // @access  Private/Student
 const getAvailableExams = async (req, res) => {
   try {
-    // Get all exams assigned to this student with populated sections and questions
+    // Get all approved exam requests for this student (retake and initial)
+    const approvedRequests = await ExamRequest.find({
+      student: req.user._id,
+      status: 'approved'
+    }).select('exam isRetake accessCodeUsed');
+
+    // Get exam IDs from approved requests
+    const approvedExamIds = approvedRequests.map(r => r.exam.toString());
+
+    // Get all exams assigned to this student OR from approved requests
     // Only show active exams, not draft exams
     const exams = await Exam.find({
-      assignedTo: req.user._id,
+      $or: [
+        { assignedTo: req.user._id },
+        { _id: { $in: approvedExamIds } }
+      ],
       status: 'active'
     })
       .populate('createdBy', 'firstName lastName')
@@ -30,11 +42,6 @@ const getAvailableExams = async (req, res) => {
       student: req.user._id
     }).select('exam isCompleted');
 
-    // Get all approved exam requests (retake and initial) so we can override locked/completed status
-    const approvedRequests = await ExamRequest.find({
-      student: req.user._id,
-      status: 'approved'
-    }).select('exam isRetake accessCodeUsed');
     // Only count retake as active if the access code hasn't been used (i.e. retake not yet completed)
     const approvedRetakeExamIds = approvedRequests.filter(r => r.isRetake && !r.accessCodeUsed).map(r => r.exam.toString());
     // For unlocking exams: include non-retake requests AND retakes that haven't been used yet
@@ -63,7 +70,10 @@ const getAvailableExams = async (req, res) => {
 
     // Fetch exams again to get the updated data after enabling selective answering
     const updatedExams = await Exam.find({
-      assignedTo: req.user._id
+      $or: [
+        { assignedTo: req.user._id },
+        { _id: { $in: approvedExamIds } }
+      ]
     })
       .populate('createdBy', 'firstName lastName')
       .populate('sections.questions')
@@ -90,7 +100,12 @@ const getAvailableExams = async (req, res) => {
       }
 
       // Add completion status
-      if (completedExams.includes(exam._id.toString())) {
+      // If student has an approved retake request for this exam, show as not-started regardless of previous completion
+      const hasApprovedRetake = approvedRetakeExamIds.includes(exam._id.toString());
+      
+      if (hasApprovedRetake) {
+        examObj.status = 'not-started';
+      } else if (completedExams.includes(exam._id.toString())) {
         examObj.status = 'completed';
       } else if (inProgressExams.includes(exam._id.toString())) {
         examObj.status = 'in-progress';
@@ -204,11 +219,21 @@ const getExamById = async (req, res) => {
       }
     }
 
-    // If not found via share token, check if assigned
+    // If not found via share token, check if assigned OR has approved request
     if (!exam) {
+      // Check if student has an approved request for this exam
+      const approvedRequest = await ExamRequest.findOne({
+        exam: req.params.examId,
+        student: req.user._id,
+        status: 'approved'
+      });
+
       exam = await Exam.findOne({
         _id: req.params.examId,
-        assignedTo: req.user._id
+        $or: [
+          { assignedTo: req.user._id },
+          { _id: { $in: approvedRequest ? [approvedRequest.exam] : [] } }
+        ]
       })
         .populate('createdBy', 'firstName lastName')
         .populate('sections.questions')

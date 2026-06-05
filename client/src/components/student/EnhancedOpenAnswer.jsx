@@ -11,6 +11,10 @@ import {
   IconButton,
   Collapse,
   Alert,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import {
   Functions,
@@ -18,9 +22,21 @@ import {
   KeyboardAlt,
   InfoOutlined,
   CheckCircleOutline,
+  Code,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import 'mathlive';
+import { EditorView, basicSetup } from 'codemirror';
+import { javascript } from '@codemirror/lang-javascript';
+import { python } from '@codemirror/lang-python';
+import { java } from '@codemirror/lang-java';
+import { cpp } from '@codemirror/lang-cpp';
+import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
+import { json } from '@codemirror/lang-json';
+import { sql } from '@codemirror/lang-sql';
+import { xml } from '@codemirror/lang-xml';
+import { oneDark } from '@codemirror/theme-one-dark';
 
 /* ─── Tokens ─────────────────────────────────────────────── */
 const TOKEN = {
@@ -210,6 +226,19 @@ const StatusRow = styled(Box)({
   gap: 8,
 });
 
+/* ─── Programming language options ─────────────────────────── */
+const LANGUAGES = [
+  { value: 'javascript', label: 'JavaScript', extension: 'js' },
+  { value: 'python', label: 'Python', extension: 'py' },
+  { value: 'java', label: 'Java', extension: 'java' },
+  { value: 'cpp', label: 'C++', extension: 'cpp' },
+  { value: 'html', label: 'HTML', extension: 'html' },
+  { value: 'css', label: 'CSS', extension: 'css' },
+  { value: 'json', label: 'JSON', extension: 'json' },
+  { value: 'sql', label: 'SQL', extension: 'sql' },
+  { value: 'xml', label: 'XML', extension: 'xml' },
+];
+
 /* ─── Main Component ─────────────────────────────────────── */
 const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answerRef }) => {
   const [activeTab, setActiveTab] = useState(0);
@@ -217,12 +246,17 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
   const [textValue, setTextValue] = useState(answer?.textAnswer || '');
   const [activeGroup, setActiveGroup] = useState(SYMBOL_GROUPS[0].label);
   const [mathReady, setMathReady] = useState(false);
+  const [codeValue, setCodeValue] = useState('');
+  const [selectedLanguage, setSelectedLanguage] = useState('javascript');
   const mathfieldRef = useRef(null);
+  const codeEditorRef = useRef(null);
+  const codeEditorContainerRef = useRef(null);
 
   // Reset local state when the question changes
   useEffect(() => {
     setTextValue(answer?.textAnswer || '');
     setMathValue('');
+    setCodeValue('');
     setActiveTab(0);
   }, [question._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -232,20 +266,22 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
       answerRef.current = () => {
         let combined = '';
         if (mathValue) combined += `[MATH: ${mathValue}] `;
+        if (codeValue) combined += `[CODE: ${selectedLanguage}\n${codeValue}] `;
         if (textValue) combined += textValue;
         return combined || '';
       };
     }
-  }, [mathValue, textValue, answerRef]);
+  }, [mathValue, codeValue, selectedLanguage, textValue, answerRef]);
 
   const updateCombined = useCallback(
-    (math, text) => {
+    (math, code, text) => {
       let combined = '';
       if (math) combined += `[MATH: ${math}] `;
+      if (code) combined += `[CODE: ${selectedLanguage}\n${code}] `;
       if (text) combined += text;
       onAnswerChange(question._id, combined || '', question.type);
     },
-    [question._id, question.type, onAnswerChange]
+    [question._id, question.type, onAnswerChange, selectedLanguage]
   );
 
   /* Set up math-field listeners once it mounts */
@@ -283,6 +319,66 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
     };
   }, [activeTab]); // re-bind when switching to math tab
 
+  /* Set up CodeMirror editor */
+  useEffect(() => {
+    if (activeTab !== 2 || !codeEditorContainerRef.current) return;
+
+    // Clean up existing editor
+    if (codeEditorRef.current) {
+      codeEditorRef.current.destroy();
+      codeEditorRef.current = null;
+    }
+
+    const container = codeEditorContainerRef.current;
+    container.innerHTML = '';
+
+    // Language extension mapping
+    const languageExtensions = {
+      javascript: javascript(),
+      python: python(),
+      java: java(),
+      cpp: cpp(),
+      html: html(),
+      css: css(),
+      json: json(),
+      sql: sql(),
+      xml: xml(),
+    };
+
+    const editor = new EditorView({
+      doc: codeValue,
+      extensions: [
+        basicSetup,
+        languageExtensions[selectedLanguage] || javascript(),
+        oneDark,
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            setCodeValue(update.state.doc.toString());
+          }
+        }),
+        EditorView.theme({
+          '&': {
+            height: '300px',
+            fontSize: '14px',
+          },
+          '.cm-scroller': {
+            overflow: 'auto',
+          },
+        }),
+      ],
+      parent: container,
+    });
+
+    codeEditorRef.current = editor;
+
+    return () => {
+      if (codeEditorRef.current) {
+        codeEditorRef.current.destroy();
+        codeEditorRef.current = null;
+      }
+    };
+  }, [activeTab, selectedLanguage]);
+
   /* Insert a LaTeX snippet at the math-field cursor */
   const insertSymbol = (latex) => {
     const mf = mathfieldRef.current;
@@ -307,14 +403,14 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
 
   const handleTabChange = (event, newValue) => {
     // Sync answer before switching tabs
-    updateCombined(mathValue, textValue);
+    updateCombined(mathValue, codeValue, textValue);
     setActiveTab(newValue);
   };
 
   const isSection = question?.section;
   const rows = isSection === 'C' ? 12 : 6;
   const recommended = isSection === 'C' ? 300 : null;
-  const hasContent = mathValue.trim() || textValue.trim();
+  const hasContent = mathValue.trim() || textValue.trim() || codeValue.trim();
 
   return (
     <Box sx={{ mt: 2 }}>
@@ -323,6 +419,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
         <TabBar value={activeTab} onChange={handleTabChange}>
           <Tab icon={<Edit fontSize="small" />} label="Written Answer" iconPosition="start" />
           <Tab icon={<Functions fontSize="small" />} label="Math / Equations" iconPosition="start" />
+          <Tab icon={<Code fontSize="small" />} label="Code / Programming" iconPosition="start" />
         </TabBar>
 
         {/* ── Math symbol palette (math tab only) ── */}
@@ -501,6 +598,65 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
               </Collapse>
             </Box>
           )}
+
+          {/* CODE TAB */}
+          {activeTab === 2 && (
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Code fontSize="small" sx={{ color: 'text.secondary' }} />
+                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: TOKEN.fontSans }}>
+                  Write your code solution below · Select your programming language
+                </Typography>
+                <Tooltip
+                  title="Use this editor to write and format code. Syntax highlighting is available for multiple languages."
+                  arrow
+                >
+                  <InfoOutlined sx={{ fontSize: 15, color: 'text.disabled', ml: 'auto', cursor: 'help' }} />
+                </Tooltip>
+              </Box>
+
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel id="language-select-label" sx={{ fontSize: '0.875rem' }}>Programming Language</InputLabel>
+                <Select
+                  labelId="language-select-label"
+                  value={selectedLanguage}
+                  label="Programming Language"
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  disabled={disabled}
+                  sx={{ fontSize: '0.875rem' }}
+                >
+                  {LANGUAGES.map((lang) => (
+                    <MenuItem key={lang.value} value={lang.value} sx={{ fontSize: '0.875rem' }}>
+                      {lang.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <Box
+                ref={codeEditorContainerRef}
+                sx={{
+                  border: `1.5px solid`,
+                  borderColor: 'divider',
+                  borderRadius: TOKEN.radius,
+                  overflow: 'hidden',
+                  minHeight: '300px',
+                  '& .cm-editor': {
+                    height: '300px',
+                  },
+                }}
+              />
+
+              <StatusRow>
+                <Typography variant="caption" color="text.disabled" sx={{ fontFamily: TOKEN.fontMono, fontSize: '0.7rem' }}>
+                  {codeValue ? `${codeValue.split('\n').length} lines, ${codeValue.length} chars` : 'No code entered'}
+                </Typography>
+                {codeValue && (
+                  <CheckCircleOutline sx={{ fontSize: 16, color: 'success.main' }} />
+                )}
+              </StatusRow>
+            </Box>
+          )}
         </Box>
       </Shell>
 
@@ -511,7 +667,20 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
           icon={<CheckCircleOutline fontSize="inherit" />}
           sx={{ mt: 1.5, py: 0.5, borderRadius: TOKEN.radius, fontFamily: TOKEN.fontSans, fontSize: '0.8rem' }}
         >
-          Answer recorded.{mathValue && textValue ? ' Written answer + equation saved.' : mathValue ? ' Equation saved.' : ' Written answer saved.'}
+          Answer recorded.
+          {mathValue && textValue && codeValue
+            ? ' Written answer + equation + code saved.'
+            : mathValue && textValue
+            ? ' Written answer + equation saved.'
+            : mathValue && codeValue
+            ? ' Equation + code saved.'
+            : textValue && codeValue
+            ? ' Written answer + code saved.'
+            : mathValue
+            ? ' Equation saved.'
+            : codeValue
+            ? ' Code saved.'
+            : ' Written answer saved.'}
         </Alert>
       )}
     </Box>

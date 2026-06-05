@@ -1284,6 +1284,17 @@ function ResultsSection({ results, resultsTotal, resultsPage, setResultsPage }) 
                                     </Typography>
                                   </Box>
                                 </Box>
+                                
+                                {/* Student's Answer for Open-Ended Questions */}
+                                {(ans.question?.type === 'open-ended' || ans.question?.type === 'short-answer' || ans.question?.type === 'essay') && (ans.textAnswer || ans.text) && (
+                                  <Box sx={{ mt: 0.5, p: 1, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>Student's Answer:</Typography>
+                                    <Typography variant="body2" sx={{ mt: 0.5, fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                                      {ans.textAnswer || ans.text}
+                                    </Typography>
+                                  </Box>
+                                )}
+                                
                                 {ans.gradingMethod && (
                                   <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block', mb: ans.feedback ? 0.5 : 0 }}>
                                     Method: {ans.gradingMethod}
@@ -1292,6 +1303,37 @@ function ResultsSection({ results, resultsTotal, resultsPage, setResultsPage }) 
                                 {ans.feedback && (
                                   <Box sx={{ mt: 0.5, p: 1, bgcolor: 'rgba(99,102,241,0.05)', borderRadius: 1.5, borderLeft: '3px solid #6366F1' }}>
                                     <Typography variant="caption" sx={{ color: '#4F46E5', fontStyle: 'italic' }}>💬 {ans.feedback}</Typography>
+                                  </Box>
+                                )}
+                                
+                                {/* Enhanced AI Grading Details */}
+                                {(ans.conceptsPresent?.length > 0 || ans.conceptsMissing?.length > 0 || ans.improvementSuggestions?.length > 0) && (
+                                  <Box sx={{ mt: 0.5, p: 1, bgcolor: '#F0F9FF', borderRadius: 1 }}>
+                                    <Typography variant="caption" color="#0369A1" fontWeight={600}>AI Analysis:</Typography>
+                                    {ans.conceptsPresent?.length > 0 && (
+                                      <Box sx={{ mt: 0.25 }}>
+                                        <Typography variant="caption" color="#0E7490" fontWeight={600} sx={{ fontSize: 11 }}>✓ Present:</Typography>
+                                        <Typography variant="caption" sx={{ fontSize: 11, color: '#155E75' }}>
+                                          {ans.conceptsPresent.join(', ')}
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                    {ans.conceptsMissing?.length > 0 && (
+                                      <Box sx={{ mt: 0.25 }}>
+                                        <Typography variant="caption" color="#DC2626" fontWeight={600} sx={{ fontSize: 11 }}>✗ Missing:</Typography>
+                                        <Typography variant="caption" sx={{ fontSize: 11, color: '#991B1B' }}>
+                                          {ans.conceptsMissing.join(', ')}
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                    {ans.improvementSuggestions?.length > 0 && (
+                                      <Box sx={{ mt: 0.25 }}>
+                                        <Typography variant="caption" color="#059669" fontWeight={600} sx={{ fontSize: 11 }}>💡 Suggestions:</Typography>
+                                        <Typography variant="caption" sx={{ fontSize: 11, color: '#065F46' }}>
+                                          {ans.improvementSuggestions.join('; ')}
+                                        </Typography>
+                                      </Box>
+                                    )}
                                   </Box>
                                 )}
                               </Box>

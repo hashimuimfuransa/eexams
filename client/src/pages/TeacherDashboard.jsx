@@ -6985,13 +6985,8 @@ function ResultsSection({ results, exams = [] }) {
     try {
       setResetting(true);
 
-      // Use shared exam endpoint if shareToken exists, otherwise use assigned exam endpoint
-      let endpoint;
-      if (detailData.shareToken) {
-        endpoint = `/share/${detailData.shareToken}/unlock/${detailData.student._id}`;
-      } else {
-        endpoint = `/exam/${detailData.exam._id}/allow-retake/${detailData.student._id}`;
-      }
+      // Always use the exam endpoint for retake - it works for both assigned and shared exams
+      const endpoint = `/exam/${detailData.exam._id}/allow-retake/${detailData.student._id}`;
 
       const response = await api.post(endpoint);
 
@@ -7482,18 +7477,69 @@ function ResultsSection({ results, exams = [] }) {
                       {/* Student's Answer */}
                       <Box sx={{mt:1,p:1,bgcolor:'#F8FAFC',borderRadius:1}}>
                         <Typography variant="caption" color="text.secondary" fontWeight={600}>Student's Answer:</Typography>
-                        <Typography variant="body2" sx={{mt:0.5,fontSize:13}}>
-                          {answer.text || answer.selectedOption || answer.selectedOptions?.join(', ') || 
+                        <Typography variant="body2" sx={{mt:0.5,fontSize:13,whiteSpace:'pre-wrap'}}>
+                          {answer.textAnswer || answer.text || answer.selectedOption || answer.selectedOptions?.join(', ') || 
                            (Array.isArray(answer.answer) ? answer.answer.join(', ') : answer.answer) || 
                            'No answer provided'}
                         </Typography>
                       </Box>
 
+                      {/* AI Feedback for Open-Ended Questions */}
+                      {(answer.question?.type === 'open-ended' || answer.question?.type === 'short-answer' || answer.question?.type === 'essay') && answer.feedback && (
+                        <Box sx={{mt:1,p:1,bgcolor:'#EEF2FF',borderRadius:1,borderLeft:'3px solid #6366F1'}}>
+                          <Typography variant="caption" color="#4F46E5" fontWeight={600}>AI Feedback:</Typography>
+                          <Typography variant="body2" sx={{mt:0.5,fontSize:13,color:'#3730A3',whiteSpace:'pre-wrap'}}>
+                            {answer.feedback}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      {/* Enhanced AI Grading Details */}
+                      {(answer.conceptsPresent?.length > 0 || answer.conceptsMissing?.length > 0 || answer.improvementSuggestions?.length > 0) && (
+                        <Box sx={{mt:1,p:1,bgcolor:'#F0F9FF',borderRadius:1}}>
+                          <Typography variant="caption" color="#0369A1" fontWeight={600}>AI Analysis:</Typography>
+                          {answer.conceptsPresent?.length > 0 && (
+                            <Box sx={{mt:0.5}}>
+                              <Typography variant="caption" color="#0E7490" fontWeight={600}>✓ Key Concepts Present:</Typography>
+                              <Typography variant="body2" sx={{fontSize:12,color:'#155E75'}}>
+                                {answer.conceptsPresent.join(', ')}
+                              </Typography>
+                            </Box>
+                          )}
+                          {answer.conceptsMissing?.length > 0 && (
+                            <Box sx={{mt:0.5}}>
+                              <Typography variant="caption" color="#DC2626" fontWeight={600}>✗ Key Concepts Missing:</Typography>
+                              <Typography variant="body2" sx={{fontSize:12,color:'#991B1B'}}>
+                                {answer.conceptsMissing.join(', ')}
+                              </Typography>
+                            </Box>
+                          )}
+                          {answer.improvementSuggestions?.length > 0 && (
+                            <Box sx={{mt:0.5}}>
+                              <Typography variant="caption" color="#059669" fontWeight={600}>💡 Suggestions:</Typography>
+                              <Typography variant="body2" sx={{fontSize:12,color:'#065F46'}}>
+                                {answer.improvementSuggestions.join('; ')}
+                              </Typography>
+                            </Box>
+                          )}
+                          {answer.technicalAccuracy && (
+                            <Box sx={{mt:0.5}}>
+                              <Typography variant="caption" color="#7C3AED" fontWeight={600}>Technical Accuracy: {answer.technicalAccuracy}</Typography>
+                            </Box>
+                          )}
+                          {answer.confidenceLevel && (
+                            <Box sx={{mt:0.5}}>
+                              <Typography variant="caption" color="#64748B">AI Confidence: {answer.confidenceLevel}</Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+
                       {/* Correct Answer */}
                       <Box sx={{mt:1,p:1,bgcolor:'#ECFDF5',borderRadius:1}}>
                         <Typography variant="caption" color="#065F46" fontWeight={600}>Correct Answer:</Typography>
-                        <Typography variant="body2" sx={{mt:0.5,fontSize:13,color:'#065F46'}}>
-                          {answer.question?.correctAnswer || 
+                        <Typography variant="body2" sx={{mt:0.5,fontSize:13,color:'#065F46',whiteSpace:'pre-wrap'}}>
+                          {answer.correctedAnswer || answer.question?.correctAnswer || 
                            answer.question?.options?.filter(o => o.isCorrect).map(o => o.text).join(', ') || 
                            answer.question?.answerKey || 
                            'Not specified'}

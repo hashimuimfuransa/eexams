@@ -1118,15 +1118,36 @@ const allowStudentRetake = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    // Check if user is admin or the creator of the exam
-    if (req.user.role !== 'admin' && req.user.role !== 'superadmin' &&
-        exam.createdBy.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Access denied. You can only manage your own exams.' });
+    // Check if user is admin, superadmin, teacher who created the exam, or teacher whose parent admin created the exam
+    let isAuthorized = false;
+    if (req.user.role === 'admin' || req.user.role === 'superadmin') {
+      isAuthorized = true;
+    } else if (req.user.role === 'teacher') {
+      // Teachers can reset exams they created OR exams created by their parent admin
+      if (exam.createdBy.toString() === req.user._id.toString()) {
+        isAuthorized = true;
+      } else if (req.user.parentAdmin && exam.createdBy.toString() === req.user.parentAdmin.toString()) {
+        isAuthorized = true;
+      }
     }
 
-    // Check if student is assigned to this exam
-    if (!exam.assignedTo.includes(studentId)) {
-      return res.status(400).json({ message: 'Student is not assigned to this exam' });
+    if (!isAuthorized) {
+      return res.status(403).json({ message: 'Access denied. You can only manage your own exams or exams assigned by your organization admin.' });
+    }
+
+    // Check if student is assigned to this exam OR has a completed result (for shared exams)
+    const studentResult = await Result.findOne({
+      student: studentId,
+      exam: examId
+    });
+
+    console.log(`[AllowRetake] Student ID: ${studentId}, Exam ID: ${examId}`);
+    console.log(`[AllowRetake] Assigned to exam: ${exam.assignedTo.includes(studentId)}`);
+    console.log(`[AllowRetake] Has result: ${!!studentResult}`);
+    console.log(`[AllowRetake] Assigned students: ${exam.assignedTo}`);
+
+    if (!exam.assignedTo.includes(studentId) && !studentResult) {
+      return res.status(400).json({ message: 'Student is not assigned to this exam and has not taken it' });
     }
 
     // Find and delete the student's completed result to allow retake
@@ -1210,12 +1231,20 @@ const startExam = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    // Check if student is assigned to this exam (marketplace approval)
-    const isAssigned = exam.assignedTo && exam.assignedTo.includes(req.user._id);
+    // Check if student is assigned to this exam OR has an approved request
+    const ExamRequest = require('../models/ExamRequest');
+    const approvedRequest = await ExamRequest.findOne({
+      exam: exam._id,
+      student: req.user._id,
+      status: 'approved'
+    });
+
+    const isAssigned = (exam.assignedTo && exam.assignedTo.includes(req.user._id)) || approvedRequest;
     console.log(`Student ${req.user._id} assigned to exam ${exam._id}: ${isAssigned}`);
 
     // Check if exam is locked
-    if (exam.isLocked) {
+    // Bypass lock if student has an approved request
+    if (exam.isLocked && !approvedRequest) {
       console.log(`Student ${req.user._id} attempted to start locked exam ${exam._id}`);
       return res.status(403).json({
         message: 'This exam is currently locked by the administrator',

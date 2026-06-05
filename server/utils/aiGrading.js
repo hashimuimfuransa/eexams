@@ -3,37 +3,49 @@ const groqClient = require('./groqClient');
 
 // Helper functions to avoid circular dependency
 const parseAnswerContent = (answer) => {
-  if (!answer || typeof answer !== 'string') return '';
+  if (!answer || typeof answer !== 'string') {
+    return { textContent: '', mathContent: '', codeContent: '' };
+  }
 
-  let content = answer;
+  let textContent = answer;
+  let mathContent = '';
+  let codeContent = '';
 
   // Extract content from [MATH: ...] format
   const mathMatch = answer.match(/\[MATH:\s*(.*?)\]/);
   if (mathMatch) {
-    content = mathMatch[1].trim();
+    mathContent = mathMatch[1].trim();
+    textContent = textContent.replace(/\[MATH:\s*.*?\]/, '').trim();
+  }
+
+  // Extract content from [CODE: language\ncode] format
+  const codeMatch = answer.match(/\[CODE:\s*(\w+)\s*\n([\s\S]*?)\]/);
+  if (codeMatch) {
+    codeContent = codeMatch[2].trim();
+    textContent = textContent.replace(/\[CODE:\s*\w+\s*\n[\s\S]*?\]/, '').trim();
   }
 
   // Extract content from [DRAWING: ...] format (base64 data, ignore for grading)
   const drawingMatch = answer.match(/\[DRAWING:\s*([^\]]*)\]/);
   if (drawingMatch) {
     // Remove drawing data from content for text grading
-    content = content.replace(/\[DRAWING:\s*[^\]]*\]/, '').trim();
+    textContent = textContent.replace(/\[DRAWING:\s*[^\]]*\]/, '').trim();
   }
 
   // Extract content from [IMAGE_UPLOADED: ...] format (remove the tag, keep the text)
   const imageMatch = answer.match(/\[IMAGE_UPLOADED:\s*[^\]]*\]/);
   if (imageMatch) {
-    content = content.replace(/\[IMAGE_UPLOADED:\s*[^\]]*\]/, '').trim();
+    textContent = textContent.replace(/\[IMAGE_UPLOADED:\s*[^\]]*\]/, '').trim();
   }
 
   // Extract final result from calculation patterns like "X + Y = Z" or "X * Y = Z"
   // This handles cases like "Depreciation:$54000+$25000 =$79000"
-  const calcPattern = content.match(/(?:=|:)\s*([-\d,]+(?:\.\d+)?)\s*$/);
+  const calcPattern = textContent.match(/(?:=|:)\s*([-\d,]+(?:\.\d+)?)\s*$/);
   if (calcPattern) {
-    content = calcPattern[1].trim();
+    textContent = calcPattern[1].trim();
   }
 
-  return content;
+  return { textContent, mathContent, codeContent };
 };
 
 const validateAnswerRelevance = (answer, questionText) => {
@@ -99,11 +111,14 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
   try {
     console.log(`Starting enhanced AI grading for ${questionType} question in section ${section}...`);
 
-    // Parse answer content to extract actual text from [MATH: ...] and [DRAWING: ...] formats
-    const parsedAnswer = parseAnswerContent(studentAnswer || '');
+    // Parse answer content to extract actual text from [MATH: ...], [CODE: ...], and [DRAWING: ...] formats
+    const { textContent, mathContent, codeContent } = parseAnswerContent(studentAnswer || '');
+
+    // Combine all content for grading (text + math + code)
+    const combinedAnswer = [textContent, mathContent, codeContent].filter(Boolean).join('\n\n');
 
     // Validate answer relevance before grading
-    const relevanceCheck = validateAnswerRelevance(parsedAnswer, questionText);
+    const relevanceCheck = validateAnswerRelevance(combinedAnswer, questionText);
     if (!relevanceCheck.isValid) {
       console.log(`❌ Answer validation failed: ${relevanceCheck.reason}`);
       return {
@@ -126,7 +141,7 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
     }
 
     // Enhanced input validation
-    if (!parsedAnswer || typeof parsedAnswer !== 'string' || parsedAnswer.trim().length === 0) {
+    if (!combinedAnswer || typeof combinedAnswer !== 'string' || combinedAnswer.trim().length === 0) {
       return {
         score: 0,
         feedback: 'No answer provided',
@@ -146,7 +161,7 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
     }
 
     // Clean and prepare inputs with better sanitization
-    const cleanStudentAnswer = String(parsedAnswer).trim().replace(/\s+/g, ' ');
+    const cleanStudentAnswer = String(combinedAnswer).trim().replace(/\s+/g, ' ');
     const cleanModelAnswer = String(modelAnswer || '').trim().replace(/\s+/g, ' ');
     const cleanQuestionText = String(questionText || '').trim().replace(/\s+/g, ' ');
 
@@ -335,10 +350,13 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
   }
 
   // Parse answer content to extract actual text from special formats
-  const parsedAnswer = parseAnswerContent(studentAnswer || '');
-  
+  const { textContent, mathContent, codeContent } = parseAnswerContent(studentAnswer || '');
+
+  // Combine all content for grading (text + math + code)
+  const combinedAnswer = [textContent, mathContent, codeContent].filter(Boolean).join('\n\n');
+
   // Validate answer relevance before fallback grading
-  const relevanceCheck = validateAnswerRelevance(parsedAnswer, '');
+  const relevanceCheck = validateAnswerRelevance(combinedAnswer, '');
   if (!relevanceCheck.isValid) {
     console.log(`❌ Fallback grading validation failed: ${relevanceCheck.reason}`);
     return {
@@ -354,7 +372,7 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
   }
 
   // Enhanced fallback grading mechanism
-  const studentAns = String(parsedAnswer || '').toLowerCase().trim();
+  const studentAns = String(combinedAnswer || '').toLowerCase().trim();
   const modelAns = String(modelAnswer || '').toLowerCase().trim();
 
   // Handle empty student answer

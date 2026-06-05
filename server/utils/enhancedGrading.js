@@ -263,48 +263,60 @@ const validateMultiPartAnswer = (studentAnswer, multiPartInfo) => {
 
 /**
  * Parse answer to extract actual content from special formats
- * Handles [MATH: ...], [DRAWING: ...], and other formats
+ * Handles [MATH: ...], [DRAWING: ...], [CODE: ...], and other formats
  * @param {string} answer - The raw answer string
- * @returns {string} - The cleaned answer content
+ * @returns {Object} - Object with textContent, mathContent, and codeContent
  */
 const parseAnswerContent = (answer) => {
-  if (!answer || typeof answer !== 'string') return '';
+  if (!answer || typeof answer !== 'string') {
+    return { textContent: '', mathContent: '', codeContent: '' };
+  }
 
-  let content = answer;
+  let textContent = answer;
+  let mathContent = '';
+  let codeContent = '';
 
   // Extract content from [MATH: ...] format
   const mathMatch = answer.match(/\[MATH:\s*(.*?)\]/);
   if (mathMatch) {
-    content = mathMatch[1].trim();
+    mathContent = mathMatch[1].trim();
+    textContent = textContent.replace(/\[MATH:\s*.*?\]/, '').trim();
+  }
+
+  // Extract content from [CODE: language\ncode] format
+  const codeMatch = answer.match(/\[CODE:\s*(\w+)\s*\n([\s\S]*?)\]/);
+  if (codeMatch) {
+    codeContent = codeMatch[2].trim();
+    textContent = textContent.replace(/\[CODE:\s*\w+\s*\n[\s\S]*?\]/, '').trim();
   }
 
   // Extract content from [DRAWING: ...] format (base64 data, ignore for grading)
   const drawingMatch = answer.match(/\[DRAWING:\s*([^\]]*)\]/);
   if (drawingMatch) {
     // Remove drawing data from content for text grading
-    content = content.replace(/\[DRAWING:\s*[^\]]*\]/, '').trim();
+    textContent = textContent.replace(/\[DRAWING:\s*[^\]]*\]/, '').trim();
   }
 
   // Extract content from [IMAGE_UPLOADED: ...] format (remove the tag, keep the text)
   const imageMatch = answer.match(/\[IMAGE_UPLOADED:\s*[^\]]*\]/);
   if (imageMatch) {
     // Remove image upload tag from content for text grading
-    content = content.replace(/\[IMAGE_UPLOADED:\s*[^\]]*\]/, '').trim();
+    textContent = textContent.replace(/\[IMAGE_UPLOADED:\s*[^\]]*\]/, '').trim();
   }
 
   // Extract final result from calculation patterns like "X + Y = Z" or "X * Y = Z"
   // This handles cases like "Depreciation:$54000+$25000 =$79000"
-  const calcPattern = content.match(/(?:=|:)\s*([-\d,]+(?:\.\d+)?)\s*$/);
+  const calcPattern = textContent.match(/(?:=|:)\s*([-\d,]+(?:\.\d+)?)\s*$/);
   if (calcPattern) {
-    content = calcPattern[1].trim();
+    textContent = calcPattern[1].trim();
   }
 
   // If answer still has brackets, try to extract content between them
-  if (content.includes('[') && content.includes(']')) {
-    content = content.replace(/\[.*?\]/g, '').trim();
+  if (textContent.includes('[') && textContent.includes(']')) {
+    textContent = textContent.replace(/\[.*?\]/g, '').trim();
   }
 
-  return content;
+  return { textContent, mathContent, codeContent };
 };
 
 /**
@@ -513,27 +525,30 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
       case 'structured':
         console.log(`🤖 AI grading ${question.type} question ${question._id} in section ${question.section}`);
 
-        // Parse answer content to extract actual text from [MATH: ...] and [DRAWING: ...] formats
-        const parsedAnswer = parseAnswerContent(answer.textAnswer || '');
+        // Parse answer content to extract actual text from [MATH: ...], [CODE: ...], and [DRAWING: ...] formats
+        const { textContent, mathContent, codeContent } = parseAnswerContent(answer.textAnswer || '');
+
+        // Combine all content for grading (text + math + code)
+        const combinedAnswer = [textContent, mathContent, codeContent].filter(Boolean).join('\n\n');
 
         // Check for multi-part questions
         const multiPartInfo = detectMultiPartQuestion(question.text);
-        const multiPartValidation = validateMultiPartAnswer(parsedAnswer, multiPartInfo);
+        const multiPartValidation = validateMultiPartAnswer(combinedAnswer, multiPartInfo);
 
         // Only reject severely incomplete answers (< 25%) for actual multi-part questions
         // Skip this check for calculation questions or short answers
         if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 0.25) {
           console.log(`❌ Multi-part question severely incomplete: ${multiPartValidation.partsFound}/${multiPartInfo.expectedParts} parts found`);
           console.log(`⚠️ Question text: ${question.text.substring(0, 150)}...`);
-          console.log(`⚠️ Student answer: ${parsedAnswer.substring(0, 150)}...`);
-          
+          console.log(`⚠️ Student answer: ${combinedAnswer.substring(0, 150)}...`);
+
           // For severely incomplete answers, still attempt basic grading rather than giving 0
           // This allows partial credit for calculation questions that might be misdetected
           console.log(`⚠️ Attempting fallback grading for potentially misdetected multi-part question`);
         }
 
         // Validate answer relevance before grading
-        const relevanceCheck = validateAnswerRelevance(parsedAnswer, question.text);
+        const relevanceCheck = validateAnswerRelevance(combinedAnswer, question.text);
         if (!relevanceCheck.isValid) {
           console.log(`❌ Answer validation failed: ${relevanceCheck.reason}`);
           return {
@@ -562,7 +577,7 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
         console.log(`📝 Processing ${sectionType} question in section ${question.section}`);
 
         const openEndedResult = await gradeOpenEndedAnswer(
-          parsedAnswer,
+          combinedAnswer,
           modelAnswer || formatCorrectAnswer(question.correctAnswer, ''),
           question.points,
           question.text,

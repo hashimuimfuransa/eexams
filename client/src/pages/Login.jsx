@@ -861,21 +861,21 @@ const Login = () => {
                 gap: 8,
                 fontSize: 15, 
                 fontWeight: 700, 
-                color: 'white',
+                color: tokens.accent,
                 textDecoration: 'none',
                 padding: '12px 24px',
                 borderRadius: 12,
-                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                boxShadow: '0 4px 16px rgba(12,189,115,0.35)',
-                transition: 'transform 0.2s, box-shadow 0.2s',
+                background: 'transparent',
+                border: `2px solid ${tokens.accent}`,
+                transition: 'all 0.2s',
               }}
               onMouseEnter={(e) => { 
-                e.currentTarget.style.transform = 'translateY(-2px)'; 
-                e.currentTarget.style.boxShadow = '0 6px 20px rgba(12,189,115,0.45)';
+                e.currentTarget.style.background = tokens.accentGlow;
+                e.currentTarget.style.transform = 'translateY(-2px)';
               }}
               onMouseLeave={(e) => { 
-                e.currentTarget.style.transform = 'translateY(0)'; 
-                e.currentTarget.style.boxShadow = '0 4px 16px rgba(12,189,115,0.35)';
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'translateY(0)';
               }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

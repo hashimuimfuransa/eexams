@@ -930,15 +930,9 @@ const Results = () => {
   if (resultId && detailedResult) {
     const percentage = calculatePercentage(detailedResult.totalScore, detailedResult.maxPossibleScore);
 
-    // Group answers by section
-    const sectionAnswers = {};
-    detailedResult.answers.forEach(answer => {
-      if (!answer.question) return;
-      const section = String(answer.question.section || 'A');
-      if (!sectionAnswers[section]) sectionAnswers[section] = [];
-      sectionAnswers[section].push(answer);
-    });
-    const allSections = Object.keys(sectionAnswers).sort();
+    // Use exam sections to maintain original question order
+    const examSections = detailedResult.exam?.sections || [];
+    const allSections = examSections.map(s => s.name || 'A');
 
     // Overall stats
     const totalQ = detailedResult.answers.length;
@@ -1066,15 +1060,17 @@ const Results = () => {
               <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                 <Tabs value={tabValue} onChange={handleTabChange} variant={allSections.length > 4 ? 'scrollable' : 'fullWidth'}
                   scrollButtons="auto" indicatorColor="primary" textColor="primary">
-                  {allSections.map((section) => {
-                    const sA = sectionAnswers[section] || [];
-                    const sCorrect = sA.filter(a => a.isCorrect).length;
+                  {examSections.map((section, idx) => {
+                    const sectionAnswers = detailedResult.answers.filter(a => 
+                      a.question && String(a.question.section || 'A') === String(section.name || 'A')
+                    );
+                    const sCorrect = sectionAnswers.filter(a => a.isCorrect).length;
                     return (
-                      <Tab key={section} label={
+                      <Tab key={section.name || idx} label={
                         <Box sx={{ textAlign: 'center' }}>
-                          <Typography variant="caption" fontWeight={700}>Section {section}</Typography>
-                          <Typography variant="caption" display="block" color={sCorrect === sA.length ? 'success.main' : 'text.secondary'}>
-                            {sCorrect}/{sA.length}
+                          <Typography variant="caption" fontWeight={700}>Section {section.name || 'A'}</Typography>
+                          <Typography variant="caption" display="block" color={sCorrect === sectionAnswers.length ? 'success.main' : 'text.secondary'}>
+                            {sCorrect}/{sectionAnswers.length}
                           </Typography>
                         </Box>
                       } />
@@ -1083,22 +1079,24 @@ const Results = () => {
                 </Tabs>
               </Box>
 
-              {allSections.map((section, index) => (
-                <Box key={section} role="tabpanel" hidden={tabValue !== index} sx={{ p: { xs: 2, sm: 3 } }}>
+              {examSections.map((section, index) => (
+                <Box key={section.name || index} role="tabpanel" hidden={tabValue !== index} sx={{ p: { xs: 2, sm: 3 } }}>
                   {tabValue === index && (
                     <>
                       {/* Section summary bar */}
                       {(() => {
-                        const sA = sectionAnswers[section] || [];
-                        const sCorrect = sA.filter(a => a.isCorrect).length;
-                        const sPct = sA.length > 0 ? Math.round((sCorrect / sA.length) * 100) : 0;
+                        const sectionAnswers = detailedResult.answers.filter(a => 
+                          a.question && String(a.question.section || 'A') === String(section.name || 'A')
+                        );
+                        const sCorrect = sectionAnswers.filter(a => a.isCorrect).length;
+                        const sPct = sectionAnswers.length > 0 ? Math.round((sCorrect / sectionAnswers.length) * 100) : 0;
                         return (
                           <Box sx={{ mb: 2, p: { xs: 1.5, sm: 2 }, bgcolor: 'grey.50', borderRadius: 2 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75, flexWrap: 'wrap', gap: 1 }}>
                               <Typography variant="subtitle2" fontWeight={700} sx={{ fontSize: { xs: '0.82rem', sm: '0.875rem' } }}>
-                                Section {section} — {sA.length} question{sA.length !== 1 ? 's' : ''}
+                                Section {section.name || 'A'} — {sectionAnswers.length} question{sectionAnswers.length !== 1 ? 's' : ''}
                               </Typography>
-                              <Chip label={`${sCorrect}/${sA.length} · ${sPct}%`}
+                              <Chip label={`${sCorrect}/${sectionAnswers.length} · ${sPct}%`}
                                 color={scoreBadgeColor(sPct)} size="small" sx={{ fontWeight: 700 }} />
                             </Box>
                             <LinearProgress variant="determinate" value={sPct} sx={{ height: 6, borderRadius: 3,
@@ -1107,13 +1105,16 @@ const Results = () => {
                         );
                       })()}
 
-                      {sectionAnswers[section]?.length > 0 ? (
-                        sectionAnswers[section].map((answer, ansIdx) => {
+                      {section.questions && section.questions.length > 0 ? (
+                        section.questions.map((question, qIdx) => {
+                          const answer = detailedResult.answers.find(a => a.question?._id === question._id);
+                          if (!answer) return null;
+                          
                           const pts = answer.question?.points || 1;
                           const partialPct = pts > 0 ? Math.round((answer.score / pts) * 100) : 0;
                           const isPartial = !answer.isCorrect && answer.score > 0;
                           return (
-                            <Accordion key={answer._id || ansIdx} elevation={0}
+                            <Accordion key={question._id || qIdx} elevation={0}
                               sx={{ mb: 1.5, border: '1.5px solid', borderRadius: '12px !important', overflow: 'hidden',
                                 borderColor: answer.isCorrect ? 'success.light' : isPartial ? 'warning.light' : 'error.light',
                                 '&:before': { display: 'none' }, '&.Mui-expanded': { margin: '0 0 12px 0 !important' } }}>
@@ -1129,7 +1130,7 @@ const Results = () => {
                                   <Box sx={{ flex: 1, minWidth: 0 }}>
                                     <Typography fontWeight={600} sx={{ fontSize: { xs: 13, sm: 14 }, lineHeight: 1.4,
                                       display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                      Q{ansIdx + 1}: {String(answer.question?.text || '')}
+                                      Q{qIdx + 1}: {String(answer.question?.text || '')}
                                     </Typography>
                                     <Box sx={{ display: 'flex', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
                                       <Chip label={answer.question?.type?.replace(/-/g, ' ') || 'question'} size="small"

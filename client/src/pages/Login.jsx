@@ -850,11 +850,41 @@ const Login = () => {
           </button>
 
           <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`, textAlign: 'center' }}>
-            <span style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
-              Don't have an account?{' '}
-            </span>
-            <RouterLink to="/register" style={{ fontSize: 14, fontWeight: 700, color: tokens.accent, textDecoration: 'none' }}>
-              Create one
+            <div style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 12 }}>
+              Don't have an account?
+            </div>
+            <RouterLink 
+              to="/register" 
+              style={{ 
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 15, 
+                fontWeight: 700, 
+                color: 'white',
+                textDecoration: 'none',
+                padding: '12px 24px',
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                boxShadow: '0 4px 16px rgba(12,189,115,0.35)',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => { 
+                e.currentTarget.style.transform = 'translateY(-2px)'; 
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(12,189,115,0.45)';
+              }}
+              onMouseLeave={(e) => { 
+                e.currentTarget.style.transform = 'translateY(0)'; 
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(12,189,115,0.35)';
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="8.5" cy="7" r="4"/>
+                <line x1="20" y1="8" x2="20" y2="14"/>
+                <line x1="23" y1="11" x2="17" y2="11"/>
+              </svg>
+              Create Account
             </RouterLink>
           </div>
         </div>

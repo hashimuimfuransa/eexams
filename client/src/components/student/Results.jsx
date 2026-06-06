@@ -788,9 +788,9 @@ const Results = () => {
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                         <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || '—'}
                       </Typography>
-                      {subResult && !subResult.isCorrect && subResult.correctedAnswer && (
+                      {(subQ.correctAnswer || subResult?.correctedAnswer) && (
                         <Typography variant="body2" color="success.dark" sx={{ mt: 0.5, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                          <strong>Correct answer:</strong> {String(subResult.correctedAnswer)}
+                          <strong>Correct answer:</strong> {String(subResult?.correctedAnswer || subQ.correctAnswer)}
                         </Typography>
                       )}
                       {subResult?.feedback && (

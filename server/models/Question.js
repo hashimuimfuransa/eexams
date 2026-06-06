@@ -53,18 +53,7 @@ const QuestionSchema = new mongoose.Schema({
   },
   section: {
     type: String,
-    required: true,
-    set: function(v) {
-      // Convert to uppercase before saving
-      return v ? v.toString().toUpperCase() : v;
-    },
-    validate: {
-      validator: function(v) {
-        // Allow any single letter or multiple letters (case-insensitive, will be converted to uppercase)
-        return /^[A-Z]+$/.test(v);
-      },
-      message: 'Section must be letters (A-Z)'
-    }
+    required: true
   },
   // For matching questions - support both strings and objects
   matchingPairs: {

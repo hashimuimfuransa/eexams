@@ -44,6 +44,12 @@ const register = async (req, res) => {
       return res.status(400).json({ message: 'Organization/school name is required' });
     }
 
+    // Determine role: respect client-provided role for students, otherwise use account type
+    let finalRole = role;
+    if (!finalRole) {
+      finalRole = isOrganization ? 'admin' : 'teacher';
+    }
+
     // Set subscription details based on plan
     let subscriptionStatus = null;
     let subscriptionExpiresAt = null;
@@ -76,12 +82,6 @@ const register = async (req, res) => {
         subscriptionStatus = 'pending'; // paid plan needs admin approval
         subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       }
-    }
-
-    // Determine role: respect client-provided role for students, otherwise use account type
-    let finalRole = role;
-    if (!finalRole) {
-      finalRole = isOrganization ? 'admin' : 'teacher';
     }
 
     // Create user

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import SEO from '../components/SEO';
@@ -153,12 +153,21 @@ const StudentRegister = () => {
 
   const { register, setUser, googleLogin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { mode, toggleMode } = useThemeMode();
   const [searchParams] = useSearchParams();
   const isDark = mode === 'dark';
 
-  // Get redirect URL from query params
-  const redirectUrl = searchParams.get('redirect') || '/student/dashboard';
+  // Get redirect URL from query params or location state
+  const redirectUrl = searchParams.get('redirect') || location.state?.redirect || '/student/dashboard';
+
+  // Pre-fill email if coming from login page
+  useEffect(() => {
+    if (location.state?.email) {
+      setEmail(location.state.email);
+      setStep(1); // Skip to email step since email is already filled
+    }
+  }, [location.state?.email]);
 
   // Refs for Google callback to avoid re-initialization
   const googleLoginRef = useRef(googleLogin);

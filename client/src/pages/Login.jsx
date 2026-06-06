@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import api from '../services/api';
@@ -144,6 +144,7 @@ const Login = () => {
 
   const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { mode, toggleMode } = useThemeMode();
   const isDark = mode === 'dark';
 
@@ -316,7 +317,15 @@ const Login = () => {
             shouldTrackFailure = true;
             break;
           case 403: errorMessage = 'Your account has been disabled.'; snackbarMessage = 'Account disabled'; break;
-          case 404: errorMessage = 'Account not found.'; snackbarMessage = 'Account not found'; shouldTrackFailure = true; break;
+          case 404:
+            errorMessage = 'Account not found.';
+            snackbarMessage = 'Account not found. Redirecting to registration...';
+            setSnackbar({ open: true, message: snackbarMessage, severity: 'warning' });
+            setTimeout(() => {
+              navigate('/student-register', { state: { redirect: location.state?.redirect || '/student/dashboard', email } });
+            }, 1500);
+            setLoading(false);
+            return;
           case 429: errorMessage = 'Too many login attempts.'; snackbarMessage = 'Too many attempts'; break;
           case 500: errorMessage = 'Server error. Please try again later.'; snackbarMessage = 'Server error'; break;
           default: errorMessage = err.response.data?.message || errorMessage; shouldTrackFailure = true;

@@ -810,7 +810,7 @@ const Dashboard = () => {
             variant="contained"
             component={RouterLink}
             to="/marketplace"
-            size="large"
+            size={isMobile ? 'medium' : 'large'}
             endIcon={<ArrowForward />}
             fullWidth
             sx={{
@@ -818,8 +818,8 @@ const Dashboard = () => {
               textTransform: 'none',
               background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
               boxShadow: '0 4px 16px rgba(12,189,115,0.5), 0 0 20px rgba(12,189,115,0.3)',
-              py: 2,
-              fontSize: 18,
+              py: { xs: 1.5, sm: 2 },
+              fontSize: { xs: 14, sm: 16, md: 18 },
               border: '2px solid rgba(255,255,255,0.3)',
               '&:hover': {
                 boxShadow: '0 6px 24px rgba(12,189,115,0.6), 0 0 30px rgba(12,189,115,0.4)',

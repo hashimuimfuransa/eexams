@@ -357,9 +357,9 @@ const Dashboard = () => {
   );
   const approvedRetakeExamIds = approvedRetakeRequests.map(r => r.exam?._id?.toString()).filter(Boolean);
 
-  // Available exams that are NOT retake-approved (retakes shown in their own section)
+  // Available exams that are NOT retake-approved (retakes shown in their own section) and NOT completed
   const regularAvailableExams = availableExams.filter(
-    exam => !approvedRetakeExamIds.includes(exam._id?.toString())
+    exam => !approvedRetakeExamIds.includes(exam._id?.toString()) && exam.status !== 'completed'
   );
 
   const hasAvailableExams = regularAvailableExams.length > 0 || approvedRetakeRequests.length > 0;

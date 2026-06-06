@@ -147,7 +147,9 @@ const StudentRegister = () => {
   // Google OAuth states
   const [googleCredential, setGoogleCredential] = useState(null);
   const [googleUserData, setGoogleUserData] = useState(null);
+  const [googleReady, setGoogleReady] = useState(false);
   const googleInitialized = useRef(false);
+  const googleCallbackRef = useRef(null);
 
   const { register, setUser, googleLogin } = useAuth();
   const navigate = useNavigate();
@@ -157,6 +159,18 @@ const StudentRegister = () => {
 
   // Get redirect URL from query params
   const redirectUrl = searchParams.get('redirect') || '/student/dashboard';
+
+  // Refs for Google callback to avoid re-initialization
+  const googleLoginRef = useRef(googleLogin);
+  const navigateRef = useRef(navigate);
+  const redirectUrlRef = useRef(redirectUrl);
+
+  // Keep refs updated
+  useEffect(() => {
+    googleLoginRef.current = googleLogin;
+    navigateRef.current = navigate;
+    redirectUrlRef.current = redirectUrl;
+  }, [googleLogin, navigate, redirectUrl]);
 
   // Check if already logged in - redirect to intended destination
   // Only redirect if user is already a student, otherwise allow registration flow
@@ -308,7 +322,7 @@ const StudentRegister = () => {
         subscriptionPlan: 'free',
         role: 'student'
       };
-      const { user, isNewUser } = await googleLogin(checkData, true); // Save session for existing users
+      const { user, isNewUser } = await googleLoginRef.current(checkData, true); // Save session for existing users
 
       console.log('[Google Auth] User data:', user);
       console.log('[Google Auth] isNewUser:', isNewUser);
@@ -317,10 +331,10 @@ const StudentRegister = () => {
       // Check if user is already a student (regardless of isNewUser flag)
       if (user.role === 'student' || !isNewUser) {
         // User already exists as a student - log them in and redirect to intended destination
-        console.log('[Google Auth] Redirecting to:', redirectUrl);
+        console.log('[Google Auth] Redirecting to:', redirectUrlRef.current);
         setSnackbar({ open: true, message: 'Welcome back! Logging you in...', severity: 'success' });
         setTimeout(() => {
-          navigate(redirectUrl);
+          navigateRef.current(redirectUrlRef.current);
         }, 500);
       } else {
         // New user or user with different role - show registration form
@@ -336,7 +350,7 @@ const StudentRegister = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, googleLogin]);
+  }, []); // Empty deps - uses refs
 
   // Initialize Google Sign-In
   useEffect(() => {
@@ -360,13 +374,16 @@ const StudentRegister = () => {
       try {
         await loadGoogleScript();
         if (window.google && !googleInitialized.current) {
+          // Store callback in ref to avoid re-initialization
+          googleCallbackRef.current = handleGoogleCredentialResponse;
           window.google.accounts.id.initialize({
             client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '192720000772-1qkm1i0lmg52b17vaslf0gm56lll3p0m.apps.googleusercontent.com',
-            callback: handleGoogleCredentialResponse,
-            auto_select: false,  // Disable auto-select to prevent conflicts
+            callback: googleCallbackRef.current,
+            auto_select: false,
             cancel_on_tap_outside: true,
           });
           googleInitialized.current = true;
+          setGoogleReady(true);
         }
       } catch (err) {
         console.error('[GoogleAuth] Failed to load:', err);
@@ -374,11 +391,11 @@ const StudentRegister = () => {
     };
 
     initGoogle();
-  }, [handleGoogleCredentialResponse]);
+  }, []); // Empty deps - only run once
 
   // Render Google sign-in button when step is 0 and Google is initialized
   useEffect(() => {
-    if (step === 0 && window.google && googleInitialized.current) {
+    if (step === 0 && googleReady && window.google) {
       const container = document.getElementById('google-signin-button');
       if (container && container.children.length === 0) {
         window.google.accounts.id.renderButton(container, {
@@ -391,7 +408,7 @@ const StudentRegister = () => {
         });
       }
     }
-  }, [step, isDark, googleInitialized.current]);
+  }, [step, googleReady, isDark]);
 
   return (
     <>

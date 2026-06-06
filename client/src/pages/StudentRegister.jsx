@@ -216,7 +216,7 @@ const StudentRegister = () => {
     return errors;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const errors = validateCurrentStep();
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
@@ -224,6 +224,32 @@ const StudentRegister = () => {
       return;
     }
     setValidationErrors({});
+
+    // Check if email already exists when on email step
+    if (step === 1) {
+      setLoading(true);
+      try {
+        const response = await api.post('/auth/check-email', { email });
+        if (response.data.exists) {
+          setSnackbar({ 
+            open: true, 
+            message: 'An account with this email already exists. Redirecting to login...', 
+            severity: 'warning' 
+          });
+          setTimeout(() => {
+            navigate('/login', { state: { redirect: redirectUrl, email } });
+          }, 1500);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        // If check fails, continue with registration (might be a network issue)
+        console.error('Email check failed:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
     setStep(step + 1);
   };
 
@@ -812,12 +838,55 @@ const StudentRegister = () => {
             </form>
           )}
 
-          <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`, textAlign: 'center' }}>
-            <span style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
-              Already have an account?{' '}
-            </span>
-            <RouterLink to="/login" state={{ redirect: redirectUrl }} style={{ fontSize: 14, fontWeight: 700, color: tokens.accent, textDecoration: 'none' }}>
+          <div style={{ 
+            marginTop: 24, 
+            paddingTop: 24, 
+            borderTop: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`, 
+            textAlign: 'center',
+            background: isDark ? 'rgba(12,189,115,0.05)' : 'rgba(12,189,115,0.03)',
+            borderRadius: 12,
+            padding: '20px 16px',
+            border: `1px solid ${isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.1)'}`,
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: 8, 
+              marginBottom: 8 
+            }}>
+              <Icon.User s={16} style={{ color: tokens.accent }} />
+              <span style={{ fontSize: 15, fontWeight: 600, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>
+                Already have an account?
+              </span>
+            </div>
+            <RouterLink 
+              to="/login" 
+              state={{ redirect: redirectUrl }} 
+              style={{ 
+                fontSize: 15, 
+                fontWeight: 700, 
+                color: tokens.accent, 
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                borderRadius: 8,
+                background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => { 
+                e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => { 
+                e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
               Log in
+              <Icon.Arrow s={14} />
             </RouterLink>
           </div>
         </div>

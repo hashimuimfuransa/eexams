@@ -22,6 +22,25 @@ const generateToken = (id) => {
   });
 };
 
+// @desc    Check if email exists
+// @route   POST /api/auth/check-email
+// @access  Public
+const checkEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email });
+    res.json({ exists: !!user });
+  } catch (error) {
+    console.error('Check email error:', error);
+    res.status(500).json({ message: 'Failed to check email' });
+  }
+};
+
 // @desc    Register new user (organization, individual teacher, or student)
 // @route   POST /api/auth/register
 // @access  Public
@@ -783,5 +802,6 @@ module.exports = {
   googleAuth,
   forgotPassword,
   resetPassword,
-  verifyResetToken
+  verifyResetToken,
+  checkEmail
 };

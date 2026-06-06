@@ -656,46 +656,18 @@ const Dashboard = () => {
         )}
 
         {/* Available Exams Section */}
-        <Box sx={{ mt: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h5" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <School color="primary" />
-              Available Exams
-            </Typography>
-            <Button
-              variant="contained"
-              component={RouterLink}
-              to="/student/exams"
-              size="small"
-              endIcon={<ArrowForward />}
-              sx={{
-                fontWeight: 'bold',
-                textTransform: 'none',
-                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
-                '&:hover': {
-                  boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
-                }
-              }}
-            >
-              View All Exams
-            </Button>
-          </Box>
-
-          {regularAvailableExams.length === 0 ? (
-            <Paper elevation={3} sx={{ p: 4, textAlign: 'center', mb: 4, bgcolor: 'grey.50' }}>
-              <School sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" fontWeight="bold">
-                No Available Exams
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                All assigned exams have been completed. Check the exam bank for more exams.
+        {regularAvailableExams.length > 0 && (
+          <Box sx={{ mt: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h5" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <School color="primary" />
+                Available Exams
               </Typography>
               <Button
                 variant="contained"
                 component={RouterLink}
-                to="/marketplace"
-                size="medium"
+                to="/student/exams"
+                size="small"
                 endIcon={<ArrowForward />}
                 sx={{
                   fontWeight: 'bold',
@@ -707,10 +679,10 @@ const Dashboard = () => {
                   }
                 }}
               >
-                Go to Exam Bank
+                View All Exams
               </Button>
-            </Paper>
-          ) : (
+            </Box>
+
             <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
               {regularAvailableExams.map((exam) => {
                 // Check if there's a pending retake request for this exam (approved ones are in their own section)
@@ -828,32 +800,36 @@ const Dashboard = () => {
                 );
               })}
             </Box>
-          )}
 
-          {/* Exam Bank Button - Always show */}
-          <Box sx={{ mt: 2, mb: 4 }}>
-            <Button
-              variant="contained"
-              component={RouterLink}
-              to="/marketplace"
-              size="large"
-              endIcon={<ArrowForward />}
-              fullWidth
-              sx={{
-                fontWeight: 'bold',
-                textTransform: 'none',
-                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
-                py: 1.5,
-                fontSize: 16,
-                '&:hover': {
-                  boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
-                }
-              }}
-            >
-              Go to Exam Bank for More Exams
-            </Button>
           </Box>
+        )}
+
+        {/* Exam Bank Button - Always show */}
+        <Box sx={{ mt: 4, mb: 4 }}>
+          <Button
+            variant="contained"
+            component={RouterLink}
+            to="/marketplace"
+            size="large"
+            endIcon={<ArrowForward />}
+            fullWidth
+            sx={{
+              fontWeight: 'bold',
+              textTransform: 'none',
+              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+              boxShadow: '0 4px 16px rgba(12,189,115,0.5), 0 0 20px rgba(12,189,115,0.3)',
+              py: 2,
+              fontSize: 18,
+              border: '2px solid rgba(255,255,255,0.3)',
+              '&:hover': {
+                boxShadow: '0 6px 24px rgba(12,189,115,0.6), 0 0 30px rgba(12,189,115,0.4)',
+                transform: 'translateY(-2px)'
+              },
+              transition: 'all 0.3s ease'
+            }}
+          >
+            Go to Exam Bank for More Exams
+          </Button>
         </Box>
 
         {/* Marketplace Exams Section - Only show when no available exams */}

@@ -1106,15 +1106,15 @@ const Results = () => {
                       })()}
 
                       {section.questions && section.questions.length > 0 ? (
-                        section.questions.map((question, qIdx) => {
-                          const answer = detailedResult.answers.find(a => a.question?._id === question._id);
+                        section.questions.map((questionId, qIdx) => {
+                          const answer = detailedResult.answers.find(a => a.question?._id === questionId);
                           if (!answer) return null;
                           
                           const pts = answer.question?.points || 1;
                           const partialPct = pts > 0 ? Math.round((answer.score / pts) * 100) : 0;
                           const isPartial = !answer.isCorrect && answer.score > 0;
                           return (
-                            <Accordion key={question._id || qIdx} elevation={0}
+                            <Accordion key={questionId || qIdx} elevation={0}
                               sx={{ mb: 1.5, border: '1.5px solid', borderRadius: '12px !important', overflow: 'hidden',
                                 borderColor: answer.isCorrect ? 'success.light' : isPartial ? 'warning.light' : 'error.light',
                                 '&:before': { display: 'none' }, '&.Mui-expanded': { margin: '0 0 12px 0 !important' } }}>

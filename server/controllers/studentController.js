@@ -455,7 +455,7 @@ const getDetailedResult = async (req, res) => {
     })
     .populate({
       path: 'exam',
-      select: 'title description timeLimit',
+      select: 'title description timeLimit sections',
       options: { lean: true }
     })
     .lean(); // Use lean for the main query too

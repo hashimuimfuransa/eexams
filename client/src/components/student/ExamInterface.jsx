@@ -3990,17 +3990,22 @@ const ExamInterface = () => {
                         {currentQuestion.text}
                       </Typography>
 
-                      {/* Passage display for comprehension questions */}
-                      {currentQuestion.passage && (
-                        <Box sx={{ mb: 3, p: 3, bgcolor: '#EFF6FF', borderRadius: 2, border: '2px solid #BFDBFE' }}>
-                          <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#1E40AF', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            📖 Passage
-                          </Typography>
-                          <Typography sx={{ fontSize: 14, color: '#1E3A8A', whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
-                            {currentQuestion.passage}
-                          </Typography>
-                        </Box>
-                      )}
+                      {/* Passage display for comprehension questions - only show if different from section passage */}
+                      {currentQuestion.passage && (() => {
+                        const sectionPassage = exam.sections.find(s => s.name === activeSection)?.passage;
+                        const isDuplicate = sectionPassage && currentQuestion.passage === sectionPassage;
+                        if (isDuplicate) return null;
+                        return (
+                          <Box sx={{ mb: 3, p: 3, bgcolor: '#EFF6FF', borderRadius: 2, border: '2px solid #BFDBFE' }}>
+                            <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#1E40AF', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              📖 Question Passage
+                            </Typography>
+                            <Typography sx={{ fontSize: 14, color: '#1E3A8A', whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
+                              {currentQuestion.passage}
+                            </Typography>
+                          </Box>
+                        );
+                      })()}
 
                       {/* Word bank display for fill-in-blank questions */}
                       {currentQuestion.wordBank && currentQuestion.wordBank.length > 0 && (

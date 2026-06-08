@@ -431,11 +431,30 @@ const googleAuth = async (req, res) => {
       return res.status(400).json({ message: 'Google credential is required' });
     }
 
+    // Check if Google Client ID is configured
+    if (!process.env.GOOGLE_CLIENT_ID) {
+      console.error('[GoogleAuth] GOOGLE_CLIENT_ID environment variable is not set');
+      return res.status(500).json({ message: 'Google authentication is not properly configured on the server' });
+    }
+
     // Verify Google ID token
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID
-    });
+    let ticket;
+    try {
+      ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID
+      });
+    } catch (verifyError) {
+      console.error('[GoogleAuth] Token verification failed:', verifyError.message);
+      // Check for common error cases
+      if (verifyError.message?.includes('audience')) {
+        return res.status(400).json({ message: 'Invalid Google Client ID configuration. Please contact support.' });
+      }
+      if (verifyError.message?.includes('expired')) {
+        return res.status(400).json({ message: 'Google session expired. Please try again.' });
+      }
+      return res.status(400).json({ message: 'Failed to verify Google account. Please try again.' });
+    }
 
     const payload = ticket.getPayload();
     const { sub: googleId, email, given_name: firstName, family_name: lastName, picture } = payload;

@@ -381,7 +381,17 @@ const StudentRegister = () => {
         setSnackbar({ open: true, message: 'Google account connected! Please complete your registration.', severity: 'success' });
       }
     } catch (err) {
-      setSnackbar({ open: true, message: 'Failed to connect Google account. Please try again.', severity: 'error' });
+      console.error('[Google Auth] Error:', err);
+      // Show specific error message from API response, or fall back to a helpful message
+      let errorMessage = 'Failed to connect Google account. Please try again.';
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = `Google auth failed: ${err.response.data.error}`;
+      } else if (err.message && err.message !== 'Google login failed') {
+        errorMessage = err.message;
+      }
+      setSnackbar({ open: true, message: errorMessage, severity: 'error' });
     } finally {
       setLoading(false);
     }

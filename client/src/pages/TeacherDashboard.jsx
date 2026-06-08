@@ -2961,10 +2961,10 @@ function ExamPreviewPanel({ exam }) {
                   )}
                 </Paper>
 
-                {/* Question-level passage */}
-                {q.passage && (
+                {/* Question-level passage - only show if different from section passage */}
+                {q.passage && q.passage !== curSection?.passage && (
                   <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.primary}`, bgcolor: 'rgba(59,130,246,0.03)', mb: 2.5 }}>
-                    <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.primary, mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>Passage</Typography>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.primary, mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>Question Passage</Typography>
                     <Typography sx={{ fontSize: 14, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{q.passage}</Typography>
                   </Paper>
                 )}

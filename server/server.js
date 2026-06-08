@@ -246,33 +246,40 @@ const DB_RETRY_DELAY = 3000;
 
 const connectWithRetry = async (retries = 0) => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      maxPoolSize: 20,
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 120000,
-      connectTimeoutMS: 15000,
-      // Add heartbeat to detect stale connections
-      heartbeatFrequencyMS: 10000,
-      // Retry writes for better resilience
-      retryWrites: true,
-      w: 'majority'
-    });
+    // Validate MONGODB_URI before attempting connection
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI environment variable is not set');
+    }
+
+    if (typeof process.env.MONGODB_URI !== 'string' || process.env.MONGODB_URI.trim() === '') {
+      throw new Error('MONGODB_URI is empty or invalid');
+    }
+
+    console.log('Attempting to connect to MongoDB...');
+    console.log('MongoDB URI format:', process.env.MONGODB_URI.substring(0, 20) + '...');
+
+    await mongoose.connect(process.env.MONGODB_URI);
     
     console.log('Connected to MongoDB with optimized settings');
-    
+
     // Start background job to check for expired exams
-    const { checkExpiredExams } = require('./utils/examExpirationChecker');
-    
-    // Run every minute to check for expired exams
-    cron.schedule('* * * * *', async () => {
-      try {
-        await checkExpiredExams();
-      } catch (error) {
-        console.error('Error in expired exam checker cron job:', error);
-      }
-    });
-    
-    console.log('🕐 Started background job to check for expired exams (runs every minute)');
+    try {
+      const { checkExpiredExams } = require('./utils/examExpirationChecker');
+
+      // Run every minute to check for expired exams
+      cron.schedule('* * * * *', async () => {
+        try {
+          await checkExpiredExams();
+        } catch (error) {
+          console.error('Error in expired exam checker cron job:', error);
+        }
+      });
+
+      console.log('🕐 Started background job to check for expired exams (runs every minute)');
+    } catch (error) {
+      console.error('Failed to load examExpirationChecker:', error);
+      console.log('Server will continue without expired exam checking');
+    }
     
     // Start server only after successful connection
     const PORT = process.env.PORT || 5000;
@@ -282,12 +289,24 @@ const connectWithRetry = async (retries = 0) => {
     
   } catch (err) {
     console.error(`MongoDB connection attempt ${retries + 1} failed:`, err.message);
-    
+    console.error('Full error details:', {
+      name: err.name,
+      message: err.message,
+      code: err.code,
+      reason: err.reason
+    });
+
     if (retries < MAX_DB_RETRIES) {
       console.log(`Retrying in ${DB_RETRY_DELAY}ms... (${retries + 1}/${MAX_DB_RETRIES})`);
       setTimeout(() => connectWithRetry(retries + 1), DB_RETRY_DELAY);
     } else {
       console.error('Max retries reached. Could not connect to MongoDB.');
+      console.error('Please check your MONGODB_URI in the .env file');
+      console.error('Common issues:');
+      console.error('1. Connection string is incomplete or malformed');
+      console.error('2. Password contains special characters that need URL encoding');
+      console.error('3. MongoDB Atlas cluster is not accessible from your network');
+      console.error('4. IP whitelist in MongoDB Atlas does not include your IP');
       process.exit(1);
     }
   }

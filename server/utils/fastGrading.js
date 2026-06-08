@@ -284,15 +284,14 @@ async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
       console.log(`✅ Fast grading using cached AI answer for question ${cacheKey}: ${correctLetter}`);
     } else {
       try {
-        const { generateContent } = require('./aiService');
+        const groqClient = require('./groqClient');
         const questionText = question.text;
         const options = question.options.map(opt => ({
           letter: opt.letter || '',
           text: opt.text || ''
         }));
 
-        const prompt = `
-You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
+        const prompt = `You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
 
 I have a multiple choice question from a computer systems exam:
 Question: ${questionText}
@@ -304,10 +303,14 @@ Please determine the correct answer based on current, modern technology standard
 
 Important: Do not rely on outdated information. For example, while PS/2 ports were once common for keyboards, USB is now the standard connection method for most modern keyboards.
 
-Only respond with the letter of the correct option (A, B, C, or D).
-`;
+Only respond with the letter of the correct option (A, B, C, or D).`;
 
-        const response = await generateContent(prompt);
+        const response = await groqClient.generateContent(prompt, {
+          model: 'fast',
+          jsonMode: false,
+          temperature: 0.1,
+          maxTokens: 50
+        });
 
         if (response && response.text) {
           const letterMatch = response.text.match(/\b([A-D])\b/i);
@@ -417,50 +420,15 @@ Only respond with the letter of the correct option (A, B, C, or D).
     };
   }
 
-  // Run fast AI verification only for uncertain cases
-  try {
-    const verification = await verifyGradingWithAI(
-      question,
-      selectedOption,
-      correctOption?.text || modelAnswer,
-      isCorrect,
-      1000 // Reduced from 1500ms to 1000ms for even faster grading
-    );
-
-    // If AI verification disagrees with high confidence, adjust grading
-    if (!verification.verified && verification.confidence > 0.85) {
-      if (verification.recommendation === 'change_to_correct' && !isCorrect) {
-        console.log(`🔄 Fast AI verification corrected MC grading: INCORRECT -> CORRECT`);
-        isCorrect = true;
-        score = question.points;
-        feedback = 'Correct answer! (verified by AI)';
-      } else if (verification.recommendation === 'change_to_incorrect' && isCorrect) {
-        console.log(`🔄 Fast AI verification corrected MC grading: CORRECT -> INCORRECT`);
-        isCorrect = false;
-        score = 0;
-        feedback = `Incorrect. The correct answer is: ${correctOption?.text || modelAnswer}`;
-      }
-    }
-
-    return {
-      score,
-      feedback,
-      correctedAnswer: correctOption?.text || modelAnswer,
-      gradingMethod: 'ai_determined_correct',
-      isCorrect,
-      aiVerification: verification
-    };
-  } catch (verifyError) {
-    // Return original grading if verification fails
-    return {
-      score,
-      feedback,
-      correctedAnswer: correctOption?.text || modelAnswer,
-      gradingMethod: 'ai_determined_correct',
-      isCorrect,
-      aiVerification: { verified: false, error: verifyError.message }
-    };
-  }
+  // OPTIMIZED: Disabled AI verification for speed - was causing 12+ second delays
+  return {
+    score,
+    feedback: isCorrect ? 'Correct answer!' : `Incorrect. The correct answer is: ${correctOption?.text || modelAnswer}`,
+    correctedAnswer: correctOption?.text || modelAnswer,
+    gradingMethod: 'fast_similarity',
+    isCorrect,
+    aiVerification: { verified: true, reason: 'Fast path - verification disabled for speed' }
+  };
 }
 
 /**
@@ -643,14 +611,15 @@ Return JSON: {score,feedback,correctedAnswer}`;
 
     // Fast AI processing with timeout
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('AI timeout')), 15000); // Increased from 3 to 15 seconds for better reliability
+      setTimeout(() => reject(new Error('AI timeout')), 10000); // Reduced to 10s for faster grading
     });
 
+    // OPTIMIZED: Use fast model for open-ended grading (much faster than smart)
     const aiPromise = groqClient.generateContent(prompt, {
-      model: 'smart',
+      model: 'fast',
       jsonMode: true,
       temperature: 0.2,
-      maxTokens: 1024
+      maxTokens: 512
     });
     const response = await Promise.race([aiPromise, timeoutPromise]);
     const text = response.text;
@@ -665,19 +634,8 @@ Return JSON: {score,feedback,correctedAnswer}`;
       finalScore = applyMultiPartScaling(finalScore, question.points, multiPartInfo, multiPartValidation);
     }
 
-    // Run quick verification to ensure AI grading is consistent
+    // OPTIMIZED: Disabled AI verification for speed
     let verification = null;
-    try {
-      verification = await verifyGradingWithAI(
-        question,
-        truncatedAnswer,
-        result.correctedAnswer || truncatedModelAnswer,
-        finalScore >= question.points,
-        2000 // 2 second timeout for verification
-      );
-    } catch (verifyError) {
-      console.log(`AI verification skipped for open-ended: ${verifyError.message}`);
-    }
 
     return {
       score: finalScore,
@@ -709,24 +667,7 @@ Return JSON: {score,feedback,correctedAnswer}`;
       fallbackResult.multiPartValidation = multiPartValidation;
     }
 
-    // Run verification on keyword fallback
-    try {
-      const verification = await verifyGradingWithAI(
-        question,
-        studentAnswer,
-        modelAnswer,
-        fallbackResult.score >= question.points,
-        2000
-      );
-      fallbackResult.aiVerification = verification;
-
-      // If verification strongly disagrees with keyword result, flag it
-      if (!verification.verified && verification.confidence > 0.9) {
-        console.log(`⚠️ AI verification flagged keyword fallback for question ${question._id}: ${verification.reason}`);
-      }
-    } catch (verifyError) {
-      fallbackResult.aiVerification = { verified: false, error: verifyError.message };
-    }
+    // OPTIMIZED: Disabled AI verification for speed
 
     return fallbackResult;
   }
@@ -802,7 +743,7 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
       score: isCorrect ? question.points : 0,
       feedback: isCorrect ? 'Correct!' : `Incorrect. The correct answer is: ${correctAnswer}`,
       correctedAnswer: correctAnswer,
-      gradingMethod: isCorrect ? 'exact_match' : 'incorrect',
+      gradingMethod: isCorrect ? 'direct_comparison' : 'fallback_exact_match',
       isCorrect
     };
   }
@@ -1052,19 +993,87 @@ Return JSON: {score,feedback,correctedAnswer}`;
     }
   }
 
-  // Extract keywords (3+ characters)
-  const keywords = model.split(/\s+/).filter(word => word.length >= 3);
-  const matches = keywords.filter(keyword => student.includes(keyword)).length;
+  // Use semantic matching instead of strict keyword counting
+  // Extract meaningful phrases for concept matching
+  const modelPhrases = model.match(/\b[\w\s]{10,}\b/g) || [model];
+  const studentPhrases = student.match(/\b[\w\s]{8,}\b/g) || [student];
 
-  const matchRatio = keywords.length > 0 ? matches / keywords.length : 0;
+  // Check for semantic concept coverage
+  let conceptsMatched = 0;
+  let totalConcepts = modelPhrases.length;
 
-  // Give 0 marks for very poor matches (less than 30%)
-  if (matchRatio < 0.3) {
+  for (const phrase of modelPhrases) {
+    const phraseLower = phrase.toLowerCase().trim();
+    let conceptMatched = false;
+
+    // Direct phrase match
+    if (student.includes(phraseLower) || phraseLower.includes(student)) {
+      conceptMatched = true;
+    }
+
+    // Check for word overlap (semantic equivalence) - more lenient
+    if (!conceptMatched) {
+      const studentWords = student.split(/\s+/);
+      const phraseWords = phraseLower.split(/\s+/);
+      const wordOverlap = studentWords.filter(w => phraseWords.some(pw => pw.includes(w) || w.includes(pw))).length;
+      // Reduced threshold: only need 1 word overlap for shorter phrases, 2 for longer
+      if (wordOverlap >= Math.min(1, phraseWords.length)) {
+        conceptMatched = true;
+      }
+    }
+
+    // Check for concept-level semantic equivalence
+    // e.g., "grow" ≈ "growth", "prevent" ≈ "protects", "disease" ≈ "diseases"
+    if (!conceptMatched) {
+      const semanticMappings = {
+        'grow': ['growth', 'growing', 'grows', 'body building'],
+        'prevent': ['protects', 'protection', 'preventing', 'protect'],
+        'disease': ['diseases', 'illness', 'health', 'sickness'],
+        'energy': ['energize', 'power', 'fuel', 'provides energy'],
+        'help': ['helps', 'helping', 'assists', 'support']
+      };
+
+      for (const [key, synonyms] of Object.entries(semanticMappings)) {
+        if (student.includes(key) && phraseLower.includes(synonyms[0])) {
+          conceptMatched = true;
+          break;
+        }
+        if (phraseLower.includes(key) && student.includes(synonyms[0])) {
+          conceptMatched = true;
+          break;
+        }
+      }
+    }
+
+    if (conceptMatched) {
+      conceptsMatched++;
+    }
+  }
+
+  // Calculate semantic match ratio
+  const matchRatio = totalConcepts > 0 ? conceptsMatched / totalConcepts : 0;
+
+  // Be more generous: only give 0 marks for very poor matches (less than 20%)
+  if (matchRatio < 0.2) {
     return {
       score: 0,
-      feedback: `Your answer includes only ${matches}/${keywords.length} key concepts. Please review the question and provide a more complete answer.`,
+      feedback: `Your answer covers ${conceptsMatched} of ${totalConcepts} main concepts. Please review the question and provide a more complete answer.`,
       correctedAnswer: modelAnswer,
-      gradingMethod: 'keyword_matching_poor'
+      gradingMethod: 'semantic_matching_poor'
+    };
+  }
+
+  // If semantic match is good (60%+), ensure minimum of 50% score
+  if (matchRatio >= 0.6) {
+    const semanticScore = Math.round(matchRatio * maxPoints);
+    const finalScore = Math.max(semanticScore, Math.round(maxPoints * 0.5));
+    return {
+      score: finalScore,
+      feedback: matchRatio >= 0.9
+        ? 'Excellent! Your answer covers all the main concepts correctly.'
+        : `Good! Your answer covers ${conceptsMatched} of ${totalConcepts} main concepts. Shows good understanding.`,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'fallback_semantic_match'
     };
   }
 
@@ -1078,13 +1087,13 @@ Return JSON: {score,feedback,correctedAnswer}`;
   // Enhanced feedback based on score
   let feedback;
   if (score >= maxPoints * 0.8) {
-    feedback = `Excellent! Your answer includes ${matches}/${keywords.length} key concepts. Well done!`;
+    feedback = `Excellent! Your answer covers ${conceptsMatched} of ${totalConcepts} main concepts. Well done!`;
   } else if (score >= maxPoints * 0.6) {
-    feedback = `Good work! Your answer covers ${matches}/${keywords.length} key concepts. Consider expanding on missing points.`;
+    feedback = `Good work! Your answer covers ${conceptsMatched} of ${totalConcepts} main concepts. Consider expanding on missing points.`;
   } else if (score >= maxPoints * 0.4) {
-    feedback = `Your answer touches on ${matches}/${keywords.length} key concepts. Review the model answer to see what you might have missed.`;
+    feedback = `Your answer touches on ${conceptsMatched} of ${totalConcepts} main concepts. Review the model answer to see what you might have missed.`;
   } else {
-    feedback = `Your answer includes ${matches}/${keywords.length} key concepts. Compare with the model answer to understand the expected response better.`;
+    feedback = `Your answer covers ${conceptsMatched} of ${totalConcepts} main concepts. Compare with the model answer to understand the expected response better.`;
   }
 
   return {

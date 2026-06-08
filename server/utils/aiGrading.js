@@ -558,10 +558,80 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
   }
 
   // Check if student answer contains key phrases from model answer
-  // Use a more lenient approach - include words of 3 or more characters
-  const modelKeywords = modelAns.split(/\s+/).filter(word => word.length >= 3);
+  // Use semantic matching instead of strict keyword counting
+  // Extract meaningful phrases (3+ words) instead of individual words
+  const modelPhrases = modelAns.match(/\b[\w\s]{10,}\b/g) || [modelAns];
+  const modelKeywords = modelAns.split(/\s+/).filter(word => word.length >= 4);
 
-  // Count matches, giving partial credit for partial matches
+  // First, check for semantic equivalence of the entire answer
+  // If student answer meaning is equivalent, award full points
+  const studentPhrases = studentAns.match(/\b[\w\s]{8,}\b/g) || [studentAns];
+
+  // Check if student covers the main concepts semantically
+  let semanticMatchScore = 0;
+  let conceptCount = 0;
+
+  // For each phrase in model answer, check if student has semantically equivalent content
+  for (const phrase of modelPhrases) {
+    conceptCount++;
+    const phraseLower = phrase.toLowerCase().trim();
+    let conceptMatched = false;
+
+    // Direct phrase match
+    if (studentAns.includes(phraseLower) || phraseLower.includes(studentAns)) {
+      conceptMatched = true;
+    }
+
+    // Check for semantic equivalence using common patterns
+    // e.g., "help body to grow" ≈ "helps growth and body building"
+    // e.g., "prevent disease" ≈ "protects the body from diseases"
+    if (!conceptMatched) {
+      const studentWords = studentAns.split(/\s+/);
+      const phraseWords = phraseLower.split(/\s+/);
+      const wordOverlap = studentWords.filter(w => phraseWords.some(pw => pw.includes(w) || w.includes(pw))).length;
+      if (wordOverlap >= Math.min(2, phraseWords.length)) {
+        conceptMatched = true;
+      }
+    }
+
+    if (conceptMatched) {
+      semanticMatchScore++;
+    }
+  }
+
+  // If semantic match is high, use that instead of keyword counting
+  if (conceptCount > 0 && semanticMatchScore / conceptCount >= 0.6) {
+    const semanticPercentage = semanticMatchScore / conceptCount;
+    console.log(`Semantic matching: ${semanticMatchScore}/${conceptCount} concepts matched (${Math.round(semanticPercentage * 100)}%)`);
+
+    // Award points based on semantic coverage
+    let score = Math.round(semanticPercentage * maxPoints);
+
+    // Ensure minimum of 50% if at least 60% of concepts are covered semantically
+    if (semanticPercentage >= 0.6 && score < maxPoints * 0.5) {
+      score = Math.round(maxPoints * 0.5);
+    }
+
+    return {
+      score: score,
+      feedback: semanticPercentage >= 0.9
+        ? 'Your answer covers all the main concepts correctly!'
+        : semanticPercentage >= 0.6
+        ? `Your answer covers ${semanticMatchScore} of ${conceptCount} main concepts. Good understanding shown.`
+        : `Your answer touches on some concepts but needs more completeness.`,
+      correctedAnswer: modelAnswer,
+      details: {
+        matchPercentage: semanticPercentage,
+        conceptsMatched: semanticMatchScore,
+        totalConcepts: conceptCount,
+        gradingMethod: 'fallback_semantic_matching',
+        errorReason: errorReason
+      }
+    };
+  }
+
+  // Fallback to keyword matching if semantic matching doesn't work well
+  // Use a more lenient approach - include words of 3 or more characters
   let matchCount = 0;
   for (const keyword of modelKeywords) {
     if (studentAns.includes(keyword)) {

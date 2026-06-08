@@ -552,18 +552,18 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
         continue; // Skip regular grading for this question
       }
 
-      // OPTIMIZED: Reduced delays - only add delay for open-ended questions which need AI grading
+      // OPTIMIZED: Reduced delays - only add minimal delay for open-ended questions which need AI grading
       if (j > 0 && (question.type === 'open-ended' || question.type === 'image' || question.type === 'image-based' || question.type === 'structured')) {
-        // Only delay for AI-intensive questions, and reduce the delay
+        // Only delay for AI-intensive questions, and reduce the delay significantly
         const isNewQuestionType = j > 0 &&
           allAnswersToProcess[j].question.type !== allAnswersToProcess[j-1].question.type;
 
         if (isNewQuestionType) {
           console.log(`Switching to new question type. Adding minimal delay...`);
-          await delay(1000); // Reduced from 5000ms to 1000ms
+          await delay(200); // Reduced from 1000ms to 200ms
         } else {
           console.log(`Adding minimal delay before grading next question...`);
-          await delay(500); // Reduced from 2000ms to 500ms
+          await delay(100); // Reduced from 500ms to 100ms
         }
       }
 
@@ -1504,7 +1504,7 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
 
     // OPTIMIZED: Pre-determine correct answers for all MC/TF questions using AI in batch
     const determineCorrectAnswersWithAI = async (questions) => {
-      const { generateContent } = require('./aiService');
+      const groqClient = require('./groqClient');
       const answersMap = new Map();
 
       for (const q of questions) {
@@ -1521,15 +1521,21 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
             text: opt.text || ''
           }));
 
-          const prompt = `
-You are an expert grader. Determine the correct answer for this multiple choice question:
+          const prompt = `You are an expert grader. Determine the correct answer for this multiple choice question:
 Question: ${q.text}
 Options:
 ${options.map(opt => `${opt.letter}. ${opt.text}`).join('\n')}
 
 Only respond with the letter (A, B, C, or D). No explanation.`;
 
-          const response = await generateContent(prompt);
+          // Use Groq client directly for better caching
+          const response = await groqClient.generateContent(prompt, {
+            model: 'fast',
+            jsonMode: false,
+            temperature: 0.1,
+            maxTokens: 50
+          });
+
           if (response && response.text) {
             const letterMatch = response.text.match(/\b([A-D])\b/i);
             if (letterMatch) {
@@ -1593,12 +1599,11 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
         console.log(`⚠️ Cache miss for question ${questionNumber}, using AI fallback`);
 
         try {
-          // Use the Gemini AI to determine the correct answer
-          const { generateContent } = require('./aiService');
+          // Use Groq client directly for better caching
+          const groqClient = require('./groqClient');
 
           // Create a prompt for the AI
-          const prompt = `
-You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
+          const prompt = `You are an expert in computer systems and exam grading with up-to-date knowledge of modern technology.
 
 I have a multiple choice question from a computer systems exam:
 Question: ${questionText}
@@ -1610,11 +1615,15 @@ Please determine the correct answer based on current, modern technology standard
 
 Important: Do not rely on outdated information. For example, while PS/2 ports were once common for keyboards, USB is now the standard connection method for most modern keyboards.
 
-Only respond with the letter of the correct option (A, B, C, or D).
-`;
+Only respond with the letter of the correct option (A, B, C, or D).`;
 
           // Generate content with the AI
-          const response = await generateContent(prompt);
+          const response = await groqClient.generateContent(prompt, {
+            model: 'fast',
+            jsonMode: false,
+            temperature: 0.1,
+            maxTokens: 50
+          });
 
           // Extract the letter from the response
           if (response && response.text) {

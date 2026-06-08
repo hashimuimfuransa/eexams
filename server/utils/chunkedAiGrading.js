@@ -88,16 +88,31 @@ const extractKeyConcepts = async (modelAnswer, studentAnswer, questionText = '')
 
     let prompt;
     if (isModelAnswerMissing) {
-      prompt = `Extract 4-8 key technical concepts expected for this answer. Q: "${truncatedQuestion}". A: "${truncatedAnswer}". Return JSON array: ["concept1", "concept2", ...]`;
+      prompt = `Extract 3-5 BROAD key concepts expected for this answer. Q: "${truncatedQuestion}". A: "${truncatedAnswer}".
+
+IMPORTANT: Extract broad concepts, NOT individual words.
+Example: For "Provides energy, Helps growth and body building, Protects the body from diseases"
+Correct concepts: ["energy provision", "growth and body building", "disease protection"]
+WRONG: ["provides", "energy", "helps", "growth", "body", "building", "protects", "diseases"]
+
+Return JSON array: ["concept1", "concept2", ...]`;
     } else {
-      prompt = `Extract 4-8 key concepts from model answer. Model: "${truncatedModelAnswer}". Context: "${truncatedQuestion}". Return JSON array: ["concept1", "concept2", ...]`;
+      prompt = `Extract 3-5 BROAD key concepts from model answer. Model: "${truncatedModelAnswer}". Context: "${truncatedQuestion}".
+
+IMPORTANT: Extract broad concepts, NOT individual words.
+Example: For "Provides energy, Helps growth and body building, Protects the body from diseases"
+Correct concepts: ["energy provision", "growth and body building", "disease protection"]
+WRONG: ["provides", "energy", "helps", "growth", "body", "building", "protects", "diseases"]
+
+Return JSON array: ["concept1", "concept2", ...]`;
     }
 
+    // OPTIMIZED: Use fast model for key concept extraction
     const result = await groqClient.generateContent(prompt, {
-      model: 'smart',
+      model: 'fast',
       jsonMode: true,
       temperature: 0.1,
-      maxTokens: 1024
+      maxTokens: 512
     });
 
     const text = result.text;
@@ -273,21 +288,24 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       Expected key concepts for this topic: ${JSON.stringify(keyConcepts)}
 
       Grading Instructions:
-      1. Carefully analyze how well the student's answer addresses each expected key concept
-      2. Consider both explicit mentions and implicit understanding of concepts
-      3. Evaluate the technical accuracy of all statements made
-      4. Assess the completeness and depth of the explanation
-      5. Consider the clarity and organization of the response
-      6. Recognize alternative valid approaches or terminology
+      1. USE YOUR KNOWLEDGE: Use your own comprehensive knowledge to evaluate if the student's answer is factually correct, not just keyword matching
+      2. Carefully analyze how well the student's answer addresses each expected key concept
+      3. Consider both explicit mentions and implicit understanding of concepts
+      4. Evaluate the technical accuracy of all statements made
+      5. Assess the completeness and depth of the explanation
+      6. Consider the clarity and organization of the response
+      7. Recognize alternative valid approaches or terminology
 
       Important guidelines:
       - Use current, up-to-date knowledge when evaluating answers
+      - If the student's answer is factually correct based on your knowledge, award full points even if it differs from the model answer
       - Consider that there may be multiple valid answers to technical questions
       - For example, both USB and PS/2 could be valid answers for keyboard connections, with USB being more modern
       - Accept answers that are technically correct even if they use different terminology
       - Be flexible with terminology if the student's answer demonstrates understanding of the concept
       - Avoid penalizing for minor formatting or grammatical issues
       - Reward depth of understanding over mere keyword matching
+      - BE GENEROUS: If the student demonstrates correct understanding, award appropriate credit regardless of exact wording
 
       Scoring Guidelines:
       - 90-100% of points: Comprehensive answer that demonstrates mastery of ALL key concepts
@@ -331,21 +349,24 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       Key Concepts: ${JSON.stringify(keyConcepts)}
 
       Grading Instructions:
-      1. Carefully analyze how well the student's answer addresses each key concept
-      2. Consider both explicit mentions and implicit understanding of concepts
-      3. Evaluate the technical accuracy of all statements made
-      4. Assess the completeness and depth of the explanation
-      5. Consider the clarity and organization of the response
-      6. Recognize alternative valid approaches or terminology
+      1. USE YOUR KNOWLEDGE: Use your own comprehensive knowledge to evaluate if the student's answer is factually correct, not just keyword matching
+      2. Carefully analyze how well the student's answer addresses each key concept
+      3. Consider both explicit mentions and implicit understanding of concepts
+      4. Evaluate the technical accuracy of all statements made
+      5. Assess the completeness and depth of the explanation
+      6. Consider the clarity and organization of the response
+      7. Recognize alternative valid approaches or terminology
 
       Important guidelines:
       - Use current, up-to-date knowledge when evaluating answers
+      - If the student's answer is factually correct based on your knowledge, award full points even if it differs from the model answer
       - Consider that there may be multiple valid answers to technical questions
       - For example, both USB and PS/2 could be valid answers for keyboard connections, with USB being more modern
       - Accept answers that are technically correct even if they use different terminology
       - Be flexible with terminology if the student's answer demonstrates understanding of the concept
       - Avoid penalizing for minor formatting or grammatical issues
       - Reward depth of understanding over mere keyword matching
+      - BE GENEROUS: If the student demonstrates correct understanding, award appropriate credit regardless of exact wording
 
       Scoring Guidelines:
       - 90-100% of points: Comprehensive answer that demonstrates mastery of ALL key concepts
@@ -385,11 +406,12 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       `;
     }
 
+    // OPTIMIZED: Use fast model for student answer analysis
     const result = await groqClient.generateContent(prompt, {
-      model: 'smart',
+      model: 'fast',
       jsonMode: true,
       temperature: 0.1,
-      maxTokens: 1024
+      maxTokens: 512
     });
 
     const text = result.text;

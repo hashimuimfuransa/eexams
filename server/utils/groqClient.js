@@ -313,6 +313,12 @@ const createGroqClient = () => {
     const questionType = options.questionType || 'open-ended';
     const section = options.section || 'A';
 
+    // OPTIMIZED: Use fast model for short-answer, fill-in-blank, and short open-ended answers
+    // Use smart model only for long essays (over 200 characters)
+    const isShortAnswer = questionType === 'short-answer' || questionType === 'fill-in-blank';
+    const isShortOpenEnded = questionType === 'open-ended' && answer && answer.length < 200;
+    const modelType = (isShortAnswer || isShortOpenEnded) ? 'fast' : 'smart';
+
     const systemPrompt = `You are an expert exam grader specializing in academic assessment. You grade fairly and generously, always giving students the benefit of the doubt. Recognize semantic equivalence, abbreviations, synonyms, and partial understanding. Always return valid JSON.`;
 
     const prompt = `
@@ -329,16 +335,18 @@ Student Answer: ${answer}
 Please grade this answer on a scale of 0 to ${maxPoints} points.
 
 STRICT GRADING GUIDELINES:
-1. EXACT MATCH: If the student answer exactly matches the model answer (ignoring case/spacing), award full points
-2. EQUIVALENT MEANINGS: If the student answer means the same as the model answer, award full points
-3. HANDLE ABBREVIATIONS: "WAN" = "WAN (Wide Area Network)" = "Wide Area Network" (all should get full points)
-4. ACCEPT SYNONYMS: "CPU" = "Central Processing Unit" = "Processor" = "Central Processor"
-5. TECHNICAL TERMS: "RAM" = "Random Access Memory" = "Memory" (in appropriate context)
-6. CASE INSENSITIVE: "cpu" = "CPU" = "Cpu" (all equivalent)
-7. PARTIAL EXPANSIONS: "Hard disk" = "Hard disk drive" = "HDD" (all correct)
-8. NO MINIMUM CREDIT: Do NOT give automatic partial credit. Answers must demonstrate actual understanding.
-9. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
-10. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
+1. USE YOUR UNDERSTANDING: Use your own knowledge to evaluate if the student's answer is correct, not just keyword matching
+2. EXACT MATCH: If the student answer exactly matches the model answer (ignoring case/spacing), award full points
+3. EQUIVALENT MEANINGS: If the student answer means the same as the model answer, award full points
+4. HANDLE ABBREVIATIONS: "WAN" = "WAN (Wide Area Network)" = "Wide Area Network" (all should get full points)
+5. ACCEPT SYNONYMS: "CPU" = "Central Processing Unit" = "Processor" = "Central Processor"
+6. TECHNICAL TERMS: "RAM" = "Random Access Memory" = "Memory" (in appropriate context)
+7. CASE INSENSITIVE: "cpu" = "CPU" = "Cpu" (all equivalent)
+8. PARTIAL EXPANSIONS: "Hard disk" = "Hard disk drive" = "HDD" (all correct)
+9. NO MINIMUM CREDIT: Do NOT give automatic partial credit. Answers must demonstrate actual understanding.
+10. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
+11. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
+12. BE GENEROUS: If the student's answer is factually correct even if it differs from the model answer, award full points
 
 SPECIAL GUIDELINES FOR NUMERICAL/CALCULATION QUESTIONS:
 - EXTRACT NUMERICAL VALUES: If the student shows their work (e.g., "400kg * $1.50 = $600"), extract the final numerical result
@@ -363,6 +371,15 @@ SPECIAL GUIDELINES FOR NUMERICAL/CALCULATION QUESTIONS:
 
 SPECIAL GUIDELINES FOR OPEN-ENDED/EXPLANATION QUESTIONS:
 - For questions asking to "describe" or "explain": Look for key concepts and understanding, not exact wording
+- USE YOUR KNOWLEDGE: If the student's answer is factually correct based on your knowledge, award full points even if it differs from the model answer
+- EXTRACT BROAD CONCEPTS: Extract 3-5 main concepts from the model answer, NOT individual words
+  - Example: For "Provides energy, Helps growth and body building, Protects the body from diseases"
+  - Correct concepts: ["energy provision", "growth and body building", "disease protection"]
+  - WRONG: ["provides", "energy", "helps", "growth", "body", "building", "protects", "the", "from", "diseases"]
+- SEMANTIC EQUIVALENCE: "Help body to grow" = "Helps growth and body building" (SAME CONCEPT)
+- SEMANTIC EQUIVALENCE: "Prevent disease" = "Protects the body from diseases" (SAME CONCEPT)
+- AWARD FULL POINTS if the student covers all main concepts, even with different wording
+- AWARD FULL POINTS if the student's answer is factually correct even if it doesn't match the model answer exactly
 - AWARD PARTIAL CREDIT for answers showing correct approach or understanding, even if incomplete
 - Award 20-30% if the student shows some understanding or correct approach but answer is very brief
 - Award 30-40% only if the student has the right general idea but missing most details
@@ -383,6 +400,10 @@ STRICT PARTIAL CREDIT EXAMPLES:
 - Student: "water evaporates, forms clouds, falls as rain" → Award 85-90% (correct understanding, different wording)
 - Model: "Explain adaptation: traits that help organisms survive in their environment"
 - Student: "adaptation is when animals change to survive" → Award 75-80% (correct concept, simplified)
+- Model: "Provides energy, Helps growth and body building, Protects the body from diseases"
+- Student: "Help body to grow Prevent disease" → Award 66-75% (covers 2 of 3 main concepts with different wording, factually correct)
+- Model: "Give three uses of food in the human body"
+- Student: "energy, growth, disease prevention" → Award FULL POINTS (factually correct answer, concise but complete)
 
 IMPORTANT FOR SECTIONS B & C:
 - These sections often have open-ended questions requiring explanations
@@ -405,10 +426,10 @@ IMPORTANT: Only return valid JSON, no additional text or explanations outside th
 
     const response = await generateContent(prompt, {
       systemPrompt,
-      model: 'smart',
+      model: modelType,
       jsonMode: true,
       temperature: 0.2,
-      maxTokens: 2048
+      maxTokens: isShortAnswer ? 512 : 2048
     });
 
     // Extract parsed content or parse manually

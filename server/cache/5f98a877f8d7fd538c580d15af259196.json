@@ -1,0 +1,1 @@
+{"text":"D","parsedContent":null,"usage":{"queue_time":0.018564524,"prompt_tokens":153,"prompt_time":0.008982476,"completion_tokens":2,"completion_time":0.007644504,"total_tokens":155,"total_time":0.01662698},"model":"llama-3.1-8b-instant"}

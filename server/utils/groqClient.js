@@ -347,6 +347,8 @@ FLEXIBLE GRADING GUIDELINES:
 10. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
 11. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
 12. BE GENEROUS: If the student's answer is factually correct even if it differs from the model answer, award full points
+13. AWARD 0 POINTS for meaningless answers like "I don't know", "no idea", "skip", "pass", "don't know it", etc.
+14. AWARD 0 POINTS for answers that show no understanding of the question
 
 SPECIAL GUIDELINES FOR NUMERICAL/CALCULATION QUESTIONS:
 - EXTRACT NUMERICAL VALUES: If the student shows their work (e.g., "400kg * $1.50 = $600"), extract the final numerical result

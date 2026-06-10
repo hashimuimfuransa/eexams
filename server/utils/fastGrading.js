@@ -568,7 +568,7 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
 
   // Check for meaningless answers like "I don't know", "no idea", etc.
   const meaninglessPatterns = [
-    /^(i\s+don'?t\s+know|dont\s+know|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
+    /^(i\s+don'?t\s+know|dont\s+know|don'?t\s+know\s+it|dont\s+know\s+it|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
     /^(i\s+do\s+not\s+know|i\s+do\s+not\s+understand|i\s+have\s+no\s+clue|no\s+clue)$/i,
     /^(skip|pass|n\/a|none|nothing|answer|question)$/i,
     /^(please\s+help|help\s+me|idk)$/i
@@ -744,7 +744,7 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
 
   // Check for meaningless answers like "I don't know", "no idea", etc.
   const meaninglessPatterns = [
-    /^(i\s+don'?t\s+know|dont\s+know|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
+    /^(i\s+don'?t\s+know|dont\s+know|don'?t\s+know\s+it|dont\s+know\s+it|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
     /^(i\s+do\s+not\s+know|i\s+do\s+not\s+understand|i\s+have\s+no\s+clue|no\s+clue)$/i,
     /^(skip|pass|n\/a|none|nothing|answer|question)$/i,
     /^(please\s+help|help\s+me|idk)$/i
@@ -878,7 +878,7 @@ async function gradeWithKeywordsFast(studentAnswer, modelAnswer, maxPoints, ques
 
   // Check for meaningless answers like "I don't know", "no idea", etc.
   const meaninglessPatterns = [
-    /^(i\s+don'?t\s+know|dont\s+know|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
+    /^(i\s+don'?t\s+know|dont\s+know|don'?t\s+know\s+it|dont\s+know\s+it|no\s+idea|i\s+have\s+no\s+idea|not\s+sure|unsure|i\s+don'?t\s+understand|dont\s+understand)$/i,
     /^(i\s+do\s+not\s+know|i\s+do\s+not\s+understand|i\s+have\s+no\s+clue|no\s+clue)$/i,
     /^(skip|pass|n\/a|none|nothing|answer|question)$/i,
     /^(please\s+help|help\s+me|idk)$/i

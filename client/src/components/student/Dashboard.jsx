@@ -383,11 +383,12 @@ const Dashboard = () => {
         {/* App Download Recommendation - Only show when no available exams */}
         {!hasAvailableExams && (
           <Card
-            elevation={3}
+            elevation={1}
             sx={{
               mb: 4,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              color: 'white'
+              background: '#0D406C',
+              color: 'white',
+              borderRadius: 2
             }}
           >
             <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
@@ -410,15 +411,15 @@ const Dashboard = () => {
                     startIcon={<GooglePlayIcon />}
                     sx={{
                       bgcolor: 'white',
-                      color: '#667eea',
-                      fontWeight: 'bold',
+                      color: '#0D406C',
+                      fontWeight: 500,
                       textTransform: 'none',
                       fontSize: { xs: '0.75rem', sm: '0.875rem' },
                       padding: { xs: '6px 12px', sm: '8px 16px' },
                       minWidth: { xs: '100%', sm: 'auto' },
+                      borderRadius: 1,
                       '&:hover': {
-                        bgcolor: 'rgba(255,255,255,0.9)',
-                        color: '#764ba2'
+                        bgcolor: 'rgba(255,255,255,0.9)'
                       }
                     }}
                   >
@@ -432,15 +433,15 @@ const Dashboard = () => {
                     startIcon={<MicrosoftStoreIcon />}
                     sx={{
                       bgcolor: 'white',
-                      color: '#667eea',
-                      fontWeight: 'bold',
+                      color: '#0D406C',
+                      fontWeight: 500,
                       textTransform: 'none',
                       fontSize: { xs: '0.75rem', sm: '0.875rem' },
                       padding: { xs: '6px 12px', sm: '8px 16px' },
                       minWidth: { xs: '100%', sm: 'auto' },
+                      borderRadius: 1,
                       '&:hover': {
-                        bgcolor: 'rgba(255,255,255,0.9)',
-                        color: '#764ba2'
+                        bgcolor: 'rgba(255,255,255,0.9)'
                       }
                     }}
                   >
@@ -459,9 +460,9 @@ const Dashboard = () => {
               <Schedule color="warning" />
               Pending Exam Requests
             </Typography>
-            <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'warning.light', border: '2px solid', borderColor: 'warning.main' }}>
+            <Paper elevation={1} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'warning.light', border: '1px solid', borderColor: 'warning.main', borderRadius: 2 }}>
               {pendingRequests.filter(r => r.status === 'pending').map((request) => (
-                <Card key={request._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper' }}>
+                <Card key={request._id} elevation={0} sx={{ mb: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
                   <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
                       <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
@@ -481,7 +482,7 @@ const Dashboard = () => {
                         label="Pending Approval"
                         color="warning"
                         size="medium"
-                        sx={{ fontWeight: 'bold' }}
+                        sx={{ fontWeight: 500, borderRadius: 1 }}
                       />
                     </Box>
                     <Box sx={{ mt: 2, p: { xs: 1.5, sm: 2 }, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
@@ -517,7 +518,7 @@ const Dashboard = () => {
               <AccessTime color="error" />
               In-Progress Exams
             </Typography>
-            <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'error.light', border: '2px solid', borderColor: 'error.main' }}>
+            <Paper elevation={1} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'error.light', border: '1px solid', borderColor: 'error.main', borderRadius: 2 }}>
               {inProgressExams.filter(exam => {
                 const timeRemaining = timeRemainingMap[exam._id] || exam.timeRemaining || 0;
                 return timeRemaining > 0;
@@ -526,7 +527,7 @@ const Dashboard = () => {
                 const isUrgent = timeRemaining < 5 * 60 * 1000; // Less than 5 minutes
 
                 return (
-                  <Card key={exam._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper', border: isUrgent ? '2px solid' : 'none', borderColor: isUrgent ? 'error.main' : 'transparent' }}>
+                  <Card key={exam._id} elevation={0} sx={{ mb: 2, bgcolor: 'background.paper', border: isUrgent ? '1px solid' : 'none', borderColor: isUrgent ? 'error.main' : 'transparent', borderRadius: 1 }}>
                     <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
                         <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
@@ -569,6 +570,8 @@ const Dashboard = () => {
                         sx={{
                           mt: 2,
                           background: isUrgent ? 'error.main' : 'warning.main',
+                          borderRadius: 1,
+                          fontWeight: 500,
                           '&:hover': {
                             background: isUrgent ? 'error.dark' : 'warning.dark'
                           }
@@ -592,7 +595,7 @@ const Dashboard = () => {
               <Replay color="warning" />
               Approved Retake Exams
             </Typography>
-            <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'warning.light', border: '2px solid', borderColor: 'warning.main' }}>
+            <Paper elevation={1} sx={{ p: { xs: 2, sm: 3 }, mb: 4, bgcolor: 'warning.light', border: '1px solid', borderColor: 'warning.main', borderRadius: 2 }}>
               {approvedRetakeRequests.map((request) => {
                 const examId = request.exam?._id;
                 const examTitle = request.exam?.title || request.examTitle || 'Exam';
@@ -600,7 +603,7 @@ const Dashboard = () => {
                 const linkTarget = examId ? `/student/exam/${examId}` : null;
 
                 return (
-                  <Card key={request._id} elevation={2} sx={{ mb: 2, bgcolor: 'background.paper', border: '2px solid', borderColor: 'warning.main' }}>
+                  <Card key={request._id} elevation={0} sx={{ mb: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'warning.main', borderRadius: 1 }}>
                     <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
                         <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
@@ -636,7 +639,7 @@ const Dashboard = () => {
                               startIcon={<Replay />}
                               fullWidth={isMobile}
                               color="warning"
-                              sx={{ fontWeight: 'bold', px: { xs: 2, sm: 3 }, py: { xs: 1.2, sm: 1.5 }, textTransform: 'none' }}
+                              sx={{ fontWeight: 500, px: { xs: 2, sm: 3 }, py: { xs: 1.2, sm: 1.5 }, textTransform: 'none', borderRadius: 1 }}
                             >
                               Start Retake
                             </Button>
@@ -670,12 +673,13 @@ const Dashboard = () => {
                 size="small"
                 endIcon={<ArrowForward />}
                 sx={{
-                  fontWeight: 'bold',
+                  fontWeight: 500,
                   textTransform: 'none',
-                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                  boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
+                  background: '#0D406C',
+                  boxShadow: '0 2px 6px rgba(13,64,108,0.15)',
+                  borderRadius: 1,
                   '&:hover': {
-                    boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
+                    boxShadow: '0 4px 8px rgba(13,64,108,0.2)'
                   }
                 }}
               >
@@ -715,16 +719,17 @@ const Dashboard = () => {
                 return (
                   <Card
                     key={exam._id}
-                    elevation={isStartable ? 3 : 1}
+                    elevation={isStartable ? 1 : 0}
                     sx={{
                       mb: 0,
                       bgcolor: 'background.paper',
-                      border: isStartable ? '2px solid' : '1px solid',
+                      border: isStartable ? '1px solid' : '1px solid',
                       borderColor: approvedRetakeRequest ? 'warning.main' : isStartable ? 'primary.main' : 'divider',
-                      transition: 'all 0.2s ease-in-out',
+                      borderRadius: 1,
+                      transition: 'all 0.15s ease',
                       '&:hover': isStartable ? {
-                        transform: 'translateY(-4px)',
-                        boxShadow: 6
+                        transform: 'translateY(-2px)',
+                        boxShadow: 2
                       } : {}
                     }}
                   >
@@ -814,18 +819,18 @@ const Dashboard = () => {
             endIcon={<ArrowForward />}
             fullWidth
             sx={{
-              fontWeight: 'bold',
+              fontWeight: 500,
               textTransform: 'none',
-              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-              boxShadow: '0 4px 16px rgba(12,189,115,0.5), 0 0 20px rgba(12,189,115,0.3)',
+              background: '#0D406C',
+              boxShadow: '0 2px 6px rgba(13,64,108,0.15)',
               py: { xs: 1.5, sm: 2 },
               fontSize: { xs: 14, sm: 16, md: 18 },
-              border: '2px solid rgba(255,255,255,0.3)',
+              borderRadius: 1,
               '&:hover': {
-                boxShadow: '0 6px 24px rgba(12,189,115,0.6), 0 0 30px rgba(12,189,115,0.4)',
-                transform: 'translateY(-2px)'
+                boxShadow: '0 4px 8px rgba(13,64,108,0.2)',
+                transform: 'translateY(-1px)'
               },
-              transition: 'all 0.3s ease'
+              transition: 'all 0.15s ease'
             }}
           >
             Go to Exam Bank for More Exams
@@ -847,12 +852,13 @@ const Dashboard = () => {
                 size="small"
                 endIcon={<ArrowForward />}
                 sx={{
-                  fontWeight: 'bold',
+                  fontWeight: 500,
                   textTransform: 'none',
-                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                  boxShadow: '0 2px 8px rgba(12,189,115,0.3)',
+                  background: '#0D406C',
+                  boxShadow: '0 2px 6px rgba(13,64,108,0.15)',
+                  borderRadius: 1,
                   '&:hover': {
-                    boxShadow: '0 4px 12px rgba(12,189,115,0.4)'
+                    boxShadow: '0 4px 8px rgba(13,64,108,0.2)'
                   }
                 }}
               >
@@ -861,7 +867,7 @@ const Dashboard = () => {
             </Box>
 
             {marketplaceExams.length === 0 ? (
-              <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', mb: 4, bgcolor: 'grey.50' }}>
+              <Paper elevation={1} sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', mb: 4, bgcolor: 'grey.50', borderRadius: 2 }}>
                 <School sx={{ fontSize: { xs: 48, sm: 64 }, color: 'text.secondary', mb: 2 }} />
                 <Typography variant="h6" color="text.secondary" fontWeight="bold">
                   No Exams Available
@@ -884,16 +890,17 @@ const Dashboard = () => {
                   return (
                     <Card
                       key={exam._id}
-                      elevation={2}
+                      elevation={0}
                       sx={{
                         mb: 0,
                         bgcolor: 'background.paper',
                         border: '1px solid',
                         borderColor: 'divider',
-                        transition: 'all 0.2s ease-in-out',
+                        borderRadius: 1,
+                        transition: 'all 0.15s ease',
                         '&:hover': {
-                          transform: 'translateY(-2px)',
-                          boxShadow: 4
+                          transform: 'translateY(-1px)',
+                          boxShadow: 1
                         }
                       }}
                     >
@@ -951,10 +958,11 @@ const Dashboard = () => {
                                 disabled={requestingExam === exam._id}
                                 fullWidth={isMobile}
                                 sx={{
-                                  fontWeight: 'bold',
+                                  fontWeight: 500,
                                   textTransform: 'none',
-                                  background: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
-                                  boxShadow: '0 2px 8px rgba(139,92,246,0.3)'
+                                  background: '#8B5CF6',
+                                  boxShadow: '0 2px 6px rgba(139,92,246,0.15)',
+                                  borderRadius: 1
                                 }}
                               >
                                 {requestingExam === exam._id ? 'Requesting...' : 'Retake'}
@@ -966,8 +974,9 @@ const Dashboard = () => {
                                 size="small"
                                 fullWidth={isMobile}
                                 sx={{
-                                  fontWeight: 'bold',
-                                  textTransform: 'none'
+                                  fontWeight: 500,
+                                  textTransform: 'none',
+                                  borderRadius: 1
                                 }}
                               >
                                 Approved
@@ -979,8 +988,9 @@ const Dashboard = () => {
                                 size="small"
                                 fullWidth={isMobile}
                                 sx={{
-                                  fontWeight: 'bold',
-                                  textTransform: 'none'
+                                  fontWeight: 500,
+                                  textTransform: 'none',
+                                  borderRadius: 1
                                 }}
                               >
                                 Requested
@@ -994,10 +1004,11 @@ const Dashboard = () => {
                                 disabled={requestingExam === exam._id}
                                 fullWidth={isMobile}
                                 sx={{
-                                  fontWeight: 'bold',
+                                  fontWeight: 500,
                                   textTransform: 'none',
-                                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                                  boxShadow: '0 2px 8px rgba(12,189,115,0.3)'
+                                  background: '#0D406C',
+                                  boxShadow: '0 2px 6px rgba(13,64,108,0.15)',
+                                  borderRadius: 1
                                 }}
                               >
                                 {requestingExam === exam._id ? 'Requesting...' : 'Request'}
@@ -1021,9 +1032,9 @@ const Dashboard = () => {
               <Schedule color="primary" />
               Scheduled Exams
             </Typography>
-            <Paper elevation={2} sx={{ p: 3, mb: 4, bgcolor: 'primary.light' }}>
+            <Paper elevation={1} sx={{ p: 3, mb: 4, bgcolor: 'primary.light', borderRadius: 2 }}>
               {scheduledExams.map((exam) => (
-                <Card key={exam._id} elevation={1} sx={{ mb: 2, bgcolor: 'background.paper' }}>
+                <Card key={exam._id} elevation={0} sx={{ mb: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
                       <Box>
@@ -1038,7 +1049,7 @@ const Dashboard = () => {
                         label="Scheduled"
                         color="info"
                         size="small"
-                        sx={{ fontWeight: 'bold' }}
+                        sx={{ fontWeight: 500, borderRadius: 1 }}
                       />
                     </Box>
                   </CardContent>
@@ -1066,7 +1077,7 @@ const Dashboard = () => {
                 startIcon={<LeaderboardIcon />}
                 size={isMobile ? 'small' : 'medium'}
                 fullWidth={isMobile}
-                sx={{ textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
+                sx={{ textTransform: 'none', fontWeight: 500, fontSize: { xs: '0.8rem', sm: '0.875rem' }, borderRadius: 1 }}
               >
                 View Full Leaderboard
               </Button>
@@ -1087,8 +1098,8 @@ const Dashboard = () => {
               const myEntry = lbData?.leaderboard?.find(e => e.isCurrentUser);
 
               return (
-                <Card key={result._id} elevation={2} sx={{ mb: 2, borderRadius: 2,
-                  border: isExpanded ? '2px solid' : '1px solid',
+                <Card key={result._id} elevation={0} sx={{ mb: 2, borderRadius: 1,
+                  border: isExpanded ? '1px solid' : '1px solid',
                   borderColor: isExpanded ? 'primary.main' : 'divider' }}>
                   {/* Exam header row */}
                   <CardContent sx={{ pb: { xs: '8px !important', sm: '12px !important' }, cursor: 'pointer', p: { xs: 1.5, sm: 2 } }}
@@ -1105,7 +1116,7 @@ const Dashboard = () => {
                           icon={isPassed ? <CheckCircle /> : <Cancel />}
                           label={`${percentage}%`}
                           color={isPassed ? 'success' : 'error'}
-                          size="small" sx={{ fontWeight: 'bold', fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 'auto' } }}
+                          size="small" sx={{ fontWeight: 500, fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 'auto' }, borderRadius: 1 }}
                         />
                         {myEntry && (
                           <Chip
@@ -1113,9 +1124,10 @@ const Dashboard = () => {
                             label={`Rank #${myEntry.rank}`}
                             size="small"
                             sx={{
-                              fontWeight: 'bold',
+                              fontWeight: 500,
                               fontSize: { xs: '0.75rem', sm: '0.875rem' },
                               height: { xs: 24, sm: 'auto' },
+                              borderRadius: 1,
                               bgcolor: myEntry.rank === 1 ? '#FFD700' : myEntry.rank === 2 ? '#C0C0C0' : myEntry.rank === 3 ? '#CD7F32' : undefined,
                               color: myEntry.rank <= 3 ? 'black' : undefined
                             }}

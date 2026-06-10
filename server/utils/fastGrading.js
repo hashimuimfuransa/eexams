@@ -3,7 +3,7 @@ const { verifyGradingWithAI } = require('./enhancedGrading');
 
 /**
  * Normalize answer for flexible comparison
- * Handles spacing, capitalization, and special characters
+ * Handles spacing, capitalization, special characters, and pluralization
  * @param {string} answer - The answer to normalize
  * @returns {string} - Normalized answer
  */
@@ -19,6 +19,9 @@ function normalizeAnswer(answer) {
     .replace(/[+\-\/\\]/g, '')
     // Remove spaces around operators (e.g., "ctrl + z" -> "ctrlz")
     .replace(/\s*([+\-\/\\])\s*/g, '$1')
+    // Remove trailing 's' for pluralization (e.g., "decolonizations" -> "decolonization")
+    // Only remove if the word is longer than 3 characters to avoid removing 's' from short words
+    .replace(/([a-z]{3,})s\b/g, '$1')
     .trim();
 }
 
@@ -622,11 +625,12 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
     const isEssayQuestion = question.section !== 'A';
     const prompt = `Grade (0-${question.points}). Q: ${truncatedQuestion}. A: ${truncatedAnswer}. Model: ${truncatedModelAnswer}. ${isEssayQuestion ? 'Detailed feedback.' : 'Brief feedback.'}
 
-STRICT GRADING RULES:
+FLEXIBLE GRADING RULES:
+- Award full points for semantically correct answers, even with minor differences in wording, capitalization, or pluralization
+- Award partial credit for answers that demonstrate understanding but are incomplete or have minor errors
 - Award 0 points for meaningless answers like "I don't know", "no idea", "skip", "pass", etc.
 - Award 0 points for answers that show no understanding of the question
-- Only award points for substantive, relevant answers
-- NO MINIMUM CREDIT - do not give points for effort alone
+- Focus on semantic correctness over exact wording
 
 Return JSON: {score,feedback,correctedAnswer}`;
 
@@ -782,10 +786,11 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
   }
 
   // Quick similarity check (for fill-in-blank and other short answer)
+  // More lenient thresholds to award marks for semantically correct answers
   const similarity = calculateSimilarity(studentAnswer, correctAnswer);
-  let score = similarity > 0.8 ? question.points :
-                similarity > 0.6 ? Math.round(question.points * 0.8) :
-                similarity > 0.4 ? Math.round(question.points * 0.5) : 0;
+  let score = similarity > 0.7 ? question.points :
+                similarity > 0.5 ? Math.round(question.points * 0.8) :
+                similarity > 0.3 ? Math.round(question.points * 0.5) : 0;
 
   let isCorrect = score >= question.points;
   let feedback = score === question.points ? 'Correct!' :
@@ -901,10 +906,10 @@ Student Answer: ${studentAnswer}
 
 Please grade this answer on a scale of 0 to ${maxPoints} points.
 
-STRICT GRADING GUIDELINES (No Model Answer Available):
+FLEXIBLE GRADING GUIDELINES (No Model Answer Available):
 1. Evaluate the answer based on completeness, relevance, and demonstration of understanding
-2. Award full points only if the answer is comprehensive and well-explained
-3. Award partial credit (30-70%) only if the answer shows partial understanding
+2. Award full points for semantically correct answers, even with minor wording or capitalization differences
+3. Award partial credit (30-70%) for answers that show partial understanding or are mostly correct
 4. Award 0 points for answers that are incorrect, irrelevant, too brief, or show no understanding
 5. Very short answers (under 10 characters) or irrelevant answers should receive 0 points
 6. Mathematical expressions without explanation should receive 0 points

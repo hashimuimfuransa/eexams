@@ -334,7 +334,7 @@ Student Answer: ${answer}
 
 Please grade this answer on a scale of 0 to ${maxPoints} points.
 
-STRICT GRADING GUIDELINES:
+FLEXIBLE GRADING GUIDELINES:
 1. USE YOUR UNDERSTANDING: Use your own knowledge to evaluate if the student's answer is correct, not just keyword matching
 2. EXACT MATCH: If the student answer exactly matches the model answer (ignoring case/spacing), award full points
 3. EQUIVALENT MEANINGS: If the student answer means the same as the model answer, award full points
@@ -343,7 +343,7 @@ STRICT GRADING GUIDELINES:
 6. TECHNICAL TERMS: "RAM" = "Random Access Memory" = "Memory" (in appropriate context)
 7. CASE INSENSITIVE: "cpu" = "CPU" = "Cpu" (all equivalent)
 8. PARTIAL EXPANSIONS: "Hard disk" = "Hard disk drive" = "HDD" (all correct)
-9. NO MINIMUM CREDIT: Do NOT give automatic partial credit. Answers must demonstrate actual understanding.
+9. AWARD PARTIAL CREDIT: Give partial credit for answers that demonstrate understanding, even if incomplete
 10. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
 11. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
 12. BE GENEROUS: If the student's answer is factually correct even if it differs from the model answer, award full points
@@ -389,7 +389,7 @@ SPECIAL GUIDELINES FOR OPEN-ENDED/EXPLANATION QUESTIONS:
 - Award full points if the student demonstrates complete understanding, even if phrasing differs from model answer
 - NEVER award 0 points if the student shows any understanding or correct approach - always give partial credit
 
-STRICT PARTIAL CREDIT EXAMPLES:
+FLEXIBLE PARTIAL CREDIT EXAMPLES:
 - Model: "Plants need water, sunlight, and soil to survive"
 - Student: "plants need water and sun" → Award 60-70% (missing soil but shows some understanding)
 - Model: "Photosynthesis converts light energy to chemical energy"
@@ -407,7 +407,7 @@ STRICT PARTIAL CREDIT EXAMPLES:
 
 IMPORTANT FOR SECTIONS B & C:
 - These sections often have open-ended questions requiring explanations
-- Be STRICT with grading - NO automatic minimum credit
+- Be FLEXIBLE with grading - award partial credit for demonstrated understanding
 - Answers must demonstrate actual understanding of the question
 - Very short answers (under 10 characters) or irrelevant answers should receive 0 points
 - Mathematical expressions without explanation for non-math questions should receive 0 points

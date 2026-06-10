@@ -325,7 +325,7 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       5. Do NOT give automatic partial credit - evaluate actual content quality, but award partial credit for correct approach
 
       Assign a precise score between 0 and ${maxPoints} based on how well the answer addresses the specific question.
-      Be STRICT and fair - incomplete answers should receive proportionally lower scores.
+      Be FLEXIBLE and fair - award partial credit for answers that demonstrate understanding, even if incomplete.
 
       Format your response as a JSON object:
       {
@@ -392,7 +392,7 @@ const analyzeStudentAnswer = async (studentAnswer, keyConcepts, maxPoints, isMod
       3. Technical accuracy and clarity of the explanation
       4. Depth of understanding demonstrated
 
-      Be STRICT - an incomplete answer to a multi-part question should receive a score proportional to parts answered.
+      Be FLEXIBLE - award partial credit proportional to parts answered, and be lenient with minor wording differences.
 
       Format your response as a JSON object:
       {

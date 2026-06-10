@@ -388,7 +388,7 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
     };
   }
 
-  // Handle empty model answer - be much stricter
+  // Handle empty model answer - evaluate based on demonstrated understanding
   if (!modelAns) {
     // When no model answer is available, only give credit if the answer shows substantial effort
     const answerLength = cleanStudentAns.length;
@@ -648,7 +648,7 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
     }
   }
 
-  // Calculate match percentage with stricter scoring - NO minimum floor
+  // Calculate match percentage with flexible scoring - award partial credit for demonstrated understanding
   const matchPercentage = modelKeywords.length > 0
     ? matchCount / modelKeywords.length
     : 0;
@@ -770,10 +770,10 @@ Student Answer: ${truncatedAnswer}
 
 Please grade this answer on a scale of 0 to ${maxPoints} points.
 
-STRICT GRADING GUIDELINES (No Model Answer Available):
+FLEXIBLE GRADING GUIDELINES (No Model Answer Available):
 1. Evaluate the answer based on correctness, completeness, and understanding of the question
-2. Award full points only if the answer is completely correct and well-explained
-3. Award partial credit (30-70%) only if the answer shows partial understanding or is mostly correct but missing details
+2. Award full points for semantically correct answers, even with minor wording, capitalization, or pluralization differences
+3. Award partial credit (30-70%) for answers that show partial understanding or are mostly correct but missing details
 4. For calculation questions: Extract the final numerical result and verify it's correct. Correct method with wrong result = 30-50% partial credit
 5. For brief answers: Be lenient - award partial credit if the approach is correct, even if incomplete
 6. Mathematical expressions are acceptable for calculation questions - evaluate the numerical result

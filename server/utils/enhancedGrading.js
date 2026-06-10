@@ -4,7 +4,7 @@ const groqClient = require('./groqClient');
 
 /**
  * Normalize answer for flexible comparison
- * Handles spacing, capitalization, and special characters
+ * Handles spacing, capitalization, special characters, and pluralization
  * @param {string} answer - The answer to normalize
  * @returns {string} - Normalized answer
  */
@@ -20,6 +20,9 @@ function normalizeAnswer(answer) {
     .replace(/[+\-\/\\]/g, '')
     // Remove spaces around operators (e.g., "ctrl + z" -> "ctrlz")
     .replace(/\s*([+\-\/\\])\s*/g, '$1')
+    // Remove trailing 's' for pluralization (e.g., "decolonizations" -> "decolonization")
+    // Only remove if the word is longer than 3 characters to avoid removing 's' from short words
+    .replace(/([a-z]{3,})s\b/g, '$1')
     .trim();
 }
 
@@ -1800,7 +1803,7 @@ const checkAnswerWithAI = async (questionText, studentAnswer, modelAnswer, quest
       const truncatedModel = cleanModelAnswer.length > MAX_LENGTH ? cleanModelAnswer.substring(0, MAX_LENGTH) + '...' : cleanModelAnswer;
       const truncatedStudent = cleanStudentAnswer.length > MAX_LENGTH ? cleanStudentAnswer.substring(0, MAX_LENGTH) + '...' : cleanStudentAnswer;
 
-      prompt = `Are these semantically equivalent? Q: "${truncatedQuestion}". Model: "${truncatedModel}". Student: "${truncatedStudent}". Abbreviations and synonyms are equivalent. Respond "true" or "false".`;
+      prompt = `Are these semantically equivalent? Q: "${truncatedQuestion}". Model: "${truncatedModel}". Student: "${truncatedStudent}". Be lenient: award marks for semantically correct answers even with minor differences in wording, capitalization, or pluralization. Abbreviations, synonyms, and pluralization are equivalent. Respond "true" or "false".`;
     }
 
     // Use the Groq generateContent function

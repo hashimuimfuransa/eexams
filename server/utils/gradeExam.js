@@ -8,7 +8,7 @@ const path = require('path');
 
 /**
  * Normalize answer for flexible comparison
- * Handles spacing, capitalization, and special characters
+ * Handles spacing, capitalization, special characters, and pluralization
  * @param {string} answer - The answer to normalize
  * @returns {string} - Normalized answer
  */
@@ -24,6 +24,9 @@ function normalizeAnswer(answer) {
     .replace(/[+\-\/\\]/g, '')
     // Remove spaces around operators (e.g., "ctrl + z" -> "ctrlz")
     .replace(/\s*([+\-\/\\])\s*/g, '$1')
+    // Remove trailing 's' for pluralization (e.g., "decolonizations" -> "decolonization")
+    // Only remove if the word is longer than 3 characters to avoid removing 's' from short words
+    .replace(/([a-z]{3,})s\b/g, '$1')
     .trim();
 }
 

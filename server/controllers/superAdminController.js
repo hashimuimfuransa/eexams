@@ -144,6 +144,7 @@ const getAllOrganizations = async (req, res) => {
           isBlocked: org.isBlocked,
           createdAt: org.createdAt,
           lastLogin: org.lastLogin,
+          signinMethod: org.signinMethod || 'email',
           stats: {
             teacherCount,
             studentCount,

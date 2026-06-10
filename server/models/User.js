@@ -33,6 +33,11 @@ const UserSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  signinMethod: {
+    type: String,
+    enum: ['email', 'google'],
+    default: 'email'
+  },
   firstName: {
     type: String,
     required: true,

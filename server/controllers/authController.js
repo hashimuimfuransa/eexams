@@ -158,7 +158,8 @@ const register = async (req, res) => {
       role: finalRole,
       subscriptionPlan: finalSubscriptionPlan,
       subscriptionStatus,
-      subscriptionExpiresAt
+      subscriptionExpiresAt,
+      signinMethod: 'email'
     };
 
     // Only add email if provided and not empty
@@ -672,6 +673,7 @@ const googleAuth = async (req, res) => {
       phone: phone || '',
       googleProfilePicture: picture || null,
       isGoogleUser: true,
+      signinMethod: 'google',
       userType: isOrganization ? 'organization' : 'individual',
       role: finalRole,
       subscriptionPlan: finalSubscriptionPlan,

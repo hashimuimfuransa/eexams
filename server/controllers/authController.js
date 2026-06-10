@@ -41,6 +41,25 @@ const checkEmail = async (req, res) => {
   }
 };
 
+// @desc    Check if phone exists
+// @route   POST /api/auth/check-phone
+// @access  Public
+const checkPhone = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    const user = await User.findOne({ phone });
+    res.json({ exists: !!user });
+  } catch (error) {
+    console.error('Check phone error:', error);
+    res.status(500).json({ message: 'Failed to check phone' });
+  }
+};
+
 // @desc    Register new user (organization, individual teacher, or student)
 // @route   POST /api/auth/register
 // @access  Public
@@ -48,10 +67,37 @@ const register = async (req, res) => {
   try {
     const { email, password, firstName, lastName, organization, phone, subscriptionPlan, accountType, role } = req.body;
 
-    // Check if user already exists
-    const userExists = await User.findOne({ email });
+    console.log('[Register] Request body:', { email, phone, firstName, lastName, role, accountType });
+
+    // Validate that at least one of email or phone is provided
+    if ((!email || !email.trim()) && (!phone || !phone.trim())) {
+      console.log('[Register] Validation failed: Neither email nor phone provided');
+      return res.status(400).json({ message: 'Either email or phone number is required' });
+    }
+
+    // Build query for existing user check - only include fields that are provided
+    const orConditions = [];
+    if (email && email.trim()) {
+      orConditions.push({ email: email.trim() });
+    }
+    if (phone && phone.trim()) {
+      orConditions.push({ phone: phone.trim() });
+    }
+
+    console.log('[Register] Checking for existing user with conditions:', orConditions);
+
+    // Check if user already exists (by email or phone)
+    const userExists = orConditions.length > 0 ? await User.findOne({ $or: orConditions }) : null;
+
+    console.log('[Register] Existing user found:', userExists ? userExists._id : null);
 
     if (userExists) {
+      if (userExists.email === email) {
+        return res.status(400).json({ message: 'User with this email already exists' });
+      }
+      if (userExists.phone === phone) {
+        return res.status(400).json({ message: 'User with this phone number already exists' });
+      }
       return res.status(400).json({ message: 'User already exists' });
     }
 
@@ -103,13 +149,11 @@ const register = async (req, res) => {
       }
     }
 
-    // Create user
+    // Create user - only include email/phone if they are provided and not empty
     const userData = {
-      email,
       password,
       firstName,
       lastName,
-      phone,
       userType: isOrganization ? 'organization' : 'individual',
       role: finalRole,
       subscriptionPlan: finalSubscriptionPlan,
@@ -117,12 +161,26 @@ const register = async (req, res) => {
       subscriptionExpiresAt
     };
 
+    // Only add email if provided and not empty
+    if (email && email.trim()) {
+      userData.email = email.trim();
+    }
+
+    // Only add phone if provided and not empty
+    if (phone && phone.trim()) {
+      userData.phone = phone.trim();
+    }
+
     // Add organization only for organization accounts
     if (isOrganization) {
       userData.organization = organization.trim();
     }
 
+    console.log('[Register] Creating user with data:', { ...userData, password: '***' });
+
     const user = await User.create(userData);
+
+    console.log('[Register] User created successfully:', user._id);
 
     if (user) {
       // Send welcome email
@@ -159,11 +217,17 @@ const register = async (req, res) => {
 
       res.status(201).json(responseData);
     } else {
-      res.status(400).json({ message: 'Invalid user data' });
+      res.status(500).json({ message: 'Failed to create user' });
     }
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('[Register] Error during registration:', error);
+    console.error('[Register] Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      errors: error.errors
+    });
+    return res.status(400).json({ message: error.message || 'Registration failed' });
   }
 };
 
@@ -172,15 +236,32 @@ const register = async (req, res) => {
 // @access  Public
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, phone } = req.body;
+
+    console.log('[Login] Attempt with:', { email, phone, hasPassword: !!password });
 
     // Validation is now handled by middleware for faster processing
     // Optimize database query - select only necessary fields for faster retrieval
-    const user = await User.findOne({ email }).select('+password +isBlocked +lastLogin').lean(false);
+    // Search by email or phone
+    const user = await User.findOne({
+      $or: [{ email }, { phone }]
+    }).select('+password +isBlocked +lastLogin').lean(false);
+
+    console.log('[Login] User found:', user ? { _id: user._id, email: user.email, phone: user.phone } : null);
 
     // Fast fail for non-existent users
     if (!user) {
-      return res.status(401).json({ message: 'No account found with this email address' });
+      return res.status(401).json({ message: 'No account found with this email or phone number' });
+    }
+
+    // Verify that the provided identifier actually matches the user
+    if (email && user.email !== email.toLowerCase()) {
+      console.log('[Login] Email mismatch:', { provided: email, found: user.email });
+      return res.status(401).json({ message: 'No account found with this email' });
+    }
+    if (phone && user.phone !== phone.trim()) {
+      console.log('[Login] Phone mismatch:', { provided: phone, found: user.phone });
+      return res.status(401).json({ message: 'No account found with this phone number' });
     }
 
     // Fast fail for blocked users
@@ -666,52 +747,9 @@ const forgotPassword = async (req, res) => {
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiry
     await user.save();
 
-    // Send email with SendGrid
+    // Send email with SendGrid using emailService
     if (process.env.SENDGRID_API_KEY) {
-      const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
-
-      const msg = {
-        to: user.email,
-        from: process.env.SENDGRID_FROM_EMAIL || 'noreply@eexams.com',
-        subject: 'Password Reset Request - eexams',
-        html: `
-          <div style="font-family: 'DM Sans', sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #F5FBF8; border-radius: 12px;">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <h1 style="color: #0D406C; font-size: 24px; margin-bottom: 10px;">Password Reset Request</h1>
-              <p style="color: #475569; font-size: 16px;">You requested a password reset for your eexams account.</p>
-            </div>
-            <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-              <p style="color: #0F172A; font-size: 15px; margin-bottom: 20px; line-height: 1.6;">
-                Hello ${user.firstName || 'there'},
-              </p>
-              <p style="color: #475569; font-size: 15px; margin-bottom: 25px; line-height: 1.6;">
-                We received a request to reset your password. Click the button below to create a new password. This link will expire in 1 hour.
-              </p>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #0D406C 0%, #0CBD73 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 700; font-size: 16px; box-shadow: 0 8px 24px rgba(12,189,115,0.35);">
-                  Reset Password
-                </a>
-              </div>
-              <p style="color: #475569; font-size: 14px; margin-bottom: 15px; line-height: 1.6;">
-                Or copy and paste this link into your browser:
-              </p>
-              <p style="background: #F5FBF8; padding: 12px; border-radius: 8px; word-break: break-all; font-size: 13px; color: #0D406C;">
-                ${resetUrl}
-              </p>
-              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #E2E8F0;">
-                <p style="color: #94A3B8; font-size: 13px; line-height: 1.5;">
-                  If you didn't request this password reset, you can safely ignore this email. Your password will not be changed.
-                </p>
-              </div>
-            </div>
-            <div style="text-align: center; margin-top: 30px; color: #94A3B8; font-size: 12px;">
-              <p>© ${new Date().getFullYear()} eexams. All rights reserved.</p>
-            </div>
-          </div>
-        `,
-      };
-
-      await sgMail.send(msg);
+      await emailService.sendPasswordResetEmail(user, resetToken);
       console.log(`[PasswordReset] Reset email sent to ${user.email}`);
     } else {
       console.log('[PasswordReset] SENDGRID_API_KEY not configured, email not sent');
@@ -822,5 +860,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   verifyResetToken,
-  checkEmail
+  checkEmail,
+  checkPhone
 };

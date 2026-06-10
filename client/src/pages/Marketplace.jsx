@@ -386,7 +386,7 @@ const Marketplace = () => {
             >
               Back
             </Button>
-            <Typography variant="h2" fontWeight={800} sx={{ color: mode === 'dark' ? '#F8FAFC' : '#0D406C' }}>
+            <Typography variant="h2" fontWeight={600} sx={{ color: mode === 'dark' ? '#F8FAFC' : '#0D406C' }}>
               Exam Bank
             </Typography>
           </Box>
@@ -400,7 +400,7 @@ const Marketplace = () => {
               maxWidth: 900, 
               mx: 'auto', 
               bgcolor: mode === 'dark' ? '#1E293B' : 'white',
-              boxShadow: mode === 'dark' ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 12px rgba(0,0,0,0.06)',
+              boxShadow: mode === 'dark' ? '0 1px 3px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
               borderRadius: 2,
               p: { xs: 2, sm: 2.5 },
               mb: 3
@@ -418,7 +418,7 @@ const Marketplace = () => {
             >
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <FilterList sx={{ mr: 1, color: mode === 'dark' ? '#94A3B8' : '#0D406C', fontSize: 20 }} />
-                <Typography fontWeight={700} sx={{ color: mode === 'dark' ? '#F8FAFC' : '#0F172A', fontSize: 15 }}>
+                <Typography fontWeight={600} sx={{ color: mode === 'dark' ? '#F8FAFC' : '#0F172A', fontSize: 15 }}>
                   Filter Exams
                 </Typography>
                 {(searchTerm || levelFilter !== 'all' || subLevelFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
@@ -573,7 +573,7 @@ const Marketplace = () => {
         {/* Personalized Recommendations Section */}
         {isStudent && recommendations.length > 0 && (
           <Box sx={{ mb: 5 }}>
-            <Typography variant="h5" fontWeight={700} sx={{ mb: 3, color: mode === 'dark' ? '#F8FAFC' : '#0D406C', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h5" fontWeight={600} sx={{ mb: 3, color: mode === 'dark' ? '#F8FAFC' : '#0D406C', display: 'flex', alignItems: 'center', gap: 1 }}>
               <Box component="span" sx={{ fontSize: 24 }}>🎯</Box>
               Recommended For You
             </Typography>
@@ -589,14 +589,14 @@ const Marketplace = () => {
                     <Card
                       elevation={0}
                       sx={{
-                        borderRadius: 3,
-                        border: '2px solid #0CBD73',
+                        borderRadius: 2,
+                        border: '1px solid #0CBD73',
                         bgcolor: mode === 'dark' ? '#1E293B' : 'white',
-                        transition: 'all 0.3s',
+                        transition: 'all 0.15s ease',
                         cursor: 'pointer',
                         '&:hover': {
-                          transform: 'translateY(-4px)',
-                          boxShadow: '0 12px 24px rgba(12,189,115,0.2)'
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 2px 8px rgba(12,189,115,0.15)'
                         }
                       }}
                     >
@@ -606,9 +606,9 @@ const Marketplace = () => {
                             label="Recommended"
                             size="small"
                             sx={{
-                              background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
+                              background: '#0CBD73',
                               color: 'white',
-                              fontWeight: 700,
+                              fontWeight: 600,
                               fontSize: 10
                             }}
                           />
@@ -627,7 +627,7 @@ const Marketplace = () => {
                             />
                           )}
                         </Box>
-                        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1, color: mode === 'dark' ? '#F8FAFC' : '#0F172A', fontSize: 16, lineHeight: 1.3 }}>
+                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1, color: mode === 'dark' ? '#F8FAFC' : '#0F172A', fontSize: 16, lineHeight: 1.3 }}>
                           {exam.title}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
@@ -652,10 +652,10 @@ const Marketplace = () => {
                           sx={{
                             borderRadius: 2,
                             textTransform: 'none',
-                            fontWeight: 700,
+                            fontWeight: 500,
                             background: isCompleted
-                              ? 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)'
-                              : 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                              ? '#8B5CF6'
+                              : '#0D406C',
                             fontSize: 12
                           }}
                         >
@@ -688,14 +688,14 @@ const Marketplace = () => {
                 <Card 
                   elevation={0} 
                   sx={{ 
-                    borderRadius: 4, 
+                    borderRadius: 2, 
                     border: mode === 'dark' ? '1px solid #334155' : '1px solid #E2E8F0',
                     bgcolor: mode === 'dark' ? '#1E293B' : 'white',
-                    transition: 'all 0.3s',
+                    transition: 'all 0.15s ease',
                     cursor: 'pointer',
                     '&:hover': {
-                      transform: 'translateY(-6px)',
-                      boxShadow: mode === 'dark' ? '0 24px 48px rgba(0,0,0,0.4)' : '0 24px 48px rgba(15,23,42,0.12)'
+                      transform: 'translateY(-2px)',
+                      boxShadow: mode === 'dark' ? '0 2px 8px rgba(0,0,0,0.2)' : '0 1px 3px rgba(15,23,42,0.08)'
                     }
                   }}
                 >
@@ -706,11 +706,11 @@ const Marketplace = () => {
                         label="Public Exam" 
                         size="small" 
                         sx={{ 
-                          background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
+                          background: '#0CBD73',
                           color: 'white',
-                          fontWeight: 700,
+                          fontWeight: 600,
                           fontSize: 11,
-                          letterSpacing: '0.04em'
+                          letterSpacing: '0.02em'
                         }} 
                       />
                       {(exam.targetAudience || exam.level?.name || exam.subLevel) && (
@@ -738,7 +738,7 @@ const Marketplace = () => {
                     </Box>
                     
                     {/* Title */}
-                    <Typography variant="h6" fontWeight={700} sx={{ mb: 1.5, color: mode === 'dark' ? '#F8FAFC' : '#0F172A', lineHeight: 1.3, fontSize: 20 }}>
+                    <Typography variant="h6" fontWeight={600} sx={{ mb: 1.5, color: mode === 'dark' ? '#F8FAFC' : '#0F172A', lineHeight: 1.3, fontSize: 18 }}>
                       {exam.title}
                     </Typography>
                     
@@ -769,18 +769,18 @@ const Marketplace = () => {
                       background: mode === 'dark' ? 'rgba(30,41,59,0.8)' : 'rgba(241,245,249,0.8)' 
                     }}>
                       <Box sx={{ textAlign: 'center' }}>
-                        <Typography sx={{ fontSize: 24, fontWeight: 800, color: mode === 'dark' ? '#F8FAFC' : '#0D406C', lineHeight: 1, mb: 0.5 }}>
+                        <Typography sx={{ fontSize: 20, fontWeight: 600, color: mode === 'dark' ? '#F8FAFC' : '#0D406C', lineHeight: 1, mb: 0.5 }}>
                           {calculateTotalQuestions(exam)}
                         </Typography>
-                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: mode === 'dark' ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <Typography sx={{ fontSize: 11, fontWeight: 500, color: mode === 'dark' ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                           Questions
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center' }}>
-                        <Typography sx={{ fontSize: 24, fontWeight: 800, color: '#0CBD73', lineHeight: 1, mb: 0.5 }}>
+                        <Typography sx={{ fontSize: 20, fontWeight: 600, color: '#0CBD73', lineHeight: 1, mb: 0.5 }}>
                           {exam.timeLimit}
                         </Typography>
-                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: mode === 'dark' ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <Typography sx={{ fontSize: 11, fontWeight: 500, color: mode === 'dark' ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                           Minutes
                         </Typography>
                       </Box>
@@ -853,9 +853,9 @@ const Marketplace = () => {
                               sx={{
                                 borderRadius: 2,
                                 textTransform: 'none',
-                                fontWeight: 700,
-                                background: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
-                                boxShadow: '0 4px 12px rgba(139,92,246,0.35)'
+                                fontWeight: 500,
+                                background: '#8B5CF6',
+                                boxShadow: '0 1px 3px rgba(139,92,246,0.2)'
                               }}
                             >
                               Retake Exam
@@ -887,9 +887,9 @@ const Marketplace = () => {
                               sx={{
                                 borderRadius: 2,
                                 textTransform: 'none',
-                                fontWeight: 700,
-                                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                                boxShadow: '0 4px 12px rgba(12,189,115,0.35)'
+                                fontWeight: 500,
+                                background: '#0D406C',
+                                boxShadow: '0 1px 3px rgba(13,64,108,0.15)'
                               }}
                             >
                               Request Access

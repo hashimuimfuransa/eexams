@@ -7,6 +7,27 @@ const fs = require('fs');
 const path = require('path');
 
 /**
+ * Normalize answer for flexible comparison
+ * Handles spacing, capitalization, and special characters
+ * @param {string} answer - The answer to normalize
+ * @returns {string} - Normalized answer
+ */
+function normalizeAnswer(answer) {
+  if (!answer) return '';
+  
+  return String(answer)
+    .toLowerCase()
+    .trim()
+    // Remove extra spaces between words
+    .replace(/\s+/g, ' ')
+    // Remove common separators like +, -, /, etc. (for keyboard shortcuts)
+    .replace(/[+\-\/\\]/g, '')
+    // Remove spaces around operators (e.g., "ctrl + z" -> "ctrlz")
+    .replace(/\s*([+\-\/\\])\s*/g, '$1')
+    .trim();
+}
+
+/**
  * Calculate the Levenshtein distance between two strings
  * Used for fuzzy matching in fill-in-the-blank questions
  * @param {string} a - First string
@@ -912,15 +933,18 @@ Only respond with the letter of the correct option (A, B, C, or D).
           console.log(`  Correct numerical: ${correctNumerical}`);
 
           // Check if the student's answer matches the correct answer
-          // We'll use a more flexible matching approach for fill-in-the-blank
-          const studentLower = studentAnswer.toLowerCase();
-          const correctLower = correctAnswer.toLowerCase();
+          // Use flexible normalization for spacing, capitalization, and special characters
+          const studentNormalized = normalizeAnswer(studentAnswer);
+          const correctNormalized = normalizeAnswer(correctAnswer);
           
-          const isExactMatch = studentLower === correctLower;
+          console.log(`  Student normalized: "${studentNormalized}"`);
+          console.log(`  Correct normalized: "${correctNormalized}"`);
+          
+          const isExactMatch = studentNormalized === correctNormalized;
           const isCloseMatch = correctAnswer && (
-            studentLower.includes(correctLower) ||
-            correctLower.includes(studentLower) ||
-            levenshteinDistance(studentLower, correctLower) <= 2 // Allow for small typos
+            studentNormalized.includes(correctNormalized) ||
+            correctNormalized.includes(studentNormalized) ||
+            levenshteinDistance(studentNormalized, correctNormalized) <= 2 // Allow for small typos
           );
 
           // Check for numerical match (with tolerance for floating point)

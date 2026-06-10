@@ -43,6 +43,7 @@ const Icon = {
   X: (p) => <svg width={p.s || 16} height={p.s || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   Sun: (p) => <svg width={p.s || 16} height={p.s || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>,
   Moon: (p) => <svg width={p.s || 16} height={p.s || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
+  Phone: (p) => <svg width={p.s || 18} height={p.s || 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>,
 };
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -124,6 +125,7 @@ function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, na
 
 const Login = () => {
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -137,6 +139,7 @@ const Login = () => {
   const [fedcmLocked, setFedcmLocked] = useState(false); // FedCM lockout status
   const [fedcmLockType, setFedcmLockType] = useState(null); // 'temporary' or 'permanent'
   const [googleClickCount, setGoogleClickCount] = useState(0); // Track failed Google attempts
+  const [loginMethod, setLoginMethod] = useState('phone'); // 'email' or 'phone'
 
   // Google OAuth refs
   const googleInitialized = useRef(false);
@@ -271,17 +274,29 @@ const Login = () => {
       return;
     }
     setError('');
-    if (!email || !password) {
-      setError('Please enter both email and password');
+
+    const identifier = loginMethod === 'email' ? email : phone;
+    if (!identifier || !password) {
+      setError(`Please enter both ${loginMethod} and password`);
       setSnackbar({ open: true, message: 'Please fill in all required fields', severity: 'warning' });
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address');
-      setSnackbar({ open: true, message: 'Invalid email format', severity: 'error' });
-      return;
+
+    if (loginMethod === 'email') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setError('Please enter a valid email address');
+        setSnackbar({ open: true, message: 'Invalid email format', severity: 'error' });
+        return;
+      }
+    } else {
+      if (!/^[\d\s\-\(\)]{10,}$/.test(phone)) {
+        setError('Please enter a valid phone number');
+        setSnackbar({ open: true, message: 'Invalid phone format', severity: 'error' });
+        return;
+      }
     }
+
     if (password.length < 3) {
       setError('Password is too short');
       setSnackbar({ open: true, message: 'Password must be at least 3 characters', severity: 'error' });
@@ -292,11 +307,11 @@ const Login = () => {
     setSnackbar({ open: true, message: 'Logging in...', severity: 'info' });
 
     try {
-      const user = await login({ email, password });
+      const user = await login({ email: loginMethod === 'email' ? email : undefined, phone: loginMethod === 'phone' ? phone : undefined, password });
       setFailedAttempts(0);
       localStorage.removeItem('loginFailedAttempts');
       localStorage.removeItem('loginLockoutEnd');
-      setSnackbar({ open: true, message: `Welcome back, ${user.firstName || user.email}!`, severity: 'success' });
+      setSnackbar({ open: true, message: `Welcome back, ${user.firstName || user.email || user.phone}!`, severity: 'success' });
       setTimeout(() => {
         if (user.role !== 'superadmin' && user.subscriptionStatus === 'pending') {
           navigate('/pending-approval');
@@ -305,14 +320,24 @@ const Login = () => {
         }
       }, 500);
     } catch (err) {
+      console.log('[Login] Error details:', err);
+      console.log('[Login] Error response:', err.response);
+      console.log('[Login] Error response data:', err.response?.data);
+
       let shouldTrackFailure = false;
       let errorMessage = 'An unexpected error occurred. Please try again.';
       let snackbarMessage = 'Login failed';
 
       if (err.response) {
         switch (err.response.status) {
+          case 400:
+            // Validation errors - use the message from backend
+            errorMessage = err.response.data?.message || 'Invalid input data';
+            snackbarMessage = err.response.data?.message || 'Please check your input';
+            console.log('[Login] Validation error message:', snackbarMessage);
+            break;
           case 401:
-            errorMessage = err.response.data?.message || 'Invalid email or password.';
+            errorMessage = err.response.data?.message || 'Invalid credentials.';
             snackbarMessage = err.response.data?.message || 'Invalid credentials';
             shouldTrackFailure = true;
             break;
@@ -322,7 +347,7 @@ const Login = () => {
             snackbarMessage = 'Account not found. Redirecting to registration...';
             setSnackbar({ open: true, message: snackbarMessage, severity: 'warning' });
             setTimeout(() => {
-              navigate('/student-register', { state: { redirect: location.state?.redirect || '/student/dashboard', email } });
+              navigate('/student-register', { state: { redirect: location.state?.redirect || '/student/dashboard', [loginMethod]: identifier } });
             }, 1500);
             setLoading(false);
             return;
@@ -338,7 +363,7 @@ const Login = () => {
         snackbarMessage = 'Login timeout';
       } else {
         errorMessage = err.message || errorMessage;
-        if (err.message && /credential|password|email|invalid/i.test(err.message)) shouldTrackFailure = true;
+        if (err.message && /credential|password|email|phone|invalid/i.test(err.message)) shouldTrackFailure = true;
       }
 
       if (shouldTrackFailure) {
@@ -500,24 +525,9 @@ const Login = () => {
     <div style={{
       minHeight: '100vh',
       fontFamily: "'DM Sans', sans-serif",
-      background: isDark
-        ? `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.18) 0%, transparent 70%), ${tokens.dark.bg}`
-        : `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.1) 0%, transparent 70%), #F5FBF8`,
-      position: 'relative', overflow: 'hidden',
+      background: isDark ? tokens.dark.bg : '#FFFFFF',
       display: 'flex', flexDirection: 'column',
     }}>
-      {/* Grid pattern */}
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0,
-        backgroundImage: isDark
-          ? 'linear-gradient(rgba(26,90,140,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(26,90,140,0.4) 1px, transparent 1px)'
-          : 'linear-gradient(rgba(215,229,221,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(215,229,221,0.7) 1px, transparent 1px)',
-        backgroundSize: '60px 60px',
-        maskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-        WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-      }} />
-      <div style={{ position: 'absolute', top: '10%', left: '5%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(12,189,115,0.14) 0%, transparent 70%)', animation: 'float1 8s ease-in-out infinite', zIndex: 0 }} />
-      <div style={{ position: 'absolute', bottom: '10%', right: '5%', width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(157,246,214,0.16) 0%, transparent 70%)', animation: 'float2 10s ease-in-out infinite', zIndex: 0 }} />
 
       {/* Top bar */}
       <header style={{ position: 'relative', zIndex: 2, padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -564,34 +574,33 @@ const Login = () => {
       </header>
 
       {/* Main card */}
-      <main className="login-main" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 24px 24px', position: 'relative', zIndex: 1 }}>
+      <main className="login-main" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 24px 24px' }}>
         <div className="login-card" style={{
           width: '100%', maxWidth: 440,
           background: isDark ? tokens.dark.surface : tokens.surface,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-          borderRadius: 24, padding: '40px 36px',
-          boxShadow: isDark ? '0 32px 64px rgba(0,0,0,0.5)' : '0 32px 64px rgba(15,23,42,0.12)',
-          animation: 'fadeInUp 0.6s ease',
+          borderRadius: 12, padding: '32px 28px',
+          boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 1px 3px rgba(15,23,42,0.08)',
         }}>
           {/* Badge */}
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             padding: '5px 12px', borderRadius: 100,
-            background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)',
-            border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`,
+            background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
+            border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`,
             marginBottom: 20,
           }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tokens.success, animation: 'pulse 2s infinite' }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: tokens.accent, letterSpacing: '0.04em' }}>Welcome back</span>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tokens.success }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: tokens.accent, letterSpacing: '0.02em' }}>Welcome back</span>
           </div>
 
           <h1 style={{
-            fontWeight: 800, fontSize: 32, letterSpacing: '-0.02em', lineHeight: 1.15,
+            fontWeight: 600, fontSize: 28, letterSpacing: '-0.01em', lineHeight: 1.2,
             color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, marginBottom: 8,
           }}>
-            Log in to <span style={{ background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>eexams</span>
+            Log in to <span style={{ color: tokens.primary }}>eexams</span>
           </h1>
-          <p style={{ fontSize: 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 28, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 24, lineHeight: 1.6 }}>
             Access your exams, results, and analytics.
           </p>
 
@@ -607,14 +616,77 @@ const Login = () => {
             </div>
           )}
 
+          {/* Login method toggle */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+            <button
+              type="button"
+              onClick={() => setLoginMethod('phone')}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: 8,
+                border: `1.5px solid ${loginMethod === 'phone' ? tokens.accent : (isDark ? tokens.dark.border : tokens.surfaceBorder)}`,
+                background: loginMethod === 'phone' ? `${tokens.accent}15` : 'transparent',
+                color: loginMethod === 'phone' ? tokens.accent : (isDark ? tokens.dark.textSecondary : tokens.textSecondary),
+                cursor: 'pointer',
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 13,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.2s',
+              }}
+            >
+              <Icon.Phone s={14} />
+              Phone
+            </button>
+            <button
+              type="button"
+              onClick={() => setLoginMethod('email')}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: 8,
+                border: `1.5px solid ${loginMethod === 'email' ? tokens.accent : (isDark ? tokens.dark.border : tokens.surfaceBorder)}`,
+                background: loginMethod === 'email' ? `${tokens.accent}15` : 'transparent',
+                color: loginMethod === 'email' ? tokens.accent : (isDark ? tokens.dark.textSecondary : tokens.textSecondary),
+                cursor: 'pointer',
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 13,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.2s',
+              }}
+            >
+              <Icon.Mail s={14} />
+              Email
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit}>
-            <Input
-              isDark={isDark}
-              icon={<Icon.Mail />}
-              label="Email address"
-              type="email" id="email" name="email" autoComplete="email" autoFocus
-              value={email} onChange={(e) => setEmail(e.target.value)}
-            />
+            {loginMethod === 'email' ? (
+              <Input
+                isDark={isDark}
+                icon={<Icon.Mail />}
+                label="Email address"
+                type="email" id="email" name="email" autoComplete="email" autoFocus
+                value={email} onChange={(e) => setEmail(e.target.value)}
+              />
+            ) : (
+              <Input
+                isDark={isDark}
+                icon={<Icon.Phone />}
+                label="Phone number"
+                type="tel" id="phone" name="phone" autoComplete="tel" autoFocus
+                value={phone} onChange={(e) => setPhone(e.target.value)}
+                helper="Enter your phone number"
+              />
+            )}
             <Input
               isDark={isDark}
               icon={<Icon.Lock />}
@@ -900,10 +972,7 @@ const Login = () => {
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px);} to { opacity: 1; transform: translateY(0);} }
         @keyframes slideInRight { from { opacity: 0; transform: translateX(20px);} to { opacity: 1; transform: translateX(0);} }
-        @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: 0.6; transform: scale(1.3);} }
         @keyframes spin { to { transform: rotate(360deg);} }
-        @keyframes float1 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(12px,-20px);} }
-        @keyframes float2 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(-12px,16px);} }
         @media (max-width: 520px) {
           .login-main { padding: 8px 12px 20px !important; }
           .login-card { padding: 28px 20px !important; border-radius: 16px !important; }

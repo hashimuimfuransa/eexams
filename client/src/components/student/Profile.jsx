@@ -704,7 +704,11 @@ const Profile = () => {
                                 }
                               },
                               '& .MuiInputLabel-root': {
-                                fontWeight: 'medium'
+                                fontWeight: 'medium',
+                                fontSize: { xs: '0.9rem', sm: '1rem' }
+                              },
+                              '& .MuiInputBase-input': {
+                                fontSize: { xs: '0.95rem', sm: '1rem' }
                               }
                             }}
                           />
@@ -740,7 +744,11 @@ const Profile = () => {
                                 }
                               },
                               '& .MuiInputLabel-root': {
-                                fontWeight: 'medium'
+                                fontWeight: 'medium',
+                                fontSize: { xs: '0.9rem', sm: '1rem' }
+                              },
+                              '& .MuiInputBase-input': {
+                                fontSize: { xs: '0.95rem', sm: '1rem' }
                               }
                             }}
                           />

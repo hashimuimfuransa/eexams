@@ -33,7 +33,7 @@ const ExamRequestSchema = new mongoose.Schema({
     },
     email: {
       type: String,
-      required: true,
+      required: false, // Made optional to support phone-only users
       trim: true
     },
     phone: {

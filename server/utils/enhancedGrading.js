@@ -3,6 +3,27 @@ const { gradeOpenEndedAnswer } = require('./aiGrading');
 const groqClient = require('./groqClient');
 
 /**
+ * Normalize answer for flexible comparison
+ * Handles spacing, capitalization, and special characters
+ * @param {string} answer - The answer to normalize
+ * @returns {string} - Normalized answer
+ */
+function normalizeAnswer(answer) {
+  if (!answer) return '';
+  
+  return String(answer)
+    .toLowerCase()
+    .trim()
+    // Remove extra spaces between words
+    .replace(/\s+/g, ' ')
+    // Remove common separators like +, -, /, etc. (for keyboard shortcuts)
+    .replace(/[+\-\/\\]/g, '')
+    // Remove spaces around operators (e.g., "ctrl + z" -> "ctrlz")
+    .replace(/\s*([+\-\/\\])\s*/g, '$1')
+    .trim();
+}
+
+/**
  * Fast AI verification of grading results
  * Quickly checks if the grading decision appears correct
  * OPTIMIZED: Runs AI check FIRST for correct answer determination, then verifies
@@ -1463,10 +1484,13 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
       const isNumericalMatch = studentNumerical !== null && correctNumerical !== null && 
                                Math.abs(studentNumerical - correctNumerical) < 0.01;
 
-      // Enhanced comparison fallback with semantic matching
-      let isCorrect = studentAnswer.toLowerCase() === correctAnswer.toLowerCase() ||
-                     correctAnswer.toLowerCase().includes(studentAnswer.toLowerCase()) ||
-                     studentAnswer.toLowerCase().includes(correctAnswer.toLowerCase());
+      // Enhanced comparison fallback with flexible normalization
+      const studentNormalized = normalizeAnswer(studentAnswer);
+      const correctNormalized = normalizeAnswer(correctAnswer);
+      
+      let isCorrect = studentNormalized === correctNormalized ||
+                     correctNormalized.includes(studentNormalized) ||
+                     studentNormalized.includes(correctNormalized);
 
       // If not exact match, check semantic equivalence
       if (!isCorrect) {

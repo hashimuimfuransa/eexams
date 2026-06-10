@@ -181,6 +181,7 @@ export const AuthProvider = ({ children }) => {
       // Create the login request promise
       const loginPromise = api.post('/auth/login', {
         email: userData.email,
+        phone: userData.phone,
         password: userData.password,
       }, {
         timeout: 20000 // 20 seconds timeout for axios as well
@@ -231,7 +232,8 @@ export const AuthProvider = ({ children }) => {
 
       setError(errorMessage);
       setLoading(false);
-      throw new Error(errorMessage);
+      // Throw the original error to preserve response data
+      throw err;
     }
   };
 

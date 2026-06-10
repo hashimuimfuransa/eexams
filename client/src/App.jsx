@@ -101,7 +101,6 @@ function Reveal({ children, delay = 0, style = {}, animation = 'fadeInUp' }) {
 function Hero({ mode, isAuthenticated, user }) {
   const isDark = mode === 'dark';
   const [count, setCount] = useState(0);
-  const scrollY = useScrollY();
 
   useEffect(() => {
     let frame;
@@ -121,63 +120,10 @@ function Hero({ mode, isAuthenticated, user }) {
   return (
     <section id="home" style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center',
-      position: 'relative', overflow: 'hidden',
-      background: isDark ? '#030712' : '#FAFBFF',
+      position: 'relative',
+      background: isDark ? '#030712' : '#FFFFFF',
       paddingTop: 'clamp(80px, 15vw, 100px)',
     }}>
-      {/* Professional gradient motion layers */}
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0,
-        background: isDark
-          ? 'linear-gradient(135deg, #030712 0%, #082A45 50%, #0D406C 100%)'
-          : 'linear-gradient(135deg, #FAFBFF 0%, #F0F4FF 50%, #E8F4F8 100%)',
-        backgroundSize: '400% 400%',
-        animation: 'gradientMotion 20s ease infinite',
-      }} />
-
-      {/* Subtle 3D depth layer 1 */}
-      <div style={{
-        position: 'absolute', top: '-20%', left: '-10%', width: '60%', height: '60%',
-        background: isDark
-          ? 'radial-gradient(ellipse at center, rgba(12,189,115,0.08) 0%, transparent 70%)'
-          : 'radial-gradient(ellipse at center, rgba(12,189,115,0.12) 0%, transparent 70%)',
-        filter: 'blur(80px)',
-        animation: 'slowDrift1 25s ease-in-out infinite',
-        transform: `translateY(${scrollY * 0.15}px)`,
-      }} />
-
-      {/* Subtle 3D depth layer 2 */}
-      <div style={{
-        position: 'absolute', bottom: '-10%', right: '-5%', width: '50%', height: '50%',
-        background: isDark
-          ? 'radial-gradient(ellipse at center, rgba(13,64,108,0.1) 0%, transparent 70%)'
-          : 'radial-gradient(ellipse at center, rgba(13,64,108,0.08) 0%, transparent 70%)',
-        filter: 'blur(100px)',
-        animation: 'slowDrift2 30s ease-in-out infinite',
-        transform: `translateY(${scrollY * 0.1}px)`,
-      }} />
-
-      {/* Subtle 3D depth layer 3 */}
-      <div style={{
-        position: 'absolute', top: '30%', left: '30%', width: '40%', height: '40%',
-        background: isDark
-          ? 'radial-gradient(ellipse at center, rgba(157,246,214,0.06) 0%, transparent 70%)'
-          : 'radial-gradient(ellipse at center, rgba(157,246,214,0.1) 0%, transparent 70%)',
-        filter: 'blur(120px)',
-        animation: 'slowDrift3 35s ease-in-out infinite',
-        transform: `translateY(${scrollY * 0.05}px)`,
-      }} />
-
-      {/* Grid pattern overlay */}
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 1,
-        backgroundImage: isDark
-          ? 'linear-gradient(rgba(30,41,59,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(30,41,59,0.3) 1px, transparent 1px)'
-          : 'linear-gradient(rgba(226,232,240,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(226,232,240,0.5) 1px, transparent 1px)',
-        backgroundSize: 'clamp(40px, 10vw, 60px) clamp(40px, 10vw, 60px)',
-        maskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-        opacity: 0.6,
-      }} />
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px', position: 'relative', zIndex: 1, width: '100%' }}>
         <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'clamp(40px, 8vw, 80px)', alignItems: 'center' }}>
@@ -186,21 +132,11 @@ function Hero({ mode, isAuthenticated, user }) {
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '6px 14px', borderRadius: 100,
-              background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)',
-              border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`,
-              marginBottom: 'clamp(16px, 4vw, 28px)', animation: 'fadeInUp 0.6s ease forwards',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-              onMouseEnter={e => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(12,189,115,0.3)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#0CBD73', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+              background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
+              border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`,
+              marginBottom: 'clamp(16px, 4vw, 28px)',
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#0CBD73', display: 'inline-block' }} />
               <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(11px, 2vw, 13px)', fontWeight: 600, color: '#0CBD73', letterSpacing: '0.02em' }}>
                 Rwanda's leading exam platform
               </span>
@@ -208,71 +144,62 @@ function Hero({ mode, isAuthenticated, user }) {
 
             <h1 style={{
               fontFamily: "'DM Sans', sans-serif", fontWeight: 800,
-              fontSize: 'clamp(2rem, 6vw, 4rem)', lineHeight: 1.08,
-              letterSpacing: '-0.03em', marginBottom: 'clamp(16px, 4vw, 24px)',
-              color: isDark ? '#94A3B8' : '#0F172A',
-              animation: 'fadeInUp 0.6s 0.1s ease both',
+              fontSize: 'clamp(2rem, 6vw, 4rem)', lineHeight: 1.1,
+              letterSpacing: '-0.02em', marginBottom: 'clamp(16px, 4vw, 24px)',
+              color: isDark ? '#E8F8F1' : '#0F172A',
             }}>
               Exams that run<br />
-              <span style={{
-                background: 'linear-gradient(135deg, #0D406C 0%, #5AD5A2 100%)',
-                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-              }}>smarter, not harder</span>
+              <span style={{ color: '#0D406C' }}>smarter, not harder</span>
             </h1>
 
             <p style={{
-              fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(14px, 3vw, 18px)', lineHeight: 1.7,
-              color: isDark ? '#94A3B8' : '#64748B',
+              fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(14px, 3vw, 18px)', lineHeight: 1.6,
+              color: isDark ? '#9DC4D9' : '#64748B',
               marginBottom: 'clamp(24px, 6vw, 40px)', maxWidth: 500,
-              animation: 'fadeInUp 0.6s 0.2s ease both',
             }}>
               AI-powered grading, real-time analytics, and secure online exams — built for Rwanda's schools and universities.
             </p>
 
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', animation: 'fadeInUp 0.6s 0.3s ease both', marginBottom: 'clamp(32px, 8vw, 52px)' }} className="hero-buttons">
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 'clamp(32px, 8vw, 52px)' }} className="hero-buttons">
               {isAuthenticated ? (
                 <>
                   <RouterLink to="/dashboard" style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
-                    background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                    backgroundSize: '200% 200%',
+                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    background: '#0D406C',
                     color: 'white', textDecoration: 'none',
-                    boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+                    boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    animation: 'gradientShift 3s ease infinite',
+                    transition: 'all 0.15s ease',
                   }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
-                      e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+                      e.currentTarget.style.background = '#082545';
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(13, 64, 108, 0.25)';
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+                      e.currentTarget.style.background = '#0D406C';
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
                     }}
                   >
                     Go to Dashboard
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </RouterLink>
                   <RouterLink to="/marketplace" style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
-                    border: `1.5px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
-                    color: isDark ? '#94A3B8' : '#64748B',
-                    background: isDark ? tokens.dark.surfaceAlt : 'transparent',
+                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    border: '1.5px solid #E2E8F0',
+                    color: isDark ? '#9DC4D9' : '#64748B',
+                    background: 'transparent',
                     textDecoration: 'none', whiteSpace: 'nowrap',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    transition: 'all 0.15s ease',
                   }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translateY(-3px)';
-                      e.currentTarget.style.borderColor = '#0CBD73';
-                      e.currentTarget.style.color = '#0CBD73';
-                      e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.05)';
+                      e.currentTarget.style.borderColor = '#0D406C';
+                      e.currentTarget.style.color = '#0D406C';
+                      e.currentTarget.style.background = 'rgba(13, 64, 108, 0.04)';
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.borderColor = isDark ? '#1E293B' : '#E2E8F0';
-                      e.currentTarget.style.color = isDark ? '#94A3B8' : '#64748B';
-                      e.currentTarget.style.background = isDark ? tokens.dark.surfaceAlt : 'transparent';
+                      e.currentTarget.style.borderColor = '#E2E8F0';
+                      e.currentTarget.style.color = isDark ? '#9DC4D9' : '#64748B';
+                      e.currentTarget.style.background = 'transparent';
                     }}
                   >
                     Browse Exam Bank
@@ -281,44 +208,40 @@ function Hero({ mode, isAuthenticated, user }) {
               ) : (
                 <>
                   <RouterLink to="/marketplace" style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
-                    background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                    backgroundSize: '200% 200%',
+                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    background: '#0D406C',
                     color: 'white', textDecoration: 'none',
-                    boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+                    boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    animation: 'gradientShift 3s ease infinite',
+                    transition: 'all 0.15s ease',
                   }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
-                      e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+                      e.currentTarget.style.background = '#082545';
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(13, 64, 108, 0.25)';
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+                      e.currentTarget.style.background = '#0D406C';
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
                     }}
                   >
                     Browse Exam Bank
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M3 3h18v18H3zM9 9h6M9 12h6M9 15h6"/></svg>
                   </RouterLink>
                   <RouterLink to="/login" style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 'clamp(14px, 3vw, 16px)',
-                    background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                    backgroundSize: '200% 200%',
+                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    background: '#0D406C',
                     color: 'white', textDecoration: 'none',
-                    boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+                    boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    animation: 'gradientShift 3s ease infinite',
+                    transition: 'all 0.15s ease',
                   }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
-                      e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+                      e.currentTarget.style.background = '#082545';
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(13, 64, 108, 0.25)';
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+                      e.currentTarget.style.background = '#0D406C';
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
                     }}
                   >
                     Login
@@ -329,7 +252,7 @@ function Hero({ mode, isAuthenticated, user }) {
             </div>
 
             {/* Stats row */}
-            <div style={{ display: 'flex', gap: 'clamp(16px, 5vw, 32px)', animation: 'fadeInUp 0.6s 0.4s ease both', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 'clamp(16px, 5vw, 32px)', flexWrap: 'wrap' }}>
               {[
                 { value: `${count.toLocaleString()}+`, label: 'Exams graded' },
                 { value: '140+', label: 'Institutions' },
@@ -337,21 +260,10 @@ function Hero({ mode, isAuthenticated, user }) {
               ].map((s, i) => (
                 <div key={i} style={{
                   padding: '12px 20px',
-                  borderRadius: 12,
+                  borderRadius: 8,
                   background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)',
                   border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)'}`,
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.05)';
-                    e.currentTarget.style.borderColor = '#0CBD73';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)';
-                    e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)';
-                  }}
                 >
                   <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(20px, 4vw, 26px)', letterSpacing: '-0.02em', color: isDark ? '#94A3B8' : '#0F172A' }}>{s.value}</div>
                   <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(11px, 2vw, 13px)', color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{s.label}</div>
@@ -361,7 +273,7 @@ function Hero({ mode, isAuthenticated, user }) {
           </div>
 
           {/* Right: dashboard mockup */}
-          <div className="hero-mockup" style={{ position: 'relative', animation: 'fadeInUp 0.7s 0.2s ease both' }}>
+          <div className="hero-mockup" style={{ position: 'relative' }}>
             <DashboardMockup isDark={isDark} />
           </div>
         </div>
@@ -369,27 +281,6 @@ function Hero({ mode, isAuthenticated, user }) {
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
-        @keyframes fadeInUp { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes fadeInDown { from { opacity:0; transform:translateY(-30px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes fadeInLeft { from { opacity:0; transform:translateX(-30px); } to { opacity:1; transform:translateX(0); } }
-        @keyframes fadeInRight { from { opacity:0; transform:translateX(30px); } to { opacity:1; transform:translateX(0); } }
-        @keyframes fadeInScale { from { opacity:0; transform:scale(0.9); } to { opacity:1; transform:scale(1); } }
-        @keyframes float1 { 0%,100%{transform:translate(0,0) scale(1)} 25%{transform:translate(15px,-25px) scale(1.05)} 50%{transform:translate(8px,-15px) scale(1)} 75%{transform:translate(-5px,-10px) scale(0.98)} }
-        @keyframes float2 { 0%,100%{transform:translate(0,0) scale(1)} 25%{transform:translate(-18px,20px) scale(1.03)} 50%{transform:translate(-10px,12px) scale(1)} 75%{transform:translate(8px,5px) scale(0.97)} }
-        @keyframes float3 { 0%,100%{transform:translate(0,0) rotate(0deg)} 33%{transform:translate(10px,-15px) rotate(5deg)} 66%{transform:translate(-8px,10px) rotate(-3deg)} }
-        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.4)} }
-        @keyframes pulseGlow { 0%,100%{box-shadow:0 0 20px rgba(12,189,115,0.3)} 50%{box-shadow:0 0 40px rgba(12,189,115,0.6)} }
-        @keyframes slideIn { from{opacity:0;transform:translateX(30px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-        @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-        @keyframes rotate { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes gradientShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-        @keyframes scaleIn { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:scale(1)} }
-        @keyframes elastic { 0%{transform:scale(1)} 30%{transform:scale(1.1)} 50%{transform:scale(0.95)} 70%{transform:scale(1.02)} 100%{transform:scale(1)} }
-        @keyframes gradientMotion { 0%{background-position:0% 50%} 25%{background-position:100% 50%} 50%{background-position:100% 100%} 75%{background-position:0% 100%} 100%{background-position:0% 50%} }
-        @keyframes slowDrift1 { 0%,100%{transform:translate(0,0)} 33%{transform:translate(30px,-20px)} 66%{transform:translate(-20px,15px)} }
-        @keyframes slowDrift2 { 0%,100%{transform:translate(0,0)} 33%{transform:translate(-25px,30px)} 66%{transform:translate(20px,-25px)} }
-        @keyframes slowDrift3 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(15px,20px)} }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .mobile-menu-btn { display: none !important; }
         .desktop-nav-links { display: flex !important; }
@@ -612,47 +503,42 @@ function MarketplaceShowcase({ mode }) {
   return (
     <section style={{ padding: 'clamp(60px, 12vw, 100px) 0', background: bg }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
-        <Reveal>
-          <div style={{ textAlign: 'center', marginBottom: 64 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`, marginBottom: 20 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Marketplace</span>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`, marginBottom: 20 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Marketplace</span>
             </div>
-            <h2 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 800, fontSize: 'clamp(2rem, 4vw, 3rem)', letterSpacing: '-0.03em', color: text, marginBottom: 16 }}>
+            <h2 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', letterSpacing: '-0.01em', color: text, marginBottom: 16 }}>
               Browse Public Exams
             </h2>
-            <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 18, color: isDark ? '#94A3B8' : '#64748B', maxWidth: 560, margin: '0 auto', lineHeight: 1.7 }}>
+            <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 16, color: isDark ? '#94A3B8' : '#64748B', maxWidth: 560, margin: '0 auto', lineHeight: 1.6 }}>
               Discover exams shared by teachers across Rwanda. Request access and start learning today.
             </p>
           </div>
-        </Reveal>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 28, marginBottom: 48 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24, marginBottom: 40 }}>
           {exams.map((exam, i) => (
-            <Reveal key={exam._id} delay={i * 80}>
               <div style={{
-                padding: 28, borderRadius: 24,
+                padding: 24, borderRadius: 12,
                 background: cardBg,
                 border: `1px solid ${border}`,
-                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                transition: 'all 0.15s ease',
                 cursor: 'pointer',
-                position: 'relative',
-                overflow: 'hidden',
               }}
                 onClick={() => handleExamClick(exam._id)}
                 onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-8px) scale(1.02)';
-                  e.currentTarget.style.boxShadow = isDark ? '0 28px 56px rgba(0,0,0,0.5)' : '0 28px 56px rgba(15,23,42,0.15)';
-                  e.currentTarget.style.borderColor = '#0CBD73';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+                  e.currentTarget.style.borderColor = '#0D406C';
                 }}
                 onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                  e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = 'none';
                   e.currentTarget.style.borderColor = border;
                 }}
               >
                 {/* Header with badge */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                  <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 100, background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)', color: 'white', fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.04em' }}>
+                  <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 100, background: '#0CBD73', color: 'white', fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.02em' }}>
                     Public Exam
                   </div>
                   {exam.targetAudience && (
@@ -663,7 +549,7 @@ function MarketplaceShowcase({ mode }) {
                 </div>
                 
                 {/* Title */}
-                <h3 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, fontSize: 20, color: text, marginBottom: 12, lineHeight: 1.3 }}>
+                <h3 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 18, color: text, marginBottom: 12, lineHeight: 1.3 }}>
                   {exam.title}
                 </h3>
                 
@@ -673,20 +559,20 @@ function MarketplaceShowcase({ mode }) {
                 </p>
                 
                 {/* Stats */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20, padding: '16px', borderRadius: 12, background: isDark ? 'rgba(30,41,59,0.5)' : 'rgba(241,245,249,0.8)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20, padding: '16px', borderRadius: 8, background: isDark ? 'rgba(30,41,59,0.3)' : 'rgba(241,245,249,0.6)' }}>
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 24, fontWeight: 800, color: '#0D406C', lineHeight: 1, marginBottom: 4 }}>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: '#0D406C', lineHeight: 1, marginBottom: 4 }}>
                       {calculateTotalQuestions(exam)}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                       Questions
                     </div>
                   </div>
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 24, fontWeight: 800, color: '#0CBD73', lineHeight: 1, marginBottom: 4 }}>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: '#0CBD73', lineHeight: 1, marginBottom: 4 }}>
                       {exam.timeLimit}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                       Minutes
                     </div>
                   </div>
@@ -708,36 +594,31 @@ function MarketplaceShowcase({ mode }) {
                 </div>
                 )}
               </div>
-            </Reveal>
           ))}
         </div>
 
-        <Reveal>
           <div style={{ textAlign: 'center' }}>
             <RouterLink to="/marketplace" style={{
-              padding: '14px 32px', borderRadius: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 700, fontSize: 16,
-              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-              backgroundSize: '200% 200%',
+              padding: '12px 28px', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontWeight: 500, fontSize: 15,
+              background: '#0D406C',
               color: 'white', textDecoration: 'none',
-              boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+              boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)',
               display: 'inline-flex', alignItems: 'center', gap: 8,
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              animation: 'gradientShift 3s ease infinite',
+              transition: 'all 0.15s ease',
             }}
               onMouseEnter={e => {
-                e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
-                e.currentTarget.style.boxShadow = '0 12px 32px rgba(12,189,115,0.45)';
+                e.currentTarget.style.background = '#082545';
+                e.currentTarget.style.boxShadow = '0 2px 6px rgba(13, 64, 108, 0.25)';
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                e.currentTarget.style.boxShadow = '0 8px 24px rgba(12,189,115,0.35)';
+                e.currentTarget.style.background = '#0D406C';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
               }}
             >
               View All Exams
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </RouterLink>
           </div>
-        </Reveal>
       </div>
     </section>
   );
@@ -746,84 +627,64 @@ function MarketplaceShowcase({ mode }) {
 // ─── How it works ─────────────────────────────────────────────────────────────
 function HowItWorks({ mode }) {
   const isDark = mode === 'dark';
-  const bg = isDark ? '#111827' : '#F0F4FF';
-  const cardBg = isDark ? '#111827' : '#FFFFFF';
-  const border = isDark ? '#1E293B' : '#E2E8F0';
+  const bg = isDark ? '#111827' : '#FFFFFF';
   const text = isDark ? '#94A3B8' : '#0F172A';
 
   const steps = [
-    { num: '01', title: 'Create your exam', desc: 'Upload a document or build questions from scratch. Support for MCQ, essays, math, code, and file submissions.', color: '#0CBD73' },
-    { num: '02', title: 'Assign to students', desc: 'Send to individuals or groups. Set windows, time limits, and shuffle questions per student.', color: '#0D406C' },
-    { num: '03', title: 'Students take it', desc: 'Students log in from any device. A secure browser environment prevents tab switching and copying.', color: '#0D406C' },
-    { num: '04', title: 'AI grades instantly', desc: 'MCQs are auto-scored. Open-ended answers are graded by AI and ready for teacher review in seconds.', color: '#5AD5A2' },
-    { num: '05', title: 'Review results', desc: 'Detailed score breakdowns, class analytics, and exportable reports available immediately.', color: '#F59E0B' },
+    { num: '01', title: 'Create your exam', desc: 'Upload a document or build questions from scratch. Support for MCQ, essays, math, code, and file submissions.' },
+    { num: '02', title: 'Assign to students', desc: 'Send to individuals or groups. Set windows, time limits, and shuffle questions per student.' },
+    { num: '03', title: 'Students take it', desc: 'Students log in from any device. A secure browser environment prevents tab switching and copying.' },
+    { num: '04', title: 'AI grades instantly', desc: 'MCQs are auto-scored. Open-ended answers are graded by AI and ready for teacher review in seconds.' },
+    { num: '05', title: 'Review results', desc: 'Detailed score breakdowns, class analytics, and exportable reports available immediately.' },
   ];
 
   return (
     <section id="how-it-works" style={{ padding: 'clamp(60px, 12vw, 100px) 0', background: bg }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
-        <Reveal>
-          <div style={{ textAlign: 'center', marginBottom: 72 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`, marginBottom: 20 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.06em', textTransform: 'uppercase' }}>How it works</span>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`, marginBottom: 20 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.02em', textTransform: 'uppercase' }}>How it works</span>
             </div>
-            <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(2rem, 4vw, 3rem)', letterSpacing: '-0.03em', color: text }}>
+            <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', letterSpacing: '-0.01em', color: text }}>
               From zero to graded in minutes
             </h2>
           </div>
-        </Reveal>
 
-        <div className="steps-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'clamp(16px, 4vw, 20px)', position: 'relative' }}>
-          {/* Connector line */}
-          <div style={{ position: 'absolute', top: 36, left: '10%', right: '10%', height: 2, background: `linear-gradient(90deg, #0D406C, #0CBD73, #5AD5A2)`, opacity: 0.25, zIndex: 0, display: 'none' }} className="desktop-connector" />
-
+        <div className="steps-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24 }}>
           {steps.map((s, i) => (
-            <Reveal key={i} delay={i * 100}>
-              <div style={{ position: 'relative', zIndex: 1, padding: '20px', borderRadius: 16, transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-5px)';
-                  e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
+              <div style={{ position: 'relative', padding: '24px', borderRadius: 12, border: '1px solid #E2E8F0', background: isDark ? 'rgba(255,255,255,0.02)' : '#FFFFFF' }}>
                 {/* Number bubble */}
-                <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${s.color}22, ${s.color}33)`, border: `2px solid ${s.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, color: s.color, fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', transition: 'all 0.3s ease' }}>
+                <div style={{ width: 48, height: 48, borderRadius: 8, background: '#0D406C', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, color: 'white', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 18 }}>
                   {s.num}
                 </div>
-                <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 16, color: text, marginBottom: 8 }}>{s.title}</h3>
+                <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16, color: text, marginBottom: 8 }}>{s.title}</h3>
                 <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, lineHeight: 1.6, color: isDark ? '#94A3B8' : '#64748B' }}>{s.desc}</p>
               </div>
-            </Reveal>
           ))}
         </div>
 
-        <Reveal delay={300}>
-          <div style={{ textAlign: 'center', marginTop: 64 }}>
+          <div style={{ textAlign: 'center', marginTop: 48 }}>
             <RouterLink to="/register" style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '16px 32px', borderRadius: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 17,
-              background: 'white', color: '#0CBD73', textDecoration: 'none',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+              padding: '12px 28px', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
+              background: '#0D406C', color: 'white', textDecoration: 'none',
+              boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)',
               whiteSpace: 'nowrap',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              transition: 'all 0.15s ease',
             }}
               onMouseEnter={e => {
-                e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
-                e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.3)';
+                e.currentTarget.style.background = '#082545';
+                e.currentTarget.style.boxShadow = '0 2px 6px rgba(13, 64, 108, 0.25)';
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
+                e.currentTarget.style.background = '#0D406C';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
               }}
             >
               Try it free — no credit card
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </RouterLink>
           </div>
-        </Reveal>
       </div>
     </section>
   );
@@ -832,7 +693,7 @@ function HowItWorks({ mode }) {
 // ─── FAQ ─────────────────────────────────────────────────────────────────────
 function FAQ({ mode }) {
   const isDark = mode === 'dark';
-  const bg = isDark ? '#111827' : '#F5FBF8';
+  const bg = isDark ? '#111827' : '#FFFFFF';
   const cardBg = isDark ? '#111827' : '#FFFFFF';
   const border = isDark ? '#1E293B' : '#E2E8F0';
   const text = isDark ? '#94A3B8' : '#0F172A';
@@ -850,68 +711,42 @@ function FAQ({ mode }) {
   return (
     <section id="faq" style={{ padding: 'clamp(60px, 12vw, 100px) 0', background: bg }}>
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '0 16px' }}>
-        <Reveal>
-          <div style={{ textAlign: 'center', marginBottom: 64 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`, marginBottom: 20 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.06em', textTransform: 'uppercase' }}>FAQ</span>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`, marginBottom: 20 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.02em', textTransform: 'uppercase' }}>FAQ</span>
             </div>
-            <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(2rem, 4vw, 2.8rem)', letterSpacing: '-0.03em', color: text }}>
+            <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', letterSpacing: '-0.01em', color: text }}>
               Common questions
             </h2>
           </div>
-        </Reveal>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {faqs.map((faq, i) => (
-            <Reveal key={i} delay={i * 60}>
               <div style={{
-                borderRadius: 16, border: `1px solid ${open === i ? 'rgba(12,189,115,0.27)' : border}`,
+                borderRadius: 8, border: `1px solid ${open === i ? '#0CBD73' : border}`,
                 background: cardBg, overflow: 'hidden',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-                onMouseEnter={e => {
-                  if (open !== i) {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = isDark ? '0 8px 24px rgba(0,0,0,0.3)' : '0 8px 24px rgba(15,23,42,0.08)';
-                  }
-                }}
-                onMouseLeave={e => {
-                  if (open !== i) {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }
-                }}
-              >
+                transition: 'all 0.15s ease',
+              }}>
                 <button onClick={() => setOpen(open === i ? null : i)} style={{
-                  width: '100%', padding: '20px 24px', background: 'none', border: 'none', cursor: 'pointer',
+                  width: '100%', padding: '16px 20px', background: 'none', border: 'none', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, textAlign: 'left',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                }}
-                  onMouseEnter={e => {
-                    if (open !== i) {
-                      e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(15,23,42,0.02)';
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16, color: text }}>
+                  transition: 'all 0.15s ease',
+                }}>
+                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15, color: text }}>
                     {faq.q}
                   </span>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: open === i ? '#0CBD73' : isDark ? '#111827' : '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: open === i ? '#0CBD73' : isDark ? '#94A3B8' : '#64748B', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', transform: open === i ? 'rotate(45deg)' : 'none' }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 6, background: open === i ? '#0CBD73' : isDark ? '#111827' : '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: open === i ? '#0CBD73' : isDark ? '#94A3B8' : '#64748B', transition: 'all 0.15s ease', transform: open === i ? 'rotate(45deg)' : 'none' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
                   </div>
                 </button>
                 {open === i && (
-                  <div style={{ padding: '0 24px 20px', animation: 'fadeInUp 0.3s ease' }}>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, lineHeight: 1.7, color: isDark ? '#94A3B8' : '#64748B' }}>
+                  <div style={{ padding: '0 20px 16px' }}>
+                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, lineHeight: 1.6, color: isDark ? '#94A3B8' : '#64748B' }}>
                       {faq.a}
                     </p>
                   </div>
                 )}
               </div>
-            </Reveal>
           ))}
         </div>
       </div>
@@ -924,21 +759,19 @@ function CTABanner({ mode }) {
   const isDark = mode === 'dark';
   return (
     <section style={{ padding: '0 16px clamp(60px, 12vw, 100px)' }}>
-      <Reveal>
         <div style={{
           maxWidth: 1200, margin: '0 auto',
-          borderRadius: 28, padding: 'clamp(32px, 8vw, 72px) clamp(24px, 8vw, 64px)',
+          borderRadius: 12, padding: 'clamp(32px, 8vw, 56px) clamp(24px, 8vw, 48px)',
           background: '#0D406C',
-          position: 'relative', overflow: 'hidden',
-          boxShadow: '0 32px 64px rgba(13,64,108,0.3)',
+          boxShadow: '0 4px 12px rgba(13,64,108,0.15)',
         }}>
 
-          <div className="cta-inner" style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 40 }}>
+          <div className="cta-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 40 }}>
             <div style={{ maxWidth: 600 }}>
-              <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(1.8rem, 3.5vw, 2.8rem)', letterSpacing: '-0.03em', color: 'white', marginBottom: 16 }}>
+              <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(1.5rem, 3.5vw, 2.2rem)', letterSpacing: '-0.01em', color: 'white', marginBottom: 12 }}>
                 Ready to modernise your exams?
               </h2>
-              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 18, color: 'rgba(255,255,255,0.8)', lineHeight: 1.6 }}>
+              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 16, color: 'rgba(255,255,255,0.85)', lineHeight: 1.6 }}>
                 Join 140+ Rwandan institutions. Free 14-day trial. No credit card, no setup fee.
               </p>
               <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
@@ -953,37 +786,35 @@ function CTABanner({ mode }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flexShrink: 0 }}>
               <RouterLink to="/register" style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
-                padding: '16px 32px', borderRadius: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 17,
-                background: 'white', color: '#0CBD73', textDecoration: 'none',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+                padding: '12px 28px', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
+                background: 'white', color: '#0D406C', textDecoration: 'none',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
                 whiteSpace: 'nowrap',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                transition: 'all 0.15s ease',
               }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
-                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.3)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
-                }}
-              >
-                Start free trial
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </RouterLink>
-              <button onClick={() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })} style={{
-                padding: '14px 32px', borderRadius: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16,
-                background: 'rgba(255,255,255,0.1)', color: 'white',
-                border: '1.5px solid rgba(255,255,255,0.25)', cursor: 'pointer', whiteSpace: 'nowrap',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-3px)';
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.15)';
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+                }}
+              >
+                Start free trial
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </RouterLink>
+              <button onClick={() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })} style={{
+                padding: '12px 28px', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
+                background: 'rgba(255,255,255,0.1)', color: 'white',
+                border: '1.5px solid rgba(255,255,255,0.25)', cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)';
+                }}
+                onMouseLeave={e => {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
                   e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
                 }}
@@ -993,7 +824,6 @@ function CTABanner({ mode }) {
             </div>
           </div>
         </div>
-      </Reveal>
     </section>
   );
 }
@@ -1001,7 +831,7 @@ function CTABanner({ mode }) {
 // ─── Contact ─────────────────────────────────────────────────────────────────
 function Contact({ mode }) {
   const isDark = mode === 'dark';
-  const bg = isDark ? '#111827' : '#F0F4FF';
+  const bg = isDark ? '#111827' : '#FFFFFF';
   const cardBg = isDark ? '#111827' : '#FFFFFF';
   const border = isDark ? '#1E293B' : '#E2E8F0';
   const text = isDark ? '#94A3B8' : '#0F172A';
@@ -1017,10 +847,10 @@ function Contact({ mode }) {
   });
 
   const inputStyle = {
-    width: '100%', padding: '12px 16px', borderRadius: 10,
+    width: '100%', padding: '12px 16px', borderRadius: 8,
     border: `1.5px solid ${border}`, background: inputBg,
     fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: text,
-    outline: 'none', transition: 'border-color 0.2s',
+    outline: 'none', transition: 'border-color 0.15s',
   };
 
   const handleSubmit = async (e) => {
@@ -1059,40 +889,37 @@ function Contact({ mode }) {
   return (
     <section id="contact" style={{ padding: 'clamp(60px, 12vw, 100px) 0', background: bg }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
-        <Reveal>
-          <div style={{ textAlign: 'center', marginBottom: 64 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`, marginBottom: 20 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.06em', textTransform: 'uppercase' }}>Contact</span>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`, marginBottom: 20 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.02em', textTransform: 'uppercase' }}>Contact</span>
             </div>
-            <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(2rem, 4vw, 3rem)', letterSpacing: '-0.03em', color: text }}>
+            <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', letterSpacing: '-0.01em', color: text }}>
               Talk to our team
             </h2>
-            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 18, color: isDark ? '#94A3B8' : '#64748B', marginTop: 12 }}>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 16, color: isDark ? '#94A3B8' : '#64748B', marginTop: 12 }}>
               We respond within 1 business day. Mon–Fri, 8am–6pm (EAT).
             </p>
           </div>
-        </Reveal>
 
         <div className="contact-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'start' }}>
           {/* Form */}
-          <Reveal>
-            <div style={{ padding: 40, borderRadius: 24, background: cardBg, border: `1px solid ${border}`, boxShadow: isDark ? '0 20px 40px rgba(0,0,0,0.3)' : '0 20px 40px rgba(15,23,42,0.06)' }}>
+            <div style={{ padding: 32, borderRadius: 12, background: cardBg, border: `1px solid ${border}`, boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.2)' : '0 1px 3px rgba(15,23,42,0.05)' }}>
               {sent ? (
-                <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                  <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(12,189,115,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#0CBD73' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(12,189,115,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#0CBD73' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                   </div>
-                  <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 22, color: text, marginBottom: 10 }}>Message sent!</h3>
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: isDark ? '#94A3B8' : '#64748B' }}>We'll get back to you within 1 business day.</p>
+                  <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 20, color: text, marginBottom: 8 }}>Message sent!</h3>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: isDark ? '#94A3B8' : '#64748B' }}>We'll get back to you within 1 business day.</p>
                 </div>
               ) : (
                 <>
-                  <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 22, color: text, marginBottom: 8 }}>Send a message</h3>
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 28 }}>
+                  <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 20, color: text, marginBottom: 8 }}>Send a message</h3>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 24 }}>
                     Have a question, need a demo, or want pricing info? We're here.
                   </p>
                   {error && (
-                    <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', marginBottom: 16, color: '#EF4444', fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>
+                    <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: 16, color: '#EF4444', fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>
                       {error}
                     </div>
                   )}
@@ -1143,10 +970,10 @@ function Contact({ mode }) {
                       type="submit"
                       disabled={loading}
                       style={{
-                        width: '100%', padding: '14px', borderRadius: 12,
-                        background: loading ? 'rgba(13, 64, 108, 0.5)' : 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                        width: '100%', padding: '12px', borderRadius: 8,
+                        background: loading ? 'rgba(13, 64, 108, 0.5)' : '#0D406C',
                         color: 'white', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-                        fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 16,
+                        fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
                         boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                         opacity: loading ? 0.7 : 1,
@@ -1159,10 +986,8 @@ function Contact({ mode }) {
                 </>
               )}
             </div>
-          </Reveal>
 
           {/* Info */}
-          <Reveal delay={100}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {[
                 { icon: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.93 12 19.79 19.79 0 0 1 1.93 3.26 2 2 0 0 1 3.9 1.07h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 15.91z"/>, label: 'Phone', value: '+250 788 535 156\n+250 793 828 834\n+250 781 671 517', color: '#0CBD73', isPhone: true },
@@ -1243,7 +1068,6 @@ function Contact({ mode }) {
                 </div>
               </div>
             </div>
-          </Reveal>
         </div>
       </div>
     </section>
@@ -1255,7 +1079,7 @@ function Footer({ mode }) {
   const isDark = mode === 'dark';
   const bg = isDark ? '#030712' : '#0F172A';
   const border = 'rgba(255,255,255,0.08)';
-  const muted = 'rgba(255,255,255,0.45)';
+  const muted = 'rgba(255,255,255,0.5)';
   const secondary = 'rgba(255,255,255,0.7)';
   const [email, setEmail] = React.useState('');
   const [subscribed, setSubscribed] = React.useState(false);
@@ -1278,18 +1102,18 @@ function Footer({ mode }) {
   ];
 
   return (
-    <footer style={{ background: bg, padding: 'clamp(40px, 8vw, 80px) 16px clamp(24px, 4vw, 40px)', color: 'white' }}>
+    <footer style={{ background: bg, padding: 'clamp(40px, 8vw, 64px) 16px clamp(24px, 4vw, 32px)', color: 'white' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div className="footer-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'clamp(24px, 6vw, 48px)', marginBottom: 'clamp(32px, 8vw, 64px)' }}>
+        <div className="footer-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'clamp(24px, 6vw, 40px)', marginBottom: 'clamp(32px, 8vw, 48px)' }}>
           {/* Brand */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
-              <img src="/logo.png" alt="eexams" style={{ width: 70, height: 70, borderRadius: 12, objectFit: 'cover', backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.9)', padding: '4px', boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.15)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+              <img src="/logo.png" alt="eexams" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.9)', padding: '4px' }} />
             </div>
-            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: secondary, lineHeight: 1.7, maxWidth: 280, marginBottom: 28 }}>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: secondary, lineHeight: 1.6, maxWidth: 280, marginBottom: 24 }}>
               Modern online exam platform for Rwanda's schools and universities. AI-powered grading, real-time analytics.
             </p>
-            <div style={{ padding: '16px 20px', borderRadius: 14, border: `1px solid ${border}`, background: 'rgba(255,255,255,0.04)' }}>
+            <div style={{ padding: '14px 16px', borderRadius: 8, border: `1px solid ${border}`, background: 'rgba(255,255,255,0.04)' }}>
               <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: muted, marginBottom: 10 }}>Stay in the loop</p>
               <form onSubmit={handleSubscribe} style={{ display: 'flex', gap: 8 }}>
                 <input
@@ -1298,11 +1122,11 @@ function Footer({ mode }) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: `1px solid ${border}`, background: 'rgba(255,255,255,0.05)', color: 'white', fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: 'none' }}
+                  style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: `1px solid ${border}`, background: 'rgba(255,255,255,0.05)', color: 'white', fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: 'none' }}
                 />
                 <button
                   type="submit"
-                  style={{ padding: '10px 14px', borderRadius: 10, background: '#0CBD73', border: 'none', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', transition: 'background 0.2s' }}
+                  style={{ padding: '10px 14px', borderRadius: 8, background: '#0CBD73', border: 'none', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', transition: 'background 0.15s' }}
                   onMouseEnter={(e) => e.target.style.background = '#0A9E5C'}
                   onMouseLeave={(e) => e.target.style.background = '#0CBD73'}
                 >
@@ -1320,7 +1144,7 @@ function Footer({ mode }) {
           {/* Links */}
           {cols.map((col, i) => (
             <div key={i}>
-              <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.9)', marginBottom: 20, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{col.title}</div>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.9)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{col.title}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {col.links.map((l, j) => (
                   <RouterLink key={j} to={l.to} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: muted, textDecoration: 'none', transition: 'color 0.2s' }}
@@ -1333,7 +1157,7 @@ function Footer({ mode }) {
           ))}
         </div>
 
-        <div style={{ borderTop: `1px solid ${border}`, paddingTop: 32, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+        <div style={{ borderTop: `1px solid ${border}`, paddingTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
           <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: muted }}>
             © {new Date().getFullYear()} eexams. All rights reserved.
           </span>

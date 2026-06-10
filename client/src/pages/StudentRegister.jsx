@@ -45,6 +45,9 @@ const Icon = {
   X: (p) => <svg width={p.s || 16} height={p.s || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   Sun: (p) => <svg width={p.s || 16} height={p.s || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>,
   Moon: (p) => <svg width={p.s || 16} height={p.s || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
+  Phone: (p) => <svg width={p.s || 18} height={p.s || 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>,
+  CheckCircle: (p) => <svg width={p.s || 16} height={p.s || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+  Circle: (p) => <svg width={p.s || 16} height={p.s || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/></svg>,
 };
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -68,10 +71,10 @@ function Toast({ open, message, severity, onClose }) {
     <div style={{
       position: 'fixed', top: 24, right: 24, zIndex: 1000,
       display: 'flex', alignItems: 'center', gap: 12,
-      padding: '14px 18px', borderRadius: 12,
+      padding: '12px 16px', borderRadius: 8,
       background: 'white', border: `1px solid ${palette.bg}33`,
-      boxShadow: '0 12px 32px rgba(15,23,42,0.18)',
-      maxWidth: 380, animation: 'slideInRight 0.3s ease',
+      boxShadow: '0 2px 8px rgba(15,23,42,0.1)',
+      maxWidth: 380, animation: 'slideInRight 0.15s ease',
       fontFamily: "'DM Sans', sans-serif",
     }}>
       <div style={{ width: 32, height: 32, borderRadius: 8, background: `${palette.bg}18`, color: palette.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -88,24 +91,24 @@ function Toast({ open, message, severity, onClose }) {
 // ─── Input ────────────────────────────────────────────────────────────────────
 function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, name, id, endAdornment, isDark, error, helper, required }) {
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? tokens.danger : focused ? tokens.accent : isDark ? tokens.dark.border : tokens.surfaceBorder;
+  const borderColor = error ? tokens.danger : focused ? tokens.primary : isDark ? tokens.dark.border : tokens.surfaceBorder;
   return (
     <div style={{ marginBottom: 18 }}>
       <label style={{
         display: 'block', marginBottom: 8,
-        fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600,
+        fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500,
         color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
       }}>{label}{required && <span style={{ color: tokens.danger, marginLeft: 2 }}>*</span>}</label>
       <div style={{
         position: 'relative',
-        borderRadius: 12,
+        borderRadius: 8,
         border: `1.5px solid ${borderColor}`,
         background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
-        transition: 'border-color 0.2s, box-shadow 0.2s',
-        boxShadow: focused && !error ? `0 0 0 4px ${tokens.accentGlow}` : error ? `0 0 0 4px rgba(239,68,68,0.12)` : 'none',
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+        boxShadow: focused && !error ? `0 0 0 3px rgba(13,64,108,0.08)` : error ? `0 0 0 3px rgba(239,68,68,0.08)` : 'none',
         display: 'flex', alignItems: 'center',
       }}>
-        <div style={{ paddingLeft: 14, color: error ? tokens.danger : focused ? tokens.accent : isDark ? tokens.dark.textSecondary : tokens.textSecondary, display: 'flex', alignItems: 'center' }}>
+        <div style={{ paddingLeft: 14, color: error ? tokens.danger : focused ? tokens.primary : isDark ? tokens.dark.textSecondary : tokens.textSecondary, display: 'flex', alignItems: 'center' }}>
           {icon}
         </div>
         <input
@@ -131,7 +134,8 @@ function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, na
 }
 
 const StudentRegister = () => {
-  const [step, setStep] = useState(0); // 0 = initial choice, 1 = email, 2 = password, 3 = name, 4 = phone, 5 = review
+  const [step, setStep] = useState(0); // 0 = initial choice, 1 = email/phone, 2 = password, 3 = name, 4 = phone (if email) / email (if phone), 5 = review
+  const [registrationMethod, setRegistrationMethod] = useState('phone'); // 'email' or 'phone'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -195,33 +199,43 @@ const StudentRegister = () => {
   // Validate current step
   const validateCurrentStep = () => {
     const errors = {};
-    
+
     if (step === 1) {
-      if (!email) errors.email = 'Email is required';
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
+      if (registrationMethod === 'email') {
+        if (!email) errors.email = 'Email is required';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
+      } else {
+        if (!phone) errors.phone = 'Phone number is required';
+        else if (!/^[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
+      }
     }
-    
+
     if (step === 2) {
       if (!password) errors.password = 'Password is required';
       else if (password.length < 6) errors.password = 'Password must be at least 6 characters';
       else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) errors.password = 'Must contain uppercase, lowercase, and a number';
-      
+
       if (!confirmPassword) errors.confirmPassword = 'Please confirm your password';
       else if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match';
     }
-    
+
     if (step === 3) {
       if (!firstName) errors.firstName = 'First name is required';
       else if (firstName.length < 2) errors.firstName = 'Too short';
-      
+
       if (!lastName) errors.lastName = 'Last name is required';
       else if (lastName.length < 2) errors.lastName = 'Too short';
     }
-    
+
     if (step === 4) {
-      if (phone && !/^\+?[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
+      // Step 4 is for optional phone (if email) or optional email (if phone)
+      if (registrationMethod === 'email') {
+        if (phone && !/^[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
+      } else {
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
+      }
     }
-    
+
     return errors;
   };
 
@@ -234,26 +248,42 @@ const StudentRegister = () => {
     }
     setValidationErrors({});
 
-    // Check if email already exists when on email step
+    // Check if email or phone already exists when on step 1
     if (step === 1) {
       setLoading(true);
       try {
-        const response = await api.post('/auth/check-email', { email });
-        if (response.data.exists) {
-          setSnackbar({ 
-            open: true, 
-            message: 'An account with this email already exists. Redirecting to login...', 
-            severity: 'warning' 
-          });
-          setTimeout(() => {
-            navigate('/login', { state: { redirect: redirectUrl, email } });
-          }, 1500);
-          setLoading(false);
-          return;
+        if (registrationMethod === 'email') {
+          const response = await api.post('/auth/check-email', { email });
+          if (response.data.exists) {
+            setSnackbar({
+              open: true,
+              message: 'An account with this email already exists. Redirecting to login...',
+              severity: 'warning'
+            });
+            setTimeout(() => {
+              navigate('/login', { state: { redirect: redirectUrl, email } });
+            }, 1500);
+            setLoading(false);
+            return;
+          }
+        } else {
+          const response = await api.post('/auth/check-phone', { phone });
+          if (response.data.exists) {
+            setSnackbar({
+              open: true,
+              message: 'An account with this phone number already exists. Redirecting to login...',
+              severity: 'warning'
+            });
+            setTimeout(() => {
+              navigate('/login', { state: { redirect: redirectUrl, phone } });
+            }, 1500);
+            setLoading(false);
+            return;
+          }
         }
       } catch (err) {
         // If check fails, continue with registration (might be a network issue)
-        console.error('Email check failed:', err);
+        console.error('Check failed:', err);
       } finally {
         setLoading(false);
       }
@@ -299,15 +329,22 @@ const StudentRegister = () => {
       } else {
         // Use regular registration endpoint for email/password
         const registrationData = {
-          email,
           password,
           firstName,
           lastName,
-          phone,
           accountType: 'individual',
           subscriptionPlan: 'free',
           role: 'student'
         };
+
+        // Add email or phone based on registration method
+        if (registrationMethod === 'email') {
+          registrationData.email = email;
+          if (phone) registrationData.phone = phone;
+        } else {
+          registrationData.phone = phone;
+          if (email) registrationData.email = email;
+        }
 
         await register(registrationData);
 
@@ -471,24 +508,10 @@ const StudentRegister = () => {
       <div style={{
         minHeight: '100vh',
         fontFamily: "'DM Sans', sans-serif",
-        background: isDark
-          ? `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.18) 0%, transparent 70%), ${tokens.dark.bg}`
-          : `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.1) 0%, transparent 70%), #F5FBF8`,
+        background: isDark ? tokens.dark.bg : '#F5FBF8',
         position: 'relative', overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
       }}>
-        {/* Grid pattern */}
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 0,
-          backgroundImage: isDark
-            ? 'linear-gradient(rgba(26,90,140,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(26,90,140,0.4) 1px, transparent 1px)'
-            : 'linear-gradient(rgba(215,229,221,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(215,229,221,0.7) 1px, transparent 1px)',
-          backgroundSize: '60px 60px',
-          maskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-          WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-        }} />
-        <div style={{ position: 'absolute', top: '10%', left: '5%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(12,189,115,0.14) 0%, transparent 70%)', animation: 'float1 8s ease-in-out infinite', zIndex: 0 }} />
-        <div style={{ position: 'absolute', bottom: '10%', right: '5%', width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(157,246,214,0.16) 0%, transparent 70%)', animation: 'float2 10s ease-in-out infinite', zIndex: 0 }} />
 
       {/* Top bar */}
       <header style={{ position: 'relative', zIndex: 2, padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -500,11 +523,10 @@ const StudentRegister = () => {
               style={{
                 width: 60,
                 height: 60,
-                borderRadius: 12,
+                borderRadius: 8,
                 objectFit: 'cover',
                 backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent',
                 padding: isDark ? '4px' : '0',
-                boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : 'none'
               }}
             />
           </RouterLink>
@@ -535,44 +557,44 @@ const StudentRegister = () => {
       </header>
 
       {/* Main card */}
-      <main style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 24px 24px', position: 'relative', zIndex: 1 }}>
+      <main style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 16px 24px', position: 'relative', zIndex: 1 }}>
         <div style={{
           width: '100%', maxWidth: 480,
           background: isDark ? tokens.dark.surface : tokens.surface,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-          borderRadius: 24, padding: '40px 36px',
-          boxShadow: isDark ? '0 32px 64px rgba(0,0,0,0.5)' : '0 32px 64px rgba(15,23,42,0.12)',
-          animation: 'fadeInUp 0.6s ease',
+          borderRadius: 12, padding: '28px 24px',
+          boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.2)' : '0 2px 8px rgba(15,23,42,0.08)',
+          animation: 'fadeInUp 0.3s ease',
         }}>
           {/* Badge */}
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             padding: '5px 12px', borderRadius: 100,
-            background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)',
-            border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`,
-            marginBottom: 20,
+            background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
+            border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`,
+            marginBottom: 16,
           }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tokens.success, animation: 'pulse 2s infinite' }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: tokens.accent, letterSpacing: '0.04em' }}>Student Registration</span>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tokens.success }} />
+            <span style={{ fontSize: 12, fontWeight: 500, color: tokens.accent, letterSpacing: '0.02em' }}>Student Registration</span>
           </div>
 
           <h1 style={{
-            fontWeight: 800, fontSize: 32, letterSpacing: '-0.02em', lineHeight: 1.15,
+            fontWeight: 600, fontSize: 26, letterSpacing: '-0.01em', lineHeight: 1.15,
             color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, marginBottom: 8,
           }}>
-            {step === 0 ? 'Create Student Account' : 
-             step === 1 ? 'What\'s your email?' :
+            {step === 0 ? 'Create Student Account' :
+             step === 1 ? (registrationMethod === 'email' ? 'What\'s your email?' : 'What\'s your phone number?') :
              step === 2 ? 'Create a password' :
              step === 3 ? 'What\'s your name?' :
-             step === 4 ? 'Add your phone (optional)' :
+             step === 4 ? (registrationMethod === 'email' ? 'Add your phone (optional)' : 'Add your email (optional)') :
              'Review your details'}
           </h1>
-          <p style={{ fontSize: 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 28, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 24, lineHeight: 1.6 }}>
             {step === 0 ? 'Choose how you want to sign up' :
-             step === 1 ? 'We\'ll use this to sign you in' :
+             step === 1 ? (registrationMethod === 'email' ? 'We\'ll use this to sign you in' : 'We\'ll use this to sign you in') :
              step === 2 ? 'Make it strong and secure' :
              step === 3 ? 'So we know what to call you' :
-             step === 4 ? 'Optional, but helpful for updates' :
+             step === 4 ? (registrationMethod === 'email' ? 'Optional, but helpful for updates' : 'Optional, but helpful for account recovery') :
              'Almost there! Check your details below'}
           </p>
 
@@ -627,10 +649,10 @@ const StudentRegister = () => {
                 <div style={{ flex: 1, height: 1, background: isDark ? tokens.dark.border : tokens.surfaceBorder }} />
               </div>
 
-              {/* Email button second */}
+              {/* Phone button - primary option */}
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => { setRegistrationMethod('phone'); setStep(1); }}
                 style={{
                   width: '100%',
                   display: 'flex',
@@ -640,17 +662,52 @@ const StudentRegister = () => {
                   padding: '16px',
                   borderRadius: 12,
                   border: 'none',
-                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                  background: '#0D406C',
                   color: 'white',
                   cursor: 'pointer',
                   fontFamily: "'DM Sans', sans-serif",
                   fontSize: 16,
-                  fontWeight: 700,
-                  boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+                  fontWeight: 500,
+                  boxShadow: '0 2px 6px rgba(13,64,108,0.15)',
                   transition: 'transform 0.15s ease',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+              >
+                <Icon.Phone s={20} />
+                Continue with Phone
+              </button>
+
+              {/* Email button - secondary option */}
+              <button
+                type="button"
+                onClick={() => { setRegistrationMethod('email'); setStep(1); }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 12,
+                  padding: '16px',
+                  borderRadius: 8,
+                  border: `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                  background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                  color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
+                  cursor: 'pointer',
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: 16,
+                  fontWeight: 500,
+                  transition: 'transform 0.15s ease, border-color 0.15s ease',
+                  marginTop: 12,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.borderColor = tokens.accent;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.borderColor = isDark ? tokens.dark.border : tokens.surfaceBorder;
+                }}
               >
                 <Icon.Mail s={20} />
                 Continue with Email
@@ -661,20 +718,50 @@ const StudentRegister = () => {
           {step > 0 && (
             <form onSubmit={step === 5 ? handleSubmit : (e) => { e.preventDefault(); handleNext(); }}>
               {step === 1 && (
-                <Input
-                  isDark={isDark}
-                  icon={<Icon.Mail />}
-                  label="Email address"
-                  type="email"
-                  id="email"
-                  name="email"
-                  autoComplete="email"
-                  autoFocus
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  error={validationErrors.email}
-                />
+                <>
+                  {registrationMethod === 'email' ? (
+                    <Input
+                      isDark={isDark}
+                      icon={<Icon.Mail />}
+                      label="Email address"
+                      type="email"
+                      id="email"
+                      name="email"
+                      autoComplete="email"
+                      autoFocus
+                      required
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (validationErrors.email) {
+                          setValidationErrors(prev => ({ ...prev, email: '' }));
+                        }
+                      }}
+                      error={validationErrors.email}
+                    />
+                  ) : (
+                    <Input
+                      isDark={isDark}
+                      icon={<Icon.Phone />}
+                      label="Phone number"
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      autoComplete="tel"
+                      autoFocus
+                      required
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        if (validationErrors.phone) {
+                          setValidationErrors(prev => ({ ...prev, phone: '' }));
+                        }
+                      }}
+                      error={validationErrors.phone}
+                      helper="Enter your phone number"
+                    />
+                  )}
+                </>
               )}
 
               {step === 2 && (
@@ -690,15 +777,76 @@ const StudentRegister = () => {
                     required
                     autoFocus
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (validationErrors.password) {
+                        setValidationErrors(prev => ({ ...prev, password: '' }));
+                      }
+                    }}
                     error={validationErrors.password}
-                    helper={!validationErrors.password ? 'Must contain uppercase, lowercase, and number' : null}
                     endAdornment={
                       <button type="button" onClick={() => setShowPassword(s => !s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, display: 'flex', padding: 4 }}>
                         {showPassword ? <Icon.EyeOff /> : <Icon.Eye />}
                       </button>
                     }
                   />
+
+                  {/* Password strength indicator */}
+                  {password && (
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      background: isDark ? 'rgba(12,189,115,0.08)' : 'rgba(12,189,115,0.05)',
+                      border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`,
+                      marginBottom: 16,
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 10 }}>
+                        Password requirements:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                          {password.length >= 6 ? (
+                            <Icon.CheckCircle s={14} style={{ color: tokens.success }} />
+                          ) : (
+                            <Icon.Circle s={14} style={{ color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }} />
+                          )}
+                          <span style={{ color: password.length >= 6 ? tokens.success : (isDark ? tokens.dark.textSecondary : tokens.textSecondary) }}>
+                            At least 6 characters
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                          {/[a-z]/.test(password) ? (
+                            <Icon.CheckCircle s={14} style={{ color: tokens.success }} />
+                          ) : (
+                            <Icon.Circle s={14} style={{ color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }} />
+                          )}
+                          <span style={{ color: /[a-z]/.test(password) ? tokens.success : (isDark ? tokens.dark.textSecondary : tokens.textSecondary) }}>
+                            At least one lowercase letter
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                          {/[A-Z]/.test(password) ? (
+                            <Icon.CheckCircle s={14} style={{ color: tokens.success }} />
+                          ) : (
+                            <Icon.Circle s={14} style={{ color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }} />
+                          )}
+                          <span style={{ color: /[A-Z]/.test(password) ? tokens.success : (isDark ? tokens.dark.textSecondary : tokens.textSecondary) }}>
+                            At least one uppercase letter
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                          {/\d/.test(password) ? (
+                            <Icon.CheckCircle s={14} style={{ color: tokens.success }} />
+                          ) : (
+                            <Icon.Circle s={14} style={{ color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }} />
+                          )}
+                          <span style={{ color: /\d/.test(password) ? tokens.success : (isDark ? tokens.dark.textSecondary : tokens.textSecondary) }}>
+                            At least one number
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <Input
                     isDark={isDark}
@@ -710,14 +858,26 @@ const StudentRegister = () => {
                     autoComplete="new-password"
                     required
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      if (validationErrors.confirmPassword) {
+                        setValidationErrors(prev => ({ ...prev, confirmPassword: '' }));
+                      }
+                    }}
                     error={validationErrors.confirmPassword}
                   />
                 </>
               )}
 
               {step === 3 && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div className="name-inputs-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <style>{`
+                    @media (max-width: 640px) {
+                      .name-inputs-grid {
+                        grid-template-columns: 1fr !important;
+                      }
+                    }
+                  `}</style>
                   <Input
                     isDark={isDark}
                     icon={<Icon.User />}
@@ -729,7 +889,12 @@ const StudentRegister = () => {
                     autoFocus
                     required
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    onChange={(e) => {
+                      setFirstName(e.target.value);
+                      if (validationErrors.firstName) {
+                        setValidationErrors(prev => ({ ...prev, firstName: '' }));
+                      }
+                    }}
                     error={validationErrors.firstName}
                   />
                   <Input
@@ -742,27 +907,61 @@ const StudentRegister = () => {
                     autoComplete="family-name"
                     required
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
+                    onChange={(e) => {
+                      setLastName(e.target.value);
+                      if (validationErrors.lastName) {
+                        setValidationErrors(prev => ({ ...prev, lastName: '' }));
+                      }
+                    }}
                     error={validationErrors.lastName}
                   />
                 </div>
               )}
 
               {step === 4 && (
-                <Input
-                  isDark={isDark}
-                  icon={<Icon.User />}
-                  label="Phone number (optional)"
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  autoComplete="tel"
-                  autoFocus
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  error={validationErrors.phone}
-                  helper={!validationErrors.phone ? 'Include country code if international' : null}
-                />
+                <>
+                  {registrationMethod === 'email' ? (
+                    <Input
+                      isDark={isDark}
+                      icon={<Icon.Phone />}
+                      label="Phone number (optional)"
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      autoComplete="tel"
+                      autoFocus
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        if (validationErrors.phone) {
+                          setValidationErrors(prev => ({ ...prev, phone: '' }));
+                        }
+                      }}
+                      error={validationErrors.phone}
+                      helper={!validationErrors.phone ? 'Include country code if international' : null}
+                    />
+                  ) : (
+                    <Input
+                      isDark={isDark}
+                      icon={<Icon.Mail />}
+                      label="Email address (optional)"
+                      type="email"
+                      id="email"
+                      name="email"
+                      autoComplete="email"
+                      autoFocus
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (validationErrors.email) {
+                          setValidationErrors(prev => ({ ...prev, email: '' }));
+                        }
+                      }}
+                      error={validationErrors.email}
+                      helper={!validationErrors.email ? 'Helpful for account recovery' : null}
+                    />
+                  )}
+                </>
               )}
 
               {step === 5 && (
@@ -776,19 +975,34 @@ const StudentRegister = () => {
                   <div style={{ marginBottom: 16, fontWeight: 700, fontSize: 14, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>
                     Your Details
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 14 }}>
+                  <div className="review-details-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 14 }}>
+                    <style>{`
+                      @media (max-width: 640px) {
+                        .review-details-grid {
+                          grid-template-columns: 1fr !important;
+                        }
+                      }
+                    `}</style>
                     <div>
-                      <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 4 }}>Email</div>
-                      <div style={{ fontWeight: 500, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>{email}</div>
+                      <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 4 }}>
+                        {registrationMethod === 'email' ? 'Email' : 'Phone'}
+                      </div>
+                      <div style={{ fontWeight: 500, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>
+                        {registrationMethod === 'email' ? email : phone}
+                      </div>
                     </div>
                     <div>
                       <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 4 }}>Name</div>
                       <div style={{ fontWeight: 500, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>{firstName} {lastName}</div>
                     </div>
-                    {phone && (
-                      <div>
-                        <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 4 }}>Phone</div>
-                        <div style={{ fontWeight: 500, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>{phone}</div>
+                    {(registrationMethod === 'email' ? phone : email) && (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 4 }}>
+                          {registrationMethod === 'email' ? 'Phone' : 'Email'}
+                        </div>
+                        <div style={{ fontWeight: 500, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>
+                          {registrationMethod === 'email' ? phone : email}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -921,10 +1135,7 @@ const StudentRegister = () => {
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px);} to { opacity: 1; transform: translateY(0);} }
         @keyframes slideInRight { from { opacity: 0; transform: translateX(20px);} to { opacity: 1; transform: translateX(0);} }
-        @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: 0.6; transform: scale(1.3);} }
         @keyframes spin { to { transform: rotate(360deg);} }
-        @keyframes float1 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(12px,-20px);} }
-        @keyframes float2 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(-12px,16px);} }
         @media (max-width: 520px) {
           main { padding: 8px 12px 20px !important; }
           main > div { padding: 28px 20px !important; border-radius: 16px !important; }

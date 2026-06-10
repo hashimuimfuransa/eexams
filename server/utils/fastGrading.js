@@ -2,6 +2,27 @@ const groqClient = require('./groqClient');
 const { verifyGradingWithAI } = require('./enhancedGrading');
 
 /**
+ * Normalize answer for flexible comparison
+ * Handles spacing, capitalization, and special characters
+ * @param {string} answer - The answer to normalize
+ * @returns {string} - Normalized answer
+ */
+function normalizeAnswer(answer) {
+  if (!answer) return '';
+  
+  return String(answer)
+    .toLowerCase()
+    .trim()
+    // Remove extra spaces between words
+    .replace(/\s+/g, ' ')
+    // Remove common separators like +, -, /, etc. (for keyboard shortcuts)
+    .replace(/[+\-\/\\]/g, '')
+    // Remove spaces around operators (e.g., "ctrl + z" -> "ctrlz")
+    .replace(/\s*([+\-\/\\])\s*/g, '$1')
+    .trim();
+}
+
+/**
  * Fast chunked AI grading system that processes questions in small batches
  * OPTIMIZED: Reduced AI workload with caching and pre-determination
  * for faster performance and better reliability
@@ -678,8 +699,9 @@ Return JSON: {score,feedback,correctedAnswer}`;
  */
 async function gradeShortAnswerFast(question, answer, modelAnswer) {
   // Check both textAnswer and selectedOption as answer may be stored in either field
-  const studentAnswer = (answer.textAnswer || answer.selectedOption || '').trim().toLowerCase();
-  let correctAnswer = (modelAnswer || '').toLowerCase();
+  const studentAnswerRaw = answer.textAnswer || answer.selectedOption || '';
+  const studentAnswer = normalizeAnswer(studentAnswerRaw);
+  let correctAnswer = normalizeAnswer(modelAnswer || '');
 
   // For true/false questions, use the stored correct answer from the database
   // Do NOT use AI to determine the correct answer - trust the teacher's provided answer
@@ -691,7 +713,7 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
     );
 
     if (correctOption) {
-      correctAnswer = correctOption.text.toLowerCase();
+      correctAnswer = normalizeAnswer(correctOption.text);
       console.log(`Using stored correct answer for true/false question ${question._id}: ${correctOption.text}`);
     } else if (correctAnswer) {
       // If we have a correctAnswer string but no matching option, use it directly
@@ -702,7 +724,7 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
         opt.text?.toLowerCase() === question.correctAnswer?.toLowerCase()
       );
       if (matchingOption) {
-        correctAnswer = matchingOption.text.toLowerCase();
+        correctAnswer = normalizeAnswer(matchingOption.text);
       }
     }
   }
@@ -741,20 +763,20 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
     const isCorrect = studentAnswer === correctAnswer;
     return {
       score: isCorrect ? question.points : 0,
-      feedback: isCorrect ? 'Correct!' : `Incorrect. The correct answer is: ${correctAnswer}`,
-      correctedAnswer: correctAnswer,
+      feedback: isCorrect ? 'Correct!' : `Incorrect. The correct answer is: ${modelAnswer}`,
+      correctedAnswer: modelAnswer,
       gradingMethod: isCorrect ? 'direct_comparison' : 'fallback_exact_match',
       isCorrect
     };
   }
 
-  // Quick exact match for other question types
+  // Quick exact match for other question types using normalized answers
   if (studentAnswer === correctAnswer) {
     return {
       score: question.points,
       feedback: 'Correct!',
       correctedAnswer: modelAnswer,
-      gradingMethod: 'ai_determined_correct',
+      gradingMethod: 'flexible_normalization',
       isCorrect: true
     };
   }

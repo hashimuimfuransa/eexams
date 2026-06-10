@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getProfile, updateProfile, changePassword, verifyToken, googleAuth, forgotPassword, resetPassword, verifyResetToken, checkEmail } = require('../controllers/authController');
+const { register, login, getProfile, updateProfile, changePassword, verifyToken, googleAuth, forgotPassword, resetPassword, verifyResetToken, checkEmail, checkPhone } = require('../controllers/authController');
 const auth = require('../middleware/auth');
 const { validateLogin, validateRegister } = require('../middleware/validation');
 const { authLimiter } = require('../middleware/rateLimiter');
@@ -9,6 +9,11 @@ const { authLimiter } = require('../middleware/rateLimiter');
 // @desc    Check if email exists
 // @access  Public
 router.post('/check-email', checkEmail);
+
+// @route   POST /api/auth/check-phone
+// @desc    Check if phone exists
+// @access  Public
+router.post('/check-phone', checkPhone);
 
 // @route   POST /api/auth/register
 // @desc    Register a new user

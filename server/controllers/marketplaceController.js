@@ -85,13 +85,13 @@ const processExamApproval = async (request, waivePayment = false) => {
   }
 
   if (!studentUser && request.userInfo.email) {
-    studentUser = await User.findOne({ email: request.userInfo.email.toLowerCase().trim() });
+    studentUser = await User.findOne({ email: (request.userInfo.email || '').toLowerCase().trim() });
   }
 
   if (!studentUser) {
     // Create a new student account
     tempPassword = Math.random().toString(36).slice(-8);
-    const nameParts = request.userInfo.name.split(' ');
+    const nameParts = (request.userInfo.name || 'Student User').split(' ');
     const firstName = nameParts[0] || 'Student';
     const lastName = nameParts.slice(1).join(' ') || 'User';
 
@@ -225,9 +225,9 @@ const requestMarketplaceExam = async (req, res) => {
 
     if (isAuthenticated) {
       // Use authenticated user info
-      name = req.user.fullName || `${req.user.firstName} ${req.user.lastName}`;
+      name = req.user.fullName || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'User';
       phone = req.user.phone || '';
-      email = req.user.email;
+      email = req.user.email || '';
     } else {
       // Use provided info for guest users (deprecated)
       const { name: providedName, phone: providedPhone, email: providedEmail } = req.body || {};
@@ -239,6 +239,14 @@ const requestMarketplaceExam = async (req, res) => {
       if (!name || !phone) {
         return res.status(400).json({ message: 'Name and phone number are required' });
       }
+    }
+
+    // Ensure name and email are defined before using them
+    if (!name) {
+      name = 'User';
+    }
+    if (!email) {
+      email = '';
     }
 
     // Check if exam exists and is publicly listed
@@ -305,7 +313,9 @@ const requestMarketplaceExam = async (req, res) => {
 
           // For paid retakes, send notification and return pending
           emailService.sendSuperAdminPendingRequestEmail(existingRequest, exam, {
-            name, email, phone
+            name: name || 'User',
+            email: email || '',
+            phone: phone || ''
           }).catch(err => {
             console.error('[Marketplace] Failed to send super admin notification for re-request:', err);
           });
@@ -359,9 +369,9 @@ const requestMarketplaceExam = async (req, res) => {
 
       // Send email notification to all super admins about the re-request
       emailService.sendSuperAdminPendingRequestEmail(rejectedRequest, exam, {
-        name: name,
-        email: email,
-        phone: phone
+        name: name || 'User',
+        email: email || '',
+        phone: phone || ''
       }).catch(err => {
         console.error('[Marketplace] Failed to send super admin notification for re-request:', err);
       });
@@ -409,8 +419,8 @@ const requestMarketplaceExam = async (req, res) => {
       examTitle: exam.title,
       teacher: exam.createdBy,
       userInfo: {
-        name: name.trim(),
-        email: email.trim(),
+        name: (name || 'User').trim(),
+        email: (email || '').trim(),
         phone: phone?.trim() || null
       },
       amount: amount,
@@ -426,9 +436,9 @@ const requestMarketplaceExam = async (req, res) => {
 
     // Send email notification to all super admins about the new pending request
     emailService.sendSuperAdminPendingRequestEmail(examRequest, exam, {
-      name: name,
-      email: email,
-      phone: phone
+      name: name || 'User',
+      email: email || '',
+      phone: phone || ''
     }).catch(err => {
       console.error('[Marketplace] Failed to send super admin notification:', err);
     });
@@ -657,7 +667,7 @@ const updateMarketplaceExamSettings = async (req, res) => {
     // Handle level - either select existing or create new
     if (newLevelName && newLevelName.trim()) {
       // Create or find existing level
-      const level = await Level.findOrCreate(newLevelName.trim(), req.user._id);
+      const level = await Level.findOrCreate((newLevelName || '').trim(), req.user._id);
       exam.level = level._id;
       // Also update targetAudience for backward compatibility
       exam.targetAudience = level.name;

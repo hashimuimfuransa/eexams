@@ -4,8 +4,9 @@ const bcrypt = require('bcryptjs');
 const UserSchema = new mongoose.Schema({
   email: {
     type: String,
-    required: true,
+    required: false, // Made optional to support phone-only registration
     unique: true,
+    sparse: true, // Allows null/undefined values while maintaining uniqueness for provided values
     trim: true,
     lowercase: true,
     index: true // Add index for faster login lookups
@@ -45,7 +46,10 @@ const UserSchema = new mongoose.Schema({
 
   phone: {
     type: String,
-    trim: true
+    trim: true,
+    unique: true,
+    sparse: true, // Allows null/undefined values while maintaining uniqueness for provided values
+    index: true
   },
   role: {
     type: String,

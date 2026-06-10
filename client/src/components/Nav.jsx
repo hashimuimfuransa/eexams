@@ -93,16 +93,16 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
       `}</style>
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        backdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(12px)',
         background: navBg,
-        borderBottom: `1px solid ${isDark ? 'rgba(30,41,59,0.8)' : 'rgba(226,232,240,0.8)'}`,
-        transition: 'background 0.3s ease, box-shadow 0.3s ease',
-        boxShadow: scrolled ? (isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(15,23,42,0.08)') : 'none',
+        borderBottom: `1px solid ${isDark ? 'rgba(30,41,59,0.5)' : 'rgba(226,232,240,0.6)'}`,
+        transition: 'background 0.15s ease, box-shadow 0.15s ease',
+        boxShadow: scrolled ? (isDark ? '0 1px 3px rgba(0,0,0,0.3)' : '0 1px 3px rgba(15,23,42,0.08)') : 'none',
       }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px', height: 'auto', minHeight: 72, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
           {/* Logo */}
           <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0, flexShrink: 0 }}>
-            <img src="/logo.png" alt="eexams" style={{ width: 50, height: 50, borderRadius: 12, objectFit: 'cover', backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent', padding: isDark ? '4px' : '0', boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.1)' }} />
+            <img src="/logo.png" alt="eexams" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent', padding: isDark ? '4px' : '0' }} />
           </button>
 
           {/* Desktop links */}
@@ -111,24 +111,24 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
               l.route ? (
                 <RouterLink key={l.id} to={l.route} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '10px 18px', borderRadius: 12,
-                  fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14,
-                  color: (l.route === currentRoute) ? tokens.accent : (isDark ? tokens.dark.textSecondary : tokens.textSecondary),
-                  transition: 'all 0.2s',
+                  padding: '8px 16px', borderRadius: 6,
+                  fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 14,
+                  color: (l.route === currentRoute) ? tokens.primary : (isDark ? tokens.dark.textSecondary : tokens.textSecondary),
+                  transition: 'all 0.15s ease',
                   textDecoration: 'none',
                 }}
-                  onMouseEnter={e => { e.target.style.color = tokens.accent; e.target.style.background = tokens.accentGlow; }}
-                  onMouseLeave={e => { e.target.style.color = (l.route === currentRoute) ? tokens.accent : (isDark ? tokens.dark.textSecondary : tokens.textSecondary); e.target.style.background = 'none'; }}
+                  onMouseEnter={e => { e.target.style.color = tokens.primary; e.target.style.background = isDark ? 'rgba(13,64,108,0.08)' : 'rgba(13,64,108,0.04)'; }}
+                  onMouseLeave={e => { e.target.style.color = (l.route === currentRoute) ? tokens.primary : (isDark ? tokens.dark.textSecondary : tokens.textSecondary); e.target.style.background = 'none'; }}
                 >{l.label}</RouterLink>
               ) : (
                 <button key={l.id} onClick={() => scrollTo(l.id)} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '10px 18px', borderRadius: 12,
-                  fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14,
+                  padding: '8px 16px', borderRadius: 6,
+                  fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 14,
                   color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-                  transition: 'all 0.2s',
+                  transition: 'all 0.15s ease',
                 }}
-                  onMouseEnter={e => { e.target.style.color = tokens.accent; e.target.style.background = tokens.accentGlow; }}
+                  onMouseEnter={e => { e.target.style.color = tokens.primary; e.target.style.background = isDark ? 'rgba(13,64,108,0.08)' : 'rgba(13,64,108,0.04)'; }}
                   onMouseLeave={e => { e.target.style.color = isDark ? tokens.dark.textSecondary : tokens.textSecondary; e.target.style.background = 'none'; }}
                 >{l.label}</button>
               )
@@ -139,11 +139,11 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
           <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
             {/* Theme toggle */}
             <button onClick={toggleMode} style={{
-              width: 40, height: 40, borderRadius: 12, border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+              width: 36, height: 36, borderRadius: 8, border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
               background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
               cursor: 'pointer', display: 'none', alignItems: 'center', justifyContent: 'center',
               color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-              transition: 'all 0.2s', flexShrink: 0,
+              transition: 'all 0.15s ease', flexShrink: 0,
             }} className="desktop-auth">
               {isDark
                 ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -154,42 +154,42 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
             {isAuthenticated ? (
               <>
                 <RouterLink to="/dashboard" style={{
-                  padding: '10px 20px', borderRadius: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 14,
-                  border: `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                  padding: '8px 16px', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontWeight: 500, fontSize: 14,
+                  border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
                   color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
-                  textDecoration: 'none', transition: 'all 0.2s',
+                  textDecoration: 'none', transition: 'all 0.15s ease',
                   background: isDark ? tokens.dark.surfaceAlt : 'transparent',
                   display: 'none',
                 }} className="desktop-auth">Dashboard</RouterLink>
                 <button onClick={handleLogout} style={{
-                  padding: '10px 20px', borderRadius: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 14,
-                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                  color: 'white', border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-                  boxShadow: '0 2px 8px rgba(12,189,115,0.25)', display: 'none',
+                  padding: '8px 16px', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontWeight: 500, fontSize: 14,
+                  background: '#0D406C',
+                  color: 'white', border: 'none', cursor: 'pointer', transition: 'all 0.15s ease',
+                  display: 'none',
                 }} className="desktop-auth">Logout</button>
               </>
             ) : (
               <>
                 <RouterLink to="/login" style={{
-                  padding: '10px 20px', borderRadius: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 14,
-                  border: `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                  padding: '8px 16px', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontWeight: 500, fontSize: 14,
+                  border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
                   color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
-                  textDecoration: 'none', transition: 'all 0.2s',
+                  textDecoration: 'none', transition: 'all 0.15s ease',
                   background: isDark ? tokens.dark.surfaceAlt : 'transparent',
                   display: 'none',
                 }} className="desktop-auth">Log in</RouterLink>
                 <RouterLink to="/register" style={{
-                  padding: '10px 20px', borderRadius: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 14,
-                  background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                  color: 'white', textDecoration: 'none', transition: 'all 0.2s',
-                  boxShadow: '0 2px 8px rgba(12,189,115,0.25)', display: 'none',
+                  padding: '8px 16px', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontWeight: 500, fontSize: 14,
+                  background: '#0D406C',
+                  color: 'white', textDecoration: 'none', transition: 'all 0.15s ease',
+                  display: 'none',
                 }} className="desktop-auth">Start for free</RouterLink>
               </>
             )}
 
             {/* Mobile menu button - only on mobile */}
             <button onClick={() => setOpen(!open)} style={{
-              width: 40, height: 40, borderRadius: 12,
+              width: 36, height: 36, borderRadius: 8,
               border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
               background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
               cursor: 'pointer', display: 'flex',
@@ -209,22 +209,22 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
             background: isDark ? tokens.dark.bg : tokens.surface,
             borderBottom: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
             padding: '16px', display: 'flex', flexDirection: 'column', gap: 2,
-            boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.5)' : '0 8px 32px rgba(15,23,42,0.12)',
+            boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(15,23,42,0.08)',
           }}>
             {navLinks.map(l => (
               l.route ? (
                 <RouterLink key={l.id} to={l.route} onClick={() => setOpen(false)} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '14px 16px', borderRadius: 12, textAlign: 'left',
-                  fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16,
-                  color: (l.route === currentRoute) ? tokens.accent : (isDark ? tokens.dark.textPrimary : tokens.textPrimary),
+                  padding: '12px 16px', borderRadius: 8, textAlign: 'left',
+                  fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
+                  color: (l.route === currentRoute) ? tokens.primary : (isDark ? tokens.dark.textPrimary : tokens.textPrimary),
                   textDecoration: 'none', display: 'block'
                 }}>{l.label}</RouterLink>
               ) : (
                 <button key={l.id} onClick={() => scrollTo(l.id)} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '14px 16px', borderRadius: 12, textAlign: 'left',
-                  fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16,
+                  padding: '12px 16px', borderRadius: 8, textAlign: 'left',
+                  fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
                   color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
                 }}>{l.label}</button>
               )
@@ -234,15 +234,15 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
               <>
                 <RouterLink to="/dashboard" onClick={() => setOpen(false)} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '14px 16px', borderRadius: 12, textAlign: 'left',
-                  fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16,
+                  padding: '12px 16px', borderRadius: 8, textAlign: 'left',
+                  fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
                   color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
                   textDecoration: 'none', display: 'block'
                 }}>Dashboard</RouterLink>
                 <button onClick={() => { handleLogout(); setOpen(false); }} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '14px 16px', borderRadius: 12, textAlign: 'left',
-                  fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16,
+                  padding: '12px 16px', borderRadius: 8, textAlign: 'left',
+                  fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
                   color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
                 }}>Logout</button>
               </>
@@ -250,15 +250,15 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
               <>
                 <RouterLink to="/login" onClick={() => setOpen(false)} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '14px 16px', borderRadius: 12, textAlign: 'left',
-                  fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 16,
+                  padding: '12px 16px', borderRadius: 8, textAlign: 'left',
+                  fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
                   color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
                   textDecoration: 'none', display: 'block'
                 }}>Log in</RouterLink>
                 <RouterLink to="/register" onClick={() => setOpen(false)} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '14px 16px', borderRadius: 12, textAlign: 'left',
-                  fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 16,
+                  padding: '12px 16px', borderRadius: 8, textAlign: 'left',
+                  fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
                   color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
                   textDecoration: 'none', display: 'block'
                 }}>Start for free</RouterLink>

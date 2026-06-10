@@ -825,6 +825,83 @@ const sendAccountRejectedEmail = async (user, reason = '') => {
 };
 
 /**
+ * Send password reset email with reset link
+ */
+const sendPasswordResetEmail = async (user, resetToken) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.log('[EmailService] SENDGRID_API_KEY not configured, password reset email not sent');
+      return { success: false, error: 'SendGrid not configured' };
+    }
+
+    const resetUrl = `${CLIENT_URL}/reset-password?token=${resetToken}`;
+
+    const content = `
+      <p class="greeting">Hello ${user.firstName || 'there'},</p>
+      
+      <p class="message">
+        We received a request to reset your password for your eexams account. 
+        If you didn't make this request, you can safely ignore this email.
+      </p>
+      
+      <div style="text-align: center; margin: 24px 0;">
+        <span class="status-badge pending">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block;"></span>
+          Password Reset Request
+        </span>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">🔐</span> Reset Your Password
+        </div>
+        <div class="info-box-content">
+          <p style="margin: 0 0 12px 0; line-height: 1.6;">
+            Click the button below to create a new password. This link will expire in 1 hour for your security.
+          </p>
+        </div>
+      </div>
+      
+      <div style="text-align: center;">
+        <a href="${resetUrl}" class="cta-button">
+          Reset Password →
+        </a>
+      </div>
+      
+      <div class="info-box" style="margin-top: 20px;">
+        <div class="info-box-title">
+          <span style="font-size: 18px;">🔗</span> Or Copy the Link
+        </div>
+        <p style="background: ${BRAND.surfaceAlt}; padding: 12px; border-radius: 8px; word-break: break-all; font-size: 13px; color: ${BRAND.primary}; margin: 10px 0 0 0; font-family: monospace;">
+          ${resetUrl}
+        </p>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <p class="message" style="font-size: 13px; text-align: center; color: ${BRAND.textSecondary};">
+        <strong>Security Notice:</strong> If you didn't request this password reset, 
+        your account remains secure and no changes have been made. You can safely ignore this email.
+      </p>
+      
+      <p class="message" style="font-size: 13px; text-align: center;">
+        Need help? Contact us at <a href="mailto:support@eexams.net" style="color: ${BRAND.accent}; font-weight: 600;">support@eexams.net</a>
+      </p>
+    `;
+
+    const email = wrapEmail(content, 'Password Reset Request - eexams');
+    email.to = user.email;
+
+    await sgMail.send(email);
+    console.log(`[EmailService] Password reset email sent to ${user.email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[EmailService] Failed to send password reset email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Send password reset confirmation (when password is successfully reset)
  */
 const sendPasswordResetConfirmationEmail = async (user) => {
@@ -1782,6 +1859,7 @@ module.exports = {
   sendAccountRejectedEmail,
   sendExamApprovedEmail,
   sendExamPendingApprovalEmail,
+  sendPasswordResetEmail,
   sendPasswordResetConfirmationEmail,
   sendStudentWelcomeEmail,
   sendStudentPasswordResetEmail,

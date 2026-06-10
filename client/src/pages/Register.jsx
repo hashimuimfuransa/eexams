@@ -66,10 +66,10 @@ function Toast({ open, message, severity, onClose }) {
     <div style={{
       position: 'fixed', top: 24, right: 24, zIndex: 1000,
       display: 'flex', alignItems: 'center', gap: 12,
-      padding: '14px 18px', borderRadius: 12,
+      padding: '12px 16px', borderRadius: 8,
       background: 'white', border: `1px solid ${palette.bg}33`,
-      boxShadow: '0 12px 32px rgba(15,23,42,0.18)',
-      maxWidth: 380, animation: 'slideInRight 0.3s ease',
+      boxShadow: '0 2px 8px rgba(15,23,42,0.1)',
+      maxWidth: 380, animation: 'slideInRight 0.15s ease',
       fontFamily: "'DM Sans', sans-serif",
     }}>
       <div style={{ width: 32, height: 32, borderRadius: 8, background: `${palette.bg}18`, color: palette.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{palette.icon}</div>
@@ -81,25 +81,25 @@ function Toast({ open, message, severity, onClose }) {
 
 function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, name, id, endAdornment, isDark, error, helper, required, optional }) {
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? tokens.danger : focused ? tokens.accent : isDark ? tokens.dark.border : tokens.surfaceBorder;
+  const borderColor = error ? tokens.danger : focused ? tokens.primary : isDark ? tokens.dark.border : tokens.surfaceBorder;
   return (
     <div style={{ marginBottom: 16 }}>
       <label style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6,
-        fontSize: 13, fontWeight: 600, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+        fontSize: 13, fontWeight: 500, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
       }}>
         <span>{label}{required && <span style={{ color: tokens.danger, marginLeft: 2 }}>*</span>}</span>
         {optional && <span style={{ fontSize: 11, fontWeight: 500, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, opacity: 0.7 }}>Optional</span>}
       </label>
       <div style={{
-        position: 'relative', borderRadius: 12,
+        position: 'relative', borderRadius: 8,
         border: `1.5px solid ${borderColor}`,
         background: isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
-        transition: 'border-color 0.2s, box-shadow 0.2s',
-        boxShadow: focused && !error ? `0 0 0 4px ${tokens.accentGlow}` : error ? `0 0 0 4px rgba(239,68,68,0.12)` : 'none',
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+        boxShadow: focused && !error ? `0 0 0 3px rgba(13,64,108,0.08)` : error ? `0 0 0 3px rgba(239,68,68,0.08)` : 'none',
         display: 'flex', alignItems: 'center',
       }}>
-        <div style={{ paddingLeft: 14, color: error ? tokens.danger : focused ? tokens.accent : isDark ? tokens.dark.textSecondary : tokens.textSecondary, display: 'flex' }}>{icon}</div>
+        <div style={{ paddingLeft: 14, color: error ? tokens.danger : focused ? tokens.primary : isDark ? tokens.dark.textSecondary : tokens.textSecondary, display: 'flex' }}>{icon}</div>
         <input
           id={id} name={name} type={type} value={value} onChange={onChange}
           autoFocus={autoFocus} autoComplete={autoComplete}
@@ -251,7 +251,8 @@ const Register = () => {
       else if (firstName.length < 2) errors.firstName = 'Too short';
       if (!lastName) errors.lastName = 'Last name is required';
       else if (lastName.length < 2) errors.lastName = 'Too short';
-      if (phone && !/^\+?[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
+      if (!phone) errors.phone = 'Phone number is required';
+      else if (!/^\+?[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
 
       if (accountType === 'organization') {
         if (!organization) errors.organization = 'Organization/school name is required';
@@ -544,7 +545,7 @@ const Register = () => {
               <div style={{
                 width: isMobile ? 40 : 48,
                 height: isMobile ? 40 : 48,
-                borderRadius: 12,
+                borderRadius: 8,
                 background: accountType === 'individual' ? tokens.accent : isDark ? tokens.dark.surface : tokens.surface,
                 display: 'flex',
                 alignItems: 'center',
@@ -558,7 +559,7 @@ const Register = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>Individual Teacher</span>
+                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 600, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>Individual Teacher</span>
                   {accountType === 'individual' && (
                     <div style={{
                       width: 20,
@@ -605,7 +606,7 @@ const Register = () => {
               <div style={{
                 width: isMobile ? 40 : 48,
                 height: isMobile ? 40 : 48,
-                borderRadius: 12,
+                borderRadius: 8,
                 background: isDark ? tokens.dark.surface : tokens.surface,
                 border: `2px solid ${tokens.accent}`,
                 display: 'flex',
@@ -620,7 +621,7 @@ const Register = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, color: tokens.accent }}>Student</span>
+                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 600, color: tokens.accent }}>Student</span>
                   <Icon.Arrow s={16} style={{ color: tokens.accent }} />
                 </div>
                 <div style={{ fontSize: isMobile ? 12 : 13, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5 }}>
@@ -648,7 +649,7 @@ const Register = () => {
               <div style={{
                 width: isMobile ? 40 : 48,
                 height: isMobile ? 40 : 48,
-                borderRadius: 12,
+                borderRadius: 8,
                 background: accountType === 'organization' ? '#0D406C' : isDark ? tokens.dark.surface : tokens.surface,
                 display: 'flex',
                 alignItems: 'center',
@@ -662,7 +663,7 @@ const Register = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>School / Organization</span>
+                  <span style={{ fontSize: isMobile ? 15 : 16, fontWeight: 600, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>School / Organization</span>
                   {accountType === 'organization' && (
                     <div style={{
                       width: 20,
@@ -758,10 +759,10 @@ const Register = () => {
               value={lastName} onChange={(e) => setLastName(e.target.value)} error={validationErrors.lastName} />
           </div>
           <Input isDark={isDark} icon={<Icon.Phone />} label="Phone number" type="tel" id="phone" name="phone"
-            autoComplete="tel" optional
+            autoComplete="tel" required
             value={phone} onChange={(e) => setPhone(e.target.value)}
             error={validationErrors.phone}
-            helper={!validationErrors.phone ? 'Include country code if international' : null} />
+            helper={!validationErrors.phone ? 'Include country code (e.g., +250)' : null} />
 
           {accountType === 'organization' && (
             <Input isDark={isDark} icon={<Icon.Building />} label="Organization / school name *" type="text" id="organization" name="organization"
@@ -805,26 +806,26 @@ const Register = () => {
                 onClick={() => setSubscriptionPlan(plan.id)}
                 style={{
                   padding: '16px 20px',
-                  borderRadius: 12,
-                  border: `3px solid ${subscriptionPlan === plan.id ? plan.color : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                  background: subscriptionPlan === plan.id ? `${plan.color}15` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                  borderRadius: 8,
+                  border: `2px solid ${subscriptionPlan === plan.id ? plan.color : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                  background: subscriptionPlan === plan.id ? `${plan.color}10` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 16,
-                  transition: 'all 0.2s ease',
+                  transition: 'all 0.15s ease',
                   position: 'relative',
-                  boxShadow: subscriptionPlan === plan.id ? `0 4px 20px ${plan.color}30` : 'none',
-                  transform: subscriptionPlan === plan.id ? 'scale(1.02)' : 'scale(1)'
+                  boxShadow: subscriptionPlan === plan.id ? `0 2px 8px ${plan.color}20` : 'none',
+                  transform: subscriptionPlan === plan.id ? 'scale(1.01)' : 'scale(1)'
                 }}
               >
                 {plan.popular && (
                   <div style={{
                     position: 'absolute', top: -8, right: 12,
-                    background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
-                    color: 'white', fontSize: 10, fontWeight: 700,
-                    padding: '3px 10px', borderRadius: 10,
-                    textTransform: 'uppercase', letterSpacing: '0.5px'
+                    background: '#0CBD73',
+                    color: 'white', fontSize: 10, fontWeight: 600,
+                    padding: '3px 10px', borderRadius: 6,
+                    textTransform: 'uppercase', letterSpacing: '0.02em'
                   }}>
                     Popular
                   </div>
@@ -844,12 +845,12 @@ const Register = () => {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>{plan.name}</span>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: plan.color }}>{plan.price}<span style={{ fontSize: 12, fontWeight: 500 }}>{plan.period}</span></span>
+                    <span style={{ fontSize: 16, fontWeight: 600, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>{plan.name}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: plan.color }}>{plan.price}<span style={{ fontSize: 12, fontWeight: 500 }}>{plan.period}</span></span>
                   </div>
                   {plan.teacherLimit && (
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 4, padding: '2px 8px', borderRadius: 6, background: `${plan.color}18`, border: `1px solid ${plan.color}40` }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: plan.color }}>👥 {plan.teacherLimit}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: plan.color }}>👥 {plan.teacherLimit}</span>
                     </div>
                   )}
                   <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.4 }}>
@@ -876,26 +877,26 @@ const Register = () => {
       return (
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
           <div style={{
-            width: 96, height: 96, borderRadius: '50%',
-            background: 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)',
+            width: 80, height: 80, borderRadius: '50%',
+            background: '#0CBD73',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 24px', boxShadow: '0 16px 40px rgba(16,185,129,0.4)',
-            animation: 'scaleIn 0.5s ease',
+            margin: '0 auto 24px', boxShadow: '0 4px 12px rgba(16,185,129,0.2)',
+            animation: 'scaleIn 0.3s ease',
           }}>
             <Icon.Check s={44} />
           </div>
-          <h2 style={{ fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, marginBottom: 10 }}>
+          <h2 style={{ fontWeight: 600, fontSize: 24, letterSpacing: '-0.01em', color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, marginBottom: 10 }}>
             You're all set!
           </h2>
           <p style={{ fontSize: 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 28, lineHeight: 1.6 }}>
             Your account has been created. Redirecting you to your dashboard...
           </p>
           <button onClick={() => navigate('/login')} style={{
-            padding: '12px 28px', borderRadius: 12,
-            fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
-            background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+            padding: '12px 24px', borderRadius: 8,
+            fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
+            background: '#0D406C',
             color: 'white', border: 'none', cursor: 'pointer',
-            boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
+            boxShadow: '0 2px 6px rgba(13,64,108,0.15)',
             display: 'inline-flex', alignItems: 'center', gap: 8,
           }}>
             Go to login <Icon.Arrow />
@@ -1249,23 +1250,10 @@ const Register = () => {
       <div style={{
         minHeight: '100vh',
         fontFamily: "'DM Sans', sans-serif",
-        background: isDark
-        ? `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.18) 0%, transparent 70%), ${tokens.dark.bg}`
-        : `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(12,189,115,0.1) 0%, transparent 70%), #F5FBF8`,
+        background: isDark ? tokens.dark.bg : '#F5FBF8',
       position: 'relative', overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0,
-        backgroundImage: isDark
-          ? 'linear-gradient(rgba(30,41,59,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(30,41,59,0.4) 1px, transparent 1px)'
-          : 'linear-gradient(rgba(226,232,240,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(226,232,240,0.7) 1px, transparent 1px)',
-        backgroundSize: '60px 60px',
-        maskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-        WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)',
-      }} />
-      <div style={{ position: 'absolute', top: '10%', left: '5%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(12,189,115,0.14) 0%, transparent 70%)', animation: 'float1 8s ease-in-out infinite', zIndex: 0 }} />
-      <div style={{ position: 'absolute', bottom: '10%', right: '5%', width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(157,246,214,0.16) 0%, transparent 70%)', animation: 'float2 10s ease-in-out infinite', zIndex: 0 }} />
 
       <header style={{ position: 'relative', zIndex: 2, padding: isMobile ? '8px 16px' : '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 16 }}>
@@ -1276,11 +1264,10 @@ const Register = () => {
               style={{
                 width: isMobile ? 48 : 60,
                 height: isMobile ? 48 : 60,
-                borderRadius: 12,
+                borderRadius: 8,
                 objectFit: 'cover',
                 backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent',
                 padding: isDark ? '4px' : '0',
-                boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : 'none'
               }}
             />
           </RouterLink>
@@ -1317,9 +1304,9 @@ const Register = () => {
           width: '100%', maxWidth: 520,
           background: isDark ? tokens.dark.surface : tokens.surface,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-          borderRadius: 24, padding: isMobile ? '24px 20px' : '40px 36px',
-          boxShadow: isDark ? '0 32px 64px rgba(0,0,0,0.5)' : '0 32px 64px rgba(15,23,42,0.12)',
-          animation: 'fadeInUp 0.6s ease',
+          borderRadius: 12, padding: isMobile ? '24px 20px' : '32px 28px',
+          boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.2)' : '0 2px 8px rgba(15,23,42,0.08)',
+          animation: 'fadeInUp 0.3s ease',
         }}>
           {/* Only show header on non-success steps */}
           {activeStep < (accountType === 'organization' ? 4 : 3) && (
@@ -1327,28 +1314,28 @@ const Register = () => {
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
                 padding: '5px 12px', borderRadius: 100,
-                background: isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.08)',
-                border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}`,
-                marginBottom: 20,
+                background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
+                border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`,
+                marginBottom: 16,
               }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: tokens.success, animation: 'pulse 2s infinite' }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: tokens.accent, letterSpacing: '0.04em' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: tokens.success }} />
+                <span style={{ fontSize: 12, fontWeight: 500, color: tokens.accent, letterSpacing: '0.02em' }}>
                   {accountType === 'organization' ? 'Register your organization' : 'Create your teacher account'}
                 </span>
               </div>
 
               <h1 style={{
-                fontWeight: 800, fontSize: isMobile ? 26 : 30, letterSpacing: '-0.02em', lineHeight: 1.15,
+                fontWeight: 600, fontSize: isMobile ? 24 : 28, letterSpacing: '-0.01em', lineHeight: 1.15,
                 color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, marginBottom: 8,
               }}>
-                Join <span style={{ background: 'linear-gradient(135deg, #0D406C 0%, #5AD5A2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>eexams</span>
+                Join <span style={{ color: '#0D406C' }}>eexams</span>
               </h1>
-              <p style={{ fontSize: isMobile ? 14 : 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: isMobile ? 20 : 28, lineHeight: 1.6 }}>
+              <p style={{ fontSize: isMobile ? 14 : 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: isMobile ? 20 : 24, lineHeight: 1.6 }}>
                 AI-powered exams for Rwanda's schools and universities.
               </p>
 
               {/* Progress stepper - dynamic based on account type */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 32 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 24 }}>
                 {(() => {
                   const displaySteps = isGoogleFlow
                     ? (accountType === 'organization' ? GOOGLE_ORG_STEPS : GOOGLE_TEACHER_STEPS).slice(0, accountType === 'organization' ? 3 : 2)
@@ -1361,15 +1348,15 @@ const Register = () => {
                     <React.Fragment key={i}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
                         <div style={{
-                          width: 32, height: 32, borderRadius: 10,
+                          width: 32, height: 32, borderRadius: 8,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 700, fontSize: 13,
+                          fontWeight: 600, fontSize: 13,
                           background: completed
-                            ? 'linear-gradient(135deg, #0CBD73 0%, #5AD5A2 100%)'
-                            : active ? 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)' : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
+                            ? '#0CBD73'
+                            : active ? '#0D406C' : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
                           color: active || completed ? 'white' : isDark ? tokens.dark.textSecondary : tokens.textSecondary,
                           border: active || completed ? 'none' : `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                          transition: 'all 0.3s',
+                          transition: 'all 0.15s ease',
                         }}>
                           {completed ? <Icon.Check s={14} /> : i + 1}
                         </div>
@@ -1516,11 +1503,8 @@ const Register = () => {
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px);} to { opacity: 1; transform: translateY(0);} }
         @keyframes slideInRight { from { opacity: 0; transform: translateX(20px);} to { opacity: 1; transform: translateX(0);} }
-        @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: 0.6; transform: scale(1.3);} }
         @keyframes spin { to { transform: rotate(360deg);} }
         @keyframes scaleIn { from { opacity: 0; transform: scale(0.5);} to { opacity: 1; transform: scale(1);} }
-        @keyframes float1 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(12px,-20px);} }
-        @keyframes float2 { 0%,100% { transform: translate(0,0);} 50% { transform: translate(-12px,16px);} }
         @media (max-width: 560px) {
           .reg-main { padding: 8px 12px 20px !important; }
           .reg-card { padding: 24px 16px !important; border-radius: 16px !important; }

@@ -141,6 +141,34 @@ const Login = () => {
   const [googleClickCount, setGoogleClickCount] = useState(0); // Track failed Google attempts
   const [loginMethod, setLoginMethod] = useState('phone'); // 'email' or 'phone'
 
+  // Helper function to detect if input is email
+  const isEmail = (input) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+
+  // Helper function to detect if input is phone number
+  const isPhone = (input) => /^[\d\s\-\(\)\+]{10,}$/.test(input);
+
+  // Handle email input change with auto-switch
+  const handleEmailChange = (e) => {
+    const value = e.target.value;
+    setEmail(value);
+    // If user types a phone number in email field, switch to phone
+    if (isPhone(value) && value.length >= 10) {
+      setPhone(value);
+      setLoginMethod('phone');
+    }
+  };
+
+  // Handle phone input change with auto-switch
+  const handlePhoneChange = (e) => {
+    const value = e.target.value;
+    setPhone(value);
+    // If user types an email in phone field, switch to email
+    if (isEmail(value)) {
+      setEmail(value);
+      setLoginMethod('email');
+    }
+  };
+
   // Google OAuth refs
   const googleInitialized = useRef(false);
   const googlePromptInProgress = useRef(false);
@@ -675,7 +703,7 @@ const Login = () => {
                 icon={<Icon.Mail />}
                 label="Email address"
                 type="email" id="email" name="email" autoComplete="email" autoFocus
-                value={email} onChange={(e) => setEmail(e.target.value)}
+                value={email} onChange={handleEmailChange}
               />
             ) : (
               <Input
@@ -683,7 +711,7 @@ const Login = () => {
                 icon={<Icon.Phone />}
                 label="Phone number"
                 type="tel" id="phone" name="phone" autoComplete="tel" autoFocus
-                value={phone} onChange={(e) => setPhone(e.target.value)}
+                value={phone} onChange={handlePhoneChange}
                 helper="Enter your phone number"
               />
             )}

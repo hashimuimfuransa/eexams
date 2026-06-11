@@ -632,6 +632,12 @@ const googleAuth = async (req, res) => {
       return res.status(400).json({ message: 'Organization/school name is required' });
     }
 
+    // Determine role: respect client-provided role for students, otherwise use account type
+    let finalRole = role;
+    if (!finalRole) {
+      finalRole = isOrganization ? 'admin' : 'teacher';
+    }
+
     // Set subscription details
     let subscriptionStatus = null;
     let subscriptionExpiresAt = null;
@@ -656,12 +662,6 @@ const googleAuth = async (req, res) => {
       } else {
         subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
       }
-    }
-
-    // Determine role: respect client-provided role for students, otherwise use account type
-    let finalRole = role;
-    if (!finalRole) {
-      finalRole = isOrganization ? 'admin' : 'teacher';
     }
 
     // Create new user

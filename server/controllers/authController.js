@@ -52,11 +52,17 @@ const checkPhone = async (req, res) => {
       return res.status(400).json({ message: 'Phone number is required' });
     }
 
-    const user = await User.findOne({ phone });
+    // Validate phone number format
+    const phoneRegex = /^\+[\d\s\-\(\)]{10,}$/;
+    if (!phoneRegex.test(phone.trim())) {
+      return res.status(400).json({ message: 'Please enter a valid phone number with country code (e.g., +250 788 123 456)' });
+    }
+
+    const user = await User.findOne({ phone: phone.trim() });
     res.json({ exists: !!user });
   } catch (error) {
     console.error('Check phone error:', error);
-    res.status(500).json({ message: 'Failed to check phone' });
+    res.status(500).json({ message: 'Failed to check phone number. Please try again.' });
   }
 };
 
@@ -75,10 +81,26 @@ const register = async (req, res) => {
       return res.status(400).json({ message: 'Either email or phone number is required' });
     }
 
+    // Validate email format if provided
+    if (email && email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        return res.status(400).json({ message: 'Please enter a valid email address' });
+      }
+    }
+
+    // Validate phone number format if provided
+    if (phone && phone.trim()) {
+      const phoneRegex = /^\+[\d\s\-\(\)]{10,}$/;
+      if (!phoneRegex.test(phone.trim())) {
+        return res.status(400).json({ message: 'Please enter a valid phone number with country code (e.g., +250 788 123 456)' });
+      }
+    }
+
     // Build query for existing user check - only include fields that are provided
     const orConditions = [];
     if (email && email.trim()) {
-      orConditions.push({ email: email.trim() });
+      orConditions.push({ email: email.trim().toLowerCase() });
     }
     if (phone && phone.trim()) {
       orConditions.push({ phone: phone.trim() });
@@ -92,13 +114,13 @@ const register = async (req, res) => {
     console.log('[Register] Existing user found:', userExists ? userExists._id : null);
 
     if (userExists) {
-      if (userExists.email === email) {
-        return res.status(400).json({ message: 'User with this email already exists' });
+      if (email && userExists.email === email.trim().toLowerCase()) {
+        return res.status(400).json({ message: 'An account with this email already exists. Please use a different email or login with your existing account.' });
       }
-      if (userExists.phone === phone) {
-        return res.status(400).json({ message: 'User with this phone number already exists' });
+      if (phone && userExists.phone === phone.trim()) {
+        return res.status(400).json({ message: 'An account with this phone number already exists. Please use a different phone number or login with your existing account.' });
       }
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'An account with these details already exists. Please login or use different credentials.' });
     }
 
     // Determine account type (organization or individual)
@@ -159,8 +181,10 @@ const register = async (req, res) => {
       subscriptionPlan: finalSubscriptionPlan,
       subscriptionStatus,
       subscriptionExpiresAt,
-      signinMethod: 'email'
+      signinMethod: (phone && phone.trim() && (!email || !email.trim())) ? 'phone' : 'email'
     };
+
+    console.log('[Register] Signin method set to:', userData.signinMethod, 'for phone:', phone, 'email:', email);
 
     // Only add email if provided and not empty, otherwise explicitly set to undefined
     if (email && email.trim()) {
@@ -204,10 +228,12 @@ const register = async (req, res) => {
       const responseData = {
         _id: user._id,
         email: user.email,
+        phone: user.phone,
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
         userType: user.userType,
+        signinMethod: user.signinMethod,
         token,
         subscriptionPlan: user.subscriptionPlan,
         subscriptionStatus: user.subscriptionStatus
@@ -243,28 +269,67 @@ const login = async (req, res) => {
 
     console.log('[Login] Attempt with:', { email, phone, hasPassword: !!password });
 
-    // Validation is now handled by middleware for faster processing
+    // Validate that at least one of email or phone is provided
+    if ((!email || !email.trim()) && (!phone || !phone.trim())) {
+      return res.status(400).json({ message: 'Please enter either your email or phone number' });
+    }
+
+    // Validate password is provided
+    if (!password) {
+      return res.status(400).json({ message: 'Please enter your password' });
+    }
+
+    // Validate email format if provided
+    if (email && email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        return res.status(400).json({ message: 'Please enter a valid email address' });
+      }
+    }
+
+    // Validate phone number format if provided
+    if (phone && phone.trim()) {
+      const phoneRegex = /^\+[\d\s\-\(\)]{10,}$/;
+      if (!phoneRegex.test(phone.trim())) {
+        return res.status(400).json({ message: 'Please enter a valid phone number with country code (e.g., +250 788 123 456)' });
+      }
+    }
+
     // Optimize database query - select only necessary fields for faster retrieval
     // Search by email or phone
+    const searchConditions = [];
+    if (email && email.trim()) {
+      searchConditions.push({ email: email.trim().toLowerCase() });
+    }
+    if (phone && phone.trim()) {
+      searchConditions.push({ phone: phone.trim() });
+    }
+
     const user = await User.findOne({
-      $or: [{ email }, { phone }]
+      $or: searchConditions
     }).select('+password +isBlocked +lastLogin').lean(false);
 
     console.log('[Login] User found:', user ? { _id: user._id, email: user.email, phone: user.phone } : null);
 
-    // Fast fail for non-existent users
+    // Fast fail for non-existent users with specific message
     if (!user) {
-      return res.status(401).json({ message: 'No account found with this email or phone number' });
+      if (email) {
+        return res.status(401).json({ message: 'No account found with this email. Please check your email or register for a new account.' });
+      }
+      if (phone) {
+        return res.status(401).json({ message: 'No account found with this phone number. Please check your phone number or register for a new account.' });
+      }
+      return res.status(401).json({ message: 'No account found. Please check your credentials or register for a new account.' });
     }
 
     // Verify that the provided identifier actually matches the user
-    if (email && user.email !== email.toLowerCase()) {
+    if (email && user.email !== email.trim().toLowerCase()) {
       console.log('[Login] Email mismatch:', { provided: email, found: user.email });
-      return res.status(401).json({ message: 'No account found with this email' });
+      return res.status(401).json({ message: 'No account found with this email. Please check your email or register for a new account.' });
     }
     if (phone && user.phone !== phone.trim()) {
       console.log('[Login] Phone mismatch:', { provided: phone, found: user.phone });
-      return res.status(401).json({ message: 'No account found with this phone number' });
+      return res.status(401).json({ message: 'No account found with this phone number. Please check your phone number or register for a new account.' });
     }
 
     // Fast fail for blocked users
@@ -276,7 +341,7 @@ const login = async (req, res) => {
     const isMatch = await user.comparePassword(password);
 
     if (!isMatch) {
-      return res.status(401).json({ message: 'Incorrect password' });
+      return res.status(401).json({ message: 'Incorrect password. Please try again or reset your password if you forgot it.' });
     }
 
     // Generate token immediately after successful authentication
@@ -299,10 +364,12 @@ const login = async (req, res) => {
     const responseData = {
       _id: user._id,
       email: user.email,
+      phone: user.phone,
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
       userType: user.userType || (user.role === 'admin' ? 'organization' : 'individual'),
+      signinMethod: user.signinMethod,
       token,
       subscriptionPlan: effectivePlan,
       subscriptionStatus: effectiveStatus,
@@ -344,7 +411,20 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json(user);
+    res.json({
+      _id: user._id,
+      email: user.email,
+      phone: user.phone,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      userType: user.userType,
+      signinMethod: user.signinMethod,
+      organization: user.organization,
+      subscriptionPlan: user.subscriptionPlan,
+      subscriptionStatus: user.subscriptionStatus,
+      isGoogleUser: user.isGoogleUser
+    });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -445,14 +525,15 @@ const updateProfile = async (req, res) => {
     res.json({
       _id: user._id,
       email: user.email,
+      phone: user.phone,
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
       userType: user.userType,
+      signinMethod: user.signinMethod,
       subscriptionPlan: user.subscriptionPlan,
       subscriptionStatus: user.subscriptionStatus,
-      organization: user.organization,
-      phone: user.phone
+      organization: user.organization
     });
   } catch (error) {
     console.error('Update profile error:', error);
@@ -487,15 +568,16 @@ const verifyToken = async (req, res) => {
     res.json({
       _id: user._id,
       email: user.email,
+      phone: user.phone,
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
       userType: user.userType || (user.role === 'admin' ? 'organization' : 'individual'),
+      signinMethod: user.signinMethod,
       isVerified: true,
       subscriptionPlan: effectivePlan,
       subscriptionStatus: effectiveStatus,
       organization: user.organization,
-      phone: user.phone,
       isOrgTeacher
     });
   } catch (error) {
@@ -608,10 +690,12 @@ const googleAuth = async (req, res) => {
       const responseData = {
         _id: user._id,
         email: user.email,
+        phone: user.phone,
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
         userType: user.userType,
+        signinMethod: user.signinMethod,
         isGoogleUser: true,
         token,
         subscriptionPlan: user.subscriptionPlan,
@@ -696,10 +780,12 @@ const googleAuth = async (req, res) => {
     const responseData = {
       _id: user._id,
       email: user.email,
+      phone: user.phone,
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
       userType: user.userType,
+      signinMethod: user.signinMethod,
       isGoogleUser: true,
       token,
       subscriptionPlan: user.subscriptionPlan,

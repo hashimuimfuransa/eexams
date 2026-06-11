@@ -3,6 +3,7 @@ import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import api from '../services/api';
+import PhoneInput from '../components/PhoneInput';
 
 // ─── Design tokens (matching home page) ──────────────────────────────────────
 const tokens = {
@@ -318,9 +319,9 @@ const Login = () => {
         return;
       }
     } else {
-      if (!/^[\d\s\-\(\)]{10,}$/.test(phone)) {
-        setError('Please enter a valid phone number');
-        setSnackbar({ open: true, message: 'Invalid phone format', severity: 'error' });
+      if (!/^\+[\d\s\-\(\)]{10,}$/.test(phone)) {
+        setError('Please enter a valid phone number with country code');
+        setSnackbar({ open: true, message: 'Invalid phone format. Please include country code (e.g., +250)', severity: 'error' });
         return;
       }
     }
@@ -706,13 +707,20 @@ const Login = () => {
                 value={email} onChange={handleEmailChange}
               />
             ) : (
-              <Input
+              <PhoneInput
                 isDark={isDark}
-                icon={<Icon.Phone />}
                 label="Phone number"
-                type="tel" id="phone" name="phone" autoComplete="tel" autoFocus
-                value={phone} onChange={handlePhoneChange}
-                helper="Enter your phone number"
+                id="phone"
+                name="phone"
+                autoComplete="tel"
+                autoFocus
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onEmailDetected={(emailValue) => {
+                  setEmail(emailValue);
+                  setLoginMethod('email');
+                  setPhone('');
+                }}
               />
             )}
             <Input

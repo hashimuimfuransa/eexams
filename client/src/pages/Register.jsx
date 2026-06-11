@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import SEO from '../components/SEO';
 import api from '../services/api';
+import PhoneInput from '../components/PhoneInput';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const tokens = {
@@ -252,7 +253,7 @@ const Register = () => {
       if (!lastName) errors.lastName = 'Last name is required';
       else if (lastName.length < 2) errors.lastName = 'Too short';
       if (!phone) errors.phone = 'Phone number is required';
-      else if (!/^\+?[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
+      else if (!/^\+[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number with country code';
 
       if (accountType === 'organization') {
         if (!organization) errors.organization = 'Organization/school name is required';
@@ -758,11 +759,21 @@ const Register = () => {
               autoComplete="family-name" required
               value={lastName} onChange={(e) => setLastName(e.target.value)} error={validationErrors.lastName} />
           </div>
-          <Input isDark={isDark} icon={<Icon.Phone />} label="Phone number" type="tel" id="phone" name="phone"
-            autoComplete="tel" required
-            value={phone} onChange={(e) => setPhone(e.target.value)}
+          <PhoneInput
+            isDark={isDark}
+            label="Phone number"
+            id="phone"
+            name="phone"
+            autoComplete="tel"
+            required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            onEmailDetected={(emailValue) => {
+              setEmail(emailValue);
+              setPhone('');
+            }}
             error={validationErrors.phone}
-            helper={!validationErrors.phone ? 'Include country code (e.g., +250)' : null} />
+          />
 
           {accountType === 'organization' && (
             <Input isDark={isDark} icon={<Icon.Building />} label="Organization / school name *" type="text" id="organization" name="organization"

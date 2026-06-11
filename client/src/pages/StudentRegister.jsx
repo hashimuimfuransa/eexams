@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import SEO from '../components/SEO';
 import api from '../services/api';
+import PhoneInput from '../components/PhoneInput';
 
 // ─── Design tokens (matching login page) ──────────────────────────────────────
 const tokens = {
@@ -93,9 +94,9 @@ function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, na
   const [focused, setFocused] = useState(false);
   const borderColor = error ? tokens.danger : focused ? tokens.primary : isDark ? tokens.dark.border : tokens.surfaceBorder;
   return (
-    <div style={{ marginBottom: 18 }}>
+    <div style={{ marginBottom: 16 }}>
       <label style={{
-        display: 'block', marginBottom: 8,
+        display: 'block', marginBottom: 6,
         fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500,
         color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
       }}>{label}{required && <span style={{ color: tokens.danger, marginLeft: 2 }}>*</span>}</label>
@@ -108,7 +109,7 @@ function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, na
         boxShadow: focused && !error ? `0 0 0 3px rgba(13,64,108,0.08)` : error ? `0 0 0 3px rgba(239,68,68,0.08)` : 'none',
         display: 'flex', alignItems: 'center',
       }}>
-        <div style={{ paddingLeft: 14, color: error ? tokens.danger : focused ? tokens.primary : isDark ? tokens.dark.textSecondary : tokens.textSecondary, display: 'flex', alignItems: 'center' }}>
+        <div style={{ paddingLeft: 12, color: error ? tokens.danger : focused ? tokens.primary : isDark ? tokens.dark.textSecondary : tokens.textSecondary, display: 'flex', alignItems: 'center' }}>
           {icon}
         </div>
         <input
@@ -116,16 +117,16 @@ function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, na
           autoFocus={autoFocus} autoComplete={autoComplete}
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           style={{
-            flex: 1, padding: '14px 12px', border: 'none', outline: 'none',
+            flex: 1, padding: '12px 10px', border: 'none', outline: 'none',
             background: 'transparent', fontFamily: "'DM Sans', sans-serif",
-            fontSize: 15, fontWeight: 500,
+            fontSize: 14, fontWeight: 500,
             color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
           }}
         />
-        {endAdornment && <div style={{ paddingRight: 12 }}>{endAdornment}</div>}
+        {endAdornment && <div style={{ paddingRight: 10 }}>{endAdornment}</div>}
       </div>
       {(error || helper) && (
-        <div style={{ marginTop: 6, fontSize: 12, color: error ? tokens.danger : isDark ? tokens.dark.textSecondary : tokens.textSecondary, fontWeight: 500 }}>
+        <div style={{ marginTop: 4, fontSize: 12, color: error ? tokens.danger : isDark ? tokens.dark.textSecondary : tokens.textSecondary, fontWeight: 500 }}>
           {error || helper}
         </div>
       )}
@@ -206,7 +207,7 @@ const StudentRegister = () => {
         else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
       } else {
         if (!phone) errors.phone = 'Phone number is required';
-        else if (!/^[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
+        else if (!/^\+[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number with country code';
       }
     }
 
@@ -230,7 +231,7 @@ const StudentRegister = () => {
     if (step === 4) {
       // Step 4 is for optional phone (if email) or optional email (if phone)
       if (registrationMethod === 'email') {
-        if (phone && !/^[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number';
+        if (phone && !/^\+[\d\s\-\(\)]{10,}$/.test(phone)) errors.phone = 'Please enter a valid phone number with country code';
       } else {
         if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
       }
@@ -559,10 +560,10 @@ const StudentRegister = () => {
       {/* Main card */}
       <main style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '12px 16px 24px', position: 'relative', zIndex: 1 }}>
         <div style={{
-          width: '100%', maxWidth: 480,
+          width: '100%', maxWidth: 520,
           background: isDark ? tokens.dark.surface : tokens.surface,
           border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-          borderRadius: 12, padding: '28px 24px',
+          borderRadius: 12, padding: '24px 20px',
           boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.2)' : '0 2px 8px rgba(15,23,42,0.08)',
           animation: 'fadeInUp 0.3s ease',
         }}>
@@ -732,19 +733,24 @@ const StudentRegister = () => {
                       required
                       value={email}
                       onChange={(e) => {
-                        setEmail(e.target.value);
+                        const value = e.target.value;
+                        setEmail(value);
                         if (validationErrors.email) {
                           setValidationErrors(prev => ({ ...prev, email: '' }));
+                        }
+                        // Auto-switch to phone if user types a phone number
+                        if (/^\+[\d\s\-\(\)]{10,}$/.test(value)) {
+                          setPhone(value);
+                          setRegistrationMethod('phone');
+                          setEmail('');
                         }
                       }}
                       error={validationErrors.email}
                     />
                   ) : (
-                    <Input
+                    <PhoneInput
                       isDark={isDark}
-                      icon={<Icon.Phone />}
                       label="Phone number"
-                      type="tel"
                       id="phone"
                       name="phone"
                       autoComplete="tel"
@@ -752,13 +758,18 @@ const StudentRegister = () => {
                       required
                       value={phone}
                       onChange={(e) => {
-                        setPhone(e.target.value);
+                        const value = e.target.value;
+                        setPhone(value);
                         if (validationErrors.phone) {
                           setValidationErrors(prev => ({ ...prev, phone: '' }));
                         }
                       }}
+                      onEmailDetected={(emailValue) => {
+                        setEmail(emailValue);
+                        setRegistrationMethod('email');
+                        setPhone('');
+                      }}
                       error={validationErrors.phone}
-                      helper="Enter your phone number"
                     />
                   )}
                 </>
@@ -870,11 +881,24 @@ const StudentRegister = () => {
               )}
 
               {step === 3 && (
-                <div className="name-inputs-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div className="name-inputs-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <style>{`
                     @media (max-width: 640px) {
                       .name-inputs-grid {
                         grid-template-columns: 1fr !important;
+                        gap: 12px !important;
+                      }
+                    }
+                    @media (min-width: 641px) and (max-width: 900px) {
+                      .name-inputs-grid {
+                        grid-template-columns: 1fr 1fr !important;
+                        gap: 10px !important;
+                      }
+                    }
+                    @media (min-width: 901px) {
+                      .name-inputs-grid {
+                        grid-template-columns: 1fr 1fr !important;
+                        gap: 12px !important;
                       }
                     }
                   `}</style>
@@ -921,11 +945,9 @@ const StudentRegister = () => {
               {step === 4 && (
                 <>
                   {registrationMethod === 'email' ? (
-                    <Input
+                    <PhoneInput
                       isDark={isDark}
-                      icon={<Icon.Phone />}
                       label="Phone number (optional)"
-                      type="tel"
                       id="phone"
                       name="phone"
                       autoComplete="tel"
@@ -938,7 +960,7 @@ const StudentRegister = () => {
                         }
                       }}
                       error={validationErrors.phone}
-                      helper={!validationErrors.phone ? 'Include country code if international' : null}
+                      required={false}
                     />
                   ) : (
                     <Input

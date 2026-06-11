@@ -38,9 +38,12 @@ import {
   InfoOutlined
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
+import PhoneInput from '../PhoneInput';
 
 const Login = () => {
+  const [loginType, setLoginType] = useState('email'); // 'email' or 'phone'
   const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showError, setShowError] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -159,11 +162,29 @@ const Login = () => {
     }
 
     // Basic validation
-    if (!username || !password) {
+    if (loginType === 'email' && !username) {
       setShowError(true);
       setSnackbar({
         open: true,
-        message: 'Please enter both username and password',
+        message: 'Please enter your email',
+        severity: 'warning'
+      });
+      return;
+    }
+    if (loginType === 'phone' && !phone) {
+      setShowError(true);
+      setSnackbar({
+        open: true,
+        message: 'Please enter your phone number',
+        severity: 'warning'
+      });
+      return;
+    }
+    if (!password) {
+      setShowError(true);
+      setSnackbar({
+        open: true,
+        message: 'Please enter your password',
         severity: 'warning'
       });
       return;
@@ -177,7 +198,10 @@ const Login = () => {
     });
 
     try {
-      await login({ email: username, password });
+      const loginData = loginType === 'phone' 
+        ? { phone, password }
+        : { email: username, password };
+      await login(loginData);
 
       // Reset failed attempts on successful login
       setFailedAttempts(0);
@@ -411,30 +435,63 @@ const Login = () => {
                 )}
 
                 <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
-                  <TextField
-                    margin="normal"
-                    required
-                    fullWidth
-                    id="username"
-                    label="Username"
-                    name="username"
-                    autoComplete="username"
-                    autoFocus
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Person color="primary" />
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        borderRadius: 2,
-                      }
-                    }}
-                  />
+                  {/* Login Type Toggle */}
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <Button
+                      type="button"
+                      variant={loginType === 'email' ? 'contained' : 'outlined'}
+                      onClick={() => setLoginType('email')}
+                      sx={{ flex: 1, borderRadius: 2 }}
+                    >
+                      Email
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={loginType === 'phone' ? 'contained' : 'outlined'}
+                      onClick={() => setLoginType('phone')}
+                      sx={{ flex: 1, borderRadius: 2 }}
+                    >
+                      Phone
+                    </Button>
+                  </Box>
+
+                  {loginType === 'email' ? (
+                    <TextField
+                      margin="normal"
+                      required
+                      fullWidth
+                      id="username"
+                      label="Email"
+                      name="username"
+                      autoComplete="username"
+                      autoFocus
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Person color="primary" />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 2,
+                        }
+                      }}
+                    />
+                  ) : (
+                    <Box sx={{ mt: 1 }}>
+                      <PhoneInput
+                        label="Phone number"
+                        id="phone"
+                        name="phone"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        required
+                      />
+                    </Box>
+                  )}
 
                   <TextField
                     margin="normal"

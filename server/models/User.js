@@ -35,7 +35,7 @@ const UserSchema = new mongoose.Schema({
   },
   signinMethod: {
     type: String,
-    enum: ['email', 'google'],
+    enum: ['email', 'google', 'phone'],
     default: 'email'
   },
   firstName: {
@@ -54,7 +54,16 @@ const UserSchema = new mongoose.Schema({
     trim: true,
     unique: true,
     sparse: true, // Allows null/undefined values while maintaining uniqueness for provided values
-    index: true
+    index: true,
+    validate: {
+      validator: function(v) {
+        // Only validate if phone is provided
+        if (!v) return true;
+        // Phone must start with + and have at least 10 digits total
+        return /^\+[\d\s\-\(\)]{10,}$/.test(v);
+      },
+      message: 'Please enter a valid phone number with country code (e.g., +250 788 123 456)'
+    }
   },
   role: {
     type: String,

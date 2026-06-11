@@ -33,5 +33,9 @@ ENV UPLOADS_PATH=/app/tmp/uploads
 # Expose port
 EXPOSE 10000
 
-# Start the server
-CMD ["node", "server.js"]
+# Copy entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Start the server with entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -162,9 +162,11 @@ const register = async (req, res) => {
       signinMethod: 'email'
     };
 
-    // Only add email if provided and not empty
+    // Only add email if provided and not empty, otherwise explicitly set to undefined
     if (email && email.trim()) {
       userData.email = email.trim();
+    } else {
+      userData.email = undefined;
     }
 
     // Only add phone if provided and not empty

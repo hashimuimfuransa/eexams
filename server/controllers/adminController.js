@@ -4376,7 +4376,7 @@ const updateQuestion = async (req, res) => {
     if (!q) return res.status(404).json({ message: 'Question not found' });
     if (q.exam.createdBy.toString() !== req.orgAdminId.toString())
       return res.status(403).json({ message: 'Not authorized' });
-    const { text, type, points, difficulty, correctAnswer, options, subQuestions, subQuestionConfig, subQuestionMode, explanation, answerKey } = req.body;
+    const { text, type, points, difficulty, correctAnswer, options, subQuestions, subQuestionConfig, subQuestionMode, explanation, answerKey, passage, instructions, wordBank } = req.body;
     if (text !== undefined) q.text = text;
     if (type !== undefined) q.type = type;
     if (points !== undefined) q.points = points;
@@ -4388,6 +4388,9 @@ const updateQuestion = async (req, res) => {
     if (subQuestionMode !== undefined) q.subQuestionMode = subQuestionMode; // Backward compatibility
     if (explanation !== undefined) q.explanation = explanation;
     if (answerKey !== undefined) q.answerKey = answerKey;
+    if (passage !== undefined) q.passage = passage;
+    if (instructions !== undefined) q.instructions = instructions;
+    if (wordBank !== undefined) q.wordBank = wordBank;
     await q.save();
     res.json(q);
   } catch (err) {
@@ -5194,6 +5197,9 @@ const updateExam = async (req, res) => {
         if (q.acceptableAnswers !== undefined) updateData.acceptableAnswers = q.acceptableAnswers;
         if (q.gradingCriteria !== undefined) updateData.gradingCriteria = q.gradingCriteria;
         if (q.imageUrl !== undefined) updateData.imageUrl = q.imageUrl;
+        if (q.passage !== undefined) updateData.passage = q.passage;
+        if (q.instructions !== undefined) updateData.instructions = q.instructions;
+        if (q.wordBank !== undefined) updateData.wordBank = q.wordBank;
         
         if (Object.keys(updateData).length > 0) {
           await Question.findByIdAndUpdate(q._id, updateData);
@@ -5237,7 +5243,10 @@ const updateExam = async (req, res) => {
                   dragDropData: q.dragDropData,
                   imageUrl: q.imageUrl || q.image || '',
                   subQuestions: q.subQuestions,
-                  subQuestionConfig: q.subQuestionConfig
+                  subQuestionConfig: q.subQuestionConfig,
+                  passage: q.passage,
+                  instructions: q.instructions,
+                  wordBank: q.wordBank
                 }
               }
             });

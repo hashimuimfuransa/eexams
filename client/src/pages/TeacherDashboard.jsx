@@ -3900,6 +3900,15 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                                 {q.subQuestions && Array.isArray(q.subQuestions) && q.subQuestions.length > 0 && (
                                   <Chip label={`${q.subQuestions.length} Sub-Q${q.subQuestions.length > 1 ? 's' : ''}`} size="small" sx={{ bgcolor: '#DCFCE7', color: '#166534', fontWeight: 700, fontSize: 10 }} />
                                 )}
+                                {q.passage && (
+                                  <Chip label="📖 Passage" size="small" sx={{ bgcolor: '#DBEAFE', color: '#1E40AF', fontWeight: 600, fontSize: 10 }} />
+                                )}
+                                {q.wordBank && Array.isArray(q.wordBank) && q.wordBank.length > 0 && (
+                                  <Chip label={`📝 Word Bank (${q.wordBank.length})`} size="small" sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 600, fontSize: 10 }} />
+                                )}
+                                {q.instructions && (
+                                  <Chip label="ℹ️ Instructions" size="small" sx={{ bgcolor: '#E0E7FF', color: '#3730A3', fontWeight: 600, fontSize: 10 }} />
+                                )}
                               </Box>
                               <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.5 }}>{q.text}</Typography>
                               {(q.imageUrl || q.image) && (

@@ -3932,7 +3932,7 @@ const regradeStudentResult = async (req, res) => {
       const fullResult = await Result.findById(resultId)
         .populate({
           path: 'answers.question',
-          select: 'text type points correctAnswer options'
+          select: 'text type points correctAnswer options explanation answerKey'
         });
 
       let totalScore = 0;
@@ -3945,7 +3945,20 @@ const regradeStudentResult = async (req, res) => {
         if (!question) continue;
 
         try {
-          const grading = await gradeQuestionByType(question, answer, question.correctAnswer);
+          // For multiple choice questions, use the teacher-set correct answer from options.isCorrect
+          let modelAnswer = question.correctAnswer;
+          if (question.type === 'multiple-choice' && question.options) {
+            const correctOption = question.options.find(opt => opt.isCorrect === true);
+            if (correctOption) {
+              modelAnswer = correctOption.letter || correctOption.text;
+            }
+          }
+          // For open-ended questions, prefer explanation/answerKey over correctAnswer
+          else if (question.type === 'open-ended' || question.type === 'essay' || question.type === 'short-answer') {
+            modelAnswer = question.explanation || question.answerKey || question.correctAnswer;
+          }
+
+          const grading = await gradeQuestionByType(question, answer, modelAnswer);
 
           const oldScore = answer.score || 0;
           const newScore = grading.score || 0;

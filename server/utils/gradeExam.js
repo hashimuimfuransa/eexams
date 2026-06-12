@@ -423,7 +423,7 @@ const gradeExamWithAI = async (resultId) => {
       .populate({
         path: 'answers.question',
         model: 'Question',
-        select: 'text type options points correctAnswer'
+        select: 'text type options points correctAnswer explanation answerKey'
       });
 
     if (!result) {
@@ -458,6 +458,24 @@ const gradeExamWithAI = async (resultId) => {
           continue; // Already determined
         }
 
+        // FIRST: Check if teacher has set a correct answer via options.isCorrect
+        const teacherSelectedOption = q.options.find(opt => opt.isCorrect === true);
+        if (teacherSelectedOption && teacherSelectedOption.letter) {
+          const correctLetter = teacherSelectedOption.letter.toUpperCase();
+          aiAnswerCache.set(cacheKey, correctLetter);
+          console.log(`✅ Using teacher-set correct answer for question ${cacheKey}: ${correctLetter}`);
+          continue;
+        }
+
+        // SECOND: Check if correctAnswer field matches an option letter
+        if (q.correctAnswer && q.correctAnswer.match(/^[A-D]$/i)) {
+          const correctLetter = q.correctAnswer.toUpperCase();
+          aiAnswerCache.set(cacheKey, correctLetter);
+          console.log(`✅ Using correctAnswer field for question ${cacheKey}: ${correctLetter}`);
+          continue;
+        }
+
+        // THIRD: Use AI to determine the answer if no teacher answer is set
         try {
           const options = q.options.map(opt => ({
             letter: opt.letter || '',
@@ -626,9 +644,23 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
           // Prepare to use AI to determine the correct answer
           let correctLetter = '';
 
-          // OPTIMIZED: Check cache first to avoid redundant AI calls
-          const cacheKey = question._id.toString();
-          if (aiAnswerCache.has(cacheKey)) {
+          // FIRST: Check if teacher has set a correct answer via options.isCorrect
+          const teacherSelectedOption = question.options.find(opt => opt.isCorrect === true);
+          if (teacherSelectedOption && teacherSelectedOption.letter) {
+            correctLetter = teacherSelectedOption.letter.toUpperCase();
+            console.log(`✅ Using teacher-set correct answer for question ${questionNumber}: ${correctLetter}`);
+            // Cache the teacher's answer to avoid AI calls
+            aiAnswerCache.set(question._id.toString(), correctLetter);
+          } 
+          // SECOND: Check if correctAnswer field matches an option letter
+          else if (question.correctAnswer && question.correctAnswer.match(/^[A-D]$/i)) {
+            correctLetter = question.correctAnswer.toUpperCase();
+            console.log(`✅ Using correctAnswer field for question ${questionNumber}: ${correctLetter}`);
+            // Cache the answer to avoid AI calls
+            aiAnswerCache.set(question._id.toString(), correctLetter);
+          }
+          // THIRD: Check cache for AI-determined answer
+          else if (aiAnswerCache.has(cacheKey)) {
             correctLetter = aiAnswerCache.get(cacheKey);
             console.log(`✅ Using cached AI answer for question ${questionNumber}: ${correctLetter}`);
           } else {
@@ -1068,6 +1100,11 @@ Only respond with the letter of the correct option (A, B, C, or D).
           // Use the model answer from the question
           let modelAnswer = question.correctAnswer;
 
+          // For open-ended questions, prefer explanation/answerKey over correctAnswer
+          if (question.type === 'open-ended' || question.type === 'essay' || question.type === 'short-answer') {
+            modelAnswer = question.explanation || question.answerKey || question.correctAnswer;
+          }
+
           // If the model answer is missing or just says "Not provided" or "Sample answer", pass null to let AI grade based on its own logic
           if (!modelAnswer ||
               modelAnswer === "Not provided" ||
@@ -1504,7 +1541,7 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
       .populate({
         path: 'answers.question',
         model: 'Question',
-        select: 'text type options points correctAnswer'
+        select: 'text type options points correctAnswer explanation answerKey'
       });
 
     if (!result) {
@@ -1542,6 +1579,24 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
           continue; // Already determined
         }
 
+        // FIRST: Check if teacher has set a correct answer via options.isCorrect
+        const teacherSelectedOption = q.options.find(opt => opt.isCorrect === true);
+        if (teacherSelectedOption && teacherSelectedOption.letter) {
+          const correctLetter = teacherSelectedOption.letter.toUpperCase();
+          aiAnswerCache.set(cacheKey, correctLetter);
+          console.log(`✅ Using teacher-set correct answer for question ${cacheKey}: ${correctLetter}`);
+          continue;
+        }
+
+        // SECOND: Check if correctAnswer field matches an option letter
+        if (q.correctAnswer && q.correctAnswer.match(/^[A-D]$/i)) {
+          const correctLetter = q.correctAnswer.toUpperCase();
+          aiAnswerCache.set(cacheKey, correctLetter);
+          console.log(`✅ Using correctAnswer field for question ${cacheKey}: ${correctLetter}`);
+          continue;
+        }
+
+        // THIRD: Use AI to determine the answer if no teacher answer is set
         try {
           const options = q.options.map(opt => ({
             letter: opt.letter || '',
@@ -1616,9 +1671,23 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
       // Prepare to use AI to determine the correct answer
       let correctLetter = '';
 
-      // OPTIMIZED: Check cache first to avoid redundant AI calls
-      const cacheKey = question._id.toString();
-      if (aiAnswerCache.has(cacheKey)) {
+      // FIRST: Check if teacher has set a correct answer via options.isCorrect
+      const teacherSelectedOption = question.options.find(opt => opt.isCorrect === true);
+      if (teacherSelectedOption && teacherSelectedOption.letter) {
+        correctLetter = teacherSelectedOption.letter.toUpperCase();
+        console.log(`✅ Using teacher-set correct answer for question ${questionNumber}: ${correctLetter}`);
+        // Cache the teacher's answer to avoid AI calls
+        aiAnswerCache.set(question._id.toString(), correctLetter);
+      }
+      // SECOND: Check if correctAnswer field matches an option letter
+      else if (question.correctAnswer && question.correctAnswer.match(/^[A-D]$/i)) {
+        correctLetter = question.correctAnswer.toUpperCase();
+        console.log(`✅ Using correctAnswer field for question ${questionNumber}: ${correctLetter}`);
+        // Cache the answer to avoid AI calls
+        aiAnswerCache.set(question._id.toString(), correctLetter);
+      }
+      // THIRD: Check cache for AI-determined answer
+      else if (aiAnswerCache.has(cacheKey)) {
         correctLetter = aiAnswerCache.get(cacheKey);
         console.log(`✅ Using cached AI answer for question ${questionNumber}: ${correctLetter}`);
       } else {
@@ -1945,6 +2014,11 @@ Only respond with the letter of the correct option (A, B, C, or D).`;
         try {
           // Use the model answer from the question
           let modelAnswer = question.correctAnswer;
+
+          // For open-ended questions, prefer explanation/answerKey over correctAnswer
+          if (question.type === 'open-ended' || question.type === 'essay' || question.type === 'short-answer') {
+            modelAnswer = question.explanation || question.answerKey || question.correctAnswer;
+          }
 
           // If the model answer is missing or just says "Not provided" or "Sample answer", pass null to let AI grade based on its own logic
           if (!modelAnswer ||

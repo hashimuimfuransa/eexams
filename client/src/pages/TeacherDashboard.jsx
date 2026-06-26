@@ -29,6 +29,7 @@ import api from '../services/api';
 import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } from './DashboardShell';
 import StudentManagement from '../components/teacher/StudentManagement';
+import { FinancialSpreadsheetQuestion } from '../components/FinancialSpreadsheet';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
 import usePlan from '../hooks/usePlan';
 import SubscriptionWarning from '../components/SubscriptionWarning';
@@ -90,7 +91,8 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
     'ordering': '#6366F1',
     'drag-drop': '#14B8A6',
     'image-based': '#F97316',
-    'structured': '#8B5CF6'
+    'structured': '#8B5CF6',
+    'financial-spreadsheet': '#0EA5E9'
   };
   const typeIcons = {
     'multiple-choice': <RadioButtonChecked sx={{ fontSize: 14 }} />,
@@ -104,7 +106,8 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
     'ordering': <FormatListNumbered sx={{ fontSize: 14 }} />,
     'drag-drop': <DragIndicator sx={{ fontSize: 14 }} />,
     'image-based': <Visibility sx={{ fontSize: 14 }} />,
-    'structured': <FormatListNumbered sx={{ fontSize: 14 }} />
+    'structured': <FormatListNumbered sx={{ fontSize: 14 }} />,
+    'financial-spreadsheet': <FormatListNumbered sx={{ fontSize: 14 }} />
   };
 
   const handleSave = () => {
@@ -523,6 +526,7 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
                   <MenuItem value="drag-drop" sx={{ fontSize: isMobile ? 12 : 14 }}>Drag & Drop</MenuItem>
                   <MenuItem value="image-based" sx={{ fontSize: isMobile ? 12 : 14 }}>Image Based</MenuItem>
                   <MenuItem value="structured" sx={{ fontSize: isMobile ? 12 : 14 }}>Structured</MenuItem>
+                  <MenuItem value="financial-spreadsheet" sx={{ fontSize: isMobile ? 12 : 14 }}>💹 Financial Spreadsheet</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -845,11 +849,33 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
               </Grid>
             )}
 
+            {/* Financial Spreadsheet Editor */}
+            {qType === 'financial-spreadsheet' && (
+              <Grid item xs={12}>
+                <Box sx={{ p: isMobile ? 1.5 : 2, bgcolor: '#F0F9FF', borderRadius: 2, border: '1px solid #0EA5E9' }}>
+                  <Typography sx={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: '#0369A1', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    💹 Financial Spreadsheet Setup
+                  </Typography>
+                  <Typography sx={{ fontSize: isMobile ? 11 : 12, color: '#0369A1', mb: 1.5, fontStyle: 'italic' }}>
+                    Use the <strong>Student Template</strong> tab to design what students fill in.
+                    Use the <strong>Model Answer</strong> tab for correct answers (hidden from students).
+                  </Typography>
+                  <FinancialSpreadsheetQuestion
+                    key={`gen-${localQ._id || localQ.text?.slice(0,20) || index}`}
+                    question={localQ}
+                    mode="teacher-setup"
+                    onTemplateChange={(json) => { setLocalQ(q => ({ ...q, spreadsheetTemplate: json })); setEdited(true); }}
+                    onModelChange={(json) => { setLocalQ(q => ({ ...q, spreadsheetModelAnswer: json, correctAnswer: json })); setEdited(true); }}
+                  />
+                </Box>
+              </Grid>
+            )}
+
             {/* Model Answer / Explanation */}
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75, flexWrap: 'wrap' }}>
                 <Typography sx={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: tokens.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {qType === 'open-ended' || qType === 'short-answer' ? (isMobile ? 'Model Answer *' : 'Comprehensive Model Answer *') : 'Explanation / Answer Key *'}
+                  {qType === 'open-ended' || qType === 'short-answer' ? (isMobile ? 'Model Answer *' : 'Comprehensive Model Answer *') : qType === 'financial-spreadsheet' ? 'Grading Notes (Optional)' : 'Explanation / Answer Key *'}
                 </Typography>
                 <Chip 
                   label="For AI Grading" 
@@ -2360,7 +2386,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
                         multiline
                         minRows={isXs ? 4 : 3}
                         maxRows={isXs ? 8 : 6}
-                        placeholder={isXs ? "Describe your exam:\n• Subject & topic\n• Grade level\n• Number of questions & types\n• Duration" : "Describe your exam in detail for best results:\n• Subject: What topic or subject area?\n• Grade/Level: What grade or class level?\n• Topics: What specific content to cover?\n• Question count & types: How many questions of each type? (e.g., 10 multiple-choice, 5 short-answer, 3 open-ended)\n• Duration: How long should the exam be?\n\nExample: 'Biology exam for Grade 10 covering cell division and photosynthesis with 15 multiple-choice questions, 5 short-answer questions, and 3 open-ended questions, 60 minutes duration'"}
+                        placeholder={isXs ? "Describe your exam:\n• Subject & topic\n• Grade level\n• Number of questions & types\n• Duration" : "Describe your exam in detail for best results:\n• Subject: What topic or subject area?\n• Grade/Level: What grade or class level?\n• Topics: What specific content to cover?\n• Question count & types: How many questions of each type?\n  (e.g., 10 multiple-choice, 5 short-answer, 3 open-ended, 1 financial-spreadsheet)\n• Duration: How long should the exam be?\n\nExamples:\n• 'Biology exam for Grade 10 with 15 multiple-choice, 5 short-answer, 3 open-ended, 60 min'\n• 'Accounting exam for Grade 12 with 1 income statement spreadsheet, 1 balance sheet spreadsheet, 10 multiple-choice, 90 min'\n• 'Finance exam with 2 financial-spreadsheet questions (cash flow + budget analysis) and 10 multiple-choice'"}
                         value={prompt}
                         onChange={e => setPrompt(e.target.value)}
                         disabled={!canUseAI}
@@ -2496,6 +2522,15 @@ SECTION B: Short Answer (10 marks)
                         } 
                       }} 
                     />
+                    {/* Finance exam paste hint */}
+                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#F0F9FF', borderRadius: 2, border: '1px solid #BAE6FD' }}>
+                      <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#0369A1', mb: 0.5 }}>💹 Pasting a Finance / Accounting Exam?</Typography>
+                      <Typography sx={{ fontSize: 11, color: '#0369A1' }}>
+                        Include the financial statement tables exactly as they appear (Income Statement, Balance Sheet, Cash Flow, etc.).
+                        Label them clearly (e.g., <em>"SECTION B: Complete the Income Statement below"</em>).
+                        The AI will detect them as <strong>financial-spreadsheet</strong> questions and extract the template and model answer automatically.
+                      </Typography>
+                    </Box>
                     <TextField 
                       fullWidth 
                       multiline 
@@ -4484,8 +4519,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 onChange={(e) => setEditingQuestion({ ...editingQuestion, type: e.target.value })}
                 sx={{ borderRadius: 2 }}
               >
-                {['multiple-choice', 'true-false', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'fill-blank', 'open-ended', 'image-based', 'structured'].map(type => (
-                  <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type.replace('-', ' ')}</MenuItem>
+                {['multiple-choice', 'true-false', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'fill-blank', 'open-ended', 'image-based', 'structured', 'financial-spreadsheet'].map(type => (
+                  <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type === 'financial-spreadsheet' ? '💹 Financial Spreadsheet' : type.replace('-', ' ')}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -4803,7 +4838,25 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
             </Box>
           )}
 
-          {editingQuestion?.type !== 'multiple-choice' && editingQuestion?.type !== 'true-false' && editingQuestion?.type !== 'matching' && editingQuestion?.type !== 'ordering' && (
+          {editingQuestion?.type === 'financial-spreadsheet' && (
+            <Box sx={{ p: 2, bgcolor: '#F0F9FF', borderRadius: 2, border: '1px solid #0EA5E9' }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#0369A1', mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                💹 Spreadsheet Setup
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: '#0369A1', mb: 1.5 }}>
+                Use the <strong>Student Template</strong> tab to design what students fill in.
+                Use the <strong>Model Answer</strong> tab for correct answers (hidden from students).
+              </Typography>
+              <FinancialSpreadsheetQuestion
+                key={`edit-${editingQuestion?._id || editingQuestion?.text?.slice(0,20)}`}
+                question={editingQuestion}
+                mode="teacher-setup"
+                onTemplateChange={(json) => setEditingQuestion(q => ({ ...q, spreadsheetTemplate: json }))}
+                onModelChange={(json) => setEditingQuestion(q => ({ ...q, spreadsheetModelAnswer: json, correctAnswer: json }))}
+              />
+            </Box>
+          )}
+          {editingQuestion?.type !== 'multiple-choice' && editingQuestion?.type !== 'true-false' && editingQuestion?.type !== 'matching' && editingQuestion?.type !== 'ordering' && editingQuestion?.type !== 'financial-spreadsheet' && (
             <TextField
               fullWidth
               label="Correct Answer"
@@ -5173,8 +5226,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 onChange={(e) => handleNewQuestionTypeChange(e.target.value)}
                 sx={{ borderRadius: 2 }}
               >
-                {['multiple-choice', 'true-false', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'fill-blank', 'open-ended', 'image-based', 'structured'].map(type => (
-                  <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type.replace('-', ' ')}</MenuItem>
+                {['multiple-choice', 'true-false', 'short-answer', 'essay', 'matching', 'ordering', 'drag-drop', 'fill-blank', 'open-ended', 'image-based', 'structured', 'financial-spreadsheet'].map(type => (
+                  <MenuItem key={type} value={type} sx={{ textTransform: 'capitalize' }}>{type === 'financial-spreadsheet' ? '💹 Financial Spreadsheet' : type.replace('-', ' ')}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -5377,7 +5430,25 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
             </Box>
           )}
 
-          {newQuestion.type !== 'multiple-choice' && newQuestion.type !== 'true-false' && newQuestion.type !== 'matching' && newQuestion.type !== 'ordering' && (
+          {newQuestion.type === 'financial-spreadsheet' && (
+            <Box sx={{ p: 2, bgcolor: '#F0F9FF', borderRadius: 2, border: '1px solid #0EA5E9' }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#0369A1', mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                💹 Spreadsheet Setup
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: '#0369A1', mb: 1.5 }}>
+                Use the <strong>Student Template</strong> tab to design what students fill in.
+                Use the <strong>Model Answer</strong> tab for correct answers (hidden from students).
+              </Typography>
+              <FinancialSpreadsheetQuestion
+                key={`new-${newQuestion.type}`}
+                question={newQuestion}
+                mode="teacher-setup"
+                onTemplateChange={(json) => setNewQuestion(q => ({ ...q, spreadsheetTemplate: json }))}
+                onModelChange={(json) => setNewQuestion(q => ({ ...q, spreadsheetModelAnswer: json, correctAnswer: json }))}
+              />
+            </Box>
+          )}
+          {newQuestion.type !== 'multiple-choice' && newQuestion.type !== 'true-false' && newQuestion.type !== 'matching' && newQuestion.type !== 'ordering' && newQuestion.type !== 'financial-spreadsheet' && (
             <TextField
               fullWidth
               label="Correct Answer"
@@ -5402,17 +5473,18 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
 
 /* ── MANUAL EXAM BUILDER ── */
 const Q_TYPES = [
-  { value: 'multiple-choice', label: 'Multiple Choice' },
-  { value: 'true-false',      label: 'True / False' },
-  { value: 'short-answer',    label: 'Short Answer' },
-  { value: 'essay',           label: 'Essay' },
-  { value: 'matching',        label: 'Matching' },
-  { value: 'ordering',        label: 'Ordering' },
-  { value: 'drag-drop',       label: 'Drag & Drop' },
-  { value: 'fill-blank',      label: 'Fill in the Blank' },
-  { value: 'open-ended',      label: 'Open Ended' },
-  { value: 'image-based',     label: 'Image Based' },
-  { value: 'structured',      label: 'Structured' },
+  { value: 'multiple-choice',       label: 'Multiple Choice' },
+  { value: 'true-false',            label: 'True / False' },
+  { value: 'short-answer',          label: 'Short Answer' },
+  { value: 'essay',                 label: 'Essay' },
+  { value: 'matching',              label: 'Matching' },
+  { value: 'ordering',              label: 'Ordering' },
+  { value: 'drag-drop',             label: 'Drag & Drop' },
+  { value: 'fill-blank',            label: 'Fill in the Blank' },
+  { value: 'open-ended',            label: 'Open Ended' },
+  { value: 'image-based',           label: 'Image Based' },
+  { value: 'structured',            label: 'Structured' },
+  { value: 'financial-spreadsheet', label: '💹 Financial Spreadsheet' },
 ];
 const DIFFS = ['easy', 'medium', 'hard'];
 const LETTERS = ['A', 'B', 'C', 'D'];
@@ -5975,6 +6047,25 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           <TextField fullWidth size="small" label="Model Answer (used for AI grading)" multiline minRows={2}
             value={question.correctAnswer} onChange={e => setQuestion(p => ({ ...p, correctAnswer: e.target.value }))}
             sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
+        )}
+
+        {/* Financial Spreadsheet Editor */}
+        {question.type === 'financial-spreadsheet' && (
+          <Box sx={{ mb: 1.5 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary, mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              💹 Spreadsheet Setup
+            </Typography>
+            <Typography sx={{ fontSize: 11, color: tokens.textMuted, mb: 1.5 }}>
+              Use the <strong>Student Template</strong> tab to design what students will fill in.
+              Use the <strong>Model Answer</strong> tab to fill in the correct answers (hidden from students, used for grading).
+            </Typography>
+            <FinancialSpreadsheetQuestion
+              question={question}
+              mode="teacher-setup"
+              onTemplateChange={(json) => setQuestion(p => ({ ...p, spreadsheetTemplate: json }))}
+              onModelChange={(json) => setQuestion(p => ({ ...p, spreadsheetModelAnswer: json, correctAnswer: json }))}
+            />
+          </Box>
         )}
 
         {/* Subquestions */}
@@ -7484,6 +7575,16 @@ function ResultsSection({ results, exams = [] }) {
                       <Typography variant="body2" fontWeight="medium">{answer.question?.text || 'Question text not available'}</Typography>
                       
                       {/* Student's Answer */}
+                      {answer.question?.type === 'financial-spreadsheet' ? (
+                        <Box sx={{mt:1}}>
+                          <FinancialSpreadsheetQuestion
+                            question={answer.question}
+                            mode="grading"
+                            studentAnswer={answer.textAnswer || null}
+                            readOnly
+                          />
+                        </Box>
+                      ) : (
                       <Box sx={{mt:1,p:1,bgcolor:'#F8FAFC',borderRadius:1}}>
                         <Typography variant="caption" color="text.secondary" fontWeight={600}>Student's Answer:</Typography>
                         <Typography variant="body2" sx={{mt:0.5,fontSize:13,whiteSpace:'pre-wrap'}}>
@@ -7492,6 +7593,7 @@ function ResultsSection({ results, exams = [] }) {
                            'No answer provided'}
                         </Typography>
                       </Box>
+                      )}
 
                       {/* AI Feedback for Open-Ended Questions */}
                       {(answer.question?.type === 'open-ended' || answer.question?.type === 'short-answer' || answer.question?.type === 'essay') && answer.feedback && (

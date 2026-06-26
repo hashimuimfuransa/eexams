@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
   Typography,
@@ -28,20 +28,28 @@ import {
   CheckCircle,
   Cancel,
   AccessTime,
+  Timer,
+  Security,
+  Calculate,
+  PlayArrow,
+  PlaylistAddCheck,
   EmojiEvents,
   Refresh,
-  PlayArrow,
   Visibility
 } from '@mui/icons-material';
 import StudentLayout from './StudentLayout';
 import api from '../../services/api';
+import ExamInstructions from '../ExamInstructions';
 
 const History = () => {
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [examHistory, setExamHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [selectedExam, setSelectedExam] = useState(null);
 
   const fetchExamHistory = async () => {
     try {
@@ -78,6 +86,29 @@ const History = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleExamClick = (item) => {
+    if (item.type === 'result') {
+      // Go directly to results without instructions
+      navigate(`/student/results/${item._id}`);
+    } else {
+      // Show instructions for all exams (including in-progress)
+      setSelectedExam(item);
+      setShowInstructions(true);
+    }
+  };
+
+  const handleProceedToExam = () => {
+    setShowInstructions(false);
+    if (selectedExam) {
+      navigate(`/student/exam/${selectedExam._id}`);
+    }
+  };
+
+  const handleCancelInstructions = () => {
+    setShowInstructions(false);
+    setSelectedExam(null);
   };
 
   useEffect(() => {
@@ -344,8 +375,7 @@ const History = () => {
                             {/* Action button */}
                             <Button size="small" variant="outlined"
                               color={isResult ? (pct >= 70 ? 'success' : 'error') : item.status === 'in-progress' ? 'warning' : 'primary'}
-                              component={RouterLink}
-                              to={isResult ? `/student/results/${item._id}` : `/student/exam/${item._id}`}
+                              onClick={() => handleExamClick(item)}
                               endIcon={isResult ? <Visibility sx={{ fontSize: 14 }} /> : item.status === 'in-progress' ? <PlayArrow sx={{ fontSize: 14 }} /> : <ArrowForward sx={{ fontSize: 14 }} />}
                               sx={{ textTransform: 'none', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8rem' },
                                 py: 0.5, px: 1.5, borderRadius: 2 }}>
@@ -415,6 +445,14 @@ const History = () => {
           </Grid>
         )}
       </Container>
+
+      {showInstructions && selectedExam && (
+        <ExamInstructions
+          exam={selectedExam}
+          onProceed={handleProceedToExam}
+          onCancel={handleCancelInstructions}
+        />
+      )}
     </StudentLayout>
   );
 };

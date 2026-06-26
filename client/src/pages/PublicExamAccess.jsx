@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, Paper, Typography, TextField, Button, CircularProgress, Alert } from '@mui/material';
+import { Box, Paper, Typography, TextField, Button, CircularProgress, Alert, Container } from '@mui/material';
+import { Timer, Security, Calculate, CheckCircle, Assessment, PlayArrow } from '@mui/icons-material';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import { Helmet } from 'react-helmet-async';
+import ExamInstructions from '../components/ExamInstructions';
 
 const PublicExamAccess = () => {
   const { shareToken, examSlug } = useParams();
@@ -19,6 +21,8 @@ const PublicExamAccess = () => {
   const [showLogoutPrompt, setShowLogoutPrompt] = useState(false);
   const [accessCode, setAccessCode] = useState('');
   const [usingAccessCode, setUsingAccessCode] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [selectedExam, setSelectedExam] = useState(null);
 
   useEffect(() => {
     console.log('PublicExamAccess useEffect triggered');
@@ -143,22 +147,25 @@ const PublicExamAccess = () => {
         }
         // Store shareToken for submission
         localStorage.setItem('currentShareToken', shareToken);
-        // Force page reload to update auth context with new token
-        // Always use examId since ExamInterface expects exam ID
-        // Pass shareToken in URL as fallback
-        window.location.href = `/student/exam/${res.data.exam._id}?shareToken=${shareToken}`;
+        // Show instructions before navigating to exam
+        setExam(res.data);
+        setShowInstructions(true);
+        setHasReadInstructions(false);
+        setReadCountdown(10);
+        setJoining(false);
         return;
       }
 
-      // Redirect all students to main exam interface
-      // Always use examId since ExamInterface expects exam ID
       // Store shareToken if available for submission
       if (shareToken) {
         localStorage.setItem('currentShareToken', shareToken);
-        navigate(`/student/exam/${res.data.exam._id}?shareToken=${shareToken}`);
-      } else {
-        navigate(`/student/exam/${res.data.exam._id}`);
       }
+      // Show instructions before navigating to exam
+      setExam(res.data);
+      setShowInstructions(true);
+      setHasReadInstructions(false);
+      setReadCountdown(10);
+      setJoining(false);
     } catch (err) {
       console.error('Error joining exam:', err);
       console.error('Error status:', err.response?.status);
@@ -175,6 +182,23 @@ const PublicExamAccess = () => {
     } finally {
       setJoining(false);
     }
+  };
+
+  const handleProceedToExam = () => {
+    setShowInstructions(false);
+    if (selectedExam) {
+      const examId = selectedExam._id || selectedExam.exam?._id;
+      if (shareToken) {
+        navigate(`/student/exam/${examId}?shareToken=${shareToken}`);
+      } else {
+        navigate(`/student/exam/${examId}`);
+      }
+    }
+  };
+
+  const handleCancelInstructions = () => {
+    setShowInstructions(false);
+    setSelectedExam(null);
   };
 
   const handlePasswordSubmit = async () => {
@@ -419,6 +443,14 @@ const PublicExamAccess = () => {
         </Button>
       </Paper>
     </Box>
+
+    {showInstructions && selectedExam && (
+      <ExamInstructions
+        exam={selectedExam}
+        onProceed={handleProceedToExam}
+        onCancel={handleCancelInstructions}
+      />
+    )}
     </>
   );
 };

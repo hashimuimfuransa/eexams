@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -35,11 +35,16 @@ import {
   Leaderboard as LeaderboardIcon,
   WorkspacePremium,
   ExpandMore,
-  ExpandLess
+  ExpandLess,
+  Timer,
+  Security,
+  Calculate,
+  PlaylistAddCheck
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
+import ExamInstructions from '../ExamInstructions';
 
 // Google Play Icon SVG
 const GooglePlayIcon = () => (
@@ -56,6 +61,7 @@ const MicrosoftStoreIcon = () => (
 );
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const theme = useTheme();
   const { user } = useContext(AuthContext);
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -74,6 +80,8 @@ const Dashboard = () => {
   const [leaderboards, setLeaderboards] = useState({});
   const [leaderboardLoading, setLeaderboardLoading] = useState({});
   const [expandedLeaderboard, setExpandedLeaderboard] = useState(null);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [selectedExam, setSelectedExam] = useState(null);
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -199,6 +207,23 @@ const Dashboard = () => {
 
     return () => clearInterval(interval);
   }, [inProgressExams]);
+
+  const handleExamClick = (exam) => {
+    setSelectedExam(exam);
+    setShowInstructions(true);
+  };
+
+  const handleProceedToExam = () => {
+    setShowInstructions(false);
+    if (selectedExam) {
+      navigate(`/student/exam/${selectedExam._id || selectedExam.exam?._id}`);
+    }
+  };
+
+  const handleCancelInstructions = () => {
+    setShowInstructions(false);
+    setSelectedExam(null);
+  };
 
   const handleRefresh = () => {
     fetchData(true);
@@ -564,8 +589,7 @@ const Dashboard = () => {
                       </Alert>
                       <Button
                         variant="contained"
-                        component={RouterLink}
-                        to={`/student/exam/${exam.exam?._id}`}
+                        onClick={() => handleExamClick(exam.exam)}
                         fullWidth
                         sx={{
                           mt: 2,
@@ -633,8 +657,7 @@ const Dashboard = () => {
                           {linkTarget ? (
                             <Button
                               variant="contained"
-                              component={RouterLink}
-                              to={linkTarget}
+                              onClick={() => handleExamClick(request.exam)}
                               size={isMobile ? 'medium' : 'large'}
                               startIcon={<Replay />}
                               fullWidth={isMobile}
@@ -766,8 +789,7 @@ const Dashboard = () => {
                           {isStartable ? (
                             <Button
                               variant="contained"
-                              component={RouterLink}
-                              to={`/student/exam/${exam._id}`}
+                              onClick={() => handleExamClick(exam)}
                               size={isMobile ? 'medium' : 'large'}
                               startIcon={<PlayArrow />}
                               fullWidth={isMobile}
@@ -1384,6 +1406,14 @@ const Dashboard = () => {
           </>
         )}
       </Container>
+
+      {showInstructions && selectedExam && (
+        <ExamInstructions
+          exam={selectedExam}
+          onProceed={handleProceedToExam}
+          onCancel={handleCancelInstructions}
+        />
+      )}
     </StudentLayout>
   );
 };

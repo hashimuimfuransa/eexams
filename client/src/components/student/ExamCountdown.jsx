@@ -29,11 +29,16 @@ import {
   CheckBox,
   QuestionAnswer,
   School,
-  Star
+  Star,
+  Security,
+  Calculate,
+  Assessment,
+  PlayArrow
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
 import { useThemeMode } from '../../context/ThemeContext';
 import api from '../../services/api';
+import ExamInstructions from '../ExamInstructions';
 
 const ExamCountdown = () => {
   const { id } = useParams();
@@ -46,6 +51,8 @@ const ExamCountdown = () => {
   const [error, setError] = useState(null);
   const [countdown, setCountdown] = useState(5);
   const [startingExam, setStartingExam] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [selectedExam, setSelectedExam] = useState(null);
 
   // Fetch exam details
   useEffect(() => {
@@ -103,6 +110,12 @@ const ExamCountdown = () => {
 
   // Start the exam
   const handleStartExam = async () => {
+    setSelectedExam(exam);
+    setShowInstructions(true);
+  };
+
+  const handleProceedToExam = async () => {
+    setShowInstructions(false);
     try {
       setStartingExam(true);
 
@@ -116,6 +129,11 @@ const ExamCountdown = () => {
       setError(err.response?.data?.message || 'Failed to start exam. Please try again later.');
       setStartingExam(false);
     }
+  };
+
+  const handleCancelInstructions = () => {
+    setShowInstructions(false);
+    setSelectedExam(null);
   };
 
   if (loading) {
@@ -509,6 +527,23 @@ const ExamCountdown = () => {
           </Paper>
         </Grow>
       </Container>
+
+      {showInstructions && selectedExam && (
+        <ExamInstructions
+          exam={selectedExam}
+          onProceed={handleProceedToExam}
+          onCancel={handleCancelInstructions}
+        />
+      )}
+
+      <style>
+        {`
+          @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+          }
+        `}
+      </style>
     </Box>
   );
 };

@@ -19,6 +19,9 @@ const ExamSecurityProvider = ({ children, active = false }) => {
 
   // Function to enter fullscreen mode
   const enterFullscreen = () => {
+    // Hide prompt immediately when entering fullscreen
+    setShowFullscreenPrompt(false);
+
     const docEl = document.documentElement;
 
     if (docEl.requestFullscreen) {
@@ -126,12 +129,17 @@ const ExamSecurityProvider = ({ children, active = false }) => {
         document.webkitFullscreenElement ||
         document.msFullscreenElement
       );
-      
+
       setIsFullscreen(isDocFullscreen);
-      
+
       // If user manually exits fullscreen, show prompt to re-enter
       if (!isDocFullscreen && isFullscreen) {
         setShowFullscreenPrompt(true);
+      }
+
+      // Hide prompt when successfully entering fullscreen
+      if (isDocFullscreen) {
+        setShowFullscreenPrompt(false);
       }
     };
 

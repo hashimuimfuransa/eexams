@@ -305,6 +305,10 @@ function mapQuestionType(type) {
   if (t.includes('structured') || t.includes('multi-part') || t.includes('composite')) {
     return 'structured';
   }
+  // Financial spreadsheet variations
+  if (t.includes('financial') || t.includes('spreadsheet') || t.includes('finance') || t.includes('accounting') || t.includes('statement')) {
+    return 'financial-spreadsheet';
+  }
 
   return 'multiple-choice'; // default
 }
@@ -1334,6 +1338,7 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
   - **Fill-in-blank**: Identify by blanks (_____, ....) or "fill in". Set type to "fill-in-blank".
   - **Short-answer**: Brief factual questions requiring 1-2 sentence answers. Set type to "short-answer".
   - **Open-ended/Essay**: Questions requiring detailed explanations or longer answers. Set type to "open-ended".
+  - **Financial-spreadsheet**: Questions where students must complete an income statement, balance sheet, cash flow statement, or other financial spreadsheet. Set type to "financial-spreadsheet". Include spreadsheetTemplate (pre-filled headers and partial data as JSON) and spreadsheetModelAnswer (completed answer as JSON) fields.
 - **MULTI-PART QUESTIONS (CRITICAL)**:
   - Questions with parts a), b), c), i), ii), iii) MUST be ONE question with subQuestions array
   - Each subquestion gets: label (e.g., "a)", "b)", "i)"), text, type, points, correctAnswer
@@ -1376,7 +1381,8 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
 - CRITICAL: Use the TEACHER'S MARKING GUIDE to find ALL correct answers. The marking guide is at the end of the pasted exam.
 - For short-answer questions: extract the exact answer from the marking guide
 - For open-ended questions: extract the model answer or key points from the marking guide
-- Supported types: multiple-choice, true-false, short-answer, open-ended, fill-in-blank, matching, ordering
+- Supported types: multiple-choice, true-false, short-answer, open-ended, fill-in-blank, matching, ordering, financial-spreadsheet
+- If a question requires students to complete a financial table (income statement, balance sheet, cash flow, ledger), set type to "financial-spreadsheet" and include spreadsheetTemplate and spreadsheetModelAnswer fields as JSON strings
 - If a section has subsections (A, B, C), use the "subsections" array
 - If a section has no subsections, put questions directly in "questions" array
 - Keep the hierarchical structure intact - this is a professional exam format
@@ -1548,8 +1554,9 @@ CRITICAL RULES:
 - If only total questions is given without types, default to multiple-choice
 - If no count is specified and no reference material, default to 10 multiple-choice questions
 - If no count is specified but reference material is provided, create a comprehensive structure (30-50 questions total)
-- Supported types: multiple-choice, true-false, short-answer, open-ended, fill-in-blank, matching, ordering
+- Supported types: multiple-choice, true-false, short-answer, open-ended, fill-in-blank, matching, ordering, financial-spreadsheet
 - IMPORTANT: Use "open-ended" for open/essay questions, NOT "open"
+- Use "financial-spreadsheet" ONLY when the teacher explicitly asks for a financial statement or spreadsheet question
 - Be accurate - only extract what is explicitly stated in the prompt
 - NEVER modify the user's specified counts`;
 
@@ -1745,6 +1752,24 @@ CRITICAL FOR ORDERING QUESTIONS:
   "correctAnswer": "Explanation of the correct order",
   "explanation": "Detailed explanation"
 }
+
+CRITICAL FOR FINANCIAL-SPREADSHEET QUESTIONS:
+{
+  "type": "financial-spreadsheet",
+  "text": "Complete the Income Statement for Company X for the year ended 31 December 2024.",
+  "marks": 20,
+  "spreadsheetTemplate": "{\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Revenue\",\"\"],[\"Cost of Goods Sold\",\"\"],[\"Gross Profit\",\"=B2-B3\"],[\"Operating Expenses\",\"\"],[\"Net Profit\",\"=B4-B5\"]]}",
+  "spreadsheetModelAnswer": "{\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Revenue\",\"5000000\"],[\"Cost of Goods Sold\",\"3000000\"],[\"Gross Profit\",\"2000000\"],[\"Operating Expenses\",\"800000\"],[\"Net Profit\",\"1200000\"]]}",
+  "correctAnswer": "See spreadsheetModelAnswer for completed financial statement.",
+  "gradingCriteria": [
+    {"criteria": "Correct Revenue figure", "points": 2},
+    {"criteria": "Correct Gross Profit calculation", "points": 4},
+    {"criteria": "Correct Net Profit calculation", "points": 4}
+  ]
+}
+- spreadsheetTemplate: JSON string with {headers:[], data:[][]} — pre-fill labels and any given figures; leave cells blank ("") for students to complete; formulas like =SUM(B2:B5) are allowed
+- spreadsheetModelAnswer: JSON string with same structure but ALL cells filled in with correct values
+- Use financial-spreadsheet for: income statements, balance sheets, cash flow statements, ledgers, trial balances, ratio analysis tables, budgets
 
 IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer must ALWAYS be a string for all question types.`;
 
@@ -2179,6 +2204,23 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
               };
               // Ensure correctAnswer is a string
               baseQuestion.correctAnswer = q.explanation || 'Not provided';
+            }
+
+            // Add financial-spreadsheet-specific fields
+            if (questionType === 'financial-spreadsheet') {
+              // spreadsheetTemplate: partial data the student sees
+              if (q.spreadsheetTemplate) {
+                baseQuestion.spreadsheetTemplate = typeof q.spreadsheetTemplate === 'string'
+                  ? q.spreadsheetTemplate
+                  : JSON.stringify(q.spreadsheetTemplate);
+              }
+              // spreadsheetModelAnswer: completed answer sheet
+              if (q.spreadsheetModelAnswer) {
+                baseQuestion.spreadsheetModelAnswer = typeof q.spreadsheetModelAnswer === 'string'
+                  ? q.spreadsheetModelAnswer
+                  : JSON.stringify(q.spreadsheetModelAnswer);
+                baseQuestion.correctAnswer = baseQuestion.spreadsheetModelAnswer;
+              }
             }
 
             flattenedQuestions.push(baseQuestion);

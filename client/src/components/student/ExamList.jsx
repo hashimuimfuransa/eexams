@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
   Grid,
@@ -21,7 +21,11 @@ import {
   Tabs,
   Alert,
   IconButton,
-  Tooltip
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Search,
@@ -31,12 +35,19 @@ import {
   ArrowForward,
   FilterList,
   Sort,
-  Refresh
+  Refresh,
+  Timer,
+  Security,
+  Calculate,
+  PlaylistAddCheck,
+  Assessment
 } from '@mui/icons-material';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
+import ExamInstructions from '../ExamInstructions';
 
 const ExamList = () => {
+  const navigate = useNavigate();
   const [exams, setExams] = useState([]);
   const [filteredExams, setFilteredExams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,10 +55,29 @@ const ExamList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [tabValue, setTabValue] = useState(0);
   const [sortOrder, setSortOrder] = useState('newest');
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [selectedExam, setSelectedExam] = useState(null);
 
   useEffect(() => {
     fetchExams();
   }, []);
+
+  const handleStartExam = (exam) => {
+    setSelectedExam(exam);
+    setShowInstructions(true);
+  };
+
+  const handleProceedToExam = () => {
+    setShowInstructions(false);
+    if (selectedExam) {
+      navigate(`/student/exam/${selectedExam._id}`);
+    }
+  };
+
+  const handleCancelInstructions = () => {
+    setShowInstructions(false);
+    setSelectedExam(null);
+  };
 
   const fetchExams = async () => {
     try {
@@ -349,8 +379,7 @@ const ExamList = () => {
                             ? 'warning'
                             : 'primary'
                       }
-                      component={RouterLink}
-                      to={`/student/exam/${exam._id}`}
+                      onClick={() => handleStartExam(exam)}
                       endIcon={<ArrowForward />}
                       fullWidth
                       sx={{
@@ -414,6 +443,15 @@ const ExamList = () => {
         </Paper>
       )}
       </Container>
+
+      {/* Full Screen Instructions Page */}
+      {showInstructions && selectedExam && (
+        <ExamInstructions
+          exam={selectedExam}
+          onProceed={handleProceedToExam}
+          onCancel={handleCancelInstructions}
+        />
+      )}
     </StudentLayout>
   );
 };

@@ -10,7 +10,7 @@ const QuestionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'extended-response', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured'],
+    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'extended-response', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured', 'financial-spreadsheet'],
     required: true
   },
   imageUrl: {
@@ -179,6 +179,14 @@ const QuestionSchema = new mongoose.Schema({
   marks: {
     type: Number,
     default: 1
+  },
+  spreadsheetTemplate: {
+    type: String,
+    default: ''
+  },
+  spreadsheetModelAnswer: {
+    type: String,
+    default: ''
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

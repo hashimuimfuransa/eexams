@@ -79,6 +79,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 // Import security CSS
 import './ExamSecurity.css';
+import { FinancialSpreadsheetQuestion } from '../FinancialSpreadsheet';
 
 // Styled components for gamified UI
 const QuestionCard = styled(Card, {
@@ -273,7 +274,6 @@ const ExamInterface = () => {
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [lastActiveTime, setLastActiveTime] = useState(Date.now());
   const [calculatorDisplay, setCalculatorDisplay] = useState('');
-  const [showInstructions, setShowInstructions] = useState(true);
   const [calculatorMinimized, setCalculatorMinimized] = useState(false);
   const [calculatorPosition, setCalculatorPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -283,6 +283,7 @@ const ExamInterface = () => {
   useEffect(() => {
     setLastQuestionSaved(false);
   }, [activeQuestionIndex, activeSection]);
+
 
   // Detect if user is on a mobile device
   const isMobileDevice = () => {
@@ -371,6 +372,11 @@ const ExamInterface = () => {
       try {
         const docEl = document.documentElement;
 
+        // Hide prompt immediately on mobile to ensure single-tap works
+        if (isMobileDevice()) {
+          setShowFullscreenPrompt(false);
+        }
+
         // Instead of trying multiple times automatically, just show the prompt
         // after the first failure, since browsers require user interaction
         const requestFullscreen = async () => {
@@ -381,7 +387,16 @@ const ExamInterface = () => {
                 !document.mozFullScreenEnabled &&
                 !document.msFullscreenEnabled) {
               console.log('Fullscreen not supported or enabled in this browser');
-              setShowFullscreenPrompt(true);
+              // Check if already in fullscreen before showing prompt
+              const isDocFullscreen = !!(
+                document.fullscreenElement ||
+                document.mozFullScreenElement ||
+                document.webkitFullscreenElement ||
+                document.msFullscreenElement
+              );
+              if (!isDocFullscreen) {
+                setShowFullscreenPrompt(true);
+              }
               return;
             }
 
@@ -404,7 +419,16 @@ const ExamInterface = () => {
 
             // Most likely this is a permissions error - browsers require user interaction
             // to enter fullscreen mode. Show the prompt to let the user click the button.
-            setShowFullscreenPrompt(true);
+            // But first check if already in fullscreen
+            const isDocFullscreen = !!(
+              document.fullscreenElement ||
+              document.mozFullScreenElement ||
+              document.webkitFullscreenElement ||
+              document.msFullscreenElement
+            );
+            if (!isDocFullscreen) {
+              setShowFullscreenPrompt(true);
+            }
           }
         };
 
@@ -412,8 +436,16 @@ const ExamInterface = () => {
         requestFullscreen();
       } catch (error) {
         console.error('Error in toggleFullscreen:', error);
-        // Show the prompt if we encounter an error
-        setShowFullscreenPrompt(true);
+        // Show the prompt if we encounter an error, but check if already in fullscreen
+        const isDocFullscreen = !!(
+          document.fullscreenElement ||
+          document.mozFullScreenElement ||
+          document.webkitFullscreenElement ||
+          document.msFullscreenElement
+        );
+        if (!isDocFullscreen) {
+          setShowFullscreenPrompt(true);
+        }
       }
     } else {
       // Exit fullscreen
@@ -489,9 +521,6 @@ const ExamInterface = () => {
           // Set time remaining
           const remainingTime = sessionRes.data.timeRemaining || 0;
           setTimeRemaining(remainingTime);
-
-          // Don't show instructions if session already exists (user is returning)
-          setShowInstructions(false);
 
           // Check if time has already expired - auto-submit immediately
           if (remainingTime <= 0) {
@@ -776,8 +805,17 @@ const ExamInterface = () => {
     if (!hasRequestedFullscreen.current && !isFullscreen) {
       hasRequestedFullscreen.current = true;
 
-      // Show the fullscreen prompt immediately
-      setShowFullscreenPrompt(true);
+      // Check if already in fullscreen before showing prompt
+      const isDocFullscreen = !!(
+        document.fullscreenElement ||
+        document.mozFullScreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+      if (!isDocFullscreen) {
+        // Show the fullscreen prompt immediately
+        setShowFullscreenPrompt(true);
+      }
     }
 
     // Function to handle fullscreen changes
@@ -1397,9 +1435,9 @@ const ExamInterface = () => {
     console.log(`🔍 handleSaveLastQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}`);
 
     // For open-ended/image questions, get the current answer from ref and save directly (same as handleNextQuestion)
-    if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured') {
-      const refAnswer = openAnswerRef.current ? openAnswerRef.current() : '';
-      const currentTextAnswer = (refAnswer && refAnswer.trim()) ? refAnswer : (currentAnswer?.textAnswer || '');
+    if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured' || questionType === 'financial-spreadsheet') {
+      const refAnswer = questionType === 'financial-spreadsheet' ? (currentAnswer?.textAnswer || '') : (openAnswerRef.current ? openAnswerRef.current() : '');
+      const currentTextAnswer = (refAnswer && (typeof refAnswer === 'string' ? refAnswer.trim() : true)) ? refAnswer : (currentAnswer?.textAnswer || '');
       console.log(`🔍 Last question save: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
       if (true) {
         if (currentTextAnswer && currentTextAnswer.trim()) {
@@ -1613,9 +1651,9 @@ const ExamInterface = () => {
       console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
 
       // For open-ended questions, get the current answer from ref and save directly
-      if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured') {
-        const refAnswer = openAnswerRef.current ? openAnswerRef.current() : '';
-        const currentTextAnswer = (refAnswer && refAnswer.trim()) ? refAnswer : (currentAnswer?.textAnswer || '');
+      if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured' || questionType === 'financial-spreadsheet') {
+        const refAnswer = questionType === 'financial-spreadsheet' ? (currentAnswer?.textAnswer || '') : (openAnswerRef.current ? openAnswerRef.current() : '');
+        const currentTextAnswer = (refAnswer && (typeof refAnswer === 'string' ? refAnswer.trim() : true)) ? refAnswer : (currentAnswer?.textAnswer || '');
         console.log(`🔍 Open-ended question: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
         if (currentTextAnswer && currentTextAnswer.trim()) {
           try {
@@ -1975,6 +2013,14 @@ const ExamInterface = () => {
         }));
         return;
 
+      case 'financial-spreadsheet':
+        // Store spreadsheet answer as textAnswer (JSON string)
+        newAnswer.textAnswer = typeof value === 'string' ? value : JSON.stringify(value);
+        newAnswer.answered = false;
+        newAnswer.savedToServer = false;
+        newAnswer.hasChanges = true;
+        setAnswers(prev => ({ ...prev, [questionId]: newAnswer }));
+        return;
       case 'fill-in-blank':
       case 'open-ended':
       case 'image':
@@ -2122,6 +2168,9 @@ const ExamInterface = () => {
                 throw new Error('Invalid drag-drop answer format');
               }
               payload.dragDropAnswer = value;
+              break;
+            case 'financial-spreadsheet':
+              payload.textAnswer = typeof value === 'string' ? value : JSON.stringify(value);
               break;
             case 'open-ended':
             case 'essay':
@@ -3272,177 +3321,6 @@ const ExamInterface = () => {
         </Alert>
       </Snackbar>
 
-      {/* Exam Instructions Dialog */}
-      <Dialog
-        open={showInstructions}
-        onClose={() => {}}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            p: { xs: 2, sm: 3, md: 4 }
-          }
-        }}
-      >
-        <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-            <Assessment sx={{ fontSize: 40, color: 'primary.main' }} />
-            <Typography variant="h4" fontWeight="bold" color="primary">
-              Exam Instructions
-            </Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            <Alert severity="info" sx={{ mb: 3 }}>
-              <Typography variant="body1" fontWeight="bold">
-                Please read these instructions carefully before starting your exam.
-              </Typography>
-            </Alert>
-
-            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Timer color="primary" />
-              Time Management
-            </Typography>
-            <Box component="ul" sx={{ pl: 2, mb: 3 }}>
-              <Box component="li" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  You have <strong>{exam?.timeLimit || '?'} minutes</strong> to complete this exam
-                </Typography>
-              </Box>
-              <Box component="li" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  The timer starts when you click "Start Exam" below
-                </Typography>
-              </Box>
-              <Box component="li" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  If time runs out, your exam will be <strong>automatically submitted</strong>
-                </Typography>
-              </Box>
-              <Box component="li">
-                <Typography variant="body2">
-                  Leaving the exam for more than 1 minute will trigger auto-submit
-                </Typography>
-              </Box>
-            </Box>
-
-            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Security color="warning" />
-              Security Rules
-            </Typography>
-            <Box component="ul" sx={{ pl: 2, mb: 3 }}>
-              <Box component="li" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  <strong>Fullscreen mode</strong> is required during the exam
-                </Typography>
-              </Box>
-              <Box component="li" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  Do not switch tabs or windows during the exam
-                </Typography>
-              </Box>
-              <Box component="li" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  Do not copy or paste content from outside sources
-                </Typography>
-              </Box>
-              <Box component="li">
-                <Typography variant="body2">
-                  Violations may result in exam cancellation
-                </Typography>
-              </Box>
-            </Box>
-
-            {exam?.calculatorEnabled === true && (
-              <>
-                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Calculate color="success" />
-                  Tools Available
-                </Typography>
-                <Box component="ul" sx={{ pl: 2, mb: 3 }}>
-                  <Box component="li" sx={{ mb: 1 }}>
-                    <Typography variant="body2">
-                      A <strong>calculator</strong> is available for all question types
-                    </Typography>
-                  </Box>
-                  <Box component="li">
-                    <Typography variant="body2">
-                      Click the calculator button to access mathematical functions
-                    </Typography>
-                  </Box>
-                </Box>
-              </>
-            )}
-
-            {selectiveAnswering && (
-              <>
-                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PlaylistAddCheck color="info" />
-                  Selective Answering
-                </Typography>
-                <Box component="ul" sx={{ pl: 2, mb: 3 }}>
-                  <Box component="li" sx={{ mb: 1 }}>
-                    <Typography variant="body2">
-                      <strong>Section B:</strong> Select any {exam?.sectionBRequiredQuestions || '?'} questions to answer
-                    </Typography>
-                  </Box>
-                  <Box component="li">
-                    <Typography variant="body2">
-                      <strong>Section C:</strong> Select any {exam?.sectionCRequiredQuestions || '?'} questions to answer
-                    </Typography>
-                  </Box>
-                </Box>
-              </>
-            )}
-
-            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CheckCircle color="success" />
-              Submission
-            </Typography>
-            <Box component="ul" sx={{ pl: 2, mb: 3 }}>
-              <Box component="li" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  Click the "Submit Exam" button when you're finished
-                </Typography>
-              </Box>
-              <Box component="li">
-                <Typography variant="body2">
-                  You will be asked to confirm before final submission
-                </Typography>
-              </Box>
-            </Box>
-
-            <Alert severity="warning" sx={{ mt: 3 }}>
-              <Typography variant="body2" fontWeight="bold">
-                ⚠️ Once you start the exam, you cannot pause or restart. Make sure you're ready!
-              </Typography>
-            </Alert>
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ p: { xs: 2, sm: 3 }, pt: 0 }}>
-          <Button
-            variant="contained"
-            color="primary"
-            size="large"
-            onClick={() => setShowInstructions(false)}
-            fullWidth
-            sx={{
-              py: 1.5,
-              fontSize: '1.1rem',
-              fontWeight: 'bold',
-              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #0A2E4D 0%, #0A9E5E 100%)'
-              }
-            }}
-            startIcon={<PlayArrow />}
-          >
-            Start Exam
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Selective Answering Banner */}
       {selectiveAnswering && (
@@ -4336,6 +4214,26 @@ const ExamInterface = () => {
                               disabled={false} // Allow changing drag-drop answers
                             />
                           );
+                        } else if (questionType === 'financial-spreadsheet') {
+                          return (
+                            <Box sx={{ mt: 1 }}>
+                              <FinancialSpreadsheetQuestion
+                                question={currentQuestion}
+                                mode="student"
+                                studentAnswer={answers[currentQuestion._id]?.textAnswer || null}
+                                readOnly={!!answers[currentQuestion._id]?.savedToServer}
+                                onAnswerChange={(json) => {
+                                  handleAnswerChange(currentQuestion._id, JSON.stringify(json), 'financial-spreadsheet');
+                                }}
+                              />
+                              {answers[currentQuestion._id]?.savedToServer && (
+                                <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, color: 'success.main' }}>
+                                  <Check fontSize="small" sx={{ mr: 0.5 }} />
+                                  <Typography variant="caption">Spreadsheet answer saved</Typography>
+                                </Box>
+                              )}
+                            </Box>
+                          );
                         } else if (questionType === 'image-based' || questionType === 'image' || questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer') {
                           // Only show main answer input if question has NO sub-questions
                           if (!currentQuestion.subQuestions || currentQuestion.subQuestions.length === 0) {
@@ -5140,7 +5038,11 @@ const ExamInterface = () => {
           zIndex: 9999 // Ensure it's on top of everything
         }}
         PaperProps={{
-          onClick: isMobileDevice() ? toggleFullscreen : undefined
+          onClick: isMobileDevice() ? (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleFullscreen();
+          } : undefined
         }}
       >
         <DialogTitle id="fullscreen-required-title" sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
@@ -5149,7 +5051,7 @@ const ExamInterface = () => {
             Fullscreen Mode Required
           </Box>
         </DialogTitle>
-        <DialogContent onClick={isMobileDevice() ? toggleFullscreen : undefined}>
+        <DialogContent>
           <Box sx={{ mt: 2, mb: 2 }}>
             <Typography variant="h5" gutterBottom color="primary.main" fontWeight="bold">
               Fullscreen Required
@@ -6468,6 +6370,8 @@ const getQuestionTypeLabel = (type, section) => {
       return 'Image Based';
     case 'structured':
       return 'Structured Question';
+    case 'financial-spreadsheet':
+      return 'Financial Spreadsheet';
     default:
       return section === 'B' ? 'Short Answer' : 'Essay Question';
   }
@@ -6501,6 +6405,8 @@ const getQuestionTypeColor = (type, section) => {
       return 'success';
     case 'structured':
       return 'secondary';
+    case 'financial-spreadsheet':
+      return 'info';
     default:
       return section === 'B' ? 'info' : 'secondary';
   }

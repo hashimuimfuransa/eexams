@@ -88,11 +88,15 @@ const getMyActiveSubscription = async (req, res) => {
 // @access  Private
 const initiateSubscriptionPayment = async (req, res) => {
   try {
-    const { planId, paymentMethod = 'mobile_money' } = req.body;
+    const { planId, paymentMethod = 'mobile_money', phone } = req.body;
 
     const validMethods = ['airtel_money', 'mobile_money', 'card'];
     if (!validMethods.includes(paymentMethod)) {
       return res.status(400).json({ message: 'Invalid payment method. Use airtel_money, mobile_money, or card' });
+    }
+
+    if (paymentMethod !== 'card' && !phone) {
+      return res.status(400).json({ message: 'Phone number is required for mobile money payments' });
     }
 
     // Get the plan
@@ -122,22 +126,14 @@ const initiateSubscriptionPayment = async (req, res) => {
       });
     }
 
-    // Create payment request with ITEC
-    const baseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-    const returnUrl = `${baseUrl}/student/subscriptions/callback`;
-    const cancelUrl = `${baseUrl}/student/subscriptions/callback`;
-
-    const levelDescription = plan.subLevel ? `${plan.level.name} - ${plan.subLevel}` : plan.level.name;
-
     const paymentResult = await itecPayment.createPaymentRequest({
       amount: plan.price,
       currency: plan.currency,
       userId: req.user._id,
       planId: plan._id,
       paymentMethod,
-      description: `Subscription: ${plan.name} for ${levelDescription}`,
-      returnUrl,
-      cancelUrl
+      phone: phone || null,
+      email: req.user.email
     });
 
     // Record the pending payment server-side so the callback can look up the
@@ -157,9 +153,13 @@ const initiateSubscriptionPayment = async (req, res) => {
 
     res.json({
       success: true,
-      paymentUrl: paymentResult.paymentUrl,
+      paymentUrl: paymentResult.paymentUrl || null,
       paymentId: paymentResult.paymentId,
       reference: paymentResult.reference,
+      paymentMethod,
+      message: paymentMethod === 'card'
+        ? 'Redirect to the payment URL to complete your payment'
+        : 'Check your phone for a payment prompt',
       plan: {
         id: plan._id,
         name: plan.name,
@@ -179,15 +179,18 @@ const initiateSubscriptionPayment = async (req, res) => {
 // @access  Public
 const processPaymentCallback = async (req, res) => {
   try {
-    const { paymentId, transactionId, status, signature, reference } = req.body;
+    // iTechPay sends: { req_ref, transaction_id, amount, status }
+    // For card the frontend may also POST after redirect: { reference, transaction_id, status }
+    const reference = req.body.req_ref || req.body.reference;
+    const transactionId = req.body.transaction_id || req.body.transactionId;
+    const { amount, status } = req.body;
 
     if (!reference) {
-      return res.status(400).json({ message: 'Missing payment reference' });
+      return res.status(400).json({ message: 'Missing payment reference (req_ref)' });
     }
 
     // Look up the trusted user/plan/level from the record we created at
-    // initiate time. We never trust userId/planId parsed out of client-echoed
-    // values (reference string or body) for who to credit.
+    // initiate time. We never trust userId/planId from the callback body.
     const pendingPayment = await PendingPayment.findOne({ reference });
     if (!pendingPayment) {
       return res.status(404).json({ message: 'Payment reference not recognized' });
@@ -204,16 +207,12 @@ const processPaymentCallback = async (req, res) => {
       });
     }
 
-    if (pendingPayment.paymentId !== paymentId) {
-      return res.status(400).json({ message: 'Payment reference does not match payment ID' });
-    }
-
     // Verify the payment with iTechPay using the stored payment method
     const callbackResult = await itecPayment.processCallback({
-      paymentId,
-      transactionId,
+      transaction_id: transactionId,
+      amount,
       status,
-      signature,
+      req_ref: reference,
       paymentMethod: pendingPayment.paymentMethod
     });
 

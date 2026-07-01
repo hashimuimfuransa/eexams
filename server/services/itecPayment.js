@@ -3,149 +3,177 @@ const crypto = require('crypto');
 class ITECPaymentService {
   constructor() {
     this.apiKeys = {
-      airtel_money: process.env.ITECPAY_API_KEY_AIRTEL_MONEY,
-      mobile_money: process.env.ITECPAY_API_KEY_MOBILE_MONEY,
+      mtn: process.env.ITECPAY_API_KEY_MOBILE_MONEY,
+      airtel: process.env.ITECPAY_API_KEY_AIRTEL_MONEY,
       card: process.env.ITECPAY_API_KEY_CARD
     };
-    this.callbackSecret = process.env.ITECPAY_CALLBACK_SECRET;
     this.callbackUrl = process.env.ITECPAY_CALLBACK_URL;
-    this.baseUrl = process.env.ITECPAY_BASE_URL || 'https://pay.itecpay.rw/api';
   }
 
-  getApiKey(paymentMethod) {
-    const key = this.apiKeys[paymentMethod];
-    if (!key) throw new Error(`No API key configured for payment method: ${paymentMethod}`);
+  getApiKey(provider) {
+    const key = this.apiKeys[provider];
+    if (!key) throw new Error(`No API key configured for provider: ${provider}`);
     return key;
   }
 
-  verifyCallbackSignature(payload, receivedSignature) {
-    const sortedParams = Object.keys(payload)
-      .sort()
-      .map(k => `${k}=${payload[k]}`)
-      .join('&');
-    const expected = crypto
-      .createHmac('sha256', this.callbackSecret)
-      .update(sortedParams)
-      .digest('hex');
+  // paymentMethod ('mobile_money' | 'airtel_money' | 'card') → provider key
+  getProvider(paymentMethod) {
+    const map = { mobile_money: 'mtn', airtel_money: 'airtel', card: 'card' };
+    return map[paymentMethod] || 'mtn';
+  }
+
+  normalizePhone(phone) {
+    let p = phone.replace(/[\s\-().]/g, '');
+    if (p.startsWith('+')) p = p.slice(1);
+    if (p.startsWith('250') && p.length === 12) p = '0' + p.slice(3);
+    if (!p.startsWith('0') && p.length === 9) p = '0' + p;
+    return p;
+  }
+
+  async post(url, body) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const text = await response.text();
     try {
-      return crypto.timingSafeEqual(
-        Buffer.from(expected, 'hex'),
-        Buffer.from(receivedSignature, 'hex')
-      );
+      return JSON.parse(text);
     } catch {
-      return false;
+      throw new Error(`iTechPay returned non-JSON (HTTP ${response.status}): ${text.slice(0, 300)}`);
     }
   }
 
-  async createPaymentRequest({ amount, currency, userId, planId, paymentMethod, description, returnUrl, cancelUrl }) {
-    const apiKey = this.getApiKey(paymentMethod);
-    const timestamp = Date.now();
-    const reference = `SUB_${userId}_${planId}_${timestamp}`;
+  async createPaymentRequest({ amount, currency, userId, planId, paymentMethod, phone, email }) {
+    const provider = this.getProvider(paymentMethod);
+    const apiKey = this.getApiKey(provider);
+    const reference = `SUB_${userId}_${planId}_${crypto.randomUUID()}`;
 
-    const payload = {
-      amount,
-      currency,
-      reference,
-      description,
-      paymentMethod,
-      returnUrl,
-      cancelUrl,
-      callbackUrl: this.callbackUrl,
-      timestamp
-    };
+    if (paymentMethod === 'card') {
+      if (!email) throw new Error('Email is required for card payments');
 
-    const response = await fetch(`${this.baseUrl}/payments/create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey
-      },
-      body: JSON.stringify(payload)
-    });
+      const result = await this.post(
+        'https://pay.itecpay.rw/api/pay/apis/pesapal/generatecode',
+        {
+          amount: Number(amount),
+          email: email.trim(),
+          key: apiKey,
+          req_ref: reference,
+          currency: currency || 'RWF',
+          callback_url: this.callbackUrl
+        }
+      );
 
-    const result = await response.json();
+      const pcode = result?.PCODE;
+      if (!pcode) {
+        // status 500 / "Initiate failed" = card payments not activated on this iTechPay account
+        if (result?.status === 500 || String(result?.error || '').toLowerCase().includes('initiate failed')) {
+          throw new Error('Card payment is not yet activated. Please use mobile money or contact iTechPay support.');
+        }
+        throw new Error(result?.message || result?.error || 'Card payment unavailable — no PCODE returned');
+      }
 
-    if (!response.ok) {
-      throw new Error(result.message || 'Failed to create payment request');
+      const paymentUrl = result.link || `https://pay.itecpay.rw/api/pay/apis/pesapal/index?PCODE=${pcode}`;
+      return { success: true, paymentUrl, paymentId: pcode, reference };
     }
 
+    // Mobile money (MTN or Airtel)
+    if (!phone) throw new Error('Phone number is required for mobile money payments');
+
+    const result = await this.post(
+      'https://pay.itecpay.rw/api2/pay',
+      {
+        amount: Number(amount),
+        phone: this.normalizePhone(phone),
+        key: apiKey,
+        req_ref: reference
+      }
+    );
+
+    const statusVal = String(result?.status ?? '').toLowerCase();
+    const ok = result?.status === 200 || result?.status === true || result?.status === 1 ||
+      statusVal === 'success' || statusVal === 'ok' || statusVal === '200';
+
+    if (!ok) {
+      throw new Error(result?.data?.message || result?.message || `Payment request failed (status: ${result?.status})`);
+    }
+
+    const txId = result?.data?.transaction_id || result?.data?.financial_transaction_id || reference;
     return {
       success: true,
-      paymentUrl: result.paymentUrl,
-      paymentId: result.paymentId,
+      paymentUrl: null, // push prompt sent to phone — no redirect
+      paymentId: txId,
       reference
     };
   }
 
-  async verifyPayment(paymentId, paymentMethod) {
-    const apiKey = this.getApiKey(paymentMethod);
+  async verifyPayment(reference, paymentMethod) {
+    const provider = this.getProvider(paymentMethod);
+    const apiKey = this.getApiKey(provider);
 
-    const response = await fetch(`${this.baseUrl}/payments/${paymentId}/verify`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey
-      }
-    });
+    const result = await this.post(
+      'https://pay.itecpay.rw/api2/verify',
+      { action: 'status_check', req_ref: reference, key: apiKey }
+    );
 
-    const result = await response.json();
+    const rawStatus = String(
+      result?.transaction_status ||
+      result?.data?.transaction_status ||
+      result?.payment_status ||
+      result?.data?.payment_status ||
+      result?.data?.status ||
+      result?.status ||
+      ''
+    ).toLowerCase();
 
-    if (!response.ok) {
-      throw new Error(result.message || 'Failed to verify payment');
-    }
+    const successStatuses = ['completed', 'success', 'paid', 'approved'];
+    const isSuccess = successStatuses.includes(rawStatus) || result?.status === 200;
 
     return {
-      success: result.status === 'completed',
-      status: result.status,
-      amount: result.amount,
-      currency: result.currency,
-      transactionId: result.transactionId,
-      paymentMethod: result.paymentMethod || paymentMethod
+      success: isSuccess,
+      status: rawStatus || 'unknown',
+      amount: result?.data?.amount || result?.amount,
+      currency: result?.data?.currency || 'RWF',
+      transactionId: result?.data?.transaction_id || result?.transaction_id
     };
   }
 
   async processCallback(callbackData) {
-    const { paymentId, transactionId, status, signature, paymentMethod } = callbackData;
+    const { transaction_id, amount, status, req_ref, paymentMethod } = callbackData;
 
-    const signaturePayload = { paymentId, status, transactionId };
-    if (!this.verifyCallbackSignature(signaturePayload, signature)) {
-      throw new Error('Invalid callback signature');
+    // Validate required fields and status
+    if (!transaction_id || !amount || !status) {
+      return { success: false, status: status || 'unknown', message: 'Missing required callback fields' };
     }
 
-    const verification = await this.verifyPayment(paymentId, paymentMethod);
+    const successStatuses = ['completed', 'success', 'paid', 'approved'];
+    const normalizedStatus = String(status).toLowerCase();
+    if (!successStatuses.includes(normalizedStatus)) {
+      return { success: false, status: normalizedStatus, message: `Payment not successful: ${status}` };
+    }
 
-    return {
-      success: verification.success,
-      status: verification.status,
-      amount: verification.amount,
-      currency: verification.currency,
-      transactionId: verification.transactionId,
-      paymentMethod: verification.paymentMethod
-    };
-  }
-
-  async refundPayment(paymentId, paymentMethod, amount, reason) {
-    const apiKey = this.getApiKey(paymentMethod);
-
-    const response = await fetch(`${this.baseUrl}/payments/${paymentId}/refund`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey
-      },
-      body: JSON.stringify({ amount, reason })
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || 'Failed to process refund');
+    // Active re-verify when possible
+    if (req_ref && paymentMethod) {
+      try {
+        const verification = await this.verifyPayment(req_ref, paymentMethod);
+        return {
+          success: verification.success,
+          status: verification.status,
+          amount: verification.amount,
+          currency: verification.currency,
+          transactionId: verification.transactionId || transaction_id
+        };
+      } catch (err) {
+        console.warn('iTechPay re-verify failed, trusting callback data:', err.message);
+      }
     }
 
     return {
       success: true,
-      refundId: result.refundId,
-      status: result.status
+      status: normalizedStatus,
+      amount,
+      currency: 'RWF',
+      transactionId: transaction_id
     };
   }
 }

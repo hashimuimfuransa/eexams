@@ -87,6 +87,9 @@ const Dashboard = () => {
   const [selectedExam, setSelectedExam] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const [pendingPayment, setPendingPayment] = useState(null);
+  const [pendingPaymentLoading, setPendingPaymentLoading] = useState(true);
+
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -97,15 +100,17 @@ const Dashboard = () => {
       }
 
       // Fetch all data in parallel for faster loading
-      const [resultsRes, examsRes, scheduledRes, requestsRes, marketplaceRes, inProgressRes, subscriptionRes] = await Promise.allSettled([
+      const [resultsRes, examsRes, scheduledRes, requestsRes, marketplaceRes, inProgressRes, subscriptionRes, pendingPaymentRes] = await Promise.allSettled([
         api.get('/student/results'),
         api.get('/student/exams'),
         api.get('/student/scheduled-exams'),
         api.get('/marketplace/student/requests'),
         api.get('/marketplace/exams'),
         api.get('/student/exams/in-progress'),
-        api.get('/subscriptions/my/active')
+        api.get('/subscriptions/my/active'),
+        api.get('/subscriptions/my/pending-payment')
       ]);
+
 
       // Process results
       if (resultsRes.status === 'fulfilled') {
@@ -166,7 +171,15 @@ const Dashboard = () => {
         setSubscription(null);
       }
 
+      // Process pending payment
+      if (pendingPaymentRes && pendingPaymentRes.status === 'fulfilled') {
+        setPendingPayment(pendingPaymentRes.value.data || null);
+      } else {
+        setPendingPayment(null);
+      }
+
     } catch (err) {
+
       console.error('Error fetching data:', err);
       setError('Failed to load data. Please try again later.');
     } finally {
@@ -423,8 +436,76 @@ const Dashboard = () => {
           Welcome, {user?.firstName || 'Student'}! Here are your available exams and results.
         </Typography>
 
+        {/* Pending Payment Banner */}
+        {pendingPayment && !pendingPaymentLoading && (
+          <Card
+            elevation={1}
+            sx={{
+              mb: 4,
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'warning.main',
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(245,158,11,0.12) 100%)'
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
+                <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 280 } }}>
+                  <Typography variant="h6" fontWeight={800} color="warning.main">
+                    Pending Subscription Payment
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                    Status: {pendingPayment.status || pendingPayment.paymentStatus || 'PENDING'}
+                  </Typography>
+                  {pendingPayment.amount != null && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      Amount: {pendingPayment.amount} {pendingPayment.currency || ''}
+                    </Typography>
+                  )}
+                  {pendingPayment.plan?.name && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      Plan: {pendingPayment.plan.name}
+                    </Typography>
+                  )}
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
+                  <Button
+                    variant="contained"
+                    onClick={handleRefresh}
+                    sx={{
+                      fontWeight: 700,
+                      textTransform: 'none',
+                      borderRadius: 1,
+                      bgcolor: 'warning.main',
+                      '&:hover': { bgcolor: 'warning.dark' }
+                    }}
+                  >
+                    Refresh Status
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => navigate('/student/subscriptions')}
+                    sx={{
+                      fontWeight: 700,
+                      textTransform: 'none',
+                      borderRadius: 1,
+                      borderColor: 'warning.main',
+                      color: 'warning.dark',
+                      '&:hover': { bgcolor: 'rgba(245,158,11,0.08)' }
+                    }}
+                  >
+                    View Subscription
+                  </Button>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Level and Subscription Info Card */}
         <Card elevation={1} sx={{ mb: 4, borderRadius: 2, background: 'linear-gradient(135deg, #0D406C 0%, #1a5a8a 100%)', color: 'white' }}>
+
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
               <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>

@@ -473,9 +473,15 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
     };
   }
 
+  // Bare numeric answers (e.g. "39") must be checked against the model's actual numeric
+  // result rather than treated as text abbreviations/phrases below - otherwise a wrong
+  // number that happens to appear elsewhere in the model answer's working (e.g. a given
+  // value used mid-calculation) gets falsely matched and awarded full points.
+  const isBareNumericAnswer = /^[$€£¥₹]?\s*-?[\d,]+(\.\d+)?\s*[a-z%°]{0,4}\.?$/i.test(cleanStudentAns);
+
   // Check if student answer is contained in model answer (abbreviation case)
   // e.g., "WAN" is contained in "WAN (Wide Area Network)"
-  if (cleanModelAns.includes(cleanStudentAns) && cleanStudentAns.length >= 2) {
+  if (!isBareNumericAnswer && cleanModelAns.includes(cleanStudentAns) && cleanStudentAns.length >= 2) {
     console.log('Student answer is an abbreviation of the model answer!');
     return {
       score: maxPoints,
@@ -492,7 +498,7 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
 
   // Check if model answer is contained in student answer (expansion case)
   // e.g., "Wide Area Network" contains "WAN"
-  if (cleanStudentAns.includes(cleanModelAns) && cleanModelAns.length >= 2) {
+  if (!isBareNumericAnswer && cleanStudentAns.includes(cleanModelAns) && cleanModelAns.length >= 2) {
     console.log('Student answer is an expansion of the model answer!');
     return {
       score: maxPoints,
@@ -555,6 +561,22 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
         }
       };
     }
+  }
+
+  // For bare numeric answers that didn't match above, don't fall through to phrase/word
+  // overlap matching - a lone number can spuriously overlap with unrelated digits inside
+  // the model answer's working and get credited as if it covered the model's concepts.
+  if (isBareNumericAnswer) {
+    return {
+      score: 0,
+      feedback: `Your answer (${studentAnswer}) does not match the expected result (${modelAnswer}).`,
+      correctedAnswer: modelAnswer,
+      details: {
+        matchPercentage: 0,
+        gradingMethod: 'numerical_mismatch',
+        errorReason: errorReason
+      }
+    };
   }
 
   // Check if student answer contains key phrases from model answer

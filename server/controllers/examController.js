@@ -621,14 +621,59 @@ const getExamById = async (req, res) => {
     }
 
     // If user is a student and exam is locked, check if they have an approved request before blocking
-    if (req.user.role === 'student' && exam.isLocked) {
+    if (req.user.role === 'student') {
+      // Ensure a student with a non-matching subscription/level doesn't see a confusing 404.
+      // We return a locked-like payload so the frontend can display an error message.
+      // (The actual access checks are enforced on start/answer/complete endpoints.)
+      const accessMessage = async () => {
+        try {
+          const Subscription = require('../models/Subscription');
+          const User = require('../models/User');
+          const Level = require('../models/Level');
+          const { subscriptionCoversExam, freeExamMatchesUserSubLevel } = require('../utils/subLevelAccess');
+
+          const user = await User.findById(req.user._id).populate('level');
+          if (!user || !user.level) {
+            return { isLocked: true, message: 'Please select your learning level before accessing exams' };
+          }
+
+          // If exam is locked by admin, preserve existing behavior below
+          if (!exam) return { isLocked: true, message: 'Exam not found' };
+
+          // Subscription/free access checks
+          if (exam.accessType === 'free') {
+            const canMatch = freeExamMatchesUserSubLevel(exam, user);
+            if (!canMatch) {
+              return { isLocked: true, message: 'This exam is not available for your sub-level' };
+            }
+          }
+
+          if (exam.accessType === 'subscription') {
+            const subscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
+            if (!subscription || !subscription.isValid()) {
+              return { isLocked: true, message: 'This exam requires an active subscription' };
+            }
+            if (subscription.expiresAt < new Date()) {
+              return { isLocked: true, message: 'Your subscription has expired. Please renew to continue.' };
+            }
+            if (!subscriptionCoversExam(subscription, exam)) {
+              return { isLocked: true, message: 'Your subscription does not cover this exam level' };
+            }
+          }
+
+          return null;
+        } catch {
+          return null;
+        }
+      };
+
       const approvedRequest = await ExamRequest.findOne({
         student: req.user._id,
         exam: exam._id,
         status: 'approved'
       });
 
-      if (!approvedRequest) {
+      if (exam.isLocked && !approvedRequest) {
         console.log(`Student ${req.user._id} attempted to access locked exam ${exam._id}`);
         return res.json({
           _id: exam._id,
@@ -642,7 +687,23 @@ const getExamById = async (req, res) => {
           message: 'This exam is currently locked by the administrator'
         });
       }
-      console.log(`Student ${req.user._id} has approved request for locked exam ${exam._id} - allowing access`);
+
+      const accessBlock = await accessMessage();
+      if (accessBlock) {
+        return res.json({
+          _id: exam._id,
+          title: exam.title,
+          description: exam.description,
+          timeLimit: exam.timeLimit,
+          isLocked: true,
+          allowSelectiveAnswering: exam.allowSelectiveAnswering,
+          sectionBRequiredQuestions: exam.sectionBRequiredQuestions,
+          sectionCRequiredQuestions: exam.sectionCRequiredQuestions,
+          message: accessBlock.message
+        });
+      }
+
+      console.log(`Student ${req.user._id} allowed to view exam ${exam._id}`);
     }
 
     // Check if the exam has any questions
@@ -2404,7 +2465,7 @@ const completeExam = async (req, res) => {
         'ai_determined_correct', 'ai_determined_incorrect',
         'meaningless_answer', 'meaningless_answer_short', 'meaningless_answer_fallback',
         'matching_grading', 'ordering_grading', 'drag_drop_grading',
-        'numerical_match', 'numerical_partial', 'keyword_matching_poor',
+        'numerical_match', 'numerical_partial', 'numerical_mismatch', 'keyword_matching_poor',
         'ai_no_model_answer', 'default_fallback_insufficient',
         'incomplete_multipart', 'incomplete_multipart_fallback',
         'answer_validation_failed', 'letter_based', 'isCorrect_flag', 'modelAnswer_comparison',

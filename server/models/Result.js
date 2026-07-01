@@ -169,6 +169,7 @@ const ResultSchema = new mongoose.Schema({
         // Numerical and keyword matching methods
         'numerical_match',
         'numerical_partial',
+        'numerical_mismatch',
         'keyword_matching_poor',
         'meaningless_answer',
         'meaningless_answer_short',

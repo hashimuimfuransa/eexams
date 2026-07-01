@@ -1020,6 +1020,23 @@ Return JSON: {score,feedback,correctedAnswer}`;
     }
   }
 
+  // If the student's answer is just a bare number (no explanation/working shown) and it
+  // does not match the model's final numerical result (checked above), it must be wrong.
+  // Skip the semantic/keyword phrase matching below for these answers: a lone number like
+  // "39" can spuriously "match" unrelated digits that appear in the model answer's working
+  // (e.g. a given angle used mid-calculation), which previously caused wrong numeric answers
+  // to be scored as if they covered the model answer's concepts.
+  const isBareNumericAnswer = /^[$€£¥₹]?\s*-?[\d,]+(\.\d+)?\s*[a-z%°]{0,4}\.?$/i.test(studentAnswer.trim());
+  if (isBareNumericAnswer && modelNumerical !== null) {
+    return {
+      score: 0,
+      feedback: `Your answer (${studentAnswer}) does not match the expected result (${modelAnswer}).`,
+      correctedAnswer: modelAnswer,
+      gradingMethod: 'numerical_mismatch',
+      isCorrect: false
+    };
+  }
+
   // Use semantic matching instead of strict keyword counting
   // Extract meaningful phrases for concept matching
   const modelPhrases = model.match(/\b[\w\s]{10,}\b/g) || [model];

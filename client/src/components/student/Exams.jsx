@@ -163,7 +163,12 @@ const Exams = () => {
       return true;
     })
     .sort((a, b) => {
-      // Free exams always surface first; the chosen sort only orders within each group.
+      // Unlocked exams first (accessUnlocked !== false)
+      const aUnlocked = a.accessUnlocked !== false;
+      const bUnlocked = b.accessUnlocked !== false;
+      if (aUnlocked !== bUnlocked) return aUnlocked ? -1 : 1;
+
+      // Then keep existing behavior: free exams always surface first
       const freeRank = (a.accessType === 'subscription' ? 1 : 0) - (b.accessType === 'subscription' ? 1 : 0);
       if (freeRank !== 0) return freeRank;
 
@@ -176,6 +181,7 @@ const Exams = () => {
       }
       return 0;
     });
+
 
   // Pagination
   const totalPages = Math.ceil(filteredExams.length / examsPerPage);
@@ -254,21 +260,38 @@ const Exams = () => {
           </Typography>
         </Box>
 
-        {exams.some(e => e.accessType === 'subscription' && e.accessUnlocked === false) && (
+        {exams.some(
+          (e) => e.accessType === 'subscription' && e.accessUnlocked === false
+        ) && (
+
           <Alert
             severity={user?.freeExamUsed ? 'warning' : 'info'}
             sx={{ mb: 3, borderRadius: 2 }}
             action={
-              <Button color="inherit" size="small" onClick={() => navigate('/student/subscriptions')} sx={{ fontWeight: 'bold' }}>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => navigate('/student/subscriptions')}
+                sx={{ fontWeight: 'bold' }}
+              >
                 Subscribe Now
               </Button>
             }
           >
-            {user?.freeExamUsed
-              ? <><strong>Your free exam has been used.</strong> You need an active subscription to access more exams for your level.</>
-              : <>You have <strong>1 free exam</strong> available. Subscribe to unlock every exam in this level.</>}
+            {/* Only show subscription prompts when some exams are actually locked */}
+            {user?.freeExamUsed ? (
+              <>
+                <strong>Your free exam has been used.</strong> You need an active subscription to access more exams for your level.
+              </>
+            ) : (
+              <>
+                You have <strong>1 free exam</strong> available. Subscribe to unlock every exam in this level.
+              </>
+            )}
+
           </Alert>
         )}
+
 
         {/* Filters and Search */}
         <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
@@ -375,7 +398,8 @@ const Exams = () => {
                           </Button>
                         }
                       >
-                        <strong>Subscription Exams</strong> — these require an active subscription for your level to unlock.
+                        <strong>Subscription Exams</strong> — requires subscription to unlock.
+
                       </Alert>
                     </Grid>
                   )}
@@ -888,12 +912,9 @@ const Exams = () => {
                         }}
                       >
                         {exam.isLocked
-                          ? (exam.accessUnlocked === false ? '🔒 Subscribe to Unlock' : 'Exam Locked')
-                          : exam.status === 'in-progress'
-                            ? 'Continue Exam'
-                            : exam.status === 'completed'
-                              ? 'Retake Exam'
-                              : 'Start Exam'}
+                          ? (exam.accessUnlocked === false ? '🔒 Locked (Subscribe to Unlock)' : 'Exam Locked')
+                          : 'Start Exam'}
+
                       </Button>
 
                       {/* Enhanced Retake button for completed exams */}

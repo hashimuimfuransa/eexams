@@ -205,25 +205,70 @@ const getExamById = async (req, res) => {
       }
     }
 
-    // If not found via share token, check if assigned OR has approved request
+    // If not found via share token, check if assigned, has an approved request,
+    // OR belongs to the student's subscribed level (level-based access model).
+    let hasLegacyGrant = false;
     if (!exam) {
+      const user = await User.findById(req.user._id).populate('level');
+
       // Check if student has an approved request for this exam
       const approvedRequest = await ExamRequest.findOne({
         exam: req.params.examId,
         student: req.user._id,
         status: 'approved'
       });
+      hasLegacyGrant = !!approvedRequest;
 
       exam = await Exam.findOne({
         _id: req.params.examId,
         $or: [
           { assignedTo: req.user._id },
-          { _id: { $in: approvedRequest ? [approvedRequest.exam] : [] } }
+          { _id: { $in: approvedRequest ? [approvedRequest.exam] : [] } },
+          ...(user?.level ? [{ level: user.level._id }] : [])
         ]
       })
         .populate('createdBy', 'firstName lastName')
         .populate('sections.questions')
-        .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections calculatorEnabled');
+        .select('title description timeLimit isLocked accessType level subLevel scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections calculatorEnabled');
+
+      // If the exam was only matched via the student's level (not a legacy
+      // grant), gate it by subscription/free-exam status just like the exam
+      // bank listing does, so this endpoint stays consistent with it.
+      if (exam && !hasLegacyGrant) {
+        if (!user?.level) {
+          return res.status(403).json({ message: 'Please select your learning level before accessing exams' });
+        }
+
+        if (exam.accessType === 'free') {
+          const freeExamAvailable = !(user.freeExamUsed && user.freeExamLevel &&
+            user.freeExamLevel.toString() === user.level._id.toString());
+          if (!freeExamAvailable || !freeExamMatchesUserSubLevel(exam, user)) {
+            return res.json({
+              _id: exam._id,
+              title: exam.title,
+              description: exam.description,
+              timeLimit: exam.timeLimit,
+              isLocked: true,
+              message: !freeExamAvailable
+                ? 'You have already used your free exam for this level. Subscribe to access more exams.'
+                : 'This free exam is not available for your sub-level'
+            });
+          }
+        } else {
+          const activeSubscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
+          const hasActiveSubscription = !!(activeSubscription && activeSubscription.isValid());
+          if (!hasActiveSubscription || !subscriptionCoversExam(activeSubscription, exam)) {
+            return res.json({
+              _id: exam._id,
+              title: exam.title,
+              description: exam.description,
+              timeLimit: exam.timeLimit,
+              isLocked: true,
+              message: 'This exam requires an active subscription'
+            });
+          }
+        }
+      }
     }
 
     if (!exam) {

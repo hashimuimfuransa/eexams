@@ -146,13 +146,22 @@ const Dashboard = () => {
 
       // Process marketplace exams (remove duplicates, free exams first)
       if (marketplaceRes.status === 'fulfilled') {
-        const uniqueMarketplaceExams = Array.isArray(marketplaceRes.value.data) ? marketplaceRes.value.data.filter((exam, index, self) =>
-          index === self.findIndex((e) => e._id === exam._id)
-        ) : [];
-        uniqueMarketplaceExams.sort((a, b) =>
-          (a.accessType === 'subscription' ? 1 : 0) - (b.accessType === 'subscription' ? 1 : 0)
-        );
+  const uniqueMarketplaceExams = Array.isArray(marketplaceRes.value.data)
+        ? marketplaceRes.value.data.filter((exam, index, self) => index === self.findIndex((e) => e._id === exam._id))
+        : [];
+
+        // Show unlocked first, then keep existing preference (free exams before subscription)
+        uniqueMarketplaceExams.sort((a, b) => {
+          const aUnlocked = a.accessUnlocked !== false;
+          const bUnlocked = b.accessUnlocked !== false;
+          if (aUnlocked !== bUnlocked) return aUnlocked ? -1 : 1;
+
+          // Existing preference: free exams first
+          return (a.accessType === 'subscription' ? 1 : 0) - (b.accessType === 'subscription' ? 1 : 0);
+        });
+
         setMarketplaceExams(uniqueMarketplaceExams);
+
       } else {
         setMarketplaceExams([]);
       }
@@ -408,9 +417,20 @@ const Dashboard = () => {
   const approvedRetakeExamIds = approvedRetakeRequests.map(r => r.exam?._id?.toString()).filter(Boolean);
 
   // Available exams that are NOT retake-approved (retakes shown in their own section) and NOT completed
-  const regularAvailableExams = availableExams.filter(
-    exam => !approvedRetakeExamIds.includes(exam._id?.toString()) && exam.status !== 'completed'
-  );
+  const regularAvailableExams = availableExams
+    .filter(
+      (exam) => !approvedRetakeExamIds.includes(exam._id?.toString()) && exam.status !== 'completed'
+    )
+    .slice()
+    .sort((a, b) => {
+      // Unlocked exams first (accessUnlocked !== false)
+      const aUnlocked = a.accessUnlocked !== false;
+      const bUnlocked = b.accessUnlocked !== false;
+      if (aUnlocked !== bUnlocked) return aUnlocked ? -1 : 1;
+      // Stable-ish tie-breaker
+      return String(a._id || '').localeCompare(String(b._id || ''));
+    });
+
 
   const hasAvailableExams = regularAvailableExams.length > 0 || approvedRetakeRequests.length > 0;
 

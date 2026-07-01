@@ -495,6 +495,10 @@ const ExamInterface = () => {
         setExam(examRes.data);
         setSelectiveAnswering(examRes.data.allowSelectiveAnswering || false);
 
+        // Do NOT initialize/overwrite selectedQuestions here.
+        // selectedQuestions must be restored from the active session (if any)
+        // or initialized after starting a new session.
+
         // Set the active section to the first section that has questions
         const firstSectionWithQuestions = examRes.data.sections?.find(section =>
           section.questions && section.questions.length > 0
@@ -685,6 +689,10 @@ const ExamInterface = () => {
 
     fetchExam();
   }, [id]);
+
+  // If exam fetch failed (e.g. 404), do not start security timers / auto-submit logic.
+  // This prevents cascading submission errors on broken sessions.
+  const hasFatalFetchError = !!error;
 
   // Timer countdown
   useEffect(() => {

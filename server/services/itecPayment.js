@@ -151,8 +151,13 @@ class ITECPaymentService {
     const successStatuses = ['completed', 'success', 'paid', 'approved'];
     const isSuccess = successStatuses.includes(rawStatus);
 
+    // iTechPay sometimes returns { status: 200, data: { status: "SUCCESSFUL" } }
+    // so we also treat "successful" as success.
+    const successfulInner = rawStatus === 'successful' || rawStatus === 'success' || rawStatus === 'successful';
+    const finalSuccess = isSuccess || successfulInner;
+
     return {
-      success: isSuccess,
+      success: finalSuccess,
       status: rawStatus || 'unknown',
       amount: result?.data?.amount || result?.amount,
       currency: result?.data?.currency || 'RWF',

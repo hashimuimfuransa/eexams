@@ -197,9 +197,28 @@ const processPaymentCallback = async (req, res) => {
     console.log(`[Payment] body: ${JSON.stringify(req.body)}`);
     // iTechPay sends: { req_ref, transaction_id, amount, status }
     // For card the frontend may also POST after redirect: { reference, transaction_id, status }
-    const reference = req.body.req_ref || req.body.reference;
-    const transactionId = req.body.transaction_id || req.body.transactionId;
-    const { amount, status } = req.body;
+    // iTechPay payloads can vary; support common shapes.
+    const reference =
+      req.body.req_ref ||
+      req.body.reference ||
+      req.body?.data?.req_ref ||
+      req.body?.data?.reference;
+
+    const transactionId =
+      req.body.transaction_id ||
+      req.body.transactionId ||
+      req.body?.data?.transaction_id ||
+      req.body?.data?.transactionId;
+
+    const status = req.body.status || req.body?.data?.status;
+    const amount = req.body.amount || req.body?.data?.amount;
+
+    console.log('[Payment] parsed callback:', {
+      reference,
+      transactionId,
+      status,
+      amount: amount != null ? String(amount) : amount
+    });
 
     if (!reference) {
       return res.status(400).json({ message: 'Missing payment reference (req_ref)' });
@@ -226,10 +245,18 @@ const processPaymentCallback = async (req, res) => {
     // Verify the payment with iTechPay using the stored payment method
     const callbackResult = await itecPayment.processCallback({
       transaction_id: transactionId,
-      amount,
+      amount: Number(amount),
       status,
       req_ref: reference,
       paymentMethod: pendingPayment.paymentMethod
+    });
+
+    console.log('[Payment] callbackResult:', {
+      success: callbackResult?.success,
+      status: callbackResult?.status,
+      amount: callbackResult?.amount,
+      currency: callbackResult?.currency,
+      transactionId: callbackResult?.transactionId
     });
 
     if (!callbackResult.success) {
@@ -264,8 +291,8 @@ const processPaymentCallback = async (req, res) => {
       existingSubscription.plan = plan._id;
       existingSubscription.subLevel = plan.subLevel || null;
       existingSubscription.paymentReference = transactionId;
-      existingSubscription.amountPaid = callbackResult.amount;
-      existingSubscription.currency = callbackResult.currency;
+      existingSubscription.amountPaid = Number(callbackResult.amount ?? amount ?? 0);
+      existingSubscription.currency = callbackResult.currency || 'RWF';
       await existingSubscription.save();
       subscription = existingSubscription;
     } else {
@@ -279,8 +306,8 @@ const processPaymentCallback = async (req, res) => {
         status: 'active',
         paymentMethod: callbackResult.paymentMethod || pendingPayment.paymentMethod,
         paymentReference: transactionId,
-        amountPaid: callbackResult.amount,
-        currency: callbackResult.currency
+        amountPaid: Number(callbackResult.amount ?? amount ?? pendingPayment.amount),
+        currency: callbackResult.currency || pendingPayment.currency || 'RWF'
       });
     }
 

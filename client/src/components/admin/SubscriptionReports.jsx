@@ -14,24 +14,36 @@ import {
   TableRow,
   Paper,
   CircularProgress,
-  Chip
+  Chip,
+  Button,
+  Stack,
+  Alert,
+  Snackbar
 } from '@mui/material';
 import {
   Assessment,
   TrendingUp,
   People,
   AttachMoney,
-  School
+  School,
+  HourglassEmpty,
+  CheckCircle,
+  Cancel
 } from '@mui/icons-material';
 import api from '../../services/api';
 
 const SubscriptionReports = () => {
   const [stats, setStats] = useState(null);
+  const [pendingPayments, setPendingPayments] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const [actioningId, setActioningId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     fetchStats();
+    fetchPendingPayments();
   }, []);
 
   const fetchStats = async () => {
@@ -44,6 +56,44 @@ const SubscriptionReports = () => {
       setError('Failed to load subscription statistics');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPendingPayments = async () => {
+    try {
+      setPendingLoading(true);
+      const response = await api.get('/subscriptions/pending');
+      setPendingPayments(response.data || []);
+    } catch (err) {
+      console.error('Error fetching pending payments:', err);
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
+  const handleApprove = async (id) => {
+    setActioningId(id);
+    try {
+      const res = await api.post(`/subscriptions/pending/${id}/approve`);
+      setToast({ severity: 'success', message: res.data.message || 'Subscription activated' });
+      await Promise.all([fetchPendingPayments(), fetchStats()]);
+    } catch (err) {
+      setToast({ severity: 'error', message: err.response?.data?.message || 'Approval failed' });
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleReject = async (id) => {
+    setActioningId(id);
+    try {
+      await api.patch(`/subscriptions/pending/${id}/reject`);
+      setToast({ severity: 'info', message: 'Payment marked as failed' });
+      await fetchPendingPayments();
+    } catch (err) {
+      setToast({ severity: 'error', message: err.response?.data?.message || 'Failed to reject' });
+    } finally {
+      setActioningId(null);
     }
   };
 
@@ -67,6 +117,92 @@ const SubscriptionReports = () => {
           <Typography color="error">{error}</Typography>
         </Box>
       )}
+
+      {/* Pending Payments Needing Review */}
+      <Card elevation={3} sx={{ mb: 4, border: pendingPayments.length > 0 ? '1px solid' : 'none', borderColor: 'warning.main' }}>
+        <CardContent>
+          <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <HourglassEmpty color="warning" />
+            Pending Payments Needing Review
+            {pendingPayments.length > 0 && (
+              <Chip label={pendingPayments.length} color="warning" size="small" />
+            )}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Payments the payment gateway hasn't confirmed back to us yet, or that a student paid but the system never activated.
+            "Approve" re-checks with iTechPay and activates the subscription only if it confirms the payment succeeded.
+          </Typography>
+          {pendingLoading ? (
+            <CircularProgress size={24} />
+          ) : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>User</TableCell>
+                    <TableCell>Plan</TableCell>
+                    <TableCell>Level</TableCell>
+                    <TableCell align="right">Amount</TableCell>
+                    <TableCell>Method</TableCell>
+                    <TableCell>Requested</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pendingPayments.map((p) => (
+                    <TableRow key={p._id}>
+                      <TableCell>
+                        <Typography fontWeight="bold">
+                          {p.user?.firstName} {p.user?.lastName}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {p.user?.email}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{p.plan?.name}</TableCell>
+                      <TableCell>{p.level?.name}</TableCell>
+                      <TableCell align="right">{p.currency} {p.amount?.toLocaleString()}</TableCell>
+                      <TableCell>{p.paymentMethod}</TableCell>
+                      <TableCell>{new Date(p.createdAt).toLocaleString()}</TableCell>
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            startIcon={<CheckCircle />}
+                            disabled={actioningId === p._id}
+                            onClick={() => handleApprove(p._id)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            startIcon={<Cancel />}
+                            disabled={actioningId === p._id}
+                            onClick={() => handleReject(p._id)}
+                          >
+                            Reject
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {pendingPayments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">
+                        <Typography variant="body2" color="text.secondary">No pending payments — all clear</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {stats && (
         <Grid container spacing={3}>
@@ -351,6 +487,59 @@ const SubscriptionReports = () => {
             </Card>
           </Grid>
 
+          {/* Recent Renewals Detail */}
+          <Grid item xs={12}>
+            <Card elevation={3}>
+              <CardContent>
+                <Typography variant="h6" fontWeight="bold" gutterBottom>
+                  Recent Subscription Renewals
+                </Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>User</TableCell>
+                        <TableCell>Plan</TableCell>
+                        <TableCell>Level</TableCell>
+                        <TableCell align="right">Times Renewed</TableCell>
+                        <TableCell>Last Renewed</TableCell>
+                        <TableCell>New Expiry</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {stats.renewalsList?.map((sub) => (
+                        <TableRow key={sub._id}>
+                          <TableCell>
+                            <Typography fontWeight="bold">
+                              {sub.user?.firstName} {sub.user?.lastName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {sub.user?.email}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>{sub.plan?.name}</TableCell>
+                          <TableCell>{sub.level?.name}</TableCell>
+                          <TableCell align="right">
+                            <Chip label={sub.renewalCount} size="small" color="info" />
+                          </TableCell>
+                          <TableCell>{sub.lastRenewedAt ? new Date(sub.lastRenewedAt).toLocaleDateString() : '-'}</TableCell>
+                          <TableCell>{new Date(sub.expiresAt).toLocaleDateString()}</TableCell>
+                        </TableRow>
+                      ))}
+                      {(!stats.renewalsList || stats.renewalsList.length === 0) && (
+                        <TableRow>
+                          <TableCell colSpan={6} align="center">
+                            <Typography variant="body2" color="text.secondary">No renewals yet</Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+
           {/* Expired Subscriptions Detail */}
           <Grid item xs={12}>
             <Card elevation={3}>
@@ -453,6 +642,19 @@ const SubscriptionReports = () => {
           </Grid>
         </Grid>
       )}
+
+      <Snackbar
+        open={!!toast}
+        autoHideDuration={4000}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {toast && (
+          <Alert severity={toast.severity} onClose={() => setToast(null)}>
+            {toast.message}
+          </Alert>
+        )}
+      </Snackbar>
     </Container>
   );
 };

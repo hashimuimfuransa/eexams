@@ -8,6 +8,9 @@ const {
   initiateSubscriptionPayment,
   processPaymentCallback,
   checkPaymentStatus,
+  getPendingPayments,
+  approvePendingPayment,
+  rejectPendingPayment,
   createSubscription,
   cancelSubscription,
   renewSubscription,
@@ -35,10 +38,15 @@ router.patch('/:id/cancel', validateSubscriptionOwnership, cancelSubscription);
 
 // Super Admin only routes (self-service renewal goes through /initiate + /callback,
 // which is payment-verified; this manual route is for admin overrides only)
+// NOTE: /pending* and /stats/overview must stay above the generic /:id route,
+// otherwise Express would match them as { id: 'pending' } / { id: 'stats' }.
+router.get('/pending', isSuperAdmin, getPendingPayments);
+router.post('/pending/:id/approve', isSuperAdmin, approvePendingPayment);
+router.patch('/pending/:id/reject', isSuperAdmin, rejectPendingPayment);
+router.get('/stats/overview', isSuperAdmin, getSubscriptionStats);
 router.post('/', isSuperAdmin, createSubscription);
 router.patch('/:id/renew', isSuperAdmin, renewSubscription);
 router.get('/', isSuperAdmin, getSubscriptions);
 router.get('/:id', isSuperAdmin, getSubscriptionById);
-router.get('/stats/overview', isSuperAdmin, getSubscriptionStats);
 
 module.exports = router;

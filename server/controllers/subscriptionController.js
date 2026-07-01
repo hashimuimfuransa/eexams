@@ -188,6 +188,69 @@ const initiateSubscriptionPayment = async (req, res) => {
   }
 };
 
+// Activates a subscription for a pending payment iTechPay has confirmed as
+// successful. Shared by the webhook callback and the status-polling fallback,
+// since either one may be the first to observe success — the webhook isn't
+// reliably delivered by the gateway, so polling has to be able to activate
+// too, not just report status back to the frontend.
+const activatePendingPayment = async (pendingPaymentId, { amount, currency, transactionId, paymentMethod }) => {
+  const pendingPayment = await PendingPayment.findById(pendingPaymentId);
+
+  if (pendingPayment.status === 'completed') {
+    return Subscription.findById(pendingPayment.subscription);
+  }
+
+  const plan = await SubscriptionPlan.findById(pendingPayment.plan).populate('level');
+  if (!plan) {
+    throw new Error('Subscription plan not found for pending payment');
+  }
+
+  const existingSubscription = await Subscription.getActiveSubscriptionForLevel(
+    pendingPayment.user,
+    plan.level._id
+  );
+
+  let subscription;
+  if (existingSubscription) {
+    const baseDate = existingSubscription.expiresAt > new Date() ? existingSubscription.expiresAt : new Date();
+    const newExpiry = new Date(baseDate);
+    newExpiry.setDate(newExpiry.getDate() + plan.durationDays);
+    await existingSubscription.renew(newExpiry);
+    existingSubscription.plan = plan._id;
+    existingSubscription.subLevel = plan.subLevel || null;
+    existingSubscription.paymentReference = transactionId || pendingPayment.paymentId;
+    // Accumulate, don't overwrite — amountPaid is the running total ever paid
+    // on this subscription across all renewals, so total-revenue reporting
+    // doesn't lose the original payment every time someone renews.
+    existingSubscription.amountPaid = (existingSubscription.amountPaid || 0) + Number(amount ?? pendingPayment.amount ?? 0);
+    existingSubscription.currency = currency || pendingPayment.currency || 'RWF';
+    await existingSubscription.save();
+    subscription = existingSubscription;
+  } else {
+    subscription = await Subscription.create({
+      user: pendingPayment.user,
+      level: plan.level._id,
+      subLevel: plan.subLevel || null,
+      plan: plan._id,
+      startsAt: new Date(),
+      expiresAt: new Date(Date.now() + plan.durationDays * 24 * 60 * 60 * 1000),
+      status: 'active',
+      paymentMethod: paymentMethod || pendingPayment.paymentMethod,
+      paymentReference: transactionId || pendingPayment.paymentId,
+      amountPaid: Number(amount ?? pendingPayment.amount ?? 0),
+      currency: currency || pendingPayment.currency || 'RWF'
+    });
+  }
+
+  await User.findByIdAndUpdate(pendingPayment.user, { level: plan.level._id });
+
+  pendingPayment.status = 'completed';
+  pendingPayment.subscription = subscription._id;
+  await pendingPayment.save();
+
+  return subscription;
+};
+
 // @desc    Process payment callback
 // @route   POST /api/subscriptions/callback
 // @access  Public
@@ -269,53 +332,12 @@ const processPaymentCallback = async (req, res) => {
       });
     }
 
-    const plan = await SubscriptionPlan.findById(pendingPayment.plan).populate('level');
-    if (!plan) {
-      return res.status(404).json({ message: 'Subscription plan not found' });
-    }
-
-    // If the user already has an active subscription for this same level,
-    // treat this payment as a renewal (extend) instead of creating a
-    // duplicate subscription record.
-    const existingSubscription = await Subscription.getActiveSubscriptionForLevel(
-      pendingPayment.user,
-      plan.level._id
-    );
-
-    let subscription;
-    if (existingSubscription) {
-      const baseDate = existingSubscription.expiresAt > new Date() ? existingSubscription.expiresAt : new Date();
-      const newExpiry = new Date(baseDate);
-      newExpiry.setDate(newExpiry.getDate() + plan.durationDays);
-      await existingSubscription.renew(newExpiry);
-      existingSubscription.plan = plan._id;
-      existingSubscription.subLevel = plan.subLevel || null;
-      existingSubscription.paymentReference = transactionId;
-      existingSubscription.amountPaid = Number(callbackResult.amount ?? amount ?? 0);
-      existingSubscription.currency = callbackResult.currency || 'RWF';
-      await existingSubscription.save();
-      subscription = existingSubscription;
-    } else {
-      subscription = await Subscription.create({
-        user: pendingPayment.user,
-        level: plan.level._id,
-        subLevel: plan.subLevel || null,
-        plan: plan._id,
-        startsAt: new Date(),
-        expiresAt: new Date(Date.now() + plan.durationDays * 24 * 60 * 60 * 1000),
-        status: 'active',
-        paymentMethod: callbackResult.paymentMethod || pendingPayment.paymentMethod,
-        paymentReference: transactionId,
-        amountPaid: Number(callbackResult.amount ?? amount ?? pendingPayment.amount),
-        currency: callbackResult.currency || pendingPayment.currency || 'RWF'
-      });
-    }
-
-    await User.findByIdAndUpdate(pendingPayment.user, { level: plan.level._id });
-
-    pendingPayment.status = 'completed';
-    pendingPayment.subscription = subscription._id;
-    await pendingPayment.save();
+    const subscription = await activatePendingPayment(pendingPayment._id, {
+      amount: callbackResult.amount ?? amount,
+      currency: callbackResult.currency,
+      transactionId,
+      paymentMethod: callbackResult.paymentMethod || pendingPayment.paymentMethod
+    });
 
     res.json({
       success: true,
@@ -462,7 +484,8 @@ const renewSubscription = async (req, res) => {
       subscription.paymentReference = paymentReference;
     }
     if (amountPaid) {
-      subscription.amountPaid = amountPaid;
+      // Accumulate, don't overwrite — see activatePendingPayment for why.
+      subscription.amountPaid = (subscription.amountPaid || 0) + Number(amountPaid);
     }
     await subscription.save();
 
@@ -621,6 +644,17 @@ const getSubscriptionStats = async (req, res) => {
       subscriptionsRenewed: renewalsAgg[0]?.subscriptionsRenewed || 0
     };
 
+    // Recently renewed subscriptions (most recent 20)
+    const renewalsList = await Subscription.find({ ...matchQuery, renewalCount: { $gt: 0 } })
+      .populate('user', 'firstName lastName email')
+      .populate('level', 'name')
+      .populate('plan', 'name')
+      .sort({ lastRenewedAt: -1 })
+      .limit(20);
+
+    // Pending payments awaiting activation (stuck / needs admin review)
+    const pendingPaymentsCount = await PendingPayment.countDocuments({ status: 'pending' });
+
     // Expired subscriptions detail (most recent 20)
     const expiredSubscriptionsList = await Subscription.find({ ...matchQuery, status: 'expired' })
       .populate('user', 'firstName lastName email')
@@ -648,6 +682,8 @@ const getSubscriptionStats = async (req, res) => {
       mostAttemptedExams,
       freeExamConversionRate,
       renewals,
+      renewalsList,
+      pendingPaymentsCount,
       expiredSubscriptionsList
     });
   } catch (error) {
@@ -659,6 +695,13 @@ const getSubscriptionStats = async (req, res) => {
 // @desc    Get the user's most recent pending mobile money payment (if any)
 // @route   GET /api/subscriptions/my/pending-payment
 // @access  Private
+//
+// Also acts as a fallback reconciler: the primary activation path is the
+// frontend polling /payment-status while the user waits on the payment page,
+// but if they close the tab/app before that resolves, the payment can be
+// left stuck as 'pending' forever (the iTechPay webhook is unreliable). This
+// endpoint is called on every dashboard load, so it doubles as a chance to
+// re-check with iTechPay and activate/fail it even if nobody was watching.
 const getMyPendingPayment = async (req, res) => {
   try {
     const pending = await PendingPayment.findOne({ user: req.user._id, status: 'pending' })
@@ -666,6 +709,27 @@ const getMyPendingPayment = async (req, res) => {
       .sort({ createdAt: -1 });
 
     if (!pending) return res.json(null);
+
+    try {
+      const verify = await itecPayment.verifyPayment(pending.reference, pending.paymentMethod);
+      if (verify.success) {
+        await activatePendingPayment(pending._id, {
+          amount: verify.amount,
+          currency: verify.currency,
+          transactionId: verify.transactionId,
+          paymentMethod: pending.paymentMethod
+        });
+        return res.json(null);
+      }
+      const cancelledStatuses = ['cancelled', 'canceled', 'rejected', 'failed', 'error', 'declined'];
+      if (cancelledStatuses.includes(verify.status)) {
+        pending.status = 'failed';
+        await pending.save();
+        return res.json(null);
+      }
+    } catch (verifyErr) {
+      console.warn('getMyPendingPayment: iTechPay re-verify failed, showing stale pending state:', verifyErr.message);
+    }
 
     res.json({
       reference: pending.reference,
@@ -705,6 +769,12 @@ const checkPaymentStatus = async (req, res) => {
     const cancelledStatuses = ['cancelled', 'canceled', 'rejected', 'failed', 'error', 'declined'];
 
     if (result.success) {
+      await activatePendingPayment(pendingPayment._id, {
+        amount: result.amount,
+        currency: result.currency,
+        transactionId: result.transactionId,
+        paymentMethod: pendingPayment.paymentMethod
+      });
       return res.json({ status: 'completed', success: true });
     }
 
@@ -722,7 +792,96 @@ const checkPaymentStatus = async (req, res) => {
   }
 };
 
+// @desc    List pending payments awaiting review (paid-but-not-activated /
+//          stuck in flight) so admins can see and resolve them without a script
+// @route   GET /api/subscriptions/pending
+// @access  Private/SuperAdmin
+const getPendingPayments = async (req, res) => {
+  try {
+    const pending = await PendingPayment.find({ status: 'pending' })
+      .populate('user', 'firstName lastName email')
+      .populate('plan', 'name price durationDays')
+      .populate('level', 'name')
+      .sort({ createdAt: -1 });
+
+    res.json(pending);
+  } catch (error) {
+    console.error('getPendingPayments error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Manually re-verify a pending payment with iTechPay and activate
+//          the subscription if confirmed paid
+// @route   POST /api/subscriptions/pending/:id/approve
+// @access  Private/SuperAdmin
+const approvePendingPayment = async (req, res) => {
+  try {
+    const pendingPayment = await PendingPayment.findById(req.params.id);
+    if (!pendingPayment) {
+      return res.status(404).json({ message: 'Pending payment not found' });
+    }
+
+    if (pendingPayment.status === 'completed') {
+      const existing = await Subscription.findById(pendingPayment.subscription)
+        .populate('user', 'firstName lastName email')
+        .populate('level', 'name')
+        .populate('plan', 'name price durationDays');
+      return res.json({ success: true, subscription: existing, message: 'Payment already processed' });
+    }
+
+    const verify = await itecPayment.verifyPayment(pendingPayment.reference, pendingPayment.paymentMethod);
+    if (!verify.success) {
+      return res.status(400).json({
+        success: false,
+        message: `iTechPay does not confirm this payment as successful (status: ${verify.status})`
+      });
+    }
+
+    const subscription = await activatePendingPayment(pendingPayment._id, {
+      amount: verify.amount,
+      currency: verify.currency,
+      transactionId: verify.transactionId,
+      paymentMethod: pendingPayment.paymentMethod
+    });
+
+    const populated = await Subscription.findById(subscription._id)
+      .populate('user', 'firstName lastName email')
+      .populate('level', 'name')
+      .populate('plan', 'name price durationDays');
+
+    res.json({ success: true, subscription: populated, message: 'Payment verified and subscription activated' });
+  } catch (error) {
+    console.error('approvePendingPayment error:', error);
+    res.status(500).json({ message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Mark a stuck pending payment as failed (dismiss it from the review queue)
+// @route   PATCH /api/subscriptions/pending/:id/reject
+// @access  Private/SuperAdmin
+const rejectPendingPayment = async (req, res) => {
+  try {
+    const pendingPayment = await PendingPayment.findById(req.params.id);
+    if (!pendingPayment) {
+      return res.status(404).json({ message: 'Pending payment not found' });
+    }
+    if (pendingPayment.status !== 'pending') {
+      return res.status(400).json({ message: 'Only pending payments can be rejected' });
+    }
+
+    pendingPayment.status = 'failed';
+    await pendingPayment.save();
+
+    res.json({ success: true, message: 'Payment marked as failed' });
+  } catch (error) {
+    console.error('rejectPendingPayment error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
+  activatePendingPayment,
   getSubscriptions,
   getSubscriptionById,
   getMyActiveSubscription,
@@ -730,6 +889,9 @@ module.exports = {
   initiateSubscriptionPayment,
   processPaymentCallback,
   checkPaymentStatus,
+  getPendingPayments,
+  approvePendingPayment,
+  rejectPendingPayment,
   createSubscription,
   cancelSubscription,
   renewSubscription,

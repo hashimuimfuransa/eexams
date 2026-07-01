@@ -133,7 +133,9 @@ const SubscriptionPurchase = () => {
   const [submitting, setSubmitting] = useState(false);
   const [mobilePending, setMobilePending] = useState(false);
   const [pendingReference, setPendingReference] = useState(null);
+  const [pendingPlanData, setPendingPlanData] = useState(null);
   const [paymentCancelled, setPaymentCancelled] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   useEffect(() => {
     if (!user?.level) {
@@ -143,12 +145,29 @@ const SubscriptionPurchase = () => {
     fetchPlans();
   }, [user]);
 
-  // Auto-fill phone from profile on mount
+  // Auto-fill phone from profile on mount + restore any pending state
+  // that survived a mobile-browser reload (USSD hijacks the browser focus)
   useEffect(() => {
     if (user?.phone) {
       const { code, local } = parseProfilePhone(user.phone);
       setCountryCode(code);
       setLocalPhone(local);
+    }
+
+    const saved = sessionStorage.getItem('pendingMobilePayment');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        if (data.reference && data.paymentMethod) {
+          setPendingReference(data.reference);
+          setPaymentMethod(data.paymentMethod);
+          if (data.planId) setSelectedPlan(data.planId);
+          if (data.plan) setPendingPlanData(data.plan);
+          setMobilePending(true);
+        }
+      } catch {
+        sessionStorage.removeItem('pendingMobilePayment');
+      }
     }
   }, []);
 
@@ -162,13 +181,18 @@ const SubscriptionPurchase = () => {
         const { status, cancelled, success } = res.data;
         if (success || status === 'completed') {
           clearInterval(interval);
+          sessionStorage.removeItem('pendingMobilePayment');
           setMobilePending(false);
-          navigate('/student/dashboard');
+          setPendingReference(null);
+          setPaymentSuccess(true);
+          setTimeout(() => navigate('/student/dashboard'), 4000);
         } else if (cancelled || status === 'cancelled') {
           clearInterval(interval);
+          sessionStorage.removeItem('pendingMobilePayment');
           setMobilePending(false);
           setPaymentCancelled(true);
           setPendingReference(null);
+          setPendingPlanData(null);
         }
         // status === 'pending' → keep polling
       } catch {
@@ -177,7 +201,7 @@ const SubscriptionPurchase = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [mobilePending, pendingReference]);
+  }, [mobilePending, pendingReference, navigate]);
 
   const fetchPlans = async () => {
     try {
@@ -229,7 +253,10 @@ const SubscriptionPurchase = () => {
       setError(null);
       setMobilePending(false);
       setPaymentCancelled(false);
+      setPaymentSuccess(false);
       setPendingReference(null);
+      setPendingPlanData(null);
+      sessionStorage.removeItem('pendingMobilePayment');
 
       const payload = { planId: selectedPlan, paymentMethod };
       if (selectedMethodConfig?.requiresPhone) payload.phone = countryCode + localPhone.replace(/[\s\-]/g, '');
@@ -241,7 +268,20 @@ const SubscriptionPurchase = () => {
           // Card: redirect to payment gateway
           window.location.href = response.data.paymentUrl;
         } else {
-          // Mobile money: push sent to phone — start polling
+          // Mobile money: push sent to phone — persist state so a mobile
+          // browser reload (triggered by the USSD OS dialog) doesn't lose it
+          const planSnapshot = {
+            name: selectedPlanData?.name,
+            price: selectedPlanData?.price,
+            currency: selectedPlanData?.currency,
+          };
+          sessionStorage.setItem('pendingMobilePayment', JSON.stringify({
+            reference: response.data.reference,
+            paymentMethod,
+            planId: selectedPlan,
+            plan: planSnapshot,
+          }));
+          setPendingPlanData(planSnapshot);
           setPendingReference(response.data.reference);
           setMobilePending(true);
         }
@@ -257,7 +297,35 @@ const SubscriptionPurchase = () => {
     }
   };
 
-  if (loading) {
+  if (paymentSuccess) {
+    return (
+      <Container maxWidth="sm" sx={{ mt: 8, textAlign: 'center' }}>
+        <Paper elevation={3} sx={{ p: 6, borderRadius: 3 }}>
+          <CheckCircle color="success" sx={{ fontSize: 80, mb: 2 }} />
+          <Typography variant="h5" fontWeight="bold" color="success.main" gutterBottom>
+            Payment Successful!
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
+            Your subscription is now active. You can access all subscription exams immediately.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Redirecting to your dashboard in a few seconds...
+          </Typography>
+          <Button
+            variant="contained"
+            color="success"
+            size="large"
+            onClick={() => navigate('/student/dashboard')}
+            sx={{ borderRadius: 2 }}
+          >
+            Go to Dashboard Now
+          </Button>
+        </Paper>
+      </Container>
+    );
+  }
+
+  if (loading && !mobilePending) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, textAlign: 'center' }}>
         <CircularProgress />
@@ -321,16 +389,25 @@ const SubscriptionPurchase = () => {
           <Typography fontWeight="bold">Payment prompt sent to your phone!</Typography>
           <Typography variant="body2" sx={{ mt: 0.5 }}>
             Open your <strong>{paymentMethod === 'mobile_money' ? 'MTN MoMo' : 'Airtel Money'}</strong> app or dial the USSD code to approve the payment of{' '}
-            <strong>RWF {selectedPlanData?.price?.toLocaleString()}</strong>.
+            <strong>RWF {(pendingPlanData || selectedPlanData)?.price?.toLocaleString()}</strong>.
             Your subscription will activate automatically once the payment is confirmed.
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Payments are securely processed by <strong>ITEC Pay</strong>.
+            Payments are securely processed by <strong>ITEC Pay</strong>. This page will update automatically.
           </Typography>
         </Alert>
       )}
 
-      {plans.length === 0 ? (
+      {loading && mobilePending && (
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <CircularProgress size={28} />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Checking payment status...
+          </Typography>
+        </Box>
+      )}
+
+      {!loading && plans.length === 0 && !mobilePending ? (
         <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
           <Typography variant="h6" color="text.secondary">
             No subscription plans available for your level yet.
@@ -339,7 +416,7 @@ const SubscriptionPurchase = () => {
             Please contact support for more information.
           </Typography>
         </Paper>
-      ) : (
+      ) : !loading && (
         <Grid container spacing={3}>
           {/* Plans list */}
           <Grid item xs={12} md={8}>
@@ -572,8 +649,10 @@ const SubscriptionPurchase = () => {
                   size="small"
                   startIcon={<Refresh />}
                   onClick={() => {
+                    sessionStorage.removeItem('pendingMobilePayment');
                     setMobilePending(false);
                     setPendingReference(null);
+                    setPendingPlanData(null);
                     setPaymentCancelled(true);
                   }}
                   sx={{ mt: 1 }}

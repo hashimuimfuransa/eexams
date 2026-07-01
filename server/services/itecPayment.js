@@ -25,18 +25,27 @@ class ITECPaymentService {
   normalizePhone(phone) {
     let p = phone.replace(/[\s\-().]/g, '');
     if (p.startsWith('+')) p = p.slice(1);
+    // iTechPay api2/pay expects local format: 07XXXXXXXX
     if (p.startsWith('250') && p.length === 12) p = '0' + p.slice(3);
     if (!p.startsWith('0') && p.length === 9) p = '0' + p;
     return p;
   }
 
   async post(url, body) {
+    const safeBody = { ...body };
+    if (safeBody.key) safeBody.key = safeBody.key.slice(0, 8) + '...';
+    console.log(`[iTechPay] → POST ${url}`);
+    console.log(`[iTechPay]   payload: ${JSON.stringify(safeBody)}`);
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
     const text = await response.text();
+    console.log(`[iTechPay] ← HTTP ${response.status} from ${url}`);
+    console.log(`[iTechPay]   raw response: ${text.slice(0, 500)}`);
+
     try {
       return JSON.parse(text);
     } catch {
@@ -46,8 +55,10 @@ class ITECPaymentService {
 
   async createPaymentRequest({ amount, currency, userId, planId, paymentMethod, phone, email }) {
     const provider = this.getProvider(paymentMethod);
+    console.log(`[iTechPay] createPaymentRequest: method=${paymentMethod}, provider=${provider}, amount=${amount} ${currency}, userId=${userId}`);
+
     const apiKey = this.getApiKey(provider);
-    const reference = `SUB_${userId}_${planId}_${crypto.randomUUID()}`;
+    const reference = crypto.randomUUID();
 
     if (paymentMethod === 'card') {
       if (!email) throw new Error('Email is required for card payments');
@@ -66,14 +77,17 @@ class ITECPaymentService {
 
       const pcode = result?.PCODE;
       if (!pcode) {
-        // status 500 / "Initiate failed" = card payments not activated on this iTechPay account
-        if (result?.status === 500 || String(result?.error || '').toLowerCase().includes('initiate failed')) {
-          throw new Error('Card payment is not yet activated. Please use mobile money or contact iTechPay support.');
-        }
-        throw new Error(result?.message || result?.error || 'Card payment unavailable — no PCODE returned');
+        console.error(`[iTechPay] Card: no PCODE — status=${result?.status}, error=${result?.error}, message=${result?.message}`);
+        const cardErrMsg = (result?.status === 500 || String(result?.error || '').toLowerCase().includes('initiate failed'))
+          ? 'Card payment is not yet activated. Please use mobile money or contact iTechPay support.'
+          : (result?.message || result?.error || 'Card payment unavailable — no PCODE returned');
+        const cardErr = new Error(cardErrMsg);
+        cardErr.isGatewayError = true;
+        throw cardErr;
       }
 
       const paymentUrl = result.link || `https://pay.itecpay.rw/api/pay/apis/pesapal/index?PCODE=${pcode}`;
+      console.log(`[iTechPay] Card payment created: PCODE=${pcode}, url=${paymentUrl}`);
       return { success: true, paymentUrl, paymentId: pcode, reference };
     }
 
@@ -95,13 +109,18 @@ class ITECPaymentService {
       statusVal === 'success' || statusVal === 'ok' || statusVal === '200';
 
     if (!ok) {
-      throw new Error(result?.data?.message || result?.message || `Payment request failed (status: ${result?.status})`);
+      const errMsg = result?.data?.message || result?.message || `Payment request failed (status: ${result?.status})`;
+      console.error(`[iTechPay] Mobile money rejected: ${errMsg}`);
+      const err = new Error(errMsg);
+      err.isGatewayError = true;
+      throw err;
     }
 
     const txId = result?.data?.transaction_id || result?.data?.financial_transaction_id || reference;
+    console.log(`[iTechPay] Mobile money initiated: txId=${txId}, phone=${this.normalizePhone(phone)}`);
     return {
       success: true,
-      paymentUrl: null, // push prompt sent to phone — no redirect
+      paymentUrl: null,
       paymentId: txId,
       reference
     };

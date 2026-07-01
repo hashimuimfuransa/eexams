@@ -17,7 +17,9 @@ import {
   Grid,
   Paper,
   TextField,
-  InputAdornment
+  InputAdornment,
+  Select,
+  MenuItem
 } from '@mui/material';
 import {
   WorkspacePremium,
@@ -30,6 +32,28 @@ import {
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
+const COUNTRY_CODES = [
+  { code: '+250', country: 'Rwanda',   flag: '🇷🇼' },
+  { code: '+256', country: 'Uganda',   flag: '🇺🇬' },
+  { code: '+257', country: 'Burundi',  flag: '🇧🇮' },
+  { code: '+243', country: 'DR Congo', flag: '🇨🇩' },
+  { code: '+255', country: 'Tanzania', flag: '🇹🇿' },
+  { code: '+254', country: 'Kenya',    flag: '🇰🇪' },
+];
+
+// Parse a stored profile phone into { code, local } pieces
+const parseProfilePhone = (phone) => {
+  if (!phone) return { code: '+250', local: '' };
+  const p = phone.replace(/[\s\-().]/g, '');
+  for (const { code } of COUNTRY_CODES) {
+    const num = code.slice(1); // "250", "256", …
+    if (p.startsWith('+' + num)) return { code, local: p.slice(code.length) };
+    if (p.startsWith(num) && p.length > num.length) return { code, local: p.slice(num.length) };
+  }
+  if (p.startsWith('0') && p.length === 10) return { code: '+250', local: p.slice(1) };
+  return { code: '+250', local: p };
+};
+
 const PAYMENT_METHODS = [
   {
     id: 'mobile_money',
@@ -39,7 +63,10 @@ const PAYMENT_METHODS = [
     color: '#FFC107',
     textColor: '#000',
     requiresPhone: true,
-    phonePlaceholder: '07X XXX XXXX (MTN number)',
+    phonePlaceholder: '781 234 567',
+    phoneHelperText: 'MTN numbers start with 78 or 79',
+    phoneLocalRegex: /^(78|79)\d{7}$/,
+    phoneError: 'Enter a valid MTN number (78 or 79 followed by 7 digits)',
   },
   {
     id: 'airtel_money',
@@ -49,7 +76,10 @@ const PAYMENT_METHODS = [
     color: '#F44336',
     textColor: '#fff',
     requiresPhone: true,
-    phonePlaceholder: '073 / 072 XXXXXXX (Airtel number)',
+    phonePlaceholder: '721 234 567',
+    phoneHelperText: 'Airtel numbers start with 72 or 73',
+    phoneLocalRegex: /^(72|73)\d{7}$/,
+    phoneError: 'Enter a valid Airtel number (72 or 73 followed by 7 digits)',
   },
   {
     id: 'card',
@@ -60,8 +90,33 @@ const PAYMENT_METHODS = [
     textColor: '#fff',
     requiresPhone: false,
     phonePlaceholder: '',
+    phoneHelperText: '',
+    phoneLocalRegex: null,
+    phoneError: '',
   },
 ];
+
+const GATEWAY_ERROR_MESSAGES = {
+  'payment request failed': 'Payment failed. Please make sure your phone number is registered for {method} and has sufficient balance.',
+  'invalid phone': 'The phone number you entered is not registered for {method}. Please use your active mobile money number.',
+  'phone not found': 'Phone number not found. Please enter the number registered with your {method} account.',
+  'insufficient funds': 'Insufficient balance. Please top up your {method} wallet and try again.',
+  'transaction failed': 'Transaction could not be processed. Please check your phone number and try again.',
+};
+
+const getFriendlyErrorMessage = (rawMessage, paymentMethod) => {
+  if (!rawMessage) return 'Payment failed. Please try again.';
+  const methodLabel = paymentMethod === 'mobile_money' ? 'MTN MoMo'
+    : paymentMethod === 'airtel_money' ? 'Airtel Money'
+    : 'card';
+  const lower = rawMessage.toLowerCase();
+  for (const [key, template] of Object.entries(GATEWAY_ERROR_MESSAGES)) {
+    if (lower.includes(key)) {
+      return template.replace(/{method}/g, methodLabel);
+    }
+  }
+  return rawMessage;
+};
 
 const SubscriptionPurchase = () => {
   const navigate = useNavigate();
@@ -69,7 +124,8 @@ const SubscriptionPurchase = () => {
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('mobile_money');
-  const [phone, setPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('+250');
+  const [localPhone, setLocalPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -83,6 +139,15 @@ const SubscriptionPurchase = () => {
     }
     fetchPlans();
   }, [user]);
+
+  // Auto-fill phone from profile on mount
+  useEffect(() => {
+    if (user?.phone) {
+      const { code, local } = parseProfilePhone(user.phone);
+      setCountryCode(code);
+      setLocalPhone(local);
+    }
+  }, []);
 
   const fetchPlans = async () => {
     try {
@@ -102,15 +167,20 @@ const SubscriptionPurchase = () => {
 
   const selectedMethodConfig = PAYMENT_METHODS.find(m => m.id === paymentMethod);
 
-  const validatePhone = (value) => {
+  const validatePhone = (value, code = countryCode) => {
     if (!selectedMethodConfig?.requiresPhone) return true;
     const cleaned = value.replace(/[\s\-]/g, '');
     if (!cleaned) {
       setPhoneError('Phone number is required');
       return false;
     }
-    if (!/^(\+?250|0)[7-8]\d{8}$/.test(cleaned)) {
-      setPhoneError('Enter a valid Rwandan phone number (e.g. 0788123456)');
+    if (code === '+250' && selectedMethodConfig.phoneLocalRegex) {
+      if (!selectedMethodConfig.phoneLocalRegex.test(cleaned)) {
+        setPhoneError(selectedMethodConfig.phoneError);
+        return false;
+      }
+    } else if (!/^\d{7,12}$/.test(cleaned)) {
+      setPhoneError('Enter a valid phone number (7–12 digits)');
       return false;
     }
     setPhoneError('');
@@ -122,7 +192,7 @@ const SubscriptionPurchase = () => {
       setError('Please select a subscription plan');
       return;
     }
-    if (selectedMethodConfig?.requiresPhone && !validatePhone(phone)) return;
+    if (selectedMethodConfig?.requiresPhone && !validatePhone(localPhone)) return;
 
     try {
       setSubmitting(true);
@@ -130,7 +200,7 @@ const SubscriptionPurchase = () => {
       setMobilePending(false);
 
       const payload = { planId: selectedPlan, paymentMethod };
-      if (selectedMethodConfig?.requiresPhone) payload.phone = phone.trim();
+      if (selectedMethodConfig?.requiresPhone) payload.phone = countryCode + localPhone.replace(/[\s\-]/g, '');
 
       const response = await api.post('/subscriptions/initiate', payload);
 
@@ -147,7 +217,8 @@ const SubscriptionPurchase = () => {
       }
     } catch (err) {
       console.error('Error purchasing subscription:', err);
-      setError(err.response?.data?.message || 'Failed to purchase subscription. Please try again.');
+      const rawMsg = err.response?.data?.message || '';
+      setError(getFriendlyErrorMessage(rawMsg, paymentMethod));
     } finally {
       setSubmitting(false);
     }
@@ -315,7 +386,17 @@ const SubscriptionPurchase = () => {
                 {PAYMENT_METHODS.map((method) => (
                   <Box
                     key={method.id}
-                    onClick={() => { setPaymentMethod(method.id); setPhoneError(''); }}
+                    onClick={() => {
+                      setPaymentMethod(method.id);
+                      setPhoneError('');
+                      if (user?.phone) {
+                        const { code, local } = parseProfilePhone(user.phone);
+                        setCountryCode(code);
+                        setLocalPhone(local);
+                      } else {
+                        setLocalPhone('');
+                      }
+                    }}
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
@@ -365,22 +446,48 @@ const SubscriptionPurchase = () => {
                   fullWidth
                   label="Phone Number"
                   placeholder={selectedMethodConfig.phonePlaceholder}
-                  value={phone}
+                  value={localPhone}
                   onChange={(e) => {
-                    setPhone(e.target.value);
-                    if (phoneError) validatePhone(e.target.value);
+                    const val = e.target.value.replace(/[^\d\s\-]/g, '');
+                    setLocalPhone(val);
+                    if (phoneError) validatePhone(val);
                   }}
                   error={!!phoneError}
-                  helperText={phoneError || 'Enter the number registered with your mobile money account'}
+                  helperText={phoneError || selectedMethodConfig.phoneHelperText}
                   InputProps={{
                     startAdornment: (
-                      <InputAdornment position="start">
-                        <PhoneAndroid fontSize="small" color="action" />
+                      <InputAdornment position="start" sx={{ mr: 0 }}>
+                        <Select
+                          value={countryCode}
+                          onChange={(e) => {
+                            setCountryCode(e.target.value);
+                            if (phoneError) validatePhone(localPhone, e.target.value);
+                          }}
+                          variant="standard"
+                          disableUnderline
+                          renderValue={(val) => {
+                            const entry = COUNTRY_CODES.find(c => c.code === val);
+                            return (
+                              <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                {entry?.flag} {val}
+                              </Typography>
+                            );
+                          }}
+                          sx={{ minWidth: 90, '& .MuiSelect-select': { py: 0 } }}
+                        >
+                          {COUNTRY_CODES.map(({ code, country, flag }) => (
+                            <MenuItem key={code} value={code}>
+                              <Typography variant="body2">{flag} {code} — {country}</Typography>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5 }} />
                       </InputAdornment>
                     )
                   }}
                   sx={{ mb: 2 }}
                   size="small"
+                  inputProps={{ inputMode: 'tel' }}
                 />
               )}
 

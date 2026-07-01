@@ -89,6 +89,9 @@ const getMyActiveSubscription = async (req, res) => {
 const initiateSubscriptionPayment = async (req, res) => {
   try {
     const { planId, paymentMethod = 'mobile_money', phone } = req.body;
+    console.log(`\n[Payment] ── Initiate ──────────────────────────────`);
+    console.log(`[Payment] user=${req.user?._id} (${req.user?.email})`);
+    console.log(`[Payment] planId=${planId}, method=${paymentMethod}, phone=${phone || 'n/a'}`);
 
     const validMethods = ['airtel_money', 'mobile_money', 'card'];
     if (!validMethods.includes(paymentMethod)) {
@@ -109,6 +112,10 @@ const initiateSubscriptionPayment = async (req, res) => {
       return res.status(400).json({ message: 'This plan is not currently available' });
     }
 
+    if (!plan.level) {
+      return res.status(400).json({ message: 'This plan is not associated with a level' });
+    }
+
     // Check if user has a level
     if (!req.user.level) {
       return res.status(400).json({ message: 'Please select a learning level first' });
@@ -125,6 +132,8 @@ const initiateSubscriptionPayment = async (req, res) => {
         existingSubscription
       });
     }
+
+    console.log(`[Payment] plan="${plan.name}" price=${plan.price} ${plan.currency}, level=${plan.level?.name}`);
 
     const paymentResult = await itecPayment.createPaymentRequest({
       amount: plan.price,
@@ -151,6 +160,8 @@ const initiateSubscriptionPayment = async (req, res) => {
       status: 'pending'
     });
 
+    console.log(`[Payment] ✓ created: ref=${paymentResult.reference}, paymentId=${paymentResult.paymentId}, hasUrl=${!!paymentResult.paymentUrl}`);
+
     res.json({
       success: true,
       paymentUrl: paymentResult.paymentUrl || null,
@@ -169,8 +180,11 @@ const initiateSubscriptionPayment = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Initiate payment error:', error);
-    res.status(500).json({ message: error.message || 'Failed to initiate payment' });
+    console.error(`[Payment] ✗ initiateSubscriptionPayment failed:`);
+    console.error(`[Payment]   message: ${error.message}`);
+    console.error(`[Payment]   stack:   ${error.stack}`);
+    const statusCode = error.isGatewayError ? 400 : 500;
+    res.status(statusCode).json({ message: error.message || 'Failed to initiate payment' });
   }
 };
 
@@ -179,6 +193,8 @@ const initiateSubscriptionPayment = async (req, res) => {
 // @access  Public
 const processPaymentCallback = async (req, res) => {
   try {
+    console.log(`\n[Payment] ── Callback ──────────────────────────────`);
+    console.log(`[Payment] body: ${JSON.stringify(req.body)}`);
     // iTechPay sends: { req_ref, transaction_id, amount, status }
     // For card the frontend may also POST after redirect: { reference, transaction_id, status }
     const reference = req.body.req_ref || req.body.reference;

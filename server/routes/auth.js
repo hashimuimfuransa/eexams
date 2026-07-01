@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getProfile, updateProfile, changePassword, verifyToken, googleAuth, forgotPassword, resetPassword, verifyResetToken, checkEmail, checkPhone } = require('../controllers/authController');
+const { register, login, getProfile, updateProfile, changePassword, verifyToken, googleAuth, forgotPassword, resetPassword, verifyResetToken, checkEmail, checkPhone, selectLevel } = require('../controllers/authController');
 const auth = require('../middleware/auth');
 const { validateLogin, validateRegister } = require('../middleware/validation');
 const { authLimiter } = require('../middleware/rateLimiter');
@@ -64,5 +64,10 @@ router.put('/change-password', auth, changePassword);
 // @desc    Verify token
 // @access  Private
 router.get('/verify', auth, verifyToken);
+
+// @route   POST /api/auth/select-level
+// @desc    Select learning level (for first-time students)
+// @access  Private
+router.post('/select-level', auth, selectLevel);
 
 module.exports = router;

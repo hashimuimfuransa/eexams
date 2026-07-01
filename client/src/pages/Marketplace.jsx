@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails, Collapse } from '@mui/material';
-import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp, ArrowBack } from '@mui/icons-material';
+import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp, ArrowBack, WorkspacePremium, Lock } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
@@ -46,7 +46,7 @@ const Marketplace = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [targetAudienceFilter, setTargetAudienceFilter] = useState('all');
   const [priceFilter, setPriceFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('newest');
+  const [sortBy, setSortBy] = useState('free-first');
   const [completedExamIds, setCompletedExamIds] = useState([]);
   const [approvedExamIds, setApprovedExamIds] = useState([]);
   const [pendingRetakeExamIds, setPendingRetakeExamIds] = useState([]);
@@ -58,6 +58,8 @@ const Marketplace = () => {
   const [levelFilter, setLevelFilter] = useState('all');
   const [subLevelFilter, setSubLevelFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(true);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [subscriptionChecked, setSubscriptionChecked] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
   const { mode, toggleMode } = useThemeMode();
@@ -75,8 +77,22 @@ const Marketplace = () => {
     if (isStudent) {
       fetchExamCompletionStatus();
       fetchRecommendations();
+      fetchSubscriptionStatus();
+    } else {
+      setSubscriptionChecked(true);
     }
   }, [isAuthenticated, user]);
+
+  const fetchSubscriptionStatus = async () => {
+    try {
+      const response = await api.get('/subscriptions/my/active');
+      setHasActiveSubscription(!!response.data);
+    } catch (err) {
+      setHasActiveSubscription(false);
+    } finally {
+      setSubscriptionChecked(true);
+    }
+  };
 
   // Fetch next page when page increments
   useEffect(() => {
@@ -245,24 +261,24 @@ const Marketplace = () => {
       subLevelFilter === 'all' || 
       exam.subLevel === subLevelFilter;
     
-    // Price filter
-    const matchesPrice = 
+    // Access type filter (renamed conceptually from "price" to accessType)
+    const matchesPrice =
       priceFilter === 'all' ||
-      (priceFilter === 'free' && exam.publicPrice === 0) ||
-      (priceFilter === 'paid' && exam.publicPrice > 0);
-    
+      (priceFilter === 'free' && exam.accessType !== 'subscription') ||
+      (priceFilter === 'paid' && exam.accessType === 'subscription');
+
     return matchesSearch && matchesLevel && matchesSubLevel && matchesPrice;
   }).sort((a, b) => {
-    // Sort logic
     switch (sortBy) {
+      case 'free-first': {
+        const freeRank = (a.accessType === 'subscription' ? 1 : 0) - (b.accessType === 'subscription' ? 1 : 0);
+        if (freeRank !== 0) return freeRank;
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      }
       case 'newest':
         return new Date(b.createdAt) - new Date(a.createdAt);
       case 'oldest':
         return new Date(a.createdAt) - new Date(b.createdAt);
-      case 'price-low':
-        return (a.publicPrice || 0) - (b.publicPrice || 0);
-      case 'price-high':
-        return (b.publicPrice || 0) - (a.publicPrice || 0);
       case 'title-asc':
         return (a.title || '').localeCompare(b.title || '');
       case 'title-desc':
@@ -282,7 +298,7 @@ const Marketplace = () => {
     setLevelFilter('all');
     setSubLevelFilter('all');
     setPriceFilter('all');
-    setSortBy('newest');
+    setSortBy('free-first');
   };
 
   // Handle level change with reset of sub-level
@@ -367,32 +383,94 @@ const Marketplace = () => {
         handleLogout={handleLogout}
         currentRoute="/marketplace"
       />
-      <Box sx={{ minHeight: '100vh', bgcolor: mode === 'dark' ? '#0F172A' : '#F1F5F9', pt: 20, pb: 8 }}>
-        <Box sx={{ maxWidth: 1200, margin: '0 auto', px: 3 }}>
+      <Box sx={{ minHeight: '100vh', bgcolor: mode === 'dark' ? '#0F172A' : '#F1F5F9', pt: { xs: 10, sm: 14, md: 20 }, pb: { xs: 5, sm: 8 } }}>
+        <Box sx={{ maxWidth: 1200, margin: '0 auto', px: { xs: 1.5, sm: 2, md: 3 } }}>
         {/* Header */}
-        <Box sx={{ mb: 4, textAlign: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2, gap: 2 }}>
+        <Box sx={{ mb: { xs: 3, sm: 4 }, textAlign: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2, gap: 1.5, flexWrap: 'wrap' }}>
             <Button
               onClick={() => navigate(-1)}
               startIcon={<ArrowBack />}
+              size="small"
               sx={{
                 textTransform: 'none',
                 fontWeight: 600,
                 color: '#0D406C',
-                '&:hover': {
-                  bgcolor: 'rgba(13,64,108,0.05)'
-                }
+                '&:hover': { bgcolor: 'rgba(13,64,108,0.05)' }
               }}
             >
               Back
             </Button>
-            <Typography variant="h2" fontWeight={600} sx={{ color: mode === 'dark' ? '#F8FAFC' : '#0D406C' }}>
+            <Typography
+              variant="h2"
+              fontWeight={600}
+              sx={{
+                color: mode === 'dark' ? '#F8FAFC' : '#0D406C',
+                fontSize: { xs: '1.6rem', sm: '2.4rem', md: '3rem' }
+              }}
+            >
               Exam Bank
             </Typography>
           </Box>
-          <Typography sx={{ color: mode === 'dark' ? '#94A3B8' : '#64748B', maxWidth: 600, mx: 'auto', mb: 4, fontSize: 16 }}>
+          <Typography sx={{ color: mode === 'dark' ? '#94A3B8' : '#64748B', maxWidth: 600, mx: 'auto', mb: { xs: 2.5, sm: 4 }, fontSize: { xs: 13, sm: 15, md: 16 } }}>
             Browse and request access to publicly available exams
           </Typography>
+
+          {/* Free-access / subscription notice — shown to logged-out visitors
+              and to students without an active subscription */}
+          {subscriptionChecked && (!isAuthenticated || (isStudent && !hasActiveSubscription)) && (
+            <Box
+              sx={{
+                maxWidth: 900,
+                mx: 'auto',
+                mb: 3,
+                borderRadius: 2.5,
+                p: { xs: 2, sm: 2.5 },
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                flexWrap: 'wrap',
+                justifyContent: 'space-between',
+                background: 'linear-gradient(135deg, #0D406C 0%, #1a5a8a 100%)',
+                boxShadow: '0 4px 16px rgba(13,64,108,0.25)'
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: { xs: 0, sm: 220 } }}>
+                <Lock sx={{ color: 'white', fontSize: 28, flexShrink: 0 }} />
+                <Box>
+                  <Typography sx={{ color: 'white', fontWeight: 700, fontSize: { xs: 13, sm: 15 } }}>
+                    {isAuthenticated
+                      ? "You're on the free tier — limited exams only"
+                      : 'Free exams are limited'}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.85)', fontSize: { xs: 11, sm: 13 }, mt: 0.25 }}>
+                    {isAuthenticated
+                      ? 'Every student gets just 1 free exam per learning level. Subscribe to unlock unlimited, complete exams for your level.'
+                      : 'Create a free account to try 1 exam per learning level at no cost. To unlock unlimited, complete exams, you\'ll need a subscription.'}
+                  </Typography>
+                </Box>
+              </Box>
+              <Button
+                variant="contained"
+                startIcon={<WorkspacePremium />}
+                onClick={() => navigate(isAuthenticated ? '/student/subscriptions' : '/student-register')}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                  bgcolor: 'white',
+                  color: '#0D406C',
+                  px: { xs: 2, sm: 3 },
+                  fontSize: { xs: 13, sm: 14 },
+                  alignSelf: { xs: 'stretch', sm: 'auto' },
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }
+                }}
+              >
+                {isAuthenticated ? 'Subscribe Now' : 'Sign Up Free'}
+              </Button>
+            </Box>
+          )}
 
           {/* Compact Filters Section */}
           <Box 
@@ -421,14 +499,14 @@ const Marketplace = () => {
                 <Typography fontWeight={600} sx={{ color: mode === 'dark' ? '#F8FAFC' : '#0F172A', fontSize: 15 }}>
                   Filter Exams
                 </Typography>
-                {(searchTerm || levelFilter !== 'all' || subLevelFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
-                  <Chip 
+                {(searchTerm || levelFilter !== 'all' || subLevelFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'free-first') && (
+                  <Chip
                     label={`${[
-                      searchTerm && 'search', 
-                      levelFilter !== 'all' && (levels.find(l => l._id === levelFilter)?.name || levelFilter), 
-                      subLevelFilter !== 'all' && subLevelFilter, 
-                      priceFilter !== 'all' && priceFilter, 
-                      sortBy !== 'newest' && 'sort'
+                      searchTerm && 'search',
+                      levelFilter !== 'all' && (levels.find(l => l._id === levelFilter)?.name || levelFilter),
+                      subLevelFilter !== 'all' && subLevelFilter,
+                      priceFilter !== 'all' && priceFilter,
+                      sortBy !== 'free-first' && 'sort'
                     ].filter(Boolean).length} active`}
                     size="small"
                     sx={{ ml: 2, bgcolor: '#0CBD73', color: 'white', fontWeight: 600, height: 22, fontSize: 11 }}
@@ -436,7 +514,7 @@ const Marketplace = () => {
                 )}
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {(searchTerm || levelFilter !== 'all' || subLevelFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'newest') && (
+                {(searchTerm || levelFilter !== 'all' || subLevelFilter !== 'all' || priceFilter !== 'all' || sortBy !== 'free-first') && (
                   <Button
                     onClick={(e) => { e.stopPropagation(); clearFilters(); }}
                     size="small"
@@ -472,7 +550,7 @@ const Marketplace = () => {
                 </Grid>
 
                 {/* Level Filter - Primary */}
-                <Grid item xs={6} sm={3} md={2}>
+                <Grid item xs={12} sm={3} md={2}>
                   <FormControl fullWidth size="small">
                     <InputLabel sx={{ fontSize: 13 }}>Level</InputLabel>
                     <Select
@@ -502,7 +580,7 @@ const Marketplace = () => {
                 </Grid>
 
                 {/* Sub-Level Filter - Secondary (only shown if level has sub-levels) */}
-                <Grid item xs={6} sm={3} md={2}>
+                <Grid item xs={12} sm={3} md={2}>
                   <FormControl fullWidth size="small" disabled={getAvailableSubLevels().length === 0}>
                     <InputLabel sx={{ fontSize: 13 }}>Sub-Level</InputLabel>
                     <Select
@@ -523,19 +601,19 @@ const Marketplace = () => {
                   </FormControl>
                 </Grid>
 
-                {/* Price Filter */}
+                {/* Access Type Filter */}
                 <Grid item xs={6} sm={3} md={2}>
                   <FormControl fullWidth size="small">
-                    <InputLabel sx={{ fontSize: 13 }}>Price</InputLabel>
+                    <InputLabel sx={{ fontSize: 13 }}>Access</InputLabel>
                     <Select
                       value={priceFilter}
                       onChange={(e) => setPriceFilter(e.target.value)}
-                      label="Price"
+                      label="Access"
                       sx={{ borderRadius: 1.5, fontSize: 14 }}
                     >
                       <MenuItem value="all">All</MenuItem>
                       <MenuItem value="free">Free</MenuItem>
-                      <MenuItem value="paid">Paid</MenuItem>
+                      <MenuItem value="paid">Subscription</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -550,10 +628,9 @@ const Marketplace = () => {
                       label="Sort"
                       sx={{ borderRadius: 1.5, fontSize: 14 }}
                     >
+                      <MenuItem value="free-first">Free First</MenuItem>
                       <MenuItem value="newest">Newest</MenuItem>
                       <MenuItem value="oldest">Oldest</MenuItem>
-                      <MenuItem value="price-low">Price: Low</MenuItem>
-                      <MenuItem value="price-high">Price: High</MenuItem>
                       <MenuItem value="title-asc">A-Z</MenuItem>
                       <MenuItem value="title-desc">Z-A</MenuItem>
                     </Select>
@@ -572,15 +649,15 @@ const Marketplace = () => {
 
         {/* Personalized Recommendations Section */}
         {isStudent && recommendations.length > 0 && (
-          <Box sx={{ mb: 5 }}>
-            <Typography variant="h5" fontWeight={600} sx={{ mb: 3, color: mode === 'dark' ? '#F8FAFC' : '#0D406C', display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box component="span" sx={{ fontSize: 24 }}>🎯</Box>
+          <Box sx={{ mb: { xs: 3, sm: 5 } }}>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 1.5, color: mode === 'dark' ? '#F8FAFC' : '#0D406C', display: 'flex', alignItems: 'center', gap: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+              <Box component="span">🎯</Box>
               Recommended For You
             </Typography>
-            <Typography variant="body2" sx={{ color: mode === 'dark' ? '#94A3B8' : '#64748B', mb: 2 }}>
+            <Typography variant="body2" sx={{ color: mode === 'dark' ? '#94A3B8' : '#64748B', mb: 2, fontSize: { xs: 12, sm: 14 } }}>
               Based on your exam history
             </Typography>
-            <Grid container spacing={2}>
+            <Grid container spacing={{ xs: 1.5, sm: 2 }}>
               {recommendations.slice(0, 3).map((exam) => {
                 const totalQuestions = calculateTotalQuestions(exam);
                 const isCompleted = completedExamIds.includes(exam._id);
@@ -600,7 +677,7 @@ const Marketplace = () => {
                         }
                       }}
                     >
-                      <CardContent sx={{ p: 2.5 }}>
+                      <CardContent sx={{ p: { xs: 1.5, sm: 2.5 }, '&:last-child': { pb: { xs: 1.5, sm: 2.5 } } }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
                           <Chip
                             label="Recommended"
@@ -672,8 +749,8 @@ const Marketplace = () => {
 
         {/* Exam Grid */}
         {filteredExams.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 8 }}>
-            <School sx={{ fontSize: 64, color: mode === 'dark' ? '#475569' : '#CBD5E1', mb: 2 }} />
+          <Box sx={{ textAlign: 'center', py: { xs: 5, sm: 8 } }}>
+            <School sx={{ fontSize: { xs: 48, sm: 64 }, color: mode === 'dark' ? '#475569' : '#CBD5E1', mb: 2 }} />
             <Typography variant="h6" sx={{ color: mode === 'dark' ? '#94A3B8' : '#64748B', mb: 1 }}>
               {searchTerm ? 'No exams found matching your search' : 'No exams available in the exam bank yet'}
             </Typography>
@@ -682,10 +759,39 @@ const Marketplace = () => {
             </Typography>
           </Box>
         ) : (
-          <Grid container spacing={3}>
-            {filteredExams.map((exam) => (
-              <Grid item xs={12} sm={6} md={4} key={exam._id}>
-                <Card 
+          <Grid container spacing={{ xs: 2, sm: 3 }}>
+            {filteredExams.map((exam, idx) => {
+              const isFirstFree = idx === 0 && exam.accessType !== 'subscription';
+              const isFirstSubscription = exam.accessType === 'subscription' &&
+                (idx === 0 || filteredExams[idx - 1].accessType !== 'subscription');
+
+              return (
+              <React.Fragment key={exam._id}>
+                {isFirstFree && (
+                  <Grid item xs={12}>
+                    <Alert severity="success" sx={{ borderRadius: 2 }}>
+                      <strong>Free Exams</strong> — try one exam per level at no cost, no account needed for these. Once used, subscribe to unlock unlimited exams.
+                    </Alert>
+                  </Grid>
+                )}
+                {isFirstSubscription && (
+                  <Grid item xs={12}>
+                    <Alert
+                      severity="info"
+                      sx={{ borderRadius: 2 }}
+                      icon={<WorkspacePremium />}
+                      action={
+                        <Button color="inherit" size="small" onClick={() => navigate(isAuthenticated ? '/student/subscriptions' : '/student-register')} sx={{ fontWeight: 'bold' }}>
+                          {isAuthenticated ? 'Subscribe' : 'Sign Up'}
+                        </Button>
+                      }
+                    >
+                      <strong>Subscription Exams</strong> — these require an active subscription for your level to unlock.
+                    </Alert>
+                  </Grid>
+                )}
+              <Grid item xs={12} sm={6} md={4}>
+                <Card
                   elevation={0} 
                   sx={{ 
                     borderRadius: 2, 
@@ -699,9 +805,9 @@ const Marketplace = () => {
                     }
                   }}
                 >
-                  <CardContent sx={{ p: 3 }}>
+                  <CardContent sx={{ p: { xs: 2, sm: 3 }, '&:last-child': { pb: { xs: 2, sm: 3 } } }}>
                     {/* Header with badges */}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5, gap: 1 }}>
                       <Chip 
                         label="Public Exam" 
                         size="small" 
@@ -714,8 +820,8 @@ const Marketplace = () => {
                         }} 
                       />
                       {(exam.targetAudience || exam.level?.name || exam.subLevel) && (
-                        <Chip 
-                          label={exam.subLevel 
+                        <Chip
+                          label={exam.subLevel
                             ? `${exam.level?.name || exam.targetAudience} - ${exam.subLevel}`
                             : (exam.targetAudience || exam.level?.name)}
                           size="small"
@@ -723,104 +829,109 @@ const Marketplace = () => {
                             background: 'rgba(13,71,161,0.1)',
                             color: '#0D406C',
                             fontWeight: 600,
-                            fontSize: 11
+                            fontSize: 10,
+                            maxWidth: 160,
+                            '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
                           }}
                         />
                       )}
                     </Box>
-                    
+
                     {/* Published Date */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
-                      <TimeIcon sx={{ fontSize: 14, color: mode === 'dark' ? '#64748B' : '#94A3B8' }} />
-                      <Typography sx={{ fontSize: 12, color: mode === 'dark' ? '#64748B' : '#94A3B8', fontWeight: 500 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                      <TimeIcon sx={{ fontSize: 13, color: mode === 'dark' ? '#64748B' : '#94A3B8' }} />
+                      <Typography sx={{ fontSize: 11, color: mode === 'dark' ? '#64748B' : '#94A3B8', fontWeight: 500 }}>
                         Published {formatRelativeTime(exam.createdAt)}
                       </Typography>
                     </Box>
-                    
+
                     {/* Title */}
-                    <Typography variant="h6" fontWeight={600} sx={{ mb: 1.5, color: mode === 'dark' ? '#F8FAFC' : '#0F172A', lineHeight: 1.3, fontSize: 18 }}>
+                    <Typography variant="h6" fontWeight={600} sx={{ mb: 1, color: mode === 'dark' ? '#F8FAFC' : '#0F172A', lineHeight: 1.3, fontSize: { xs: 15, sm: 17, md: 18 } }}>
                       {exam.title}
                     </Typography>
                     
                     {/* Description */}
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        color: mode === 'dark' ? '#94A3B8' : '#64748B', 
-                        mb: 2.5,
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: mode === 'dark' ? '#94A3B8' : '#64748B',
+                        mb: 2,
                         display: '-webkit-box',
                         WebkitLineClamp: 2,
                         WebkitBoxOrient: 'vertical',
                         overflow: 'hidden',
-                        lineHeight: 1.6
+                        lineHeight: 1.5,
+                        fontSize: { xs: 12, sm: 13 }
                       }}
                     >
                       {exam.publicDescription || exam.description}
                     </Typography>
 
                     {/* Stats */}
-                    <Box sx={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: '1fr 1fr', 
-                      gap: 1.5, 
-                      mb: 2.5, 
-                      p: 2, 
-                      borderRadius: 3, 
-                      background: mode === 'dark' ? 'rgba(30,41,59,0.8)' : 'rgba(241,245,249,0.8)' 
+                    <Box sx={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 1,
+                      mb: 2,
+                      p: { xs: 1.5, sm: 2 },
+                      borderRadius: 2,
+                      background: mode === 'dark' ? 'rgba(30,41,59,0.8)' : 'rgba(241,245,249,0.8)'
                     }}>
                       <Box sx={{ textAlign: 'center' }}>
-                        <Typography sx={{ fontSize: 20, fontWeight: 600, color: mode === 'dark' ? '#F8FAFC' : '#0D406C', lineHeight: 1, mb: 0.5 }}>
+                        <Typography sx={{ fontSize: { xs: 17, sm: 20 }, fontWeight: 700, color: mode === 'dark' ? '#F8FAFC' : '#0D406C', lineHeight: 1, mb: 0.25 }}>
                           {calculateTotalQuestions(exam)}
                         </Typography>
-                        <Typography sx={{ fontSize: 11, fontWeight: 500, color: mode === 'dark' ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                        <Typography sx={{ fontSize: 10, fontWeight: 500, color: mode === 'dark' ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                           Questions
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center' }}>
-                        <Typography sx={{ fontSize: 20, fontWeight: 600, color: '#0CBD73', lineHeight: 1, mb: 0.5 }}>
+                        <Typography sx={{ fontSize: { xs: 17, sm: 20 }, fontWeight: 700, color: '#0CBD73', lineHeight: 1, mb: 0.25 }}>
                           {exam.timeLimit}
                         </Typography>
-                        <Typography sx={{ fontSize: 11, fontWeight: 500, color: mode === 'dark' ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                        <Typography sx={{ fontSize: 10, fontWeight: 500, color: mode === 'dark' ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                           Minutes
                         </Typography>
                       </Box>
                     </Box>
 
-                    {/* Price or Free indicator */}
-                    {exam.publicPrice > 0 ? (
-                      <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between', 
-                        p: 1.5, 
-                        borderRadius: 2.5, 
-                        background: 'rgba(245,158,11,0.08)', 
-                        border: '1px solid rgba(245,158,11,0.2)',
-                        mb: 2
+                    {/* Access type badge */}
+                    {exam.accessType === 'subscription' ? (
+                      <Box sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 0.5,
+                        py: 1,
+                        px: 1.5,
+                        borderRadius: 2,
+                        background: 'rgba(99,102,241,0.08)',
+                        border: '1px solid rgba(99,102,241,0.2)',
+                        mb: 1.5
                       }}>
-                        <Typography sx={{ fontSize: 13, fontWeight: 600, color: mode === 'dark' ? '#94A3B8' : '#64748B' }}>Price</Typography>
-                        <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#F59E0B' }}>
-                          RWF {exam.publicPrice.toLocaleString()}
+                        <Typography sx={{ fontSize: { xs: 13, sm: 15 }, fontWeight: 700, color: '#6366F1' }}>
+                          🔒 Subscription Required
                         </Typography>
                       </Box>
                     ) : (
-                      <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        p: 1.5, 
-                        borderRadius: 2.5, 
-                        background: 'rgba(12,189,115,0.08)', 
+                      <Box sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        py: 1,
+                        px: 1.5,
+                        borderRadius: 2,
+                        background: 'rgba(12,189,115,0.08)',
                         border: '1px solid rgba(12,189,115,0.2)',
-                        mb: 2
+                        mb: 1.5
                       }}>
-                        <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#0CBD73' }}>
-                          Free
+                        <Typography sx={{ fontSize: { xs: 13, sm: 15 }, fontWeight: 700, color: '#0CBD73' }}>
+                          ✓ Free
                         </Typography>
                       </Box>
                     )}
 
-                    <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
                       {(() => {
                         const isCompleted = completedExamIds.includes(exam._id);
                         const isApproved = approvedExamIds.includes(exam._id);
@@ -915,7 +1026,9 @@ const Marketplace = () => {
                   </CardContent>
                 </Card>
               </Grid>
-            ))}
+              </React.Fragment>
+              );
+            })}
           </Grid>
         )}
 

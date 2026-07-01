@@ -90,13 +90,10 @@ const ExamSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  publicPrice: {
-    type: Number,
-    default: 0
-  },
-  retakePrice: {
-    type: Number,
-    default: 0
+  accessType: {
+    type: String,
+    enum: ['free', 'subscription'],
+    default: 'subscription'
   },
   publicDescription: {
     type: String,

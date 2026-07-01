@@ -18,6 +18,9 @@ import api from '../services/api';
 import { tokens, gradients, planColors as PLAN_COLORS } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
 import LeaderboardSection from '../components/admin/LeaderboardSection';
+import LevelManagement from '../components/admin/LevelManagement';
+import SubscriptionPlanManagement from '../components/admin/SubscriptionPlanManagement';
+import SubscriptionReports from '../components/admin/SubscriptionReports';
 
 const nav = [
   { id: 'home',          label: 'Overview',                icon: <DashIcon sx={{ fontSize: 20 }} /> },
@@ -25,7 +28,10 @@ const nav = [
   { id: 'teachers',      label: 'Teachers',               icon: <SupervisorAccount sx={{ fontSize: 20 }} /> },
   { id: 'users',         label: 'All Users',               icon: <People sx={{ fontSize: 20 }} /> },
   { id: 'exam-requests', label: 'Exam Requests',           icon: <School sx={{ fontSize: 20 }} /> },
-  { id: 'subscriptions', label: 'Subscriptions',             icon: <AttachMoney sx={{ fontSize: 20 }} /> },
+  { id: 'subscriptions', label: 'Org Subscriptions',         icon: <AttachMoney sx={{ fontSize: 20 }} /> },
+  { id: 'levels',          label: 'Levels',          icon: <School sx={{ fontSize: 20 }} /> },
+  { id: 'subscription-plans', label: 'Subscription Plans', icon: <AttachMoney sx={{ fontSize: 20 }} /> },
+  { id: 'subscription-reports', label: 'Subscription Reports', icon: <Assessment sx={{ fontSize: 20 }} /> },
   { id: 'marketplace',   label: 'Exam Bank Marketplace',    icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'student-results', label: 'Student Results',  icon: <Assessment sx={{ fontSize: 20 }} /> },
   { id: 'reclamations',    label: 'Reclamations',        icon: <ReportProblem sx={{ fontSize: 20 }} /> },
@@ -80,6 +86,9 @@ export default function SuperAdminDashboard() {
       {activeSection === 'users'         && <AllUsersSection searchQuery={searchQuery} />}
       {activeSection === 'exam-requests' && <ExamRequestsSection searchQuery={searchQuery} />}
       {activeSection === 'subscriptions' && <SubscriptionsSection stats={stats} />}
+      {activeSection === 'levels'        && <LevelManagement />}
+      {activeSection === 'subscription-plans' && <SubscriptionPlanManagement />}
+      {activeSection === 'subscription-reports' && <SubscriptionReports />}
       {activeSection === 'marketplace'   && <ExamBankMarketplaceSection searchQuery={searchQuery} />}
       {activeSection === 'student-results' && <StudentResultsSection searchQuery={searchQuery} />}
       {activeSection === 'reclamations'    && <ReclamationsSection searchQuery={searchQuery} />}
@@ -3375,7 +3384,8 @@ function ExamBankMarketplaceSection({ searchQuery }) {
         targetAudience: editDialog.targetAudience,
         levelId: editDialog.levelId,
         subLevel: editDialog.subLevel,
-        status: editDialog.status
+        status: editDialog.status,
+        accessType: editDialog.accessType
       });
       setSnack({ open: true, msg: 'Exam settings updated successfully', severity: 'success' });
       setEditDialog(null);
@@ -3556,15 +3566,26 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                       By {exam.createdBy?.organization || `${exam.createdBy?.firstName} ${exam.createdBy?.lastName}`}
                     </Typography>
                   </Box>
-                  <Chip
-                    label={exam.isPubliclyListed ? 'Public' : 'Private'}
-                    size="small"
-                    sx={{
-                      height: 22, fontSize: '11px', fontWeight: 600,
-                      bgcolor: exam.isPubliclyListed ? 'rgba(12,189,115,0.1)' : 'rgba(100,116,139,0.1)',
-                      color: exam.isPubliclyListed ? tokens.accent : '#64748B'
-                    }}
-                  />
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
+                    <Chip
+                      label={exam.isPubliclyListed ? 'Public' : 'Private'}
+                      size="small"
+                      sx={{
+                        height: 22, fontSize: '11px', fontWeight: 600,
+                        bgcolor: exam.isPubliclyListed ? 'rgba(12,189,115,0.1)' : 'rgba(100,116,139,0.1)',
+                        color: exam.isPubliclyListed ? tokens.accent : '#64748B'
+                      }}
+                    />
+                    <Chip
+                      label={exam.accessType === 'free' ? 'Free' : 'Subscription'}
+                      size="small"
+                      sx={{
+                        height: 22, fontSize: '11px', fontWeight: 600,
+                        bgcolor: exam.accessType === 'free' ? 'rgba(12,189,115,0.1)' : 'rgba(99,102,241,0.1)',
+                        color: exam.accessType === 'free' ? tokens.accent : '#6366F1'
+                      }}
+                    />
+                  </Box>
                 </Box>
 
                 {/* Stats */}
@@ -3589,14 +3610,9 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                 {/* Footer */}
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pt: 1.5, borderTop: `1px solid ${tokens.surfaceBorder}` }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                    <Typography variant="body2" fontWeight={700} sx={{ color: tokens.accent }}>
-                      {exam.publicPrice > 0 ? `${exam.publicPrice} RWF` : 'Free'}
+                    <Typography variant="body2" fontWeight={700} sx={{ color: exam.accessType === 'subscription' ? '#6366F1' : tokens.accent }}>
+                      {exam.accessType === 'subscription' ? '🔒 Subscription' : 'Free'}
                     </Typography>
-                    {exam.retakePrice > 0 && (
-                      <Typography variant="caption" fontWeight={600} sx={{ color: tokens.warning }}>
-                        Retake: {exam.retakePrice} RWF
-                      </Typography>
-                    )}
                     {exam.level && (
                       <Chip label={exam.level.name} size="small" sx={{ height: 20, fontSize: '10px', bgcolor: 'rgba(99,102,241,0.1)', color: '#6366F1', fontWeight: 600 }} />
                     )}
@@ -3750,6 +3766,20 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                 <Select label="Visibility" value={editDialog?.isPubliclyListed || false} onChange={(e) => setEditDialog(d => ({ ...d, isPubliclyListed: e.target.value }))} sx={{ borderRadius: 2 }}>
                   <MuiMenuItem value={true}>Public (Marketplace)</MuiMenuItem>
                   <MuiMenuItem value={false}>Private</MuiMenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ fontWeight: 600 }}>Access Type</InputLabel>
+                <Select
+                  label="Access Type"
+                  value={editDialog?.accessType || 'subscription'}
+                  onChange={(e) => setEditDialog(d => ({ ...d, accessType: e.target.value }))}
+                  sx={{ borderRadius: 2 }}
+                >
+                  <MuiMenuItem value="free">Free</MuiMenuItem>
+                  <MuiMenuItem value="subscription">Subscription Only</MuiMenuItem>
                 </Select>
               </FormControl>
             </Grid>

@@ -61,6 +61,14 @@ const isStudent = (req, res, next) => {
   return res.status(403).json({ message: 'Access denied. Student role required.' });
 };
 
+// Middleware to check if user is a superadmin
+const isSuperAdmin = (req, res, next) => {
+  if (req.user && req.user.role === 'superadmin') {
+    return next();
+  }
+  return res.status(403).json({ message: 'Access denied. Superadmin role required.' });
+};
+
 // Middleware to check system lock status
 const checkSystemLock = async (req, res, next) => {
   try {
@@ -92,5 +100,6 @@ module.exports = {
   attachOrgAdminId,
   isTeacher,
   isStudent,
+  isSuperAdmin,
   checkSystemLock
 };

@@ -2091,12 +2091,15 @@ const createExam = async (req, res) => {
       return res.status(401).json({ message: 'Not authenticated or missing user information' });
     }
 
-    const { title, timeLimit, isLocked, passingScore, questions, sections } = req.body;
+    const { title, timeLimit, isLocked, passingScore, questions, sections, level, subLevel, accessType } = req.body;
     const description = req.body.description && req.body.description.trim() ? req.body.description.trim() : 'Exam';
 
     // Validate required fields
     if (!title || !timeLimit) {
       return res.status(400).json({ message: 'Please provide title and time limit' });
+    }
+    if (!level) {
+      return res.status(400).json({ message: 'Please select a learning level for this exam' });
     }
 
     // Initialize file variables
@@ -2189,7 +2192,10 @@ const createExam = async (req, res) => {
       createdBy: createdById,
       status: 'draft',
       sections: sectionsArray,
-      totalPoint: totalMarks
+      totalPoint: totalMarks,
+      level,
+      subLevel: subLevel || null,
+      accessType: accessType === 'free' ? 'free' : 'subscription'
     });
     console.log('Exam created with _id:', exam._id, 'createdBy:', exam.createdBy);
     
@@ -5137,7 +5143,7 @@ const updateExam = async (req, res) => {
     const exam = await Exam.findOne(query).lean();
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
 
-    const { title, description, timeLimit, passingScore, sections, status, isLocked, questions, calculatorEnabled } = req.body;
+    const { title, description, timeLimit, passingScore, sections, status, isLocked, questions, calculatorEnabled, level, subLevel, accessType } = req.body;
 
     // Handle direct questions array update (for editing individual questions like matching)
     if (questions && Array.isArray(questions)) {
@@ -5309,7 +5315,10 @@ const updateExam = async (req, res) => {
           status: status || exam.status,
           isLocked: typeof isLocked === 'boolean' ? isLocked : exam.isLocked,
           calculatorEnabled: typeof calculatorEnabled === 'boolean' ? calculatorEnabled : exam.calculatorEnabled,
-          sections: updatedSectionQuestions
+          sections: updatedSectionQuestions,
+          level: level !== undefined ? (level || null) : exam.level,
+          subLevel: subLevel !== undefined ? (subLevel || null) : exam.subLevel,
+          accessType: accessType !== undefined ? (accessType === 'free' ? 'free' : 'subscription') : exam.accessType
         }
       );
     } else {
@@ -5323,14 +5332,18 @@ const updateExam = async (req, res) => {
           passingScore: passingScore ? Number(passingScore) : exam.passingScore,
           status: status || exam.status,
           isLocked: typeof isLocked === 'boolean' ? isLocked : exam.isLocked,
-          calculatorEnabled: typeof calculatorEnabled === 'boolean' ? calculatorEnabled : exam.calculatorEnabled
+          calculatorEnabled: typeof calculatorEnabled === 'boolean' ? calculatorEnabled : exam.calculatorEnabled,
+          level: level !== undefined ? (level || null) : exam.level,
+          subLevel: subLevel !== undefined ? (subLevel || null) : exam.subLevel,
+          accessType: accessType !== undefined ? (accessType === 'free' ? 'free' : 'subscription') : exam.accessType
         }
       );
     }
 
     // Return updated exam with populated questions
     const updated = await Exam.findById(exam._id)
-      .populate({ path: 'sections.questions', model: 'Question' });
+      .populate({ path: 'sections.questions', model: 'Question' })
+      .populate('level', 'name description subLevels');
     res.json(updated);
   } catch (err) {
     console.error('updateExam error:', err);

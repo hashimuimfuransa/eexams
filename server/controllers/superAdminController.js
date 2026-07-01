@@ -2230,7 +2230,7 @@ const getMarketplaceExamsWithStats = async (req, res) => {
 
     // Get exams with creator info - use lean() for faster serialization
     let examsQuery = Exam.find(query)
-      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience isPubliclyListed isLocked status createdAt createdBy level subLevel')
+      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience isPubliclyListed isLocked status createdAt createdBy level subLevel accessType')
       .populate('createdBy', 'firstName lastName email organization')
       .populate('level', 'name subLevels');
 
@@ -2495,7 +2495,7 @@ const getExamUsageDetails = async (req, res) => {
 // @access  Private/SuperAdmin
 const updateExamMarketplaceSettings = async (req, res) => {
   try {
-    const { title, description, isPubliclyListed, publicPrice, retakePrice, publicDescription, targetAudience, status, levelId, subLevel } = req.body;
+    const { title, description, isPubliclyListed, publicPrice, retakePrice, publicDescription, targetAudience, status, levelId, subLevel, accessType } = req.body;
 
     const exam = await Exam.findById(req.params.id);
 
@@ -2514,6 +2514,7 @@ const updateExamMarketplaceSettings = async (req, res) => {
     if (status !== undefined) exam.status = status;
     if (levelId !== undefined) exam.level = levelId || null;
     if (subLevel !== undefined) exam.subLevel = subLevel || null;
+    if (accessType !== undefined) exam.accessType = accessType === 'free' ? 'free' : 'subscription';
 
     await exam.save();
 

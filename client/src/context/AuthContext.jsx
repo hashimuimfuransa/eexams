@@ -98,6 +98,11 @@ export const AuthProvider = ({ children }) => {
                   // Use ?? for plan/status so superadmin null values don't overwrite localStorage
                   subscriptionPlan: verifyRes.data.subscriptionPlan ?? userData.subscriptionPlan,
                   subscriptionStatus: verifyRes.data.subscriptionStatus ?? userData.subscriptionStatus,
+                  level: verifyRes.data.level ?? userData.level,
+                  subLevel: verifyRes.data.subLevel ?? userData.subLevel,
+                  freeExamUsed: verifyRes.data.freeExamUsed ?? userData.freeExamUsed,
+                  freeExamLevel: verifyRes.data.freeExamLevel ?? userData.freeExamLevel,
+                  requiresLevelSelection: verifyRes.data.requiresLevelSelection ?? userData.requiresLevelSelection ?? false,
                 };
                 localStorage.setItem('user', JSON.stringify(freshUser));
                 setUser(freshUser);
@@ -205,6 +210,11 @@ export const AuthProvider = ({ children }) => {
         organization: response.data.organization,
         isOrgTeacher: response.data.isOrgTeacher ?? false,
         phone: response.data.phone,
+        level: response.data.level,
+        subLevel: response.data.subLevel,
+        freeExamUsed: response.data.freeExamUsed,
+        freeExamLevel: response.data.freeExamLevel,
+        requiresLevelSelection: response.data.requiresLevelSelection ?? false,
       };
 
       // Save user to localStorage
@@ -327,6 +337,11 @@ export const AuthProvider = ({ children }) => {
         subscriptionStatus: response.data.subscriptionStatus,
         organization: response.data.organization,
         phone: response.data.phone,
+        level: response.data.level,
+        subLevel: response.data.subLevel,
+        freeExamUsed: response.data.freeExamUsed,
+        freeExamLevel: response.data.freeExamLevel,
+        requiresLevelSelection: response.data.requiresLevelSelection ?? false,
       };
 
       // Only persist session for existing (returning) users by default.
@@ -353,6 +368,21 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Update the user's selected learning level (after first-login selection or a level change)
+  const updateUserLevel = (levelData, subLevel = null) => {
+    if (!user) return;
+    const updatedUser = {
+      ...user,
+      level: levelData,
+      subLevel: subLevel || null,
+      requiresLevelSelection: false,
+      freeExamUsed: false,
+      freeExamLevel: null
+    };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  };
+
   // Logout function
   const logout = () => {
     localStorage.removeItem('user');
@@ -372,7 +402,12 @@ export const AuthProvider = ({ children }) => {
         phone: userData.phone !== undefined ? userData.phone : user.phone,
         gender: userData.gender !== undefined ? userData.gender : user.gender,
         class: userData.class,
-        organization: userData.organization
+        organization: userData.organization,
+        level: userData.level !== undefined ? userData.level : user.level,
+        subLevel: userData.subLevel !== undefined ? userData.subLevel : user.subLevel,
+        freeExamUsed: userData.freeExamUsed !== undefined ? userData.freeExamUsed : user.freeExamUsed,
+        freeExamLevel: userData.freeExamLevel !== undefined ? userData.freeExamLevel : user.freeExamLevel,
+        requiresLevelSelection: userData.level ? false : user.requiresLevelSelection
       };
 
       // Update localStorage
@@ -396,6 +431,7 @@ export const AuthProvider = ({ children }) => {
         googleLogin,
         logout,
         updateUserProfile,
+        updateUserLevel,
         setUser
       }}
     >

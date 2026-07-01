@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const User = require('../models/User');
+const Level = require('../models/Level');
 const ActivityLog = require('../models/ActivityLog');
 const SubscriptionRequest = require('../models/SubscriptionRequest');
+const Subscription = require('../models/Subscription');
 const { getPlanUsage } = require('../middleware/planRestrictions');
 
 // @route   PUT /api/profile
@@ -195,6 +197,120 @@ router.get('/plan-usage', auth, async (req, res) => {
     res.json(usage);
   } catch (error) {
     console.error('Get plan usage error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   PUT /api/profile/change-level
+// @desc    Change user's learning level
+// @access  Private
+router.put('/change-level', auth, async (req, res) => {
+  try {
+    const { levelId, subLevel, confirm } = req.body;
+
+    if (!levelId) {
+      return res.status(400).json({ message: 'Level ID is required' });
+    }
+
+    // Validate level exists and is active
+    const level = await Level.findById(levelId);
+    if (!level) {
+      return res.status(404).json({ message: 'Level not found' });
+    }
+
+    if (!level.isActive) {
+      return res.status(400).json({ message: 'This level is not currently available' });
+    }
+
+    // Validate sub-level if provided
+    let resolvedSubLevel = null;
+    if (subLevel) {
+      const activeSubLevels = level.getActiveSubLevels();
+      const match = activeSubLevels.find(s => s.name === subLevel);
+      if (!match) {
+        return res.status(400).json({ message: 'Invalid sub-level for this level' });
+      }
+      resolvedSubLevel = match.name;
+    }
+
+    const currentUser = await User.findById(req.user._id);
+    const isSameLevel = currentUser.level && currentUser.level.toString() === levelId;
+
+    // Switching sub-level within the SAME level doesn't require a new
+    // subscription or reset the free-exam slot — only a level change does.
+    if (isSameLevel) {
+      const user = await User.findByIdAndUpdate(
+        req.user._id,
+        { subLevel: resolvedSubLevel },
+        { new: true }
+      ).populate('level');
+
+      return res.json({
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        level: user.level,
+        subLevel: user.subLevel,
+        freeExamUsed: user.freeExamUsed,
+        freeExamLevel: user.freeExamLevel,
+        subscriptionCancelled: false
+      });
+    }
+
+    // Check if user has active subscription
+    const activeSubscription = await Subscription.getActiveSubscription(req.user._id);
+
+    if (activeSubscription && !confirm) {
+      // Return warning that user needs to confirm
+      return res.status(400).json({
+        message: 'You have an active subscription for your current level. Changing level will require a new subscription.',
+        hasActiveSubscription: true,
+        currentLevel: activeSubscription.level.name,
+        currentSubscriptionExpiry: activeSubscription.expiresAt,
+        requiresConfirmation: true
+      });
+    }
+
+    // If confirmed and has active subscription, cancel it
+    if (activeSubscription && confirm) {
+      await activeSubscription.cancel();
+    }
+
+    // Update user's level
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        level: levelId,
+        subLevel: resolvedSubLevel,
+        // Reset free exam usage when changing level
+        freeExamUsed: false,
+        freeExamLevel: null
+      },
+      { new: true }
+    ).populate('level');
+
+    // Log activity
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'change_level',
+      details: {
+        oldLevel: activeSubscription?.level?.name || 'None',
+        newLevel: level.name
+      }
+    });
+
+    res.json({
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      level: user.level,
+      subLevel: user.subLevel,
+      freeExamUsed: user.freeExamUsed,
+      freeExamLevel: user.freeExamLevel,
+      subscriptionCancelled: !!activeSubscription
+    });
+  } catch (error) {
+    console.error('Change level error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

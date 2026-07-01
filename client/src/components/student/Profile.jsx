@@ -33,24 +33,370 @@ import {
   Cancel,
   Visibility,
   VisibilityOff,
-  Badge,
   Business,
   Class as ClassIcon,
-  Star,
-  EmojiEvents,
-  LocalFireDepartment,
   WorkspacePremium,
   Verified,
-  PhotoCamera
+  Warning,
+  ArrowForward,
+  CheckCircle,
+  CalendarMonth,
+  CreditCard,
+  Loop,
+  ShoppingCart
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
-import PlanUsageCard from '../PlanUsageCard';
+
+// ─── Student Subscription Section ────────────────────────────────────────────
+const StudentSubscriptionSection = ({ subscription, subscriptionLoading, user }) => {
+  const now = new Date();
+
+  const getDaysLeft = (expiresAt) => {
+    if (!expiresAt) return null;
+    const diff = new Date(expiresAt) - now;
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  const statusMeta = {
+    active:    { color: '#10B981', bg: '#F0FDF4', border: '#BBF7D0', label: 'Active' },
+    expired:   { color: '#EF4444', bg: '#FEF2F2', border: '#FECACA', label: 'Expired' },
+    cancelled: { color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB', label: 'Cancelled' },
+    pending:   { color: '#F59E0B', bg: '#FFFBEB', border: '#FDE68A', label: 'Pending' },
+  };
+
+  if (subscriptionLoading) {
+    return (
+      <Box sx={{ p: 3, borderRadius: 2, bgcolor: 'white', border: '1px solid #E2E8F0', display: 'flex', justifyContent: 'center' }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+
+  if (!subscription) {
+    return (
+      <Box sx={{ p: 3, borderRadius: 2, bgcolor: '#FFFBEB', border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+        <CreditCard sx={{ color: '#D97706', fontSize: 28 }} />
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography fontWeight={700} sx={{ color: '#92400E' }}>No Active Subscription</Typography>
+          <Typography variant="body2" sx={{ color: '#78350F', fontSize: 13 }}>
+            Subscribe to a plan to unlock exams for your level.
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<ShoppingCart />}
+          href="/marketplace"
+          sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2, bgcolor: '#D97706', '&:hover': { bgcolor: '#B45309' }, flexShrink: 0 }}
+        >
+          Browse Plans
+        </Button>
+      </Box>
+    );
+  }
+
+  const meta = statusMeta[subscription.status] || statusMeta.pending;
+  const daysLeft = getDaysLeft(subscription.expiresAt);
+  const daysColor = daysLeft === null ? '#6B7280' : daysLeft <= 7 ? '#EF4444' : daysLeft <= 30 ? '#F59E0B' : '#10B981';
+  const levelLabel = subscription.level?.name || '—';
+  const subLevelLabel = subscription.subLevel ? ` · ${subscription.subLevel}` : '';
+
+  return (
+    <Box
+      sx={{
+        p: 3,
+        borderRadius: 3,
+        bgcolor: 'white',
+        border: '1px solid #E2E8F0',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2.5, flexWrap: 'wrap', gap: 1 }}>
+        <Box>
+          <Typography variant="h6" fontWeight={700} sx={{ color: '#1E293B' }}>
+            Subscription Plan
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748B', mt: 0.25 }}>
+            Your current learning subscription
+          </Typography>
+        </Box>
+        <Chip
+          label={meta.label}
+          size="small"
+          sx={{ bgcolor: meta.bg, color: meta.color, border: `1px solid ${meta.border}`, fontWeight: 700, fontSize: 12 }}
+        />
+      </Box>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>
+        {/* Plan name */}
+        <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <WorkspacePremium sx={{ fontSize: 16, color: '#6366F1' }} />
+            <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600 }}>PLAN</Typography>
+          </Box>
+          <Typography fontWeight={700} sx={{ color: '#1E293B', fontSize: 15 }}>
+            {subscription.plan?.name || '—'}
+          </Typography>
+        </Box>
+
+        {/* Level coverage */}
+        <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <School sx={{ fontSize: 16, color: '#3B82F6' }} />
+            <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600 }}>COVERS</Typography>
+          </Box>
+          <Typography fontWeight={700} sx={{ color: '#1E293B', fontSize: 15 }}>
+            {levelLabel}{subLevelLabel}
+          </Typography>
+        </Box>
+
+        {/* Expiry / days left */}
+        <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <CalendarMonth sx={{ fontSize: 16, color: daysColor }} />
+            <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600 }}>EXPIRES</Typography>
+          </Box>
+          {daysLeft !== null ? (
+            <>
+              <Typography fontWeight={700} sx={{ color: daysColor, fontSize: 15 }}>
+                {daysLeft} day{daysLeft !== 1 ? 's' : ''} left
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#94A3B8' }}>
+                {new Date(subscription.expiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </Typography>
+            </>
+          ) : (
+            <Typography fontWeight={700} sx={{ color: '#6B7280', fontSize: 15 }}>Never</Typography>
+          )}
+        </Box>
+      </Box>
+
+      {daysLeft !== null && daysLeft <= 14 && subscription.status === 'active' && (
+        <Box sx={{ mt: 2, p: 1.5, borderRadius: 2, bgcolor: daysLeft <= 7 ? '#FEF2F2' : '#FFFBEB', border: `1px solid ${daysLeft <= 7 ? '#FECACA' : '#FDE68A'}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Warning sx={{ color: daysLeft <= 7 ? '#EF4444' : '#D97706', fontSize: 18, flexShrink: 0 }} />
+          <Typography variant="body2" sx={{ color: daysLeft <= 7 ? '#991B1B' : '#92400E', flex: 1, fontSize: 13 }}>
+            {daysLeft <= 7 ? 'Your subscription expires very soon!' : 'Less than 2 weeks left on your subscription.'}
+          </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<Loop />}
+            href="/marketplace"
+            sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2, fontSize: 12, borderColor: daysLeft <= 7 ? '#EF4444' : '#D97706', color: daysLeft <= 7 ? '#EF4444' : '#D97706', flexShrink: 0 }}
+          >
+            Renew
+          </Button>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+// ─── Level Section (inline in the sidebar card) ───────────────────────────────
+const LevelSection = ({
+  user, levels, selectedLevel, setSelectedLevel,
+  selectedSubLevel, setSelectedSubLevel, availableSubLevels,
+  levelChangeMode, setLevelChangeMode, levelChangeStep, setLevelChangeStep,
+  levelChangeWarning, setLevelChangeWarning, changingLevel, handleLevelChange, theme
+}) => {
+  const levelColors = [
+    { bg: '#EFF6FF', border: '#BFDBFE', icon: '#3B82F6', text: '#1E40AF' },
+    { bg: '#F0FDF4', border: '#BBF7D0', icon: '#22C55E', text: '#166534' },
+    { bg: '#FFF7ED', border: '#FED7AA', icon: '#F97316', text: '#9A3412' },
+    { bg: '#FAF5FF', border: '#E9D5FF', icon: '#A855F7', text: '#6B21A8' },
+  ];
+  const selectedLevelObj = levels.find(l => l._id === selectedLevel);
+  const hasSubLevels = availableSubLevels.length > 0;
+
+  const cancelChange = () => {
+    setLevelChangeMode(false);
+    setLevelChangeStep(0);
+    setLevelChangeWarning(null);
+    setSelectedLevel(user?.level?._id || '');
+    setSelectedSubLevel(user?.subLevel || '');
+  };
+
+  return (
+    <Box sx={{ mb: 2, p: 2, borderRadius: 3, background: `linear-gradient(135deg, ${alpha(theme.palette.info.main, 0.05)}, ${alpha(theme.palette.info.light, 0.03)})`, border: `1px solid ${alpha(theme.palette.info.main, 0.15)}` }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: levelChangeMode ? 2 : 0 }}>
+        <Avatar sx={{ width: 36, height: 36, bgcolor: theme.palette.info.main, mr: 1.5, boxShadow: `0 4px 12px ${alpha(theme.palette.info.main, 0.3)}` }}>
+          <School sx={{ fontSize: '1rem' }} />
+        </Avatar>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
+            LEARNING LEVEL
+          </Typography>
+          <Typography variant="body1" fontWeight="bold" color="info.main" sx={{ fontSize: 14 }}>
+            {user?.level?.name || 'Not selected'}
+            {user?.subLevel ? <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}> · {user.subLevel}</Box> : ''}
+          </Typography>
+        </Box>
+        {!levelChangeMode ? (
+          <Button
+            size="small"
+            onClick={() => { setLevelChangeMode(true); setLevelChangeStep(0); }}
+            startIcon={<Edit />}
+            sx={{ ml: 1, textTransform: 'none', fontSize: 12, fontWeight: 600 }}
+          >
+            Change
+          </Button>
+        ) : (
+          <Button size="small" onClick={cancelChange} sx={{ ml: 1, textTransform: 'none', fontSize: 12 }}>
+            Cancel
+          </Button>
+        )}
+      </Box>
+
+      {levelChangeMode && (
+        <Box>
+          {/* Step 0: Pick level */}
+          {levelChangeStep === 0 && (
+            <Box>
+              <Typography variant="body2" sx={{ color: '#64748B', mb: 1.5, fontSize: 12 }}>
+                Select your education level:
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {levels.map((level, idx) => {
+                  const color = levelColors[idx % levelColors.length];
+                  const isSelected = selectedLevel === level._id;
+                  return (
+                    <Box
+                      key={level._id}
+                      onClick={() => { setSelectedLevel(level._id); setSelectedSubLevel(''); }}
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 2,
+                        border: `2px solid ${isSelected ? color.icon : '#E2E8F0'}`,
+                        bgcolor: isSelected ? color.bg : 'white',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                        transition: 'all 0.15s ease',
+                        '&:hover': { border: `2px solid ${color.icon}`, bgcolor: color.bg }
+                      }}
+                    >
+                      <Box sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: isSelected ? color.icon : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <School sx={{ fontSize: 14, color: isSelected ? 'white' : '#94A3B8' }} />
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography fontWeight={700} sx={{ color: isSelected ? color.text : '#1E293B', fontSize: 13 }}>
+                          {level.name}
+                        </Typography>
+                        {level.description && (
+                          <Typography variant="caption" sx={{ color: isSelected ? color.text : '#64748B', opacity: 0.8 }}>
+                            {level.description}
+                          </Typography>
+                        )}
+                      </Box>
+                      {isSelected && <CheckCircle sx={{ color: color.icon, fontSize: 16, flexShrink: 0 }} />}
+                    </Box>
+                  );
+                })}
+              </Box>
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  disabled={!selectedLevel || changingLevel}
+                  onClick={() => {
+                    if (hasSubLevels) {
+                      setLevelChangeStep(1);
+                    } else {
+                      handleLevelChange(false);
+                    }
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2, fontSize: 12 }}
+                >
+                  {hasSubLevels ? 'Next' : (changingLevel ? 'Saving…' : 'Save Level')}
+                </Button>
+              </Box>
+            </Box>
+          )}
+
+          {/* Step 1: Pick sub-level */}
+          {levelChangeStep === 1 && (
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Button size="small" onClick={() => setLevelChangeStep(0)} sx={{ textTransform: 'none', fontSize: 12, p: 0.5 }}>
+                  ← Back
+                </Button>
+                <Typography variant="body2" sx={{ color: '#64748B', fontSize: 12 }}>
+                  Choose your sub-level within <strong>{selectedLevelObj?.name}</strong>:
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1 }}>
+                {availableSubLevels.map((sub, idx) => {
+                  const isSelected = selectedSubLevel === sub.name;
+                  return (
+                    <Box
+                      key={sub._id}
+                      onClick={() => setSelectedSubLevel(sub.name)}
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 2,
+                        border: `2px solid ${isSelected ? '#3B82F6' : '#E2E8F0'}`,
+                        bgcolor: isSelected ? '#EFF6FF' : 'white',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        transition: 'all 0.15s ease',
+                        '&:hover': { border: '2px solid #3B82F6', bgcolor: '#EFF6FF' }
+                      }}
+                    >
+                      <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: isSelected ? '#3B82F6' : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Typography sx={{ fontSize: 10, fontWeight: 700, color: isSelected ? 'white' : '#64748B' }}>{idx + 1}</Typography>
+                      </Box>
+                      <Typography sx={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? '#1E40AF' : '#1E293B', flex: 1 }}>
+                        {sub.name}
+                      </Typography>
+                      {isSelected && <CheckCircle sx={{ color: '#3B82F6', fontSize: 14, flexShrink: 0 }} />}
+                    </Box>
+                  );
+                })}
+              </Box>
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  disabled={!selectedSubLevel || changingLevel}
+                  onClick={() => handleLevelChange(false)}
+                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2, fontSize: 12 }}
+                >
+                  {changingLevel ? 'Saving…' : 'Save Level'}
+                </Button>
+              </Box>
+            </Box>
+          )}
+
+          {/* Warning: will cancel active subscription */}
+          {levelChangeWarning && (
+            <Alert
+              severity="warning"
+              sx={{ mt: 2 }}
+              action={
+                <Button color="inherit" size="small" onClick={() => handleLevelChange(true)} disabled={changingLevel}>
+                  Confirm
+                </Button>
+              }
+            >
+              <Typography variant="body2" fontWeight="bold">{levelChangeWarning.message}</Typography>
+              <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                Current: {levelChangeWarning.currentLevel} · Expires: {new Date(levelChangeWarning.currentSubscriptionExpiry).toLocaleDateString()}
+              </Typography>
+            </Alert>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+};
 
 const Profile = () => {
   const theme = useTheme();
-  const { user, updateUserProfile } = useContext(AuthContext);
+  const { user, updateUserProfile, updateUserLevel } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -59,6 +405,18 @@ const Profile = () => {
     message: '',
     severity: 'success'
   });
+  const [levels, setLevels] = useState([]);
+  const [selectedLevel, setSelectedLevel] = useState('');
+  const [selectedSubLevel, setSelectedSubLevel] = useState('');
+  const [levelChangeMode, setLevelChangeMode] = useState(false);
+  const [levelChangeStep, setLevelChangeStep] = useState(0); // 0=pick level, 1=pick sub-level
+  const [levelChangeWarning, setLevelChangeWarning] = useState(null);
+  const [changingLevel, setChangingLevel] = useState(false);
+  const [subscription, setSubscription] = useState(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+
+  const selectedLevelObj = levels.find(l => l._id === selectedLevel);
+  const availableSubLevels = (selectedLevelObj?.subLevels || []).filter(s => s.isActive);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -81,8 +439,36 @@ const Profile = () => {
         class: user.class || '',
         organization: user.organization || ''
       });
+      setSelectedLevel(user.level?._id || '');
+      setSelectedSubLevel(user.subLevel || '');
     }
   }, [user]);
+
+  const fetchLevels = async () => {
+    try {
+      const response = await api.get('/levels');
+      setLevels(response.data || []);
+    } catch (err) {
+      console.error('Error fetching levels:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchLevels();
+    fetchSubscription();
+  }, []);
+
+  const fetchSubscription = async () => {
+    try {
+      setSubscriptionLoading(true);
+      const res = await api.get('/subscriptions/my/active');
+      setSubscription(res.data);
+    } catch {
+      setSubscription(null);
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -167,6 +553,59 @@ const Profile = () => {
 
   const handleSnackbarClose = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleLevelChange = async (confirm = false) => {
+    if (!selectedLevel) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a level',
+        severity: 'error'
+      });
+      return;
+    }
+    if (availableSubLevels.length > 0 && !selectedSubLevel) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a sub-level',
+        severity: 'error'
+      });
+      return;
+    }
+
+    try {
+      setChangingLevel(true);
+      const response = await api.put('/profile/change-level', { levelId: selectedLevel, subLevel: selectedSubLevel || undefined, confirm });
+
+      if (response.data.requiresConfirmation) {
+        setLevelChangeWarning(response.data);
+        setChangingLevel(false);
+        return;
+      }
+
+      setSnackbar({
+        open: true,
+        message: 'Level changed successfully',
+        severity: 'success'
+      });
+      setLevelChangeMode(false);
+      setLevelChangeStep(0);
+      setLevelChangeWarning(null);
+      updateUserProfile(response.data);
+      if (response.data.level) {
+        updateUserLevel(response.data.level, response.data.subLevel);
+      }
+      fetchSubscription();
+    } catch (err) {
+      console.error('Error changing level:', err);
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.message || 'Failed to change level',
+        severity: 'error'
+      });
+    } finally {
+      setChangingLevel(false);
+    }
   };
 
   return (
@@ -325,9 +764,13 @@ const Profile = () => {
           </Paper>
         </Grow>
 
-        {/* Plan Usage Card */}
+        {/* Student Subscription + Level Card */}
         <Box sx={{ mb: 3 }}>
-          <PlanUsageCard user={user} />
+          <StudentSubscriptionSection
+            subscription={subscription}
+            subscriptionLoading={subscriptionLoading}
+            user={user}
+          />
         </Box>
 
         <Grid container spacing={{ xs: 3, sm: 4 }}>
@@ -587,6 +1030,26 @@ const Profile = () => {
                         </Typography>
                       </Box>
                     </Box>
+
+                    {/* Learning Level Section */}
+                    <LevelSection
+                      user={user}
+                      levels={levels}
+                      selectedLevel={selectedLevel}
+                      setSelectedLevel={setSelectedLevel}
+                      selectedSubLevel={selectedSubLevel}
+                      setSelectedSubLevel={setSelectedSubLevel}
+                      availableSubLevels={availableSubLevels}
+                      levelChangeMode={levelChangeMode}
+                      setLevelChangeMode={setLevelChangeMode}
+                      levelChangeStep={levelChangeStep}
+                      setLevelChangeStep={setLevelChangeStep}
+                      levelChangeWarning={levelChangeWarning}
+                      setLevelChangeWarning={setLevelChangeWarning}
+                      changingLevel={changingLevel}
+                      handleLevelChange={handleLevelChange}
+                      theme={theme}
+                    />
                   </Box>
                 </CardContent>
               </Card>

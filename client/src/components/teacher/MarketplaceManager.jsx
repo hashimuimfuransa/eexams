@@ -40,11 +40,10 @@ import api from '../../services/api';
 import usePlan from '../../hooks/usePlan';
 
 const MarketplaceManager = ({ exam }) => {
-  const { hasMarketplaceAccess, planName, isEnterprise } = usePlan();
+  const { hasMarketplaceAccess, planName } = usePlan();
   const [settings, setSettings] = useState({
     isPubliclyListed: exam?.isPubliclyListed || false,
-    publicPrice: exam?.publicPrice || 0,
-    retakePrice: exam?.retakePrice || 0,
+    accessType: exam?.accessType || 'subscription',
     publicDescription: exam?.publicDescription || '',
     targetAudience: exam?.targetAudience || '',
     levelId: exam?.level?._id || null,
@@ -79,8 +78,7 @@ const MarketplaceManager = ({ exam }) => {
   useEffect(() => {
     setSettings({
       isPubliclyListed: exam?.isPubliclyListed || false,
-      publicPrice: exam?.publicPrice || 0,
-      retakePrice: exam?.retakePrice || 0,
+      accessType: exam?.accessType || 'subscription',
       publicDescription: exam?.publicDescription || '',
       targetAudience: exam?.targetAudience || '',
       levelId: exam?.level?._id || null,
@@ -222,8 +220,7 @@ const MarketplaceManager = ({ exam }) => {
       const selectedLevel = levels.find(l => l._id === settings.levelId);
       const payload = {
         isPubliclyListed: settings.isPubliclyListed,
-        publicPrice: settings.publicPrice,
-        retakePrice: settings.retakePrice || 0,
+        accessType: settings.accessType,
         publicDescription: settings.publicDescription,
         targetAudience: settings.targetAudience,
         levelId: settings.levelId,
@@ -577,40 +574,21 @@ const MarketplaceManager = ({ exam }) => {
             </Grid>
 
             <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Price (optional)"
-                type="number"
-                value={settings.publicPrice}
-                onChange={(e) => handleSettingsChange('publicPrice', parseFloat(e.target.value) || 0)}
-                InputProps={{ startAdornment: 'RWF ' }}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              {isEnterprise ? (
-                <TextField
-                  fullWidth
-                  label="Retake Price (RWF)"
-                  type="number"
-                  value={settings.retakePrice ?? 0}
-                  onChange={(e) => handleSettingsChange('retakePrice', parseFloat(e.target.value) || 0)}
-                  InputProps={{ startAdornment: 'RWF ' }}
-                  helperText="Set 0 to allow free retakes"
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC' }}>
+                <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#64748B', mb: 0.5 }}>Access Type</Typography>
+                <Chip
+                  label={settings.accessType === 'free' ? 'Free' : 'Subscription Only'}
+                  size="small"
+                  sx={{
+                    fontWeight: 700,
+                    bgcolor: settings.accessType === 'free' ? 'rgba(12,189,115,0.1)' : 'rgba(99,102,241,0.1)',
+                    color: settings.accessType === 'free' ? '#0CBD73' : '#6366F1'
+                  }}
                 />
-              ) : (
-                <Tooltip title="Upgrade to Enterprise plan to set a custom retake price">
-                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px dashed #CBD5E1', bgcolor: 'rgba(99,102,241,0.04)', display: 'flex', alignItems: 'center', gap: 1, cursor: 'not-allowed' }}>
-                    <Upgrade sx={{ color: '#6366F1', fontSize: 18 }} />
-                    <Box>
-                      <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>Retake Price</Typography>
-                      <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>Enterprise plan required</Typography>
-                    </Box>
-                  </Box>
-                </Tooltip>
-              )}
+                <Typography sx={{ fontSize: 11, color: '#94A3B8', mt: 0.5 }}>
+                  Set when the exam was created. Edit it from the exam builder, not here.
+                </Typography>
+              </Box>
             </Grid>
 
             <Grid item xs={12}>
@@ -1107,33 +1085,16 @@ const MarketplaceManager = ({ exam }) => {
                 size="small"
                 variant="outlined"
               />
-              {previewExam?.publicPrice > 0 && (
-                <Chip
-                  label={`RWF ${previewExam?.publicPrice?.toLocaleString()}`}
-                  size="small"
-                  color="warning"
-                  variant="outlined"
-                />
-              )}
+              <Chip
+                label={previewExam?.accessType === 'free' ? 'Free' : 'Subscription Only'}
+                size="small"
+                sx={{
+                  bgcolor: previewExam?.accessType === 'free' ? 'rgba(12,189,115,0.1)' : 'rgba(99,102,241,0.1)',
+                  color: previewExam?.accessType === 'free' ? '#0CBD73' : '#6366F1',
+                  fontWeight: 700
+                }}
+              />
             </Box>
-
-            {previewExam?.publicPrice > 0 && (
-              <Box sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                p: 1.5,
-                borderRadius: 2.5,
-                background: 'rgba(245,158,11,0.08)',
-                border: '1px solid rgba(245,158,11,0.2)',
-                mb: 2
-              }}>
-                <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>Price</Typography>
-                <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#F59E0B' }}>
-                  RWF {previewExam?.publicPrice?.toLocaleString()}
-                </Typography>
-              </Box>
-            )}
 
             <Button
               fullWidth

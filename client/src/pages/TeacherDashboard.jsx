@@ -10,7 +10,7 @@ import {
   TableContainer, TableHead, TableRow, LinearProgress,
   IconButton, Tooltip, Avatar, Select, MenuItem, FormControl, InputLabel, FormHelperText,
   Tabs, Tab, Alert, Snackbar, Accordion, AccordionSummary, AccordionDetails,
-  Divider, Checkbox, ListItemText, Radio, FormControlLabel, RadioGroup, Switch
+  Divider, Checkbox, ListItemText, Radio, FormControlLabel, RadioGroup, Switch, FormLabel
 } from '@mui/material';
 import {
   AutoAwesome, CloudUpload, Assignment, People, BarChart, Settings,
@@ -1469,12 +1469,137 @@ const PLAN_Q_LIMITS = {
   enterprise: { maxQuestions: 100, maxPerType: 50 },
 };
 
+/* Reusable Level / Sub-Level / Access Type picker for exam creation flows */
+function ExamLevelAccessFields({ levels, level, subLevel, accessType, onChange, isXs }) {
+  const selectedLevel = levels.find(l => l._id === level);
+  const availableSubLevels = (selectedLevel?.subLevels || []).filter(s => s.isActive);
+  return (
+    <Grid container spacing={isXs ? 1.5 : 2} sx={{ mb: isXs ? 1.5 : 2 }}>
+      <Grid item xs={12} sm={availableSubLevels.length > 0 ? 6 : 12} md={availableSubLevels.length > 0 ? 4 : 6}>
+        <FormControl fullWidth size="small" required>
+          <InputLabel>Level *</InputLabel>
+          <Select
+            value={level || ''}
+            label="Level *"
+            onChange={e => onChange({ level: e.target.value, subLevel: '' })}
+            sx={{ borderRadius: 2 }}
+          >
+            {levels.map(lvl => (
+              <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+      {availableSubLevels.length > 0 && (
+        <Grid item xs={12} sm={6} md={4}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Sub-Level (optional)</InputLabel>
+            <Select
+              value={subLevel || ''}
+              label="Sub-Level (optional)"
+              onChange={e => onChange({ subLevel: e.target.value })}
+              sx={{ borderRadius: 2 }}
+            >
+              <MenuItem value=""><em>None (entire level)</em></MenuItem>
+              {availableSubLevels.map(sub => (
+                <MenuItem key={sub._id} value={sub.name}>{sub.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+      )}
+      <Grid item xs={12} md={availableSubLevels.length > 0 ? 4 : 6}>
+        <FormControl size="small">
+          <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
+          <RadioGroup row value={accessType || 'subscription'}
+            onChange={e => onChange({ accessType: e.target.value })}>
+            <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+            <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
+          </RadioGroup>
+        </FormControl>
+      </Grid>
+    </Grid>
+  );
+}
+
+/* Level / Sub-Level / Access Type settings panel with its own Save action —
+   used inside PublishDialog's Edit Questions tab so it's editable without
+   leaving that screen. */
+function ExamLevelAccessPanel({ exam, levels, saving, onSave }) {
+  const [level, setLevel] = useState(exam.level?._id || exam.level || '');
+  const [subLevel, setSubLevel] = useState(exam.subLevel || '');
+  const [accessType, setAccessType] = useState(exam.accessType || 'subscription');
+
+  useEffect(() => {
+    setLevel(exam.level?._id || exam.level || '');
+    setSubLevel(exam.subLevel || '');
+    setAccessType(exam.accessType || 'subscription');
+  }, [exam._id]);
+
+  const dirty = level !== (exam.level?._id || exam.level || '') ||
+    subLevel !== (exam.subLevel || '') ||
+    accessType !== (exam.accessType || 'subscription');
+
+  const availableSubLevels = (levels.find(l => l._id === level)?.subLevels || []).filter(s => s.isActive);
+
+  return (
+    <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC', mb: 2.5 }}>
+      <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Level & Access</Typography>
+      <Grid container spacing={2} alignItems="center">
+        <Grid item xs={12} sm={availableSubLevels.length > 0 ? 4 : 6}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Level</InputLabel>
+            <Select value={level} label="Level" onChange={e => { setLevel(e.target.value); setSubLevel(''); }} sx={{ borderRadius: 2, bgcolor: 'white' }}>
+              {levels.map(lvl => <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </Grid>
+        {availableSubLevels.length > 0 && (
+          <Grid item xs={12} sm={4}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Sub-Level</InputLabel>
+              <Select value={subLevel} label="Sub-Level" onChange={e => setSubLevel(e.target.value)} sx={{ borderRadius: 2, bgcolor: 'white' }}>
+                <MenuItem value=""><em>None (entire level)</em></MenuItem>
+                {availableSubLevels.map(sub => <MenuItem key={sub._id} value={sub.name}>{sub.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </Grid>
+        )}
+        <Grid item xs={12} sm={availableSubLevels.length > 0 ? 4 : 6}>
+          <FormControl size="small">
+            <RadioGroup row value={accessType} onChange={e => setAccessType(e.target.value)}>
+              <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+              <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
+            </RadioGroup>
+          </FormControl>
+        </Grid>
+      </Grid>
+      {dirty && (
+        <Button
+          size="small"
+          variant="contained"
+          disabled={saving || !level}
+          onClick={() => onSave({ level, subLevel, accessType })}
+          sx={{ mt: 1.5, borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}
+        >
+          {saving ? 'Saving…' : 'Save Level & Access'}
+        </Button>
+      )}
+    </Paper>
+  );
+}
+
 /* ── HOME ── */
 function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
   const { canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess } = usePlan();
   const [aiMode, setAiMode] = useState(canUseAdvancedAI ? 'describe' : 'upload');
-  const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, sections: [{ name: 'A', description: 'Section A', questions: [] }] });
+  const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, level: '', subLevel: '', accessType: 'subscription', sections: [{ name: 'A', description: 'Section A', questions: [] }] });
+  const [levels, setLevels] = useState([]);
+
+  useEffect(() => {
+    api.get('/levels').then(r => setLevels((r.data || []).filter(l => l.isActive !== false))).catch(() => {});
+  }, []);
   const [manualSection, setManualSection] = useState(0);
   const [manualQ, setManualQ] = useState({ text: '', type: 'multiple-choice', points: 2, difficulty: 'medium', options: [{ text: '', isCorrect: false, letter: 'A' }, { text: '', isCorrect: false, letter: 'B' }, { text: '', isCorrect: false, letter: 'C' }, { text: '', isCorrect: false, letter: 'D' }], correctAnswer: '', passage: '', wordBank: [], instructions: '', subQuestions: [] });
   const [manualPublishing, setManualPublishing] = useState(false);
@@ -1502,6 +1627,11 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [examTitle, setExamTitle] = useState('');
   const [examTimeLimit, setExamTimeLimit] = useState('');
   const [publishExamId, setPublishExamId] = useState(null);
+  // Level/sub-level/access-type for the AI-generate ("describe") and
+  // file-upload exam creation flows (ManualExamBuilder has its own copy)
+  const [examLevel, setExamLevel] = useState('');
+  const [examSubLevel, setExamSubLevel] = useState('');
+  const [examAccessType, setExamAccessType] = useState('subscription');
   const fileRef = useRef();
   const ansRef = useRef();
   const referenceFileRef = useRef();
@@ -1780,6 +1910,10 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       setAiError('Please provide title and time limit');
       return;
     }
+    if (!examLevel) {
+      setAiError('Please select a learning level');
+      return;
+    }
     setAiLoading(true); setAiError('');
     console.log('=== UPLOAD DEBUG START ===');
     console.log('uploadFile:', uploadFile ? { name: uploadFile.name, size: uploadFile.size, type: uploadFile.type } : null);
@@ -1791,6 +1925,9 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       fd.append('examFile', uploadFile);
       fd.append('title', examTitle);
       fd.append('timeLimit', examTimeLimit);
+      fd.append('level', examLevel);
+      if (examSubLevel) fd.append('subLevel', examSubLevel);
+      fd.append('accessType', examAccessType);
       if (uploadAnswer) fd.append('answerFile', uploadAnswer);
       
       // Debug: Log FormData entries
@@ -1825,10 +1962,17 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [savingDraft, setSavingDraft] = useState(false);
 
   const handlePublish = async () => {
+    if (!examLevel) {
+      alert('Please select a learning level before publishing.');
+      return;
+    }
     try {
       // Ensure all questions have proper grading fields for accurate AI grading
       const examToPublish = {
         ...generated,
+        level: examLevel,
+        subLevel: examSubLevel || undefined,
+        accessType: examAccessType,
         questions: (generated.questions || []).map(q => ({
           text: q.text,
           type: q.type || 'multiple-choice',
@@ -1861,6 +2005,10 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const handleSaveDraft = async () => {
     if (!generated?.title || !generated?.questions?.length) {
       alert('Please add a title and at least one question before saving.');
+      return;
+    }
+    if (!examLevel) {
+      alert('Please select a learning level before saving.');
       return;
     }
 
@@ -1905,6 +2053,9 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
         timeLimit: generated.timeLimit || 60,
         passingScore: generated.passingScore || 70,
         totalMarks: generated.totalMarks || generated.questions.reduce((s, q) => s + (q.marks || 1), 0),
+        level: examLevel,
+        subLevel: examSubLevel || undefined,
+        accessType: examAccessType,
         sections: sectionsArray,
         questions: questionsWithImages.map(q => ({
           text: q.text,
@@ -1969,13 +2120,14 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
   const handleManualPublish = async () => {
     if (!manualExam.title.trim()) { setManualError('Please enter an exam title.'); return; }
+    if (!manualExam.level) { setManualError('Please select a learning level for this exam.'); return; }
     const total = manualExam.sections.reduce((s, sec) => s + (sec.questions?.length || 0), 0);
     if (total === 0) { setManualError('Add at least one question before publishing.'); return; }
     setManualPublishing(true); setManualError('');
     try {
       const res = await api.post('/admin/exams', manualExam);
       setPublishExamId(res.data._id);
-      setManualExam({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, sections: [{ name: 'A', description: 'Section A', questions: [] }] });
+      setManualExam({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, level: '', subLevel: '', accessType: 'subscription', sections: [{ name: 'A', description: 'Section A', questions: [] }] });
       setManualSection(0);
     } catch (err) { setManualError(err.response?.data?.message || 'Publish failed.'); }
     finally { setManualPublishing(false); }
@@ -2025,6 +2177,9 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
         description: manualExam.description || 'Exam',
         timeLimit: manualExam.timeLimit || 60,
         passingScore: manualExam.passingScore || 70,
+        level: manualExam.level || undefined,
+        subLevel: manualExam.subLevel || undefined,
+        accessType: manualExam.accessType || 'subscription',
         sections: manualExam.sections,
         questions: questionsWithImages.map(q => ({
           text: q.text,
@@ -2139,6 +2294,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
               error={manualError}
               onSaveDraft={handleManualSaveDraft}
               savingDraft={savingDraft}
+              levels={levels}
             />
           ) : aiMode === 'describe' ? (
             <>
@@ -2555,6 +2711,19 @@ SECTION B: Short Answer (10 marks)
                 )}
               </Box>
 
+              <ExamLevelAccessFields
+                levels={levels}
+                level={examLevel}
+                subLevel={examSubLevel}
+                accessType={examAccessType}
+                isXs={isXs}
+                onChange={(patch) => {
+                  if (patch.level !== undefined) setExamLevel(patch.level);
+                  if (patch.subLevel !== undefined) setExamSubLevel(patch.subLevel);
+                  if (patch.accessType !== undefined) setExamAccessType(patch.accessType);
+                }}
+              />
+
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', flexDirection: isXs ? 'column' : 'row' }}>
                 <Box sx={{ flexGrow: 1 }} />
                 <Button variant="contained" startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesome />}
@@ -2605,8 +2774,22 @@ SECTION B: Short Answer (10 marks)
                   </Grid>
                 ))}
               </Grid>
+
+              <ExamLevelAccessFields
+                levels={levels}
+                level={examLevel}
+                subLevel={examSubLevel}
+                accessType={examAccessType}
+                isXs={isXs}
+                onChange={(patch) => {
+                  if (patch.level !== undefined) setExamLevel(patch.level);
+                  if (patch.subLevel !== undefined) setExamSubLevel(patch.subLevel);
+                  if (patch.accessType !== undefined) setExamAccessType(patch.accessType);
+                }}
+              />
+
               {aiError && <Box sx={{ mb: 2, p: isXs ? 1 : 1.5, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: isXs ? 12 : 13 }}>{aiError}</Box>}
-              <Button variant="contained" startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <CloudUpload />} onClick={handleUpload} disabled={aiLoading || !uploadFile}
+              <Button variant="contained" startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <CloudUpload />} onClick={handleUpload} disabled={aiLoading || !uploadFile || !examLevel}
                 sx={{ borderRadius: 2.5, fontWeight: 700, px: isXs ? 2.5 : 3, py: isXs ? 1.25 : 1.5, textTransform: 'none', background: gradients.brand, boxShadow: 'none', fontFamily: "DM Sans,sans-serif", fontSize: isXs ? 13 : 14, width: isXs ? '100%' : 'auto' }}>
                 {aiLoading ? 'Processing…' : 'Process & Generate'}
               </Button>
@@ -3362,6 +3545,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   const [resettingExpiration, setResettingExpiration] = useState(false);
   const [shareStats, setShareStats] = useState(null);
   const [addingToBank, setAddingToBank] = useState(false);
+  const [levels, setLevels] = useState([]);
+  const [savingLevelAccess, setSavingLevelAccess] = useState(false);
 
   useEffect(() => {
     api.get(`/admin/exams/${examId}/preview`).then(r => {
@@ -3370,7 +3555,21 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
         fetchAssignedStudents(r.data.exam.assignedTo);
       }
     }).catch(() => {}).finally(() => setLoadingPreview(false));
+    api.get('/levels').then(r => setLevels((r.data || []).filter(l => l.isActive !== false))).catch(() => {});
   }, [examId]);
+
+  const handleSaveLevelAccess = async ({ level, subLevel, accessType }) => {
+    setSavingLevelAccess(true);
+    try {
+      const res = await api.put(`/admin/exams/${examId}`, { level, subLevel: subLevel || null, accessType });
+      setPreview(p => ({ ...p, exam: { ...p.exam, ...res.data } }));
+      setSnack('Level & access settings updated');
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to update level & access settings');
+    } finally {
+      setSavingLevelAccess(false);
+    }
+  };
 
   useEffect(() => {
     if (studentSelectionMode === 'select') {
@@ -3912,6 +4111,14 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
         {/* TAB 1 — EDIT QUESTIONS */}
         {tab === 1 && (
           <Box sx={{ p: 3, maxHeight: '70vh', overflowY: 'auto' }}>
+            {exam && (
+              <ExamLevelAccessPanel
+                exam={exam}
+                levels={levels}
+                saving={savingLevelAccess}
+                onSave={handleSaveLevelAccess}
+              />
+            )}
             {exam && exam.sections && exam.sections.length > 0 ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                 {exam.sections.map((sec, si) => (
@@ -5489,7 +5696,7 @@ const Q_TYPES = [
 const DIFFS = ['easy', 'medium', 'hard'];
 const LETTERS = ['A', 'B', 'C', 'D'];
 
-function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question, setQuestion, onAddQuestion, onRemoveQuestion, onPublish, publishing, error, onSaveDraft, savingDraft }) {
+function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question, setQuestion, onAddQuestion, onRemoveQuestion, onPublish, publishing, error, onSaveDraft, savingDraft, levels = [] }) {
   const totalQ = exam.sections.reduce((s, sec) => s + (sec.questions?.length || 0), 0);
 
   const updateOption = (idx, field, val) => {
@@ -5534,6 +5741,49 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           <TextField fullWidth size="small" label="Description" value={exam.description}
             onChange={e => setExam(p => ({ ...p, description: e.target.value }))}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <FormControl fullWidth size="small" required>
+            <InputLabel>Level *</InputLabel>
+            <Select
+              value={exam.level || ''}
+              label="Level *"
+              onChange={e => setExam(p => ({ ...p, level: e.target.value, subLevel: '' }))}
+              sx={{ borderRadius: 2 }}
+            >
+              {levels.map(lvl => (
+                <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+        {(levels.find(l => l._id === exam.level)?.subLevels || []).filter(s => s.isActive).length > 0 && (
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Sub-Level (optional)</InputLabel>
+              <Select
+                value={exam.subLevel || ''}
+                label="Sub-Level (optional)"
+                onChange={e => setExam(p => ({ ...p, subLevel: e.target.value }))}
+                sx={{ borderRadius: 2 }}
+              >
+                <MenuItem value=""><em>None (entire level)</em></MenuItem>
+                {(levels.find(l => l._id === exam.level)?.subLevels || []).filter(s => s.isActive).map(sub => (
+                  <MenuItem key={sub._id} value={sub.name}>{sub.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+        )}
+        <Grid item xs={12} sm={6}>
+          <FormControl size="small">
+            <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
+            <RadioGroup row value={exam.accessType || 'subscription'}
+              onChange={e => setExam(p => ({ ...p, accessType: e.target.value }))}>
+              <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+              <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
+            </RadioGroup>
+          </FormControl>
         </Grid>
       </Grid>
 
@@ -6254,6 +6504,11 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+  const [levels, setLevels] = useState([]);
+
+  useEffect(() => {
+    api.get('/levels').then(r => setLevels((r.data || []).filter(l => l.isActive !== false))).catch(() => {});
+  }, []);
 
   // Fetch pending approvals for each exam with auto-refresh (enterprise only)
   useEffect(() => {
@@ -6322,7 +6577,10 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
         timeLimit: updated.timeLimit,
         passingScore: updated.passingScore,
         sections: updated.sections,
-        calculatorEnabled: updated.calculatorEnabled === true
+        calculatorEnabled: updated.calculatorEnabled === true,
+        level: updated.level?._id || updated.level || null,
+        subLevel: updated.subLevel || null,
+        accessType: updated.accessType || 'subscription'
       };
       const res = await api.put(`/admin/exams/${updated._id}`, payload);
       setExams(p => p.map(e => e._id === updated._id ? { ...e, ...res.data } : e));
@@ -6475,6 +6733,50 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                     label="Enable Calculator for Students"
                   />
                 </Box>
+              </Box>
+
+              {/* Level & Access */}
+              <Box>
+                <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Level & Access</Typography>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <FormControl fullWidth size="small" sx={{ minWidth: 180, flex: 1 }}>
+                    <InputLabel>Level</InputLabel>
+                    <Select
+                      value={editExam.level?._id || editExam.level || ''}
+                      label="Level"
+                      onChange={e => setEditExam(p => ({ ...p, level: e.target.value, subLevel: '' }))}
+                      sx={{ borderRadius: 2 }}
+                    >
+                      {levels.map(lvl => (
+                        <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  {(levels.find(l => l._id === (editExam.level?._id || editExam.level))?.subLevels || []).filter(s => s.isActive).length > 0 && (
+                    <FormControl fullWidth size="small" sx={{ minWidth: 180, flex: 1 }}>
+                      <InputLabel>Sub-Level</InputLabel>
+                      <Select
+                        value={editExam.subLevel || ''}
+                        label="Sub-Level"
+                        onChange={e => setEditExam(p => ({ ...p, subLevel: e.target.value }))}
+                        sx={{ borderRadius: 2 }}
+                      >
+                        <MenuItem value=""><em>None (entire level)</em></MenuItem>
+                        {(levels.find(l => l._id === (editExam.level?._id || editExam.level))?.subLevels || []).filter(s => s.isActive).map(sub => (
+                          <MenuItem key={sub._id} value={sub.name}>{sub.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                </Box>
+                <FormControl sx={{ mt: 1.5 }}>
+                  <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
+                  <RadioGroup row value={editExam.accessType || 'subscription'}
+                    onChange={e => setEditExam(p => ({ ...p, accessType: e.target.value }))}>
+                    <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+                    <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
+                  </RadioGroup>
+                </FormControl>
               </Box>
 
               {/* Sections & Questions Summary */}

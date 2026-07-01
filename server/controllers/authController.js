@@ -3,6 +3,7 @@ const { OAuth2Client } = require('google-auth-library');
 const crypto = require('crypto');
 const sgMail = require('@sendgrid/mail');
 const User = require('../models/User');
+const Level = require('../models/Level');
 const emailService = require('../utils/emailService');
 const cacheService = require('../utils/cacheService');
 const { invalidateUserCache } = require('../middleware/auth');
@@ -307,7 +308,7 @@ const login = async (req, res) => {
 
     const user = await User.findOne({
       $or: searchConditions
-    }).select('+password +isBlocked +lastLogin').lean(false);
+    }).select('+password +isBlocked +lastLogin').populate('level').lean(false);
 
     console.log('[Login] User found:', user ? { _id: user._id, email: user.email, phone: user.phone } : null);
 
@@ -378,7 +379,12 @@ const login = async (req, res) => {
       subscriptionExpiresAt: user.subscriptionExpiresAt,
       lastPaymentDate: user.lastPaymentDate,
       isOrgTeacher,
-      organization: user.organization
+      organization: user.organization,
+      level: user.level,
+      subLevel: user.subLevel,
+      freeExamUsed: user.freeExamUsed,
+      freeExamLevel: user.freeExamLevel,
+      requiresLevelSelection: user.role === 'student' && !user.level
     };
 
     // Send response immediately - don't wait for lastLogin update
@@ -546,7 +552,7 @@ const updateProfile = async (req, res) => {
 // @access  Private
 const verifyToken = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user._id).select('-password').populate('level');
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -578,7 +584,12 @@ const verifyToken = async (req, res) => {
       subscriptionPlan: effectivePlan,
       subscriptionStatus: effectiveStatus,
       organization: user.organization,
-      isOrgTeacher
+      isOrgTeacher,
+      level: user.level,
+      subLevel: user.subLevel,
+      freeExamUsed: user.freeExamUsed,
+      freeExamLevel: user.freeExamLevel,
+      requiresLevelSelection: user.role === 'student' && !user.level
     });
   } catch (error) {
     console.error('Token verification error:', error);
@@ -632,7 +643,7 @@ const googleAuth = async (req, res) => {
     // Check if user already exists (by email or googleId)
     let user = await User.findOne({
       $or: [{ email }, { googleId }]
-    });
+    }).populate('level');
 
     if (user) {
       // Existing user - update Google info if needed
@@ -699,7 +710,12 @@ const googleAuth = async (req, res) => {
         isGoogleUser: true,
         token,
         subscriptionPlan: user.subscriptionPlan,
-        subscriptionStatus: user.subscriptionStatus
+        subscriptionStatus: user.subscriptionStatus,
+        level: user.level,
+        subLevel: user.subLevel,
+        freeExamUsed: user.freeExamUsed,
+        freeExamLevel: user.freeExamLevel,
+        requiresLevelSelection: user.role === 'student' && !user.level
       };
 
       // Include organization info for organization accounts
@@ -789,7 +805,12 @@ const googleAuth = async (req, res) => {
       isGoogleUser: true,
       token,
       subscriptionPlan: user.subscriptionPlan,
-      subscriptionStatus: user.subscriptionStatus
+      subscriptionStatus: user.subscriptionStatus,
+      level: user.level,
+      subLevel: user.subLevel,
+      freeExamUsed: user.freeExamUsed,
+      freeExamLevel: user.freeExamLevel,
+      requiresLevelSelection: user.role === 'student' && !user.level
     };
 
     // Include organization info for organization accounts
@@ -939,10 +960,70 @@ const verifyResetToken = async (req, res) => {
   }
 };
 
+// @desc    Select learning level (for first-time students)
+// @route   POST /api/auth/select-level
+// @access  Private
+const selectLevel = async (req, res) => {
+  try {
+    const { levelId, subLevel } = req.body;
+    const userId = req.user._id;
+
+    if (!levelId) {
+      return res.status(400).json({ message: 'Level ID is required' });
+    }
+
+    // Validate level exists and is active
+    const level = await Level.findById(levelId);
+    if (!level) {
+      return res.status(404).json({ message: 'Level not found' });
+    }
+
+    if (!level.isActive) {
+      return res.status(400).json({ message: 'This level is not currently available' });
+    }
+
+    // Validate sub-level if provided
+    let resolvedSubLevel = null;
+    if (subLevel) {
+      const activeSubLevels = level.getActiveSubLevels();
+      const match = activeSubLevels.find(s => s.name === subLevel);
+      if (!match) {
+        return res.status(400).json({ message: 'Invalid sub-level for this level' });
+      }
+      resolvedSubLevel = match.name;
+    }
+
+    // Update user's level
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { level: levelId, subLevel: resolvedSubLevel },
+      { new: true }
+    ).populate('level');
+
+    res.json({
+      _id: user._id,
+      email: user.email,
+      phone: user.phone,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      level: user.level,
+      subLevel: user.subLevel,
+      freeExamUsed: user.freeExamUsed,
+      freeExamLevel: user.freeExamLevel,
+      requiresLevelSelection: false
+    });
+  } catch (error) {
+    console.error('Select level error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   register,
   login,
   getProfile,
+  selectLevel,
   updateProfile,
   changePassword,
   verifyToken,

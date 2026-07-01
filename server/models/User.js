@@ -164,6 +164,26 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  // Level-based subscription fields
+  level: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Level',
+    default: null
+  },
+  // Optional sub-level within the selected level (matches Level.subLevels[].name)
+  subLevel: {
+    type: String,
+    default: null
+  },
+  freeExamUsed: {
+    type: Boolean,
+    default: false
+  },
+  freeExamLevel: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Level',
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

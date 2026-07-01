@@ -9,6 +9,8 @@ import StudentLeaderboard from './components/student/Leaderboard';
 import ExamInterface from './components/student/ExamInterface';
 import ExamCountdown from './components/student/ExamCountdown';
 import SelectiveAnsweringDebug from './components/student/SelectiveAnsweringDebug';
+import SubscriptionPurchase from './components/SubscriptionPurchase';
+import SubscriptionCallback from './pages/SubscriptionCallback';
 import { useAuth } from './context/AuthContext';
 
 const StudentRoutes = () => {
@@ -45,6 +47,10 @@ const StudentRoutes = () => {
 
       {/* Profile Route */}
       <Route path="/profile" element={<StudentProfile />} />
+
+      {/* Subscription Routes */}
+      <Route path="/subscriptions" element={<SubscriptionPurchase />} />
+      <Route path="/subscriptions/callback" element={<SubscriptionCallback />} />
 
       {/* Catch-all route for student section */}
       <Route path="*" element={<Navigate to="/student/dashboard" />} />

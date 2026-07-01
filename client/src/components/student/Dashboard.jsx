@@ -45,6 +45,7 @@ import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
 import ExamInstructions from '../ExamInstructions';
+import LevelSelectionModal from '../LevelSelectionModal';
 
 // Google Play Icon SVG
 const GooglePlayIcon = () => (
@@ -63,7 +64,7 @@ const MicrosoftStoreIcon = () => (
 const Dashboard = () => {
   const navigate = useNavigate();
   const theme = useTheme();
-  const { user } = useContext(AuthContext);
+  const { user, updateUserLevel } = useContext(AuthContext);
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const [results, setResults] = useState([]);
@@ -82,6 +83,8 @@ const Dashboard = () => {
   const [expandedLeaderboard, setExpandedLeaderboard] = useState(null);
   const [showInstructions, setShowInstructions] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -92,13 +95,14 @@ const Dashboard = () => {
       }
 
       // Fetch all data in parallel for faster loading
-      const [resultsRes, examsRes, scheduledRes, requestsRes, marketplaceRes, inProgressRes] = await Promise.allSettled([
+      const [resultsRes, examsRes, scheduledRes, requestsRes, marketplaceRes, inProgressRes, subscriptionRes] = await Promise.allSettled([
         api.get('/student/results'),
         api.get('/student/exams'),
         api.get('/student/scheduled-exams'),
         api.get('/marketplace/student/requests'),
         api.get('/marketplace/exams'),
-        api.get('/student/exams/in-progress')
+        api.get('/student/exams/in-progress'),
+        api.get('/subscriptions/my/active')
       ]);
 
       // Process results
@@ -112,8 +116,6 @@ const Dashboard = () => {
           index === self.findIndex((e) => e._id === exam._id)
         ) : [];
         setAvailableExams(uniqueExams);
-        // Debug: log exams with their status
-        console.log('[Dashboard] Available exams:', uniqueExams.map(e => ({ id: e._id, title: e.title, status: e.status, isLocked: e.isLocked })));
       } else {
         setAvailableExams([]);
       }
@@ -135,11 +137,14 @@ const Dashboard = () => {
         setPendingRequests([]);
       }
 
-      // Process marketplace exams (remove duplicates)
+      // Process marketplace exams (remove duplicates, free exams first)
       if (marketplaceRes.status === 'fulfilled') {
         const uniqueMarketplaceExams = Array.isArray(marketplaceRes.value.data) ? marketplaceRes.value.data.filter((exam, index, self) =>
           index === self.findIndex((e) => e._id === exam._id)
         ) : [];
+        uniqueMarketplaceExams.sort((a, b) =>
+          (a.accessType === 'subscription' ? 1 : 0) - (b.accessType === 'subscription' ? 1 : 0)
+        );
         setMarketplaceExams(uniqueMarketplaceExams);
       } else {
         setMarketplaceExams([]);
@@ -147,11 +152,16 @@ const Dashboard = () => {
 
       // Process in-progress exams
       if (inProgressRes.status === 'fulfilled') {
-        console.log('In-progress exams data:', inProgressRes.value.data);
         setInProgressExams(inProgressRes.value.data || []);
       } else {
-        console.log('In-progress exams request failed:', inProgressRes.reason);
         setInProgressExams([]);
+      }
+
+      // Process subscription
+      if (subscriptionRes.status === 'fulfilled') {
+        setSubscription(subscriptionRes.value.data || null);
+      } else {
+        setSubscription(null);
       }
 
     } catch (err) {
@@ -389,6 +399,12 @@ const Dashboard = () => {
 
   const hasAvailableExams = regularAvailableExams.length > 0 || approvedRetakeRequests.length > 0;
 
+  const subscriptionDaysRemaining = subscription?.expiresAt
+    ? Math.max(0, Math.ceil((new Date(subscription.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)))
+    : null;
+  const freeExamAvailable = !user?.freeExamUsed;
+  const unlockedExamCount = availableExams.filter(e => e.accessUnlocked !== false).length;
+
   return (
     <StudentLayout>
       <Container maxWidth="xl" sx={{ mt: { xs: 2, sm: 3, md: 4 }, mb: { xs: 2, sm: 3, md: 4 } }}>
@@ -404,6 +420,209 @@ const Dashboard = () => {
         <Typography variant="body1" color="text.secondary" paragraph>
           Welcome, {user?.firstName || 'Student'}! Here are your available exams and results.
         </Typography>
+
+        {/* Level and Subscription Info Card */}
+        <Card elevation={1} sx={{ mb: 4, borderRadius: 2, background: 'linear-gradient(135deg, #0D406C 0%, #1a5a8a 100%)', color: 'white' }}>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+              <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
+                <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <School fontSize={isMobile ? 'small' : 'medium'} />
+                  Your Learning Level
+                </Typography>
+                <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 500 }}>
+                  {user?.level?.name || 'Not selected'}{user?.subLevel ? ` — ${user.subLevel}` : ''}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
+                  {unlockedExamCount} of {availableExams.length} exam{availableExams.length === 1 ? '' : 's'} unlocked
+                </Typography>
+                <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip
+                    label={freeExamAvailable ? '1 Free Exam Available' : 'Free Exam Used'}
+                    size="small"
+                    icon={freeExamAvailable ? undefined : <Lock sx={{ fontSize: '14px !important', color: '#92400E !important' }} />}
+                    sx={freeExamAvailable
+                      ? { bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }
+                      : { bgcolor: '#FDE68A', color: '#92400E', fontWeight: 700, border: '1px solid #F59E0B' }
+                    }
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    sx={{ borderColor: 'rgba(255,255,255,0.5)', color: 'white', '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
+                    onClick={() => navigate('/student/profile')}
+                  >
+                    Change Level
+                  </Button>
+                </Box>
+              </Box>
+              <Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', sm: 'block' }, borderColor: 'rgba(255,255,255,0.3)' }} />
+              <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
+                <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <WorkspacePremium fontSize={isMobile ? 'small' : 'medium'} />
+                  Subscription Status
+                </Typography>
+                {subscription ? (
+                  <Box>
+                    <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 500 }}>
+                      {subscription.plan?.name || 'Active'}
+                    </Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
+                      Expires: {new Date(subscription.expiresAt).toLocaleDateString()}
+                      {subscriptionDaysRemaining !== null && ` (${subscriptionDaysRemaining} day${subscriptionDaysRemaining === 1 ? '' : 's'} remaining)`}
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      sx={{ mt: 1, bgcolor: 'white', color: '#0D406C', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
+                      onClick={() => navigate('/student/subscriptions')}
+                    >
+                      Renew Subscription
+                    </Button>
+                  </Box>
+                ) : (
+                  <Box>
+                    <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 500 }}>
+                      Not Active
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      sx={{ mt: 1, bgcolor: 'white', color: '#0D406C', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
+                      onClick={() => navigate('/student/subscriptions')}
+                    >
+                      Subscribe Now
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* Free Exam Exhausted — Subscribe prompt */}
+        {user?.freeExamUsed && !subscription && !subscriptionLoading && (
+          <Card
+            elevation={0}
+            sx={{
+              mb: 4,
+              borderRadius: 3,
+              border: '2px solid #F59E0B',
+              background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+              overflow: 'hidden',
+              position: 'relative'
+            }}
+          >
+            {/* Decorative stripe */}
+            <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #F59E0B, #EF4444, #F59E0B)' }} />
+            <CardContent sx={{ p: { xs: 2.5, sm: 3.5 }, pt: { xs: 3, sm: 4 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 2, sm: 3 }, flexWrap: 'wrap' }}>
+                {/* Icon */}
+                <Box
+                  sx={{
+                    width: { xs: 48, sm: 56 },
+                    height: { xs: 48, sm: 56 },
+                    borderRadius: '50%',
+                    bgcolor: '#FEF3C7',
+                    border: '2px solid #F59E0B',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <Lock sx={{ color: '#D97706', fontSize: { xs: 24, sm: 28 } }} />
+                </Box>
+
+                {/* Text */}
+                <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
+                  <Typography variant="h6" fontWeight={800} sx={{ color: '#92400E', mb: 0.5, fontSize: { xs: '1rem', sm: '1.15rem' } }}>
+                    Your free exam has been used
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#78350F', lineHeight: 1.6, mb: 2 }}>
+                    You've completed your 1 free exam for <strong>{user?.level?.name || 'your level'}{user?.subLevel ? ` — ${user.subLevel}` : ''}</strong>.
+                    To continue taking exams and unlock the full exam library, you need an active subscription.
+                  </Typography>
+
+                  {/* What they get */}
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2.5 }}>
+                    {[
+                      'Access all exams for your level',
+                      'Instant results & analytics',
+                      'Retake exams anytime',
+                    ].map(benefit => (
+                      <Box key={benefit} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <CheckCircle sx={{ color: '#10B981', fontSize: 15 }} />
+                        <Typography variant="caption" sx={{ color: '#78350F', fontWeight: 600 }}>
+                          {benefit}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+
+                  {/* CTAs */}
+                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                    <Button
+                      variant="contained"
+                      onClick={() => navigate('/student/subscriptions')}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 2,
+                        px: 3,
+                        bgcolor: '#D97706',
+                        boxShadow: '0 4px 12px rgba(217,119,6,0.35)',
+                        '&:hover': { bgcolor: '#B45309', boxShadow: '0 6px 16px rgba(217,119,6,0.45)' }
+                      }}
+                    >
+                      Subscribe Now
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => navigate('/marketplace')}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        borderRadius: 2,
+                        px: 3,
+                        borderColor: '#D97706',
+                        color: '#92400E',
+                        '&:hover': { bgcolor: '#FEF3C7', borderColor: '#B45309' }
+                      }}
+                    >
+                      Browse Plans
+                    </Button>
+                  </Box>
+                </Box>
+
+                {/* Locked count badge (desktop) */}
+                {availableExams.filter(e => e.accessUnlocked === false).length > 0 && (
+                  <Box
+                    sx={{
+                      display: { xs: 'none', md: 'flex' },
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: 100,
+                      p: 2,
+                      borderRadius: 2.5,
+                      bgcolor: 'rgba(245,158,11,0.1)',
+                      border: '1px dashed #F59E0B'
+                    }}
+                  >
+                    <Lock sx={{ color: '#D97706', fontSize: 28, mb: 0.5 }} />
+                    <Typography variant="h5" fontWeight={800} sx={{ color: '#92400E', lineHeight: 1 }}>
+                      {availableExams.filter(e => e.accessUnlocked === false).length}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#78350F', fontWeight: 600, textAlign: 'center' }}>
+                      exam{availableExams.filter(e => e.accessUnlocked === false).length !== 1 ? 's' : ''} locked
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        )}
 
         {/* App Download Recommendation - Only show when no available exams */}
         {!hasAvailableExams && (
@@ -960,14 +1179,12 @@ const Dashboard = () => {
                                   variant="outlined"
                                 />
                               )}
-                              {exam.publicPrice > 0 && (
-                                <Chip
-                                  label={`RWF ${exam.publicPrice.toLocaleString()}`}
-                                  size="small"
-                                  color="warning"
-                                  variant="outlined"
-                                />
-                              )}
+                              <Chip
+                                label={exam.accessType === 'subscription' ? '🔒 Subscription' : 'Free'}
+                                size="small"
+                                color={exam.accessType === 'subscription' ? 'secondary' : 'success'}
+                                variant="outlined"
+                              />
                             </Box>
                           </Box>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: { xs: '100%', sm: 140 }, width: { xs: '100%', sm: 'auto' } }}>
@@ -1414,6 +1631,15 @@ const Dashboard = () => {
           onCancel={handleCancelInstructions}
         />
       )}
+
+      <LevelSelectionModal
+        open={!!user?.requiresLevelSelection}
+        onClose={() => {}}
+        onSelectLevel={(levelId, levelData, subLevel) => {
+          updateUserLevel(levelData || { _id: levelId }, subLevel);
+          fetchData(true);
+        }}
+      />
     </StudentLayout>
   );
 };

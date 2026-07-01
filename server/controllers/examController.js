@@ -539,8 +539,22 @@ const getExams = async (req, res) => {
       return res.json(cached);
     }
 
-    const exams = await Exam.find({})
+    let query = {};
+
+    // For students, filter exams by their level
+    if (req.user.role === 'student') {
+      const user = await User.findById(req.user._id).populate('level');
+      if (user.level) {
+        query.level = user.level._id;
+      } else {
+        // If student hasn't selected a level, return empty array
+        return res.json([]);
+      }
+    }
+
+    const exams = await Exam.find(query)
       .populate('createdBy', 'fullName')
+      .populate('level', 'name')
       .select('-sections.questions');
 
     // Cache for 5 minutes

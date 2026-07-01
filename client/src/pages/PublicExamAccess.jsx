@@ -23,6 +23,7 @@ const PublicExamAccess = () => {
   const [usingAccessCode, setUsingAccessCode] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
+  const [activeSessionInfo, setActiveSessionInfo] = useState(null);
 
   useEffect(() => {
     console.log('PublicExamAccess useEffect triggered');
@@ -149,9 +150,8 @@ const PublicExamAccess = () => {
         localStorage.setItem('currentShareToken', shareToken);
         // Show instructions before navigating to exam
         setExam(res.data);
+        setSelectedExam(res.data);
         setShowInstructions(true);
-        setHasReadInstructions(false);
-        setReadCountdown(10);
         setJoining(false);
         return;
       }
@@ -162,9 +162,8 @@ const PublicExamAccess = () => {
       }
       // Show instructions before navigating to exam
       setExam(res.data);
+      setSelectedExam(res.data);
       setShowInstructions(true);
-      setHasReadInstructions(false);
-      setReadCountdown(10);
       setJoining(false);
     } catch (err) {
       console.error('Error joining exam:', err);
@@ -176,6 +175,9 @@ const PublicExamAccess = () => {
       if (err.response?.status === 403 && user) {
         setShowLogoutPrompt(true);
         setError('You are logged in as a different user. Please logout and login with the correct account to access this exam.');
+      } else if (err.response?.status === 409 && err.response?.data?.hasActiveSession) {
+        setActiveSessionInfo(err.response.data);
+        setError(null);
       } else {
         setError(err.response?.data?.message || 'Failed to join exam');
       }
@@ -265,12 +267,46 @@ const PublicExamAccess = () => {
     );
   }
 
+  if (activeSessionInfo) {
+    const expiresAt = activeSessionInfo.sessionExpiresAt;
+    const minutesLeft = expiresAt ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 60000)) : 30;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9', p: 2 }}>
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 3, maxWidth: 480, textAlign: 'center', border: '1px solid #FDE68A', bgcolor: '#FFFBEB' }}>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 1, color: '#D97706' }}>
+            Active Session Detected
+          </Typography>
+          <Typography sx={{ color: '#92400E', mb: 1 }}>
+            You are already taking this exam in another browser tab or device.
+          </Typography>
+          <Typography sx={{ color: '#64748b', mb: 3, fontSize: 14 }}>
+            Please complete the existing session first, or wait approximately <strong>{minutesLeft} minute{minutesLeft !== 1 ? 's' : ''}</strong> for it to expire, then try again.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              onClick={() => { setActiveSessionInfo(null); handleJoin(password || null); }}
+              disabled={joining}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, bgcolor: '#D97706', '&:hover': { bgcolor: '#B45309' } }}
+            >
+              {joining ? <CircularProgress size={18} sx={{ color: '#fff', mr: 1 }} /> : null}
+              Try Again
+            </Button>
+            <Button variant="outlined" onClick={() => navigate('/')} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
+              Go to Dashboard
+            </Button>
+          </Box>
+        </Paper>
+      </Box>
+    );
+  }
+
   if (error) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9', p: 2 }}>
         <Paper elevation={0} sx={{ p: 4, borderRadius: 3, maxWidth: 500, textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <Typography variant="h5" fontWeight={700} sx={{ mb: 1, color: '#EF4444' }}>
-            ⚠️ Unable to Access Exam
+            Unable to Access Exam
           </Typography>
           <Typography sx={{ color: '#64748b', mb: 3 }}>
             {error}

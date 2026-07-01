@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, Typography, Card, CardContent, Button, TextField, CircularProgress, Alert, Grid, Chip, Divider } from '@mui/material';
-import { ArrowBack, School, AccessTime, AttachMoney, CheckCircle } from '@mui/icons-material';
+import { Box, Typography, Card, CardContent, Button, TextField, CircularProgress, Alert, Grid, Divider } from '@mui/material';
+import { ArrowBack, School, CheckCircle, WorkspacePremium, Lock } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
@@ -22,6 +22,7 @@ const ExamRequest = () => {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [requiresSubscription, setRequiresSubscription] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -45,10 +46,10 @@ const ExamRequest = () => {
     fetchExamDetails();
   }, [examId, isAuthenticated, user]);
 
-  // Auto-handle free exams and free retakes
+  // Auto-attempt access for authenticated students — the backend decides
+  // whether this exam is free or requires an active subscription.
   useEffect(() => {
-    const effectivePrice = isRetake ? (exam?.retakePrice ?? 0) : (exam?.publicPrice ?? 0);
-    if (exam && effectivePrice === 0 && isAuthenticated && user?.role === 'student') {
+    if (exam && isAuthenticated && user?.role === 'student') {
       handleAutoAccess();
     }
   }, [exam, isAuthenticated, user, isRetake]);
@@ -114,6 +115,13 @@ const ExamRequest = () => {
       }, 3000);
     } catch (err) {
       console.error('Error submitting request:', err);
+
+      if (err.response?.data?.requiresSubscription) {
+        setRequiresSubscription(true);
+        setSubmitting(false);
+        return;
+      }
+
       const errorMessage = err.response?.data?.message || 'Failed to submit request. Please try again.';
 
       // Check if error is due to pending request or already approved
@@ -136,11 +144,12 @@ const ExamRequest = () => {
   const handleAutoAccess = async () => {
     try {
       setSubmitting(true);
+      setRequiresSubscription(false);
       const response = await api.post(`/marketplace/exams/${examId}/request`, { ...formData, isRetake });
       setSuccess(true);
 
-      // For free exams, backend returns autoApproved: true with shareToken
-      // Redirect directly to the exam instead of dashboard
+      // Backend returns autoApproved: true with shareToken once access
+      // (free exam, or active subscription) is confirmed
       const { shareToken, autoApproved } = response.data;
 
       if (autoApproved && shareToken) {
@@ -156,6 +165,13 @@ const ExamRequest = () => {
       }
     } catch (err) {
       console.error('Error auto-granting access:', err);
+
+      if (err.response?.data?.requiresSubscription) {
+        setRequiresSubscription(true);
+        setSubmitting(false);
+        return;
+      }
+
       const errorMessage = err.response?.data?.message || 'Failed to grant access. Please try again.';
 
       // Check if error is due to pending request or already approved
@@ -176,14 +192,6 @@ const ExamRequest = () => {
 
   const calculateTotalQuestions = (sections) => {
     return sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
-  };
-
-  // Calculate effective price based on actual exam pricing
-  const getEffectivePrice = () => {
-    if (isRetake) {
-      return exam?.retakePrice ?? 0;
-    }
-    return exam?.publicPrice ?? 0;
   };
 
   if (loading) {
@@ -287,14 +295,12 @@ const ExamRequest = () => {
           )}
 
           {success && (
-            <Alert 
-              severity="success" 
+            <Alert
+              severity="success"
               sx={{ mb: 3 }}
               icon={<CheckCircle />}
             >
-              {getEffectivePrice() === 0
-                ? 'Access granted! Redirecting to exam...'
-                : 'Request submitted successfully! The teacher will review your request. Redirecting to dashboard...'}
+              Access granted! Redirecting to exam...
             </Alert>
           )}
 
@@ -321,99 +327,52 @@ const ExamRequest = () => {
 
                     <Divider sx={{ mb: 3 }} />
 
-                    {isAuthenticated ? (
-                      <>
-                        <Box sx={{ mb: 3, p: 3, borderRadius: 2, bgcolor: 'rgba(12,189,115,0.08)', border: '1px solid rgba(12,189,115,0.2)' }}>
-                          <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0CBD73', mb: 2 }}>
-                            Payment & Approval Information
-                          </Typography>
-                          {getEffectivePrice() > 0 ? (
-                            <>
-                              <Box sx={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'space-between', 
-                                p: 2, 
-                                borderRadius: 2, 
-                                background: 'rgba(245,158,11,0.08)', 
-                                border: '1px solid rgba(245,158,11,0.2)',
-                                mb: 2
-                              }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <AttachMoney sx={{ color: '#F59E0B', fontSize: 20 }} />
-                                  <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>
-                                    {isRetake && exam?.publicPrice === 0 ? 'Retake Fee' : 'Amount to Pay'}
-                                  </Typography>
-                                </Box>
-                                <Typography sx={{ fontSize: 18, fontWeight: 700, color: '#F59E0B' }}>
-                                  RWF {getEffectivePrice().toLocaleString()}
-                                </Typography>
-                              </Box>
-                              <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.8, mb: 2 }}>
-                                {isRetake && exam?.publicPrice === 0
-                                  ? 'Retake fee for this free exam. Please contact us for payment instructions and approval:'
-                                  : 'To complete your request, please contact us for payment instructions and approval:'}
-                              </Typography>
-                            </>
-                          ) : (
-                            <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.8, mb: 2 }}>
-                              This is a free exam. You will be granted access automatically.
-                            </Typography>
-                          )}
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                            <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
-                              📞 +250 788 535 156
-                            </Typography>
-                            <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
-                              📞 +250 793 828 834
-                            </Typography>
-                            <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
-                              📞 +250 781 671 517
-                            </Typography>
-                            <Divider sx={{ my: 1 }} />
-                            <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#0F172A', mb: 0.5 }}>
-                              MTN Mobile Money (MoMo) Payment:
-                            </Typography>
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                              <Typography sx={{ fontSize: 13, color: '#64748B' }}>
-                                MoMo Code: <strong>81671517</strong>
-                              </Typography>
-                              <Typography sx={{ fontSize: 13, color: '#64748B' }}>
-                                Account Name: <strong>Excellence Coaching Hub (ECH) LTD</strong>
-                              </Typography>
-                            </Box>
+                    {requiresSubscription || (exam?.accessType === 'subscription' && !isAuthenticated) ? (
+                      <Box sx={{ p: 3, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.06)', border: '1px solid rgba(13,64,108,0.15)', textAlign: 'center' }}>
+                        <Lock sx={{ fontSize: 40, color: '#0D406C', mb: 1.5 }} />
+                        <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#0F172A', mb: 1 }}>
+                          Subscription Required
+                        </Typography>
+                        <Typography sx={{ fontSize: 14, color: '#64748B', mb: 3 }}>
+                          {isAuthenticated
+                            ? 'This exam requires an active subscription for your level. Subscribe to unlock unlimited exams.'
+                            : 'This exam requires an active subscription. Log in or create a free account, then subscribe to access it.'}
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          startIcon={<WorkspacePremium />}
+                          onClick={() => navigate(isAuthenticated ? '/student/subscriptions' : '/student-register')}
+                          sx={{
+                            borderRadius: 2,
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            px: 3,
+                            py: 1.25,
+                            background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                            boxShadow: '0 4px 12px rgba(12,189,115,0.35)'
+                          }}
+                        >
+                          {isAuthenticated ? 'Subscribe Now' : 'Create Free Account'}
+                        </Button>
+                      </Box>
+                    ) : isAuthenticated ? (
+                      <Box sx={{ p: 3, borderRadius: 2, bgcolor: 'rgba(12,189,115,0.08)', border: '1px solid rgba(12,189,115,0.2)' }}>
+                        {submitting ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <CircularProgress size={20} />
+                            <Typography sx={{ fontSize: 14, color: '#0F172A' }}>Checking access…</Typography>
                           </Box>
-                        </Box>
-
-                        {getEffectivePrice() > 0 && (
-                          <Button
-                            onClick={handleSubmit}
-                            fullWidth
-                            variant="contained"
-                            disabled={submitting || success}
-                            sx={{
-                              borderRadius: 2,
-                              textTransform: 'none',
-                              fontWeight: 700,
-                              py: 1.5,
-                              background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                              boxShadow: '0 4px 12px rgba(12,189,115,0.35)',
-                              fontSize: 16
-                            }}
-                          >
-                            {submitting ? (
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <CircularProgress size={20} color="inherit" />
-                                Submitting...
-                              </Box>
-                            ) : (
-                              isRetake ? 'Pay Now to Retake' : 'Pay Now to Access'
-                            )}
-                          </Button>
+                        ) : (
+                          <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.8 }}>
+                            This is a free exam. You will be granted access automatically.
+                          </Typography>
                         )}
-                      </>
+                      </Box>
                     ) : (
                       <form onSubmit={handleSubmit}>
+                        <Typography sx={{ fontSize: 13, color: '#64748B', mb: 2 }}>
+                          This is a free exam — fill in your details to get instant access.
+                        </Typography>
                         <Grid container spacing={2.5}>
                           <Grid item xs={12}>
                             <TextField
@@ -482,21 +441,12 @@ const ExamRequest = () => {
                                   Submitting...
                                 </Box>
                               ) : (
-                                getEffectivePrice() > 0 ? (isRetake ? 'Pay Now to Retake' : 'Pay Now to Access') : 'Submit Request'
+                                'Submit Request'
                               )}
                             </Button>
                           </Grid>
                         </Grid>
                       </form>
-                    )}
-
-                    {getEffectivePrice() > 0 && (
-                      <Box sx={{ mt: 3, p: 2, borderRadius: 2, bgcolor: 'rgba(13,64,108,0.05)' }}>
-                        <Typography sx={{ fontSize: 13, color: '#64748B', lineHeight: 1.6 }}>
-                          <strong>Note:</strong> The teacher will review your request and approve or reject it.
-                          You will be notified once a decision is made. If approved, you'll receive access to take the exam.
-                        </Typography>
-                      </Box>
                     )}
                   </CardContent>
                 </Card>

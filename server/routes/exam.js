@@ -37,6 +37,7 @@ const {
 } = require('../middleware/planRestrictions');
 const { authLimiter, submissionLimiter, aiGradingLimiter, examCreationLimiter } = require('../middleware/rateLimiter');
 const { cacheExam, cacheExamList, invalidateExamCache } = require('../middleware/cacheMiddleware');
+const { validateExamAccess, markFreeExamUsed } = require('../middleware/examAccess');
 const groqClient = require('../utils/groqClient');
 
 // Configure multer for reference file uploads using Cloudinary
@@ -188,9 +189,9 @@ router.get('/test-routes', (req, res) => {
 });
 
 // Student routes with rate limiting
-router.post('/:id/start', submissionLimiter, isStudent, startExam);
-router.post('/:id/answer', submissionLimiter, isStudent, submitAnswer);
-router.post('/:id/complete', submissionLimiter, isStudent, completeExam);
+router.post('/:id/start', submissionLimiter, isStudent, validateExamAccess, startExam);
+router.post('/:id/answer', submissionLimiter, isStudent, validateExamAccess, submitAnswer);
+router.post('/:id/complete', submissionLimiter, isStudent, markFreeExamUsed, completeExam);
 router.post('/:id/select-question', submissionLimiter, isStudent, selectQuestion);
 
 
@@ -319,7 +320,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
     console.log('Save draft - req.user._id:', req.user._id);
     console.log('Save draft - req.orgAdminId:', req.orgAdminId);
     console.log('Save draft - req.user.role:', req.user.role);
-    const { title, description, timeLimit, passingScore, questions, totalMarks, examId, sections } = req.body;
+    const { title, description, timeLimit, passingScore, questions, totalMarks, examId, sections, accessType, level, subLevel } = req.body;
 
     // Log incoming sections data to check if passage is present
     console.log('Incoming sections data:', sections?.map(s => ({
@@ -407,7 +408,10 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam.timeLimit = timeLimit || 60;
         exam.passingScore = passingScore || 70;
         exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
-        
+        if (accessType !== undefined) exam.accessType = accessType;
+        if (level !== undefined) exam.level = level;
+        if (subLevel !== undefined) exam.subLevel = subLevel || null;
+
         // Merge existing section data with new sections to preserve passage/instructions/wordBank
         exam.sections = sectionsArray.map(newSection => {
           const existingSection = exam.sections?.find(s => s.name === newSection.name);
@@ -456,7 +460,10 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam.timeLimit = timeLimit || 60;
         exam.passingScore = passingScore || 70;
         exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
-        
+        if (accessType !== undefined) exam.accessType = accessType;
+        if (level !== undefined) exam.level = level;
+        if (subLevel !== undefined) exam.subLevel = subLevel || null;
+
         // Merge existing section data with new sections to preserve passage/instructions/wordBank
         exam.sections = sectionsArray.map(newSection => {
           const existingSection = exam.sections?.find(s => s.name === newSection.name);
@@ -493,7 +500,10 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
           createdBy: creatorId,
           status: 'draft',
           isLocked: false,
-          totalPoints: totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0)
+          totalPoints: totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0),
+          accessType: accessType || 'subscription',
+          level: level || null,
+          subLevel: subLevel || null
         });
         console.log(`Created new draft exam: ${exam._id}`);
       }
@@ -2311,18 +2321,9 @@ router.post('/fix-results', isAdmin, fixExistingResults); // Fix existing result
 router.get('/debug-result/:resultId', isAdmin, debugResult); // Debug specific result
 router.post('/comprehensive-ai-grading', isAdmin, comprehensiveAIGrading); // Comprehensive AI grading
 
-// Routes for both admin and students
-router.get('/', getExams);
-
 // Student routes (specific routes before parameterized ones)
 router.get('/result/:id', auth, getExamResult); // Both students and admins can view results
 
-// Parameterized routes (must come last to avoid conflicts)
-router.get('/:id', getExamById);
-router.post('/:id/start', isStudent, startExam);
-router.post('/:id/answer', isStudent, submitAnswer);
-router.post('/:id/complete', isStudent, completeExam); // New fast submission system
-router.post('/:id/select-question', auth, isStudent, selectQuestion); // Ensure auth middleware is applied
 router.post('/:id/enable-selective-answering', isAdmin, enableSelectiveAnswering);
 
 module.exports = router;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
   Typography,
@@ -48,10 +48,13 @@ import {
   TrendingUp,
   QuestionAnswer,
   Timer,
-  Grade
+  Grade,
+  WorkspacePremium,
+  CardMembership
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
 import { useThemeMode } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import StudentLayout from './StudentLayout';
 import api from '../../services/api';
 
@@ -115,6 +118,8 @@ const ExamCard = styled(Card, {
 const Exams = () => {
   const theme = useTheme();
   const { mode } = useThemeMode();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -129,17 +134,6 @@ const Exams = () => {
       try {
         setLoading(true);
         const response = await api.get('/student/exams');
-        console.log('Exams data from API:', response.data);
-
-        // Check if selective answering data is present
-        const hasSelectiveAnswering = response.data.some(exam => exam.allowSelectiveAnswering === true);
-        console.log('Any exam has selective answering?', hasSelectiveAnswering);
-
-        if (response.data.length > 0) {
-          console.log('First exam fields:', Object.keys(response.data[0]));
-          console.log('First exam selective answering:', response.data[0].allowSelectiveAnswering);
-        }
-
         setExams(response.data);
         setError(null);
       } catch (err) {
@@ -169,7 +163,10 @@ const Exams = () => {
       return true;
     })
     .sort((a, b) => {
-      // Apply sorting
+      // Free exams always surface first; the chosen sort only orders within each group.
+      const freeRank = (a.accessType === 'subscription' ? 1 : 0) - (b.accessType === 'subscription' ? 1 : 0);
+      if (freeRank !== 0) return freeRank;
+
       if (sortBy === 'date') {
         return new Date(b.createdAt) - new Date(a.createdAt);
       } else if (sortBy === 'title') {
@@ -203,6 +200,32 @@ const Exams = () => {
     }
   };
 
+  // Function to get access type badge
+  const getAccessBadge = (exam) => {
+    if (exam.accessType === 'free') {
+      return (
+        <Chip
+          icon={<CardMembership />}
+          label="Free"
+          size="small"
+          color="success"
+          sx={{ fontWeight: 'bold' }}
+        />
+      );
+    } else if (exam.accessType === 'subscription') {
+      return (
+        <Chip
+          icon={<WorkspacePremium />}
+          label="Subscription"
+          size="small"
+          color="primary"
+          sx={{ fontWeight: 'bold' }}
+        />
+      );
+    }
+    return null;
+  };
+
   // Function to get status icon
   const getStatusIcon = (status, isLocked) => {
     if (isLocked) return <Lock />;
@@ -227,9 +250,25 @@ const Exams = () => {
             Available Exams
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Browse and take your assigned exams
+            Showing exams for your level: {user?.level?.name || 'Not selected'}{user?.subLevel ? ` — ${user.subLevel}` : ''}
           </Typography>
         </Box>
+
+        {exams.some(e => e.accessType === 'subscription' && e.accessUnlocked === false) && (
+          <Alert
+            severity={user?.freeExamUsed ? 'warning' : 'info'}
+            sx={{ mb: 3, borderRadius: 2 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => navigate('/student/subscriptions')} sx={{ fontWeight: 'bold' }}>
+                Subscribe Now
+              </Button>
+            }
+          >
+            {user?.freeExamUsed
+              ? <><strong>Your free exam has been used.</strong> You need an active subscription to access more exams for your level.</>
+              : <>You have <strong>1 free exam</strong> available. Subscribe to unlock every exam in this level.</>}
+          </Alert>
+        )}
 
         {/* Filters and Search */}
         <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
@@ -310,8 +349,37 @@ const Exams = () => {
         ) : (
           <>
             <Grid container spacing={3}>
-              {displayedExams.map((exam) => (
-                <Grid item xs={12} sm={6} md={4} key={exam._id}>
+              {displayedExams.map((exam, idx) => {
+                const isFirstFree = idx === 0 && exam.accessType !== 'subscription';
+                const isFirstSubscription = exam.accessType === 'subscription' &&
+                  (idx === 0 || displayedExams[idx - 1].accessType !== 'subscription');
+
+                return (
+                <React.Fragment key={exam._id}>
+                  {isFirstFree && (
+                    <Grid item xs={12}>
+                      <Alert severity="success" sx={{ borderRadius: 2 }} icon={<CardMembership />}>
+                        <strong>Free Exams</strong> — try one exam per level at no cost. Once you complete a free exam, it's used up; subscribe to unlock unlimited exams.
+                      </Alert>
+                    </Grid>
+                  )}
+                  {isFirstSubscription && (
+                    <Grid item xs={12}>
+                      <Alert
+                        severity="info"
+                        sx={{ borderRadius: 2 }}
+                        icon={<WorkspacePremium />}
+                        action={
+                          <Button color="inherit" size="small" onClick={() => navigate('/student/subscriptions')} sx={{ fontWeight: 'bold' }}>
+                            Subscribe
+                          </Button>
+                        }
+                      >
+                        <strong>Subscription Exams</strong> — these require an active subscription for your level to unlock.
+                      </Alert>
+                    </Grid>
+                  )}
+                <Grid item xs={12} sm={6} md={4}>
                   <ExamCard
                     elevation={mode === 'dark' ? 8 : 3}
                     status={exam.status}
@@ -449,6 +517,9 @@ const Exams = () => {
                         }}
                       />
 
+                      {/* Access Type Badge */}
+                      {getAccessBadge(exam)}
+
                       {/* Enhanced Selective Answering Badge */}
                       {exam.allowSelectiveAnswering && (
                         <Badge
@@ -551,6 +622,14 @@ const Exams = () => {
 
                       {/* Enhanced Info Chips */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+                        {exam.subLevel && (
+                          <Chip
+                            label={exam.subLevel}
+                            size="small"
+                            variant="outlined"
+                            sx={{ borderRadius: '12px', fontWeight: 'medium' }}
+                          />
+                        )}
                         <Chip
                           icon={<AccessTime fontSize="small" />}
                           label={`${exam.timeLimit} min`}
@@ -752,16 +831,18 @@ const Exams = () => {
                     }}>
                       <Button
                         variant={exam.status === 'in-progress' ? 'contained' : 'contained'}
-                        component={exam.isLocked ? undefined : RouterLink}
-                        to={!exam.isLocked ? (
-                          exam.status === 'completed'
-                            ? `/student/exam/${exam._id}`
-                            : exam.status === 'in-progress'
+                        component={(exam.isLocked && exam.accessUnlocked !== false) ? undefined : RouterLink}
+                        to={exam.isLocked
+                          ? (exam.accessUnlocked === false ? '/student/subscriptions' : undefined)
+                          : (
+                            exam.status === 'completed'
                               ? `/student/exam/${exam._id}`
-                              : `/student/exam/start/${exam._id}`
-                        ) : undefined}
+                              : exam.status === 'in-progress'
+                                ? `/student/exam/${exam._id}`
+                                : `/student/exam/start/${exam._id}`
+                          )}
                         endIcon={exam.isLocked ? <LockOutlined /> : <ArrowForward />}
-                        disabled={exam.isLocked}
+                        disabled={exam.isLocked && exam.accessUnlocked !== false}
                         fullWidth
                         sx={{
                           borderRadius: '12px',
@@ -807,7 +888,7 @@ const Exams = () => {
                         }}
                       >
                         {exam.isLocked
-                          ? 'Exam Locked'
+                          ? (exam.accessUnlocked === false ? '🔒 Subscribe to Unlock' : 'Exam Locked')
                           : exam.status === 'in-progress'
                             ? 'Continue Exam'
                             : exam.status === 'completed'
@@ -851,7 +932,9 @@ const Exams = () => {
                     </CardActions>
                   </ExamCard>
                 </Grid>
-              ))}
+                </React.Fragment>
+                );
+              })}
             </Grid>
 
             {/* Enhanced Pagination */}

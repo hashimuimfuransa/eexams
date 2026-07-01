@@ -3,7 +3,20 @@ const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
 const User = require('../models/User');
 const Result = require('../models/Result');
+const Subscription = require('../models/Subscription');
 const emailService = require('../utils/emailService');
+const { subscriptionCoversExam } = require('../utils/subLevelAccess');
+
+// Determine whether an authenticated student already has subscription-based
+// access to a given exam (active subscription for the exam's level, with
+// sub-level matching). Free exams and unauthenticated requests are handled
+// separately by callers — this only covers the "subscription" accessType case.
+const hasActiveSubscriptionForExam = async (userId, exam) => {
+  if (!userId || !exam.level) return false;
+  const subscription = await Subscription.getActiveSubscriptionForLevel(userId, exam.level);
+  if (!subscription || !subscription.isValid()) return false;
+  return subscriptionCoversExam(subscription, exam);
+};
 
 // @desc    Get all marketplace exams
 // @route   GET /api/marketplace/exams
@@ -17,8 +30,8 @@ const getMarketplaceExams = async (req, res) => {
     const exams = await Exam.find({ isPubliclyListed: true, isLocked: false })
       .populate('createdBy', 'fullName')
       .populate('level', 'name description subLevels')
-      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections.name sections.questions sections.questionCount isPubliclyListed isLocked status')
-      .sort({ createdAt: -1 })
+      .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections.name sections.questions sections.questionCount isPubliclyListed isLocked status accessType')
+      .sort({ accessType: 1, createdAt: -1 })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .lean();
@@ -51,7 +64,7 @@ const getMarketplaceExamById = async (req, res) => {
       isLocked: false
     })
       .populate('createdBy', 'fullName')
-      .select('title description timeLimit publicPrice retakePrice publicDescription createdAt createdBy sections');
+      .select('title description timeLimit publicPrice retakePrice publicDescription createdAt createdBy sections accessType level subLevel');
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found or not available on marketplace' });
@@ -294,16 +307,16 @@ const requestMarketplaceExam = async (req, res) => {
 
           console.log(`Re-request allowed for completed exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}, isRetake: ${isRetake}`);
 
-          // For free retakes, auto-approve immediately
-          const retakeIsFree = isRetake
-            ? (exam.retakePrice === 0 || exam.retakePrice === null || exam.retakePrice === undefined)
-            : (exam.publicPrice === 0);
+          // Free exams always auto-approve; subscription exams require an
+          // active subscription covering this exam's level/sub-level.
+          const canAutoApprove = exam.accessType === 'free' ||
+            (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam));
 
-          if (retakeIsFree) {
-            console.log(`Auto-approving free retake (existing request path): ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
+          if (canAutoApprove) {
+            console.log(`Auto-approving retake (existing request path): ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
             const approvalResult = await processExamApproval(existingRequest, false);
             return res.status(201).json({
-              message: isRetake ? 'Retake request approved automatically. This retake is free!' : 'Request approved automatically. This exam is free!',
+              message: isRetake ? 'Retake approved automatically!' : 'Request approved automatically!',
               requestId: existingRequest._id,
               shareToken: approvalResult.shareToken,
               accessCode: approvalResult.accessCode,
@@ -311,20 +324,15 @@ const requestMarketplaceExam = async (req, res) => {
             });
           }
 
-          // For paid retakes, send notification and return pending
-          emailService.sendSuperAdminPendingRequestEmail(existingRequest, exam, {
-            name: name || 'User',
-            email: email || '',
-            phone: phone || ''
-          }).catch(err => {
-            console.error('[Marketplace] Failed to send super admin notification for re-request:', err);
-          });
+          // Subscription required — do not fall back to the legacy pay-per-exam
+          // pending-review flow for subscription-gated exams.
+          existingRequest.status = 'rejected';
+          existingRequest.processedAt = new Date();
+          await existingRequest.save();
 
-          return res.status(201).json({
-            message: isRetake
-              ? `Retake request submitted successfully. Please pay ${exam.retakePrice || 0} RWF to complete your request.`
-              : 'Request submitted successfully. The teacher will review your request.',
-            requestId: existingRequest._id
+          return res.status(403).json({
+            message: 'This exam requires an active subscription for your level. Subscribe to access it.',
+            requiresSubscription: true
           });
         } else {
           // User is approved but hasn't completed - check if exam is assigned
@@ -359,7 +367,17 @@ const requestMarketplaceExam = async (req, res) => {
     const rejectedRequest = await ExamRequest.findOne(rejectedQuery);
 
     if (rejectedRequest) {
-      // Update the rejected request to pending
+      const canAutoApprove = exam.accessType === 'free' ||
+        (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam));
+
+      if (!canAutoApprove) {
+        return res.status(403).json({
+          message: 'This exam requires an active subscription for your level. Subscribe to access it.',
+          requiresSubscription: true
+        });
+      }
+
+      // Update the rejected request and approve it now that access is confirmed
       rejectedRequest.status = 'pending';
       rejectedRequest.processedAt = null;
       rejectedRequest.shareToken = null;
@@ -367,19 +385,14 @@ const requestMarketplaceExam = async (req, res) => {
       rejectedRequest.paymentStatus = 'pending';
       await rejectedRequest.save();
 
-      // Send email notification to all super admins about the re-request
-      emailService.sendSuperAdminPendingRequestEmail(rejectedRequest, exam, {
-        name: name || 'User',
-        email: email || '',
-        phone: phone || ''
-      }).catch(err => {
-        console.error('[Marketplace] Failed to send super admin notification for re-request:', err);
-      });
-
-      console.log(`Re-request allowed for rejected exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
+      console.log(`Re-request approved for exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
+      const approvalResult = await processExamApproval(rejectedRequest, false);
       return res.status(201).json({
-        message: 'Request submitted successfully. The teacher will review your request.',
-        requestId: rejectedRequest._id
+        message: 'Request approved automatically!',
+        requestId: rejectedRequest._id,
+        shareToken: approvalResult.shareToken,
+        accessCode: approvalResult.accessCode,
+        autoApproved: true
       });
     }
 
@@ -410,6 +423,21 @@ const requestMarketplaceExam = async (req, res) => {
       }
     }
 
+    // Free exams always auto-approve; subscription exams require an active
+    // subscription covering this exam's level/sub-level. Unauthenticated
+    // (guest) requests can never satisfy a subscription requirement.
+    const canAutoApprove = exam.accessType === 'free' ||
+      (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam));
+
+    if (!canAutoApprove) {
+      return res.status(403).json({
+        message: isAuthenticated
+          ? 'This exam requires an active subscription for your level. Subscribe to access it.'
+          : 'This exam requires an active subscription. Please log in and subscribe to access it.',
+        requiresSubscription: true
+      });
+    }
+
     // Calculate the amount - use retakePrice for retakes, publicPrice for initial requests
     let amount = isRetake ? (exam.retakePrice || 0) : (exam.publicPrice || 0);
 
@@ -434,40 +462,17 @@ const requestMarketplaceExam = async (req, res) => {
 
     const examRequest = await ExamRequest.create(requestData);
 
-    // Send email notification to all super admins about the new pending request
-    emailService.sendSuperAdminPendingRequestEmail(examRequest, exam, {
-      name: name || 'User',
-      email: email || '',
-      phone: phone || ''
-    }).catch(err => {
-      console.error('[Marketplace] Failed to send super admin notification:', err);
-    });
+    console.log(`Auto-approving exam request: ${exam._id}, isRetake: ${isRetake}, accessType: ${exam.accessType}`);
 
-    // Check if exam is free (price = 0) - auto-approve including retakes if retakePrice is 0
-    const isFree = isRetake 
-      ? (exam.retakePrice === 0 || exam.retakePrice === '0' || exam.retakePrice === '0 RWF')
-      : (exam.publicPrice === 0 || exam.publicPrice === '0' || exam.publicPrice === '0 RWF');
-    
-    if (isFree) {
-      console.log(`Auto-approving free exam request: ${exam._id}, isRetake: ${isRetake}, price: ${isRetake ? exam.retakePrice : exam.publicPrice}`);
-      
-      // Process the approval automatically
-      const approvalResult = await processExamApproval(examRequest, false);
-      
-      return res.status(201).json({
-        message: isRetake ? 'Retake request approved automatically. This retake is free!' : 'Request approved automatically. This exam is free!',
-        requestId: examRequest._id,
-        shareToken: approvalResult.shareToken,
-        accessCode: approvalResult.accessCode,
-        autoApproved: true
-      });
-    }
+    // Process the approval automatically
+    const approvalResult = await processExamApproval(examRequest, false);
 
-    res.status(201).json({
-      message: isRetake 
-        ? `Retake request submitted successfully. Please pay ${exam.retakePrice || 0} RWF to complete your request.`
-        : 'Request submitted successfully. The teacher will review your request.',
-      requestId: examRequest._id
+    return res.status(201).json({
+      message: isRetake ? 'Retake request approved automatically!' : 'Request approved automatically!',
+      requestId: examRequest._id,
+      shareToken: approvalResult.shareToken,
+      accessCode: approvalResult.accessCode,
+      autoApproved: true
     });
   } catch (error) {
     console.error('Request marketplace exam error:', error);
@@ -1152,7 +1157,7 @@ const getPersonalizedRecommendations = async (req, res) => {
           { targetAudience: { $in: completedLevels } }
         ]
       })
-        .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections.name sections.questions sections.questionCount')
+        .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections.name sections.questions sections.questionCount accessType')
         .populate('createdBy', 'fullName')
         .populate('level', 'name description')
         .limit(6)

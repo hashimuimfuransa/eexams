@@ -465,7 +465,11 @@ function MarketplaceShowcase({ mode }) {
   const fetchMarketplaceExams = async () => {
     try {
       const response = await api.get('/marketplace/exams');
-      setExams(response.data.slice(0, 6)); // Show only first 6 exams
+      // Surface free exams first in the homepage teaser
+      const sorted = [...response.data].sort((a, b) =>
+        (a.accessType === 'subscription' ? 1 : 0) - (b.accessType === 'subscription' ? 1 : 0)
+      );
+      setExams(sorted.slice(0, 6)); // Show only first 6 exams
     } catch (err) {
       console.error('Error fetching marketplace exams:', err);
     } finally {
@@ -578,12 +582,11 @@ function MarketplaceShowcase({ mode }) {
                   </div>
                 </div>
 
-                {/* Price or Free indicator */}
-                {exam.publicPrice > 0 ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(245,158,11,0.1)' : 'rgba(245,158,11,0.08)', border: `1px solid ${isDark ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.2)'}` }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#94A3B8' : '#64748B' }}>Price</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: '#F59E0B' }}>
-                    RWF {exam.publicPrice.toLocaleString()}
+                {/* Access type indicator */}
+                {exam.accessType === 'subscription' ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)', border: `1px solid ${isDark ? 'rgba(99,102,241,0.35)' : 'rgba(99,102,241,0.2)'}` }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#6366F1' }}>
+                    🔒 Subscription Required
                   </span>
                 </div>
                 ) : (

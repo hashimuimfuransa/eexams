@@ -3,26 +3,44 @@ const Result = require('../models/Result');
 const User = require('../models/User');
 const SharedExam = require('../models/SharedExam');
 const ExamRequest = require('../models/ExamRequest');
+const Subscription = require('../models/Subscription');
 const emailService = require('../utils/emailService');
+const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
 
-// @desc    Get available exams for student
+// @desc    Get available exams for student (level-scoped exam bank)
 // @route   GET /api/student/exams
 // @access  Private/Student
 const getAvailableExams = async (req, res) => {
   try {
-    // Get all approved exam requests for this student (retake and initial)
+    const user = await User.findById(req.user._id).populate('level');
+
+    // Student must select a level before the exam bank can be loaded
+    if (!user.level) {
+      return res.json([]);
+    }
+
+    // Get all approved exam requests for this student (retake and initial) —
+    // these are explicit teacher/marketplace grants, kept as a supplementary
+    // always-unlocked access path layered on top of level + subscription checks.
     const approvedRequests = await ExamRequest.find({
       student: req.user._id,
       status: 'approved'
     }).select('exam isRetake accessCodeUsed');
-
-    // Get exam IDs from approved requests
     const approvedExamIds = approvedRequests.map(r => r.exam.toString());
 
-    // Get all exams assigned to this student OR from approved requests
-    // Only show active exams, not draft exams
+    // Only count retake as active if the access code hasn't been used (i.e. retake not yet completed)
+    const approvedRetakeExamIds = approvedRequests.filter(r => r.isRetake && !r.accessCodeUsed).map(r => r.exam.toString());
+    // For unlocking exams: include non-retake requests AND retakes that haven't been used yet
+    const approvedAccessExamIds = approvedRequests
+      .filter(r => !r.isRetake || !r.accessCodeUsed)
+      .map(r => r.exam.toString());
+
+    // Exam bank = exams belonging to the student's selected level, PLUS any
+    // exam explicitly granted via a legacy assignment/approved request
+    // (regardless of level), so teacher-shared exams keep working.
     const exams = await Exam.find({
       $or: [
+        { level: user.level._id },
         { assignedTo: req.user._id },
         { _id: { $in: approvedExamIds } }
       ],
@@ -30,25 +48,12 @@ const getAvailableExams = async (req, res) => {
     })
       .populate('createdBy', 'firstName lastName')
       .populate('sections.questions')
-      .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
-
-    // Log selective answering status for debugging
-    if (exams.length > 0) {
-      console.log(`First exam selective answering status: ${exams[0].allowSelectiveAnswering}`);
-    }
+      .select('title description timeLimit isLocked accessType level subLevel scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
 
     // Get results for this student
     const results = await Result.find({
       student: req.user._id
     }).select('exam isCompleted');
-
-    // Only count retake as active if the access code hasn't been used (i.e. retake not yet completed)
-    const approvedRetakeExamIds = approvedRequests.filter(r => r.isRetake && !r.accessCodeUsed).map(r => r.exam.toString());
-    // For unlocking exams: include non-retake requests AND retakes that haven't been used yet
-    // This ensures exams get locked again after retake is completed (accessCodeUsed = true)
-    const approvedAccessExamIds = approvedRequests
-      .filter(r => !r.isRetake || !r.accessCodeUsed)
-      .map(r => r.exam.toString());
 
     // Map results to exam IDs (exclude approved retake exams from completed list)
     const completedExams = results
@@ -59,28 +64,17 @@ const getAvailableExams = async (req, res) => {
       .filter(result => !result.isCompleted)
       .map(result => result.exam.toString());
 
-    // Debug logging for retake status
-    console.log(`[getAvailableExams] Student: ${req.user._id}`);
-    console.log(`[getAvailableExams] All results: ${results.length}, Completed: ${results.filter(r => r.isCompleted).length}, In-progress: ${results.filter(r => !r.isCompleted).length}`);
-    console.log(`[getAvailableExams] Approved retake exams (not used): ${approvedRetakeExamIds}`);
-    console.log(`[getAvailableExams] Completed exams (after filtering): ${completedExams}`);
+    // Active subscription (if any) for the student's current level
+    const activeSubscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
+    const hasActiveSubscription = !!(activeSubscription && activeSubscription.isValid());
+    const freeExamAvailableForLevel = !(user.freeExamUsed && user.freeExamLevel &&
+      user.freeExamLevel.toString() === user.level._id.toString());
 
     // Current time for availability check
     const now = new Date();
 
-    // Fetch exams again to get the updated data after enabling selective answering
-    const updatedExams = await Exam.find({
-      $or: [
-        { assignedTo: req.user._id },
-        { _id: { $in: approvedExamIds } }
-      ]
-    })
-      .populate('createdBy', 'firstName lastName')
-      .populate('sections.questions')
-      .select('title description timeLimit isLocked scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
-
     // Add status to each exam
-    const examsWithStatus = updatedExams.map(exam => {
+    const examsWithStatus = exams.map(exam => {
       const examObj = exam.toObject();
 
       // Calculate total questions from all sections
@@ -89,20 +83,10 @@ const getAvailableExams = async (req, res) => {
       }, 0) || 0;
       examObj.questions = totalQuestions;
 
-      // Debug logging
-      console.log(`Exam ${exam._id} (${exam.title}):`);
-      console.log(`  - Sections count: ${exam.sections?.length || 0}`);
-      console.log(`  - Total questions calculated: ${totalQuestions}`);
-      if (exam.sections && exam.sections.length > 0) {
-        exam.sections.forEach((section, idx) => {
-          console.log(`  - Section ${idx}: ${section.name}, questions: ${section.questions?.length || 0}`);
-        });
-      }
-
       // Add completion status
       // If student has an approved retake request for this exam, show as not-started regardless of previous completion
       const hasApprovedRetake = approvedRetakeExamIds.includes(exam._id.toString());
-      
+
       if (hasApprovedRetake) {
         examObj.status = 'not-started';
       } else if (completedExams.includes(exam._id.toString())) {
@@ -113,9 +97,25 @@ const getAvailableExams = async (req, res) => {
         examObj.status = 'not-started';
       }
 
-      // If the student has an approved request for this exam, override isLocked
-      if (exam.isLocked && approvedAccessExamIds.includes(exam._id.toString())) {
+      // Determine subscription/free-exam access. A legacy explicit grant
+      // (assignedTo/approved request) always unlocks the exam regardless of
+      // access type, since the teacher/admin already granted it directly.
+      const hasLegacyGrant = approvedAccessExamIds.includes(exam._id.toString());
+      let accessUnlocked;
+      if (hasLegacyGrant) {
+        accessUnlocked = true;
+      } else if (exam.accessType === 'free') {
+        accessUnlocked = freeExamAvailableForLevel && freeExamMatchesUserSubLevel(exam, user);
+      } else {
+        accessUnlocked = hasActiveSubscription && subscriptionCoversExam(activeSubscription, exam);
+      }
+      examObj.accessUnlocked = accessUnlocked;
+
+      // Teacher's manual isLocked flag combines with subscription/free-exam access
+      if (exam.isLocked && hasLegacyGrant) {
         examObj.isLocked = false;
+      } else {
+        examObj.isLocked = !!exam.isLocked || !accessUnlocked;
       }
 
       // Add availability status
@@ -136,13 +136,6 @@ const getAvailableExams = async (req, res) => {
       return examObj;
     });
 
-    // Log the first exam's fields for debugging
-    if (examsWithStatus.length > 0) {
-      console.log('First exam fields:', Object.keys(examsWithStatus[0]));
-      console.log('First exam selective answering:', examsWithStatus[0].allowSelectiveAnswering);
-      console.log('First exam questions count:', examsWithStatus[0].questions);
-    }
-
     res.json(examsWithStatus);
   } catch (error) {
     console.error('Get available exams error:', error);
@@ -155,15 +148,11 @@ const getAvailableExams = async (req, res) => {
 // @access  Private/Student
 const getInProgressExams = async (req, res) => {
   try {
-    console.log('Fetching in-progress exams for student:', req.user._id);
-
     // Get results for this student that are not completed
     const inProgressResults = await Result.find({
       student: req.user._id,
       isCompleted: false
     }).populate('exam', 'title description timeLimit');
-
-    console.log('Found in-progress results:', inProgressResults.length);
 
     // Calculate time remaining for each in-progress exam
     const inProgressExams = inProgressResults.map(result => {
@@ -174,8 +163,6 @@ const getInProgressExams = async (req, res) => {
       const now = new Date();
       const timeRemaining = Math.max(0, endTime.getTime() - now.getTime());
 
-      console.log('Exam:', exam?.title, 'Time remaining:', timeRemaining);
-
       return {
         _id: result._id,
         exam: exam,
@@ -185,7 +172,6 @@ const getInProgressExams = async (req, res) => {
       };
     });
 
-    console.log('Returning in-progress exams:', inProgressExams);
     res.json(inProgressExams);
   } catch (error) {
     console.error('Get in-progress exams error:', error);

@@ -27,7 +27,8 @@ import {
   ArrowBack,
   PhoneAndroid,
   CreditCard,
-  Phone
+  Phone,
+  Refresh
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -131,6 +132,8 @@ const SubscriptionPurchase = () => {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [mobilePending, setMobilePending] = useState(false);
+  const [pendingReference, setPendingReference] = useState(null);
+  const [paymentCancelled, setPaymentCancelled] = useState(false);
 
   useEffect(() => {
     if (!user?.level) {
@@ -148,6 +151,33 @@ const SubscriptionPurchase = () => {
       setLocalPhone(local);
     }
   }, []);
+
+  // Poll for payment status while mobile payment is pending
+  useEffect(() => {
+    if (!mobilePending || !pendingReference) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get(`/subscriptions/payment-status/${pendingReference}`);
+        const { status, cancelled, success } = res.data;
+        if (success || status === 'completed') {
+          clearInterval(interval);
+          setMobilePending(false);
+          navigate('/student/dashboard');
+        } else if (cancelled || status === 'cancelled') {
+          clearInterval(interval);
+          setMobilePending(false);
+          setPaymentCancelled(true);
+          setPendingReference(null);
+        }
+        // status === 'pending' → keep polling
+      } catch {
+        // network hiccup — keep polling
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [mobilePending, pendingReference]);
 
   const fetchPlans = async () => {
     try {
@@ -198,6 +228,8 @@ const SubscriptionPurchase = () => {
       setSubmitting(true);
       setError(null);
       setMobilePending(false);
+      setPaymentCancelled(false);
+      setPendingReference(null);
 
       const payload = { planId: selectedPlan, paymentMethod };
       if (selectedMethodConfig?.requiresPhone) payload.phone = countryCode + localPhone.replace(/[\s\-]/g, '');
@@ -209,7 +241,8 @@ const SubscriptionPurchase = () => {
           // Card: redirect to payment gateway
           window.location.href = response.data.paymentUrl;
         } else {
-          // Mobile money: push sent to phone
+          // Mobile money: push sent to phone — start polling
+          setPendingReference(response.data.reference);
           setMobilePending(true);
         }
       } else {
@@ -261,13 +294,38 @@ const SubscriptionPurchase = () => {
         </Alert>
       )}
 
-      {mobilePending && (
-        <Alert severity="success" sx={{ mb: 3 }} icon={<PhoneAndroid />}>
-          <Typography fontWeight="bold">Payment prompt sent to your phone!</Typography>
+      {paymentCancelled && (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              startIcon={<Refresh />}
+              onClick={() => setPaymentCancelled(false)}
+            >
+              Try Again
+            </Button>
+          }
+        >
+          <Typography fontWeight="bold">Payment cancelled</Typography>
           <Typography variant="body2">
-            Open your {paymentMethod === 'mobile_money' ? 'MTN MoMo' : 'Airtel Money'} app or dial the USSD code to approve the payment of{' '}
+            You cancelled the USSD payment prompt. You can request again whenever you&apos;re ready.
+          </Typography>
+        </Alert>
+      )}
+
+      {mobilePending && (
+        <Alert severity="info" sx={{ mb: 3 }} icon={<PhoneAndroid />}>
+          <Typography fontWeight="bold">Payment prompt sent to your phone!</Typography>
+          <Typography variant="body2" sx={{ mt: 0.5 }}>
+            Open your <strong>{paymentMethod === 'mobile_money' ? 'MTN MoMo' : 'Airtel Money'}</strong> app or dial the USSD code to approve the payment of{' '}
             <strong>RWF {selectedPlanData?.price?.toLocaleString()}</strong>.
             Your subscription will activate automatically once the payment is confirmed.
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Payments are securely processed by <strong>ITEC Pay</strong>.
           </Typography>
         </Alert>
       )}
@@ -508,11 +566,29 @@ const SubscriptionPurchase = () => {
 
               {mobilePending && (
                 <Button
+                  variant="outlined"
+                  color="error"
+                  fullWidth
+                  size="small"
+                  startIcon={<Refresh />}
+                  onClick={() => {
+                    setMobilePending(false);
+                    setPendingReference(null);
+                    setPaymentCancelled(true);
+                  }}
+                  sx={{ mt: 1 }}
+                >
+                  Cancel &amp; Try Again
+                </Button>
+              )}
+
+              {mobilePending && (
+                <Button
                   variant="text"
                   fullWidth
                   size="small"
                   onClick={() => navigate('/student/dashboard')}
-                  sx={{ mt: 1 }}
+                  sx={{ mt: 0.5 }}
                 >
                   Go to Dashboard
                 </Button>

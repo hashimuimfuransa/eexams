@@ -6,6 +6,7 @@ const {
   getMyActiveSubscription,
   initiateSubscriptionPayment,
   processPaymentCallback,
+  checkPaymentStatus,
   createSubscription,
   cancelSubscription,
   renewSubscription,
@@ -27,6 +28,7 @@ router.use((req, res, next) => {
 router.get('/my/active', getMyActiveSubscription);
 router.post('/initiate', initiateSubscriptionPayment);
 router.post('/callback', processPaymentCallback);
+router.get('/payment-status/:reference', checkPaymentStatus);
 router.patch('/:id/cancel', validateSubscriptionOwnership, cancelSubscription);
 
 // Super Admin only routes (self-service renewal goes through /initiate + /callback,

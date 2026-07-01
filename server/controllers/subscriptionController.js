@@ -629,12 +629,54 @@ const getSubscriptionStats = async (req, res) => {
   }
 };
 
+// @desc    Poll payment status for a pending mobile money payment
+// @route   GET /api/subscriptions/payment-status/:reference
+// @access  Private
+const checkPaymentStatus = async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const pendingPayment = await PendingPayment.findOne({ reference, user: req.user._id });
+    if (!pendingPayment) {
+      return res.status(404).json({ message: 'Payment not found' });
+    }
+
+    if (pendingPayment.status === 'completed') {
+      return res.json({ status: 'completed', success: true });
+    }
+    if (pendingPayment.status === 'failed') {
+      return res.json({ status: 'cancelled', success: false, cancelled: true });
+    }
+
+    // Ask iTechPay for live status
+    const result = await itecPayment.verifyPayment(reference, pendingPayment.paymentMethod);
+
+    const cancelledStatuses = ['cancelled', 'canceled', 'rejected', 'failed', 'error', 'declined'];
+
+    if (result.success) {
+      return res.json({ status: 'completed', success: true });
+    }
+
+    if (cancelledStatuses.includes(result.status)) {
+      pendingPayment.status = 'failed';
+      await pendingPayment.save();
+      return res.json({ status: 'cancelled', success: false, cancelled: true });
+    }
+
+    // Still waiting (pending / processing / unknown)
+    return res.json({ status: 'pending', success: false, pending: true });
+  } catch (error) {
+    console.error('Check payment status error:', error);
+    res.status(500).json({ message: 'Failed to check payment status' });
+  }
+};
+
 module.exports = {
   getSubscriptions,
   getSubscriptionById,
   getMyActiveSubscription,
   initiateSubscriptionPayment,
   processPaymentCallback,
+  checkPaymentStatus,
   createSubscription,
   cancelSubscription,
   renewSubscription,

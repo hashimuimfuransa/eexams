@@ -123,6 +123,8 @@ const contactRoutes = require('./routes/contact');
 const reclamationRoutes = require('./routes/reclamationRoutes');
 const levelRoutes = require('./routes/levels');
 const subscriptionPlanRoutes = require('./routes/subscriptionPlans');
+const organizationPlanRoutes = require('./routes/organizationPlans');
+const individualPlanRoutes = require('./routes/individualPlans');
 const subscriptionRoutes = require('./routes/subscriptions');
 const paymentRoutes = require('./routes/payments');
 const seoController = require('./controllers/seoController');
@@ -145,6 +147,8 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/reclamations', reclamationRoutes);
 app.use('/api/levels', levelRoutes);
 app.use('/api/subscription-plans', subscriptionPlanRoutes);
+app.use('/api/organization-plans', organizationPlanRoutes);
+app.use('/api/individual-plans', individualPlanRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/payments', paymentRoutes);
 

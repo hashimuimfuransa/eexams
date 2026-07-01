@@ -492,6 +492,15 @@ const updateProfile = async (req, res) => {
       return res.status(403).json({ message: 'Your subscription plan is managed by your organisation admin.' });
     }
 
+    // Organisation admins and individual teachers cannot grant themselves a
+    // paid plan through this endpoint — paid plans must go through a verified
+    // payment (POST /subscriptions/organization/initiate or
+    // /subscriptions/individual/initiate), not a client-echoed value.
+    // Downgrading to 'free' is still allowed here since it isn't a paid grant.
+    if (subscriptionPlan && subscriptionPlan !== 'free' && (user.role === 'admin' || user.role === 'teacher')) {
+      return res.status(403).json({ message: 'Paid plans must be purchased via the subscription payment flow.' });
+    }
+
     // Update subscription plan if provided
     if (subscriptionPlan) {
       user.subscriptionPlan = subscriptionPlan;

@@ -19,6 +19,8 @@ import Marketplace from './pages/Marketplace';
 import ExamRequest from './pages/ExamRequest';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
+import OrganizationSubscriptionPurchase from './components/OrganizationSubscriptionPurchase';
+import IndividualSubscriptionPurchase from './components/IndividualSubscriptionPurchase';
 import { useAuth } from './context/AuthContext';
 
 // Check if user registration is complete (has a subscription plan)
@@ -101,6 +103,12 @@ const AppRoutes = () => {
       {/* Post-registration routes - accessible to authenticated users */}
       <Route path="/pending-approval" element={<ProtectedRoute allowIncomplete={true}><PendingApproval /></ProtectedRoute>} />
       <Route path="/complete-registration" element={<ProtectedRoute allowIncomplete={true}><CompleteRegistration /></ProtectedRoute>} />
+
+      {/* Organisation subscription purchase - reachable even while pending approval, so an org admin can pay immediately instead of waiting on manual review */}
+      <Route path="/organization/subscription" element={<ProtectedRoute requiredRole="admin" allowIncomplete={true}><OrganizationSubscriptionPurchase /></ProtectedRoute>} />
+
+      {/* Individual teacher subscription purchase - same as above, for non-organisation teacher accounts */}
+      <Route path="/individual/subscription" element={<ProtectedRoute requiredRole="teacher" allowIncomplete={true}><IndividualSubscriptionPurchase /></ProtectedRoute>} />
 
       {/* Role-based dashboard redirect */}
       <Route

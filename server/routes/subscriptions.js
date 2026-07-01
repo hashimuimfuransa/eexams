@@ -6,6 +6,8 @@ const {
   getMyActiveSubscription,
   getMyPendingPayment,
   initiateSubscriptionPayment,
+  initiateOrganizationSubscriptionPayment,
+  initiateIndividualSubscriptionPayment,
   processPaymentCallback,
   checkPaymentStatus,
   getPendingPayments,
@@ -17,7 +19,7 @@ const {
   getSubscriptionStats
 } = require('../controllers/subscriptionController');
 const auth = require('../middleware/auth');
-const { isSuperAdmin } = require('../middleware/role');
+const { isSuperAdmin, isAdmin, isTeacher } = require('../middleware/role');
 const { validateSubscriptionOwnership } = require('../middleware/security');
 
 // Apply auth middleware to all routes except callback
@@ -32,6 +34,8 @@ router.use((req, res, next) => {
 router.get('/my/active', getMyActiveSubscription);
 router.get('/my/pending-payment', getMyPendingPayment);
 router.post('/initiate', initiateSubscriptionPayment);
+router.post('/organization/initiate', isAdmin, initiateOrganizationSubscriptionPayment);
+router.post('/individual/initiate', isTeacher, initiateIndividualSubscriptionPayment);
 router.post('/callback', processPaymentCallback);
 router.get('/payment-status/:reference', checkPaymentStatus);
 router.patch('/:id/cancel', validateSubscriptionOwnership, cancelSubscription);

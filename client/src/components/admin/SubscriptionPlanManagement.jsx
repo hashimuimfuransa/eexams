@@ -104,7 +104,7 @@ const SubscriptionPlanManagement = () => {
         currency: plan.currency || 'RWF',
         durationDays: plan.durationDays,
         status: plan.status || 'active',
-        features: plan.features || [],
+        features: (plan.features || []).join(', '),
         discountPercentage: plan.discountPercentage || 0
       });
     } else {
@@ -119,7 +119,7 @@ const SubscriptionPlanManagement = () => {
         currency: 'RWF',
         durationDays: 30,
         status: 'active',
-        features: [],
+        features: '',
         discountPercentage: 0
       });
     }
@@ -140,7 +140,8 @@ const SubscriptionPlanManagement = () => {
         ...formData,
         level: formData.planType === 'level' ? formData.levelId : null,
         subLevel: formData.planType === 'level' ? (formData.subLevel || null) : null,
-        exam: formData.planType === 'exam' ? formData.examId : null
+        exam: formData.planType === 'exam' ? formData.examId : null,
+        features: formData.features.split(',').map(f => f.trim()).filter(Boolean)
       };
 
       if (editingPlan) {
@@ -427,8 +428,8 @@ const SubscriptionPlanManagement = () => {
                 <TextField
                   fullWidth
                   label="Features (comma-separated)"
-                  value={formData.features.join(', ')}
-                  onChange={(e) => setFormData({ ...formData, features: e.target.value.split(',').map(f => f.trim()).filter(f => f) })}
+                  value={formData.features}
+                  onChange={(e) => setFormData({ ...formData, features: e.target.value })}
                   multiline
                   rows={2}
                   placeholder="e.g., Unlimited exams, Practice questions, Progress tracking"

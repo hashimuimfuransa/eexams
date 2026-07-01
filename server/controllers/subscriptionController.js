@@ -1,5 +1,7 @@
 const Subscription = require('../models/Subscription');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
+const OrganizationPlan = require('../models/OrganizationPlan');
+const IndividualPlan = require('../models/IndividualPlan');
 const Level = require('../models/Level');
 const User = require('../models/User');
 const Result = require('../models/Result');
@@ -188,6 +190,144 @@ const initiateSubscriptionPayment = async (req, res) => {
   }
 };
 
+// Shared by both the organisation and individual (teacher) plan purchase
+// flows — same PLANS-style catalog shape (tierKey/name/price/durationDays),
+// only the model and the PendingPayment field they're recorded under differ.
+const ACCOUNT_PLAN_KINDS = {
+  organization: { Model: OrganizationPlan, pendingField: 'organizationPlan', label: 'Organization' },
+  individual: { Model: IndividualPlan, pendingField: 'individualPlan', label: 'Individual' }
+};
+
+const initiateAccountPlanPayment = async (req, res, kind) => {
+  const { Model, pendingField, label } = ACCOUNT_PLAN_KINDS[kind];
+  try {
+    const { planId, paymentMethod = 'mobile_money', phone } = req.body;
+    console.log(`\n[Payment] ── Initiate (${kind}) ─────────────────────────`);
+    console.log(`[Payment] user=${req.user?._id} (${req.user?.email})`);
+    console.log(`[Payment] planId=${planId}, method=${paymentMethod}, phone=${phone || 'n/a'}`);
+
+    const validMethods = ['airtel_money', 'mobile_money', 'card'];
+    if (!validMethods.includes(paymentMethod)) {
+      return res.status(400).json({ message: 'Invalid payment method. Use airtel_money, mobile_money, or card' });
+    }
+
+    if (paymentMethod !== 'card' && !phone) {
+      return res.status(400).json({ message: 'Phone number is required for mobile money payments' });
+    }
+
+    const plan = await Model.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ message: `${label} plan not found` });
+    }
+
+    if (plan.status !== 'active') {
+      return res.status(400).json({ message: 'This plan is not currently available' });
+    }
+
+    console.log(`[Payment] ${kind} plan="${plan.name}" (${plan.tierKey}) price=${plan.price} ${plan.currency}`);
+
+    const paymentResult = await itecPayment.createPaymentRequest({
+      amount: plan.price,
+      currency: plan.currency,
+      userId: req.user._id,
+      planId: plan._id,
+      paymentMethod,
+      phone: phone || null,
+      email: req.user.email
+    });
+
+    await PendingPayment.create({
+      reference: paymentResult.reference,
+      user: req.user._id,
+      [pendingField]: plan._id,
+      paymentId: paymentResult.paymentId,
+      amount: plan.price,
+      currency: plan.currency,
+      paymentMethod,
+      status: 'pending'
+    });
+
+    console.log(`[Payment] ✓ created: ref=${paymentResult.reference}, paymentId=${paymentResult.paymentId}, hasUrl=${!!paymentResult.paymentUrl}`);
+
+    res.json({
+      success: true,
+      paymentUrl: paymentResult.paymentUrl || null,
+      paymentId: paymentResult.paymentId,
+      reference: paymentResult.reference,
+      paymentMethod,
+      message: paymentMethod === 'card'
+        ? 'Redirect to the payment URL to complete your payment'
+        : 'Check your phone for a payment prompt',
+      plan: {
+        id: plan._id,
+        name: plan.name,
+        price: plan.price,
+        currency: plan.currency,
+        durationDays: plan.durationDays
+      }
+    });
+  } catch (error) {
+    console.error(`[Payment] ✗ initiate${label}SubscriptionPayment failed:`);
+    console.error(`[Payment]   message: ${error.message}`);
+    console.error(`[Payment]   stack:   ${error.stack}`);
+    const statusCode = error.isGatewayError ? 400 : 500;
+    res.status(statusCode).json({ message: error.message || 'Failed to initiate payment' });
+  }
+};
+
+// @desc    Initiate payment for an organisation subscription plan
+// @route   POST /api/subscriptions/organization/initiate
+// @access  Private/Admin (organisation owner) or SuperAdmin
+const initiateOrganizationSubscriptionPayment = (req, res) => initiateAccountPlanPayment(req, res, 'organization');
+
+// @desc    Initiate payment for an individual (teacher) subscription plan
+// @route   POST /api/subscriptions/individual/initiate
+// @access  Private/Teacher (individual, non-organisation)
+const initiateIndividualSubscriptionPayment = (req, res) => {
+  // Org teachers' plans are managed by their admin, not self-purchased.
+  if (req.user.parentAdmin) {
+    return res.status(403).json({ message: 'Your subscription plan is managed by your organisation admin.' });
+  }
+  return initiateAccountPlanPayment(req, res, 'individual');
+};
+
+// Activates an organisation/individual subscription for a pending payment
+// iTechPay has confirmed as successful. Extends the current subscription
+// window if the account is already active/paid (renewal), otherwise starts
+// a fresh one. Shared between the two kinds since both just update the same
+// User.subscriptionPlan/subscriptionStatus/subscriptionEndDate fields.
+const activateAccountPlanPendingPayment = async (pendingPayment, Model, planId) => {
+  const plan = await Model.findById(planId);
+  if (!plan) {
+    throw new Error('Plan not found for pending payment');
+  }
+
+  const user = await User.findById(pendingPayment.user);
+  if (!user) {
+    throw new Error('User not found for pending payment');
+  }
+
+  const now = new Date();
+  const baseDate = (user.subscriptionStatus === 'active' && user.subscriptionEndDate && user.subscriptionEndDate > now)
+    ? user.subscriptionEndDate
+    : now;
+  const newExpiry = new Date(baseDate);
+  newExpiry.setDate(newExpiry.getDate() + plan.durationDays);
+
+  user.subscriptionPlan = plan.tierKey;
+  user.subscriptionStatus = 'active';
+  if (!user.subscriptionStartDate) user.subscriptionStartDate = now;
+  user.subscriptionEndDate = newExpiry;
+  user.subscriptionExpiresAt = newExpiry;
+  user.lastPaymentDate = now;
+  await user.save();
+
+  pendingPayment.status = 'completed';
+  await pendingPayment.save();
+
+  return user;
+};
+
 // Activates a subscription for a pending payment iTechPay has confirmed as
 // successful. Shared by the webhook callback and the status-polling fallback,
 // since either one may be the first to observe success — the webhook isn't
@@ -195,6 +335,15 @@ const initiateSubscriptionPayment = async (req, res) => {
 // too, not just report status back to the frontend.
 const activatePendingPayment = async (pendingPaymentId, { amount, currency, transactionId, paymentMethod }) => {
   const pendingPayment = await PendingPayment.findById(pendingPaymentId);
+
+  if (pendingPayment.organizationPlan || pendingPayment.individualPlan) {
+    if (pendingPayment.status === 'completed') {
+      return User.findById(pendingPayment.user).select('subscriptionPlan subscriptionStatus subscriptionStartDate subscriptionEndDate');
+    }
+    const { Model } = pendingPayment.organizationPlan ? ACCOUNT_PLAN_KINDS.organization : ACCOUNT_PLAN_KINDS.individual;
+    const planId = pendingPayment.organizationPlan || pendingPayment.individualPlan;
+    return activateAccountPlanPendingPayment(pendingPayment, Model, planId);
+  }
 
   if (pendingPayment.status === 'completed') {
     return Subscription.findById(pendingPayment.subscription);
@@ -706,6 +855,8 @@ const getMyPendingPayment = async (req, res) => {
   try {
     const pending = await PendingPayment.findOne({ user: req.user._id, status: 'pending' })
       .populate('plan', 'name price currency')
+      .populate('organizationPlan', 'name price currency tierKey')
+      .populate('individualPlan', 'name price currency tierKey')
       .sort({ createdAt: -1 });
 
     if (!pending) return res.json(null);
@@ -736,7 +887,7 @@ const getMyPendingPayment = async (req, res) => {
       paymentMethod: pending.paymentMethod,
       amount: pending.amount,
       currency: pending.currency,
-      plan: pending.plan,
+      plan: pending.plan || pending.organizationPlan || pending.individualPlan,
       createdAt: pending.createdAt
     });
   } catch (error) {
@@ -802,6 +953,8 @@ const getPendingPayments = async (req, res) => {
       .populate('user', 'firstName lastName email')
       .populate('plan', 'name price durationDays')
       .populate('level', 'name')
+      .populate('organizationPlan', 'name price durationDays tierKey')
+      .populate('individualPlan', 'name price durationDays tierKey')
       .sort({ createdAt: -1 });
 
     res.json(pending);
@@ -882,6 +1035,8 @@ const rejectPendingPayment = async (req, res) => {
 
 module.exports = {
   activatePendingPayment,
+  initiateOrganizationSubscriptionPayment,
+  initiateIndividualSubscriptionPayment,
   getSubscriptions,
   getSubscriptionById,
   getMyActiveSubscription,

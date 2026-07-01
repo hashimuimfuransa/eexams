@@ -8,14 +8,13 @@ import {
   Box, Typography, Avatar, IconButton, Divider, Chip, Button, Paper,
   TextField, CircularProgress, Drawer, List, ListItemButton,
   ListItemIcon, ListItemText, InputAdornment, useMediaQuery, Menu, MenuItem,
-  Dialog, DialogTitle, DialogContent, DialogActions, Badge
+  Badge
 } from '@mui/material';
 import {
   NotificationsNone, Menu as MenuIcon, Close, Search, Logout, Star,
-  TrendingUp, TrendingDown, CheckCircle
+  TrendingUp, TrendingDown
 } from '@mui/icons-material';
 import { tokens, gradients } from './dashboardTokens';
-import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
 export const W = 260;
@@ -30,54 +29,18 @@ export function getDynamicGreeting(name) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-const INDIVIDUAL_PLANS = [
-  { id: 'basic',      label: 'Basic',      price: '100,000 RWF/mo',  color: '#0CBD73', features: ['30 exams/mo', '200 students', 'AI features', 'Analytics'] },
-  { id: 'premium',    label: 'Premium',    price: '200,000 RWF/mo', color: '#0D406C', features: ['Unlimited exams', 'Unlimited students', 'Full AI', '24/7 support'] },
-];
-
-const ORG_PLANS = [
-  { id: 'basic',      label: 'Basic',      price: '100,000 RWF/mo', color: '#0CBD73', features: ['50 exams/mo', '300 students', 'AI features', 'Analytics'] },
-  { id: 'premium',    label: 'Premium',    price: '300,000 RWF/mo', color: '#0D406C', features: ['Unlimited exams', 'Unlimited students', 'Full AI', '24/7 support'] },
-];
-
 export function Sidebar({ user, logout, activeSection, setActiveSection, onClose, isMobile, nav, portalLabel }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setUser } = useAuth();
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('');
-  const [upgrading, setUpgrading] = useState(false);
-  const [upgraded, setUpgraded] = useState(false);
 
   const currentPlan = user?.subscriptionPlan || 'free';
   const isOrg = user?.userType === 'organization' || user?.role === 'admin';
-  const PLANS = isOrg ? ORG_PLANS : INDIVIDUAL_PLANS;
 
+  // Paid plans are purchased via the real payment gateway (mobile money/Airtel/
+  // card) on a dedicated page now — no more instant-PUT-to-profile dialog.
   const handleUpgradeClick = () => {
-    setSelectedPlan('');
-    setUpgraded(false);
-    setUpgradeOpen(true);
+    navigate(isOrg ? '/organization/subscription' : '/individual/subscription');
     if (isMobile && onClose) onClose();
-  };
-
-  const handleConfirmUpgrade = async () => {
-    if (!selectedPlan) return;
-    setUpgrading(true);
-    try {
-      const res = await api.put('/auth/profile', { subscriptionPlan: selectedPlan });
-      const updatedUser = {
-        ...user,
-        subscriptionPlan: res.data.subscriptionPlan || selectedPlan,
-        subscriptionStatus: res.data.subscriptionStatus || 'pending',
-      };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      if (setUser) setUser(updatedUser);
-      setUpgraded(true);
-    } catch (err) {
-      console.error('Upgrade failed:', err);
-    } finally {
-      setUpgrading(false);
-    }
   };
 
   return (
@@ -162,74 +125,6 @@ export function Sidebar({ user, logout, activeSection, setActiveSection, onClose
           </Button>
         </Box>
       )}
-
-      {/* Upgrade Plan Dialog */}
-      <Dialog open={upgradeOpen} onClose={() => { if (!upgrading) setUpgradeOpen(false); }} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'DM Sans',sans-serif", pb: 1 }}>
-          {upgraded ? '✅ Plan Change Requested' : '🚀 Change Subscription Plan'}
-          <Typography variant="caption" sx={{ color: '#6b7280', display: 'block', mt: 0.5 }}>
-            {upgraded ? 'Your request is pending admin approval.' : `Current plan: ${currentPlan} · Select a new plan below`}
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: '12px !important' }}>
-          {upgraded ? (
-            <Box sx={{ p: 2.5, bgcolor: '#F0FDF4', borderRadius: 2, border: '1px solid #86EFAC', textAlign: 'center' }}>
-              <CheckCircle sx={{ color: '#16A34A', fontSize: 40, mb: 1 }} />
-              <Typography fontWeight={700} sx={{ color: '#166534', mb: 0.5 }}>Plan change submitted!</Typography>
-              <Typography variant="body2" sx={{ color: '#166534' }}>
-                Your account is now pending admin approval for the <b>{selectedPlan}</b> plan.
-                You'll be redirected to the pending approval page. Contact{' '}
-                <a href="tel:+250781671517" style={{ color: '#0D406C' }}>+250 781 671 517</a> to confirm payment.
-              </Typography>
-            </Box>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              {PLANS.filter(p => p.id !== currentPlan).map(plan => (
-                <Box key={plan.id} onClick={() => setSelectedPlan(plan.id)}
-                  sx={{
-                    p: 2, borderRadius: 2, cursor: 'pointer', transition: 'all 0.2s',
-                    border: `2px solid ${selectedPlan === plan.id ? plan.color : '#e5e7eb'}`,
-                    bgcolor: selectedPlan === plan.id ? `${plan.color}08` : '#fafafa',
-                  }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Box sx={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${selectedPlan === plan.id ? plan.color : '#d1d5db'}`, bgcolor: selectedPlan === plan.id ? plan.color : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {selectedPlan === plan.id && <CheckCircle sx={{ fontSize: 12, color: 'white' }} />}
-                    </Box>
-                    <Box sx={{ flex: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography fontWeight={700} sx={{ fontSize: 15 }}>{plan.label}</Typography>
-                        <Typography fontWeight={700} sx={{ color: plan.color, fontSize: 13 }}>{plan.price}</Typography>
-                      </Box>
-                      <Typography variant="caption" sx={{ color: '#6b7280' }}>{plan.features.join(' · ')}</Typography>
-                    </Box>
-                  </Box>
-                </Box>
-              ))}
-              <Box sx={{ p: 1.5, bgcolor: '#FFF7ED', borderRadius: 2, border: '1px solid #FED7AA' }}>
-                <Typography variant="caption" sx={{ color: '#92400E' }}>
-                  ⚠️ After selecting a plan, your account will be set to <b>pending</b> until admin approves your payment. Make payment via MoMo code <b>81671517</b> and contact <b>+250 781 671 517</b>.
-                </Typography>
-              </Box>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-          {upgraded ? (
-            <Button variant="contained" fullWidth onClick={() => { setUpgradeOpen(false); navigate('/pending-approval'); }}
-              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, bgcolor: tokens.accent, '&:hover': { bgcolor: '#0AAE5E' } }}>
-              Go to Pending Approval Page
-            </Button>
-          ) : (
-            <>
-              <Button onClick={() => setUpgradeOpen(false)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
-              <Button variant="contained" disabled={!selectedPlan || upgrading} onClick={handleConfirmUpgrade}
-                sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, px: 3, bgcolor: tokens.accent, '&:hover': { bgcolor: '#0AAE5E' } }}>
-                {upgrading ? <CircularProgress size={18} sx={{ color: 'white' }} /> : `Request ${selectedPlan || 'Plan'} Upgrade`}
-              </Button>
-            </>
-          )}
-        </DialogActions>
-      </Dialog>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
       <Box sx={{ px: 1.5, py: 1.5 }}>

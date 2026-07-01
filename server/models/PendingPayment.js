@@ -12,15 +12,28 @@ const PendingPaymentSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  // Exactly one of `plan` (level/exam subscription), `organizationPlan`
+  // (organisation tier subscription), or `individualPlan` (individual teacher
+  // tier subscription) is set, depending on what's being paid for.
   plan: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SubscriptionPlan',
-    required: true
+    required: function() { return !this.organizationPlan && !this.individualPlan; }
   },
   level: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Level',
-    required: true
+    required: function() { return !this.organizationPlan && !this.individualPlan; }
+  },
+  organizationPlan: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'OrganizationPlan',
+    default: null
+  },
+  individualPlan: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'IndividualPlan',
+    default: null
   },
   subLevel: {
     type: String,

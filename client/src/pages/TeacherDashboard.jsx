@@ -111,7 +111,8 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
   };
 
   const handleSave = () => {
-    onUpdate(localQ);
+    const cleanedWordBank = localQ.wordBank ? localQ.wordBank.map(w => w.trim()).filter(Boolean) : localQ.wordBank;
+    onUpdate({ ...localQ, wordBank: cleanedWordBank });
     setEdited(false);
   };
 
@@ -345,7 +346,7 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
               <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
                 📝 Word Bank (Optional)
               </Typography>
-              {localQ.wordBank && localQ.wordBank.length > 0 && (
+              {localQ.wordBank && localQ.wordBank.some(w => w.trim()) && (
                 <IconButton size="small" onClick={() => { setLocalQ({ ...localQ, wordBank: [] }); setEdited(true); }} sx={{ color: '#EF4444', p: 0.5 }}>
                   <Delete sx={{ fontSize: 14 }} />
                 </IconButton>
@@ -355,18 +356,21 @@ const GeneratedQuestionEditor = ({ question, index, onUpdate, onDelete, isMobile
               fullWidth
               size="small"
               placeholder="Enter words separated by commas (e.g., apple, banana, orange)"
-              value={localQ.wordBank && localQ.wordBank.length > 0 ? localQ.wordBank.join(', ') : ''}
+              value={localQ.wordBank ? localQ.wordBank.join(',') : ''}
               onChange={(e) => {
-                const words = e.target.value.split(',').map(w => w.trim()).filter(w => w);
-                setLocalQ({ ...localQ, wordBank: words });
+                // Keep the raw split (no trim/filter) so the field echoes back
+                // exactly what was typed — trimming/filtering on every keystroke
+                // eats trailing spaces and commas as you type them. Cleaned up
+                // on save (see handleSave) and for the chip preview below.
+                setLocalQ({ ...localQ, wordBank: e.target.value.split(',') });
                 setEdited(true);
               }}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, bgcolor: 'white', fontSize: 12 } }}
               helperText="Separate words with commas"
             />
-            {localQ.wordBank && localQ.wordBank.length > 0 && (
+            {localQ.wordBank && localQ.wordBank.some(w => w.trim()) && (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
-                {localQ.wordBank.map((word, idx) => (
+                {localQ.wordBank.map(w => w.trim()).filter(Boolean).map((word, idx) => (
                   <Chip key={idx} label={word} size="small" sx={{ bgcolor: '#DCFCE7', color: '#166534', fontSize: 11, fontWeight: 600 }} />
                 ))}
               </Box>
@@ -2109,6 +2113,8 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const addManualQuestion = () => {
     if (!manualQ.text.trim()) return;
     const q = { ...manualQ };
+    if (q.wordBank) q.wordBank = q.wordBank.map(w => w.trim()).filter(Boolean);
+    if (Array.isArray(q.acceptableAnswers)) q.acceptableAnswers = q.acceptableAnswers.map(a => a.trim()).filter(Boolean);
     if (q.type === 'true-false') { q.options = [{ text: 'True', isCorrect: q.correctAnswer === 'True', letter: 'A' }, { text: 'False', isCorrect: q.correctAnswer === 'False', letter: 'B' }]; }
     setManualExam(p => { const secs = [...p.sections]; secs[manualSection] = { ...secs[manualSection], questions: [...(secs[manualSection].questions || []), q] }; return { ...p, sections: secs }; });
     setManualQ({ text: '', type: 'multiple-choice', points: 2, difficulty: 'medium', options: [{ text: '', isCorrect: false, letter: 'A' }, { text: '', isCorrect: false, letter: 'B' }, { text: '', isCorrect: false, letter: 'C' }, { text: '', isCorrect: false, letter: 'D' }], correctAnswer: '', passage: '', wordBank: [], instructions: '', subQuestions: [] });
@@ -3796,8 +3802,11 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
       }
 
       // Update the question via the exam update endpoint using questions array
+      const cleanedWordBank = editingQuestion.wordBank
+        ? editingQuestion.wordBank.map(w => w.trim()).filter(Boolean)
+        : editingQuestion.wordBank;
       await api.put(`/admin/exams/${exam._id}`, {
-        questions: [{ ...editingQuestion, image: undefined, imageUrl: finalImageUrl, _id: editingQuestion._id }]
+        questions: [{ ...editingQuestion, wordBank: cleanedWordBank, image: undefined, imageUrl: finalImageUrl, _id: editingQuestion._id }]
       }, { timeout: 30000 });
 
       // Refresh the preview
@@ -4011,10 +4020,11 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
       // Prepare question data - don't send empty options for non-option-based question types
       const questionToAdd = {
         ...newQuestion,
+        wordBank: newQuestion.wordBank ? newQuestion.wordBank.map(w => w.trim()).filter(Boolean) : newQuestion.wordBank,
         id: Date.now().toString(),
         section: exam.sections[addingSectionIndex].name
       };
-      
+
       // Remove options array for question types that don't use it
       if (newQuestion.type === 'image' || newQuestion.type === 'open-ended' || 
           newQuestion.type === 'short-answer' || newQuestion.type === 'fill-blank') {
@@ -4781,7 +4791,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
               <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Word Bank (Optional)</Typography>
-              {editingQuestion?.wordBank && editingQuestion.wordBank.length > 0 && (
+              {editingQuestion?.wordBank && editingQuestion.wordBank.some(w => w.trim()) && (
                 <IconButton size="small" onClick={() => setEditingQuestion({ ...editingQuestion, wordBank: [] })} sx={{ color: '#EF4444', p: 0.5 }}>
                   <Delete sx={{ fontSize: 14 }} />
                 </IconButton>
@@ -4791,10 +4801,12 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               fullWidth
               size="small"
               placeholder="Enter words separated by commas (e.g., apple, banana, orange)"
-              value={editingQuestion?.wordBank && editingQuestion.wordBank.length > 0 ? editingQuestion.wordBank.join(', ') : ''}
+              value={editingQuestion?.wordBank ? editingQuestion.wordBank.join(',') : ''}
               onChange={(e) => {
-                const words = e.target.value.split(',').map(w => w.trim()).filter(w => w);
-                setEditingQuestion({ ...editingQuestion, wordBank: words });
+                // Raw split, no trim/filter — see GeneratedQuestionEditor's word
+                // bank field for why: trimming/filtering per keystroke eats
+                // trailing spaces and commas as you type them. Cleaned on save.
+                setEditingQuestion({ ...editingQuestion, wordBank: e.target.value.split(',') });
               }}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
               helperText="Separate words with commas"
@@ -5475,7 +5487,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
               <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Word Bank (Optional)</Typography>
-              {newQuestion?.wordBank && newQuestion.wordBank.length > 0 && (
+              {newQuestion?.wordBank && newQuestion.wordBank.some(w => w.trim()) && (
                 <IconButton size="small" onClick={() => setNewQuestion({ ...newQuestion, wordBank: [] })} sx={{ color: '#EF4444', p: 0.5 }}>
                   <Delete sx={{ fontSize: 14 }} />
                 </IconButton>
@@ -5485,10 +5497,12 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               fullWidth
               size="small"
               placeholder="Enter words separated by commas (e.g., apple, banana, orange)"
-              value={newQuestion?.wordBank && newQuestion.wordBank.length > 0 ? newQuestion.wordBank.join(', ') : ''}
+              value={newQuestion?.wordBank ? newQuestion.wordBank.join(',') : ''}
               onChange={(e) => {
-                const words = e.target.value.split(',').map(w => w.trim()).filter(w => w);
-                setNewQuestion({ ...newQuestion, wordBank: words });
+                // Raw split, no trim/filter — see GeneratedQuestionEditor's word
+                // bank field for why: trimming/filtering per keystroke eats
+                // trailing spaces and commas as you type them. Cleaned on save.
+                setNewQuestion({ ...newQuestion, wordBank: e.target.value.split(',') });
               }}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
               helperText="Separate words with commas"
@@ -5900,7 +5914,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
         <Box sx={{ mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
             <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textPrimary }}>Word Bank (Optional)</Typography>
-            {question.wordBank && question.wordBank.length > 0 && (
+            {question.wordBank && question.wordBank.some(w => w.trim()) && (
               <IconButton size="small" onClick={() => setQuestion(p => ({ ...p, wordBank: [] }))} sx={{ color: '#EF4444', p: 0.5 }}>
                 <Delete sx={{ fontSize: 14 }} />
               </IconButton>
@@ -5910,10 +5924,12 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
             fullWidth
             size="small"
             placeholder="Enter words separated by commas (e.g., apple, banana, orange)"
-            value={question.wordBank && question.wordBank.length > 0 ? question.wordBank.join(', ') : ''}
+            value={question.wordBank ? question.wordBank.join(',') : ''}
             onChange={e => {
-              const words = e.target.value.split(',').map(w => w.trim()).filter(w => w);
-              setQuestion(p => ({ ...p, wordBank: words }));
+              // Raw split, no trim/filter — see GeneratedQuestionEditor's word
+              // bank field for why: trimming/filtering per keystroke eats
+              // trailing spaces and commas as you type them. Cleaned on save.
+              setQuestion(p => ({ ...p, wordBank: e.target.value.split(',') }));
             }}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
             helperText="Separate words with commas"
@@ -6065,10 +6081,12 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
               size="small"
               label="Acceptable Answers (comma-separated)"
               placeholder="e.g., answer1, answer2, answer3"
-              value={Array.isArray(question.acceptableAnswers) ? question.acceptableAnswers.join(', ') : question.acceptableAnswers || ''}
+              value={Array.isArray(question.acceptableAnswers) ? question.acceptableAnswers.join(',') : question.acceptableAnswers || ''}
               onChange={e => {
-                const answers = e.target.value.split(',').map(a => a.trim()).filter(a => a);
-                setQuestion(p => ({ ...p, acceptableAnswers: answers }));
+                // Raw split, no trim/filter — see the Word Bank field above for
+                // why: trimming/filtering per keystroke eats trailing spaces and
+                // commas as you type them. Cleaned on save.
+                setQuestion(p => ({ ...p, acceptableAnswers: e.target.value.split(',') }));
               }}
               helperText="Alternative answers that should also be marked correct"
               sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}

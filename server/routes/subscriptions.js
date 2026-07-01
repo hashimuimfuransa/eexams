@@ -4,6 +4,7 @@ const {
   getSubscriptions,
   getSubscriptionById,
   getMyActiveSubscription,
+  getMyPendingPayment,
   initiateSubscriptionPayment,
   processPaymentCallback,
   checkPaymentStatus,
@@ -26,6 +27,7 @@ router.use((req, res, next) => {
 
 // User routes
 router.get('/my/active', getMyActiveSubscription);
+router.get('/my/pending-payment', getMyPendingPayment);
 router.post('/initiate', initiateSubscriptionPayment);
 router.post('/callback', processPaymentCallback);
 router.get('/payment-status/:reference', checkPaymentStatus);

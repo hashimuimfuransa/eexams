@@ -629,6 +629,31 @@ const getSubscriptionStats = async (req, res) => {
   }
 };
 
+// @desc    Get the user's most recent pending mobile money payment (if any)
+// @route   GET /api/subscriptions/my/pending-payment
+// @access  Private
+const getMyPendingPayment = async (req, res) => {
+  try {
+    const pending = await PendingPayment.findOne({ user: req.user._id, status: 'pending' })
+      .populate('plan', 'name price currency')
+      .sort({ createdAt: -1 });
+
+    if (!pending) return res.json(null);
+
+    res.json({
+      reference: pending.reference,
+      paymentMethod: pending.paymentMethod,
+      amount: pending.amount,
+      currency: pending.currency,
+      plan: pending.plan,
+      createdAt: pending.createdAt
+    });
+  } catch (error) {
+    console.error('getMyPendingPayment error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Poll payment status for a pending mobile money payment
 // @route   GET /api/subscriptions/payment-status/:reference
 // @access  Private
@@ -674,6 +699,7 @@ module.exports = {
   getSubscriptions,
   getSubscriptionById,
   getMyActiveSubscription,
+  getMyPendingPayment,
   initiateSubscriptionPayment,
   processPaymentCallback,
   checkPaymentStatus,

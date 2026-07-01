@@ -145,8 +145,11 @@ class ITECPaymentService {
       ''
     ).toLowerCase();
 
+    // NOTE: result?.status === 200 only means the *API call* succeeded, NOT that
+    // the payment was completed. iTechPay always returns {"status":200} on any
+    // successful HTTP response. Only trust the inner payment status string.
     const successStatuses = ['completed', 'success', 'paid', 'approved'];
-    const isSuccess = successStatuses.includes(rawStatus) || result?.status === 200;
+    const isSuccess = successStatuses.includes(rawStatus);
 
     return {
       success: isSuccess,

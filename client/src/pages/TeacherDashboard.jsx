@@ -1473,13 +1473,17 @@ const PLAN_Q_LIMITS = {
   enterprise: { maxQuestions: 100, maxPerType: 50 },
 };
 
-/* Reusable Level / Sub-Level / Access Type picker for exam creation flows */
-function ExamLevelAccessFields({ levels, level, subLevel, accessType, onChange, isXs }) {
+/* Reusable Level / Sub-Level / Access Type picker for exam creation flows.
+   The Access Type choice (Free vs Subscription Only) is only shown to
+   Enterprise-plan teachers — everyone else's exams are always
+   subscription-gated, so there's nothing for them to choose. */
+function ExamLevelAccessFields({ levels, level, subLevel, accessType, onChange, isXs, isEnterprise }) {
   const selectedLevel = levels.find(l => l._id === level);
   const availableSubLevels = (selectedLevel?.subLevels || []).filter(s => s.isActive);
+  const hasSubLevels = availableSubLevels.length > 0;
   return (
     <Grid container spacing={isXs ? 1.5 : 2} sx={{ mb: isXs ? 1.5 : 2 }}>
-      <Grid item xs={12} sm={availableSubLevels.length > 0 ? 6 : 12} md={availableSubLevels.length > 0 ? 4 : 6}>
+      <Grid item xs={12} sm={hasSubLevels ? 6 : 12} md={hasSubLevels ? 4 : (isEnterprise ? 6 : 12)}>
         <FormControl fullWidth size="small" required>
           <InputLabel>Level *</InputLabel>
           <Select
@@ -1494,8 +1498,8 @@ function ExamLevelAccessFields({ levels, level, subLevel, accessType, onChange, 
           </Select>
         </FormControl>
       </Grid>
-      {availableSubLevels.length > 0 && (
-        <Grid item xs={12} sm={6} md={4}>
+      {hasSubLevels && (
+        <Grid item xs={12} sm={6} md={isEnterprise ? 4 : 6}>
           <FormControl fullWidth size="small">
             <InputLabel>Sub-Level (optional)</InputLabel>
             <Select
@@ -1512,16 +1516,18 @@ function ExamLevelAccessFields({ levels, level, subLevel, accessType, onChange, 
           </FormControl>
         </Grid>
       )}
-      <Grid item xs={12} md={availableSubLevels.length > 0 ? 4 : 6}>
-        <FormControl size="small">
-          <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
-          <RadioGroup row value={accessType || 'subscription'}
-            onChange={e => onChange({ accessType: e.target.value })}>
-            <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
-            <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
-          </RadioGroup>
-        </FormControl>
-      </Grid>
+      {isEnterprise && (
+        <Grid item xs={12} md={hasSubLevels ? 4 : 6}>
+          <FormControl size="small">
+            <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
+            <RadioGroup row value={accessType || 'subscription'}
+              onChange={e => onChange({ accessType: e.target.value })}>
+              <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+              <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
+            </RadioGroup>
+          </FormControl>
+        </Grid>
+      )}
     </Grid>
   );
 }
@@ -1529,7 +1535,7 @@ function ExamLevelAccessFields({ levels, level, subLevel, accessType, onChange, 
 /* Level / Sub-Level / Access Type settings panel with its own Save action —
    used inside PublishDialog's Edit Questions tab so it's editable without
    leaving that screen. */
-function ExamLevelAccessPanel({ exam, levels, saving, onSave }) {
+function ExamLevelAccessPanel({ exam, levels, saving, onSave, isEnterprise }) {
   const [level, setLevel] = useState(exam.level?._id || exam.level || '');
   const [subLevel, setSubLevel] = useState(exam.subLevel || '');
   const [accessType, setAccessType] = useState(exam.accessType || 'subscription');
@@ -1545,12 +1551,13 @@ function ExamLevelAccessPanel({ exam, levels, saving, onSave }) {
     accessType !== (exam.accessType || 'subscription');
 
   const availableSubLevels = (levels.find(l => l._id === level)?.subLevels || []).filter(s => s.isActive);
+  const hasSubLevels = availableSubLevels.length > 0;
 
   return (
     <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC', mb: 2.5 }}>
       <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Level & Access</Typography>
       <Grid container spacing={2} alignItems="center">
-        <Grid item xs={12} sm={availableSubLevels.length > 0 ? 4 : 6}>
+        <Grid item xs={12} sm={hasSubLevels ? 4 : (isEnterprise ? 6 : 12)}>
           <FormControl fullWidth size="small">
             <InputLabel>Level</InputLabel>
             <Select value={level} label="Level" onChange={e => { setLevel(e.target.value); setSubLevel(''); }} sx={{ borderRadius: 2, bgcolor: 'white' }}>
@@ -1558,8 +1565,8 @@ function ExamLevelAccessPanel({ exam, levels, saving, onSave }) {
             </Select>
           </FormControl>
         </Grid>
-        {availableSubLevels.length > 0 && (
-          <Grid item xs={12} sm={4}>
+        {hasSubLevels && (
+          <Grid item xs={12} sm={isEnterprise ? 4 : 8}>
             <FormControl fullWidth size="small">
               <InputLabel>Sub-Level</InputLabel>
               <Select value={subLevel} label="Sub-Level" onChange={e => setSubLevel(e.target.value)} sx={{ borderRadius: 2, bgcolor: 'white' }}>
@@ -1569,14 +1576,16 @@ function ExamLevelAccessPanel({ exam, levels, saving, onSave }) {
             </FormControl>
           </Grid>
         )}
-        <Grid item xs={12} sm={availableSubLevels.length > 0 ? 4 : 6}>
-          <FormControl size="small">
-            <RadioGroup row value={accessType} onChange={e => setAccessType(e.target.value)}>
-              <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
-              <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
-            </RadioGroup>
-          </FormControl>
-        </Grid>
+        {isEnterprise && (
+          <Grid item xs={12} sm={hasSubLevels ? 4 : 6}>
+            <FormControl size="small">
+              <RadioGroup row value={accessType} onChange={e => setAccessType(e.target.value)}>
+                <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+                <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
+              </RadioGroup>
+            </FormControl>
+          </Grid>
+        )}
       </Grid>
       {dirty && (
         <Button
@@ -1596,7 +1605,7 @@ function ExamLevelAccessPanel({ exam, levels, saving, onSave }) {
 /* ── HOME ── */
 function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const { canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess } = usePlan();
+  const { canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess, isEnterprise } = usePlan();
   const [aiMode, setAiMode] = useState(canUseAdvancedAI ? 'describe' : 'upload');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, level: '', subLevel: '', accessType: 'subscription', sections: [{ name: 'A', description: 'Section A', questions: [] }] });
   const [levels, setLevels] = useState([]);
@@ -2301,6 +2310,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
               onSaveDraft={handleManualSaveDraft}
               savingDraft={savingDraft}
               levels={levels}
+              isEnterprise={isEnterprise}
             />
           ) : aiMode === 'describe' ? (
             <>
@@ -2723,6 +2733,7 @@ SECTION B: Short Answer (10 marks)
                 subLevel={examSubLevel}
                 accessType={examAccessType}
                 isXs={isXs}
+                isEnterprise={isEnterprise}
                 onChange={(patch) => {
                   if (patch.level !== undefined) setExamLevel(patch.level);
                   if (patch.subLevel !== undefined) setExamSubLevel(patch.subLevel);
@@ -2787,6 +2798,7 @@ SECTION B: Short Answer (10 marks)
                 subLevel={examSubLevel}
                 accessType={examAccessType}
                 isXs={isXs}
+                isEnterprise={isEnterprise}
                 onChange={(patch) => {
                   if (patch.level !== undefined) setExamLevel(patch.level);
                   if (patch.subLevel !== undefined) setExamSubLevel(patch.subLevel);
@@ -3497,7 +3509,7 @@ function ExamPreviewPanel({ exam }) {
 function PublishDialog({ examId, onClose, setActiveSection }) {
   console.log('PublishDialog render');
   const { user } = useAuth();
-  const { hasMarketplaceAccess } = usePlan();
+  const { hasMarketplaceAccess, isEnterprise } = usePlan();
   const isXs = useMediaQuery('(max-width:600px)');
   const [tab, setTab] = useState(0);
   const [preview, setPreview] = useState(null);
@@ -4127,6 +4139,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 levels={levels}
                 saving={savingLevelAccess}
                 onSave={handleSaveLevelAccess}
+                isEnterprise={isEnterprise}
               />
             )}
             {exam && exam.sections && exam.sections.length > 0 ? (
@@ -5710,7 +5723,7 @@ const Q_TYPES = [
 const DIFFS = ['easy', 'medium', 'hard'];
 const LETTERS = ['A', 'B', 'C', 'D'];
 
-function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question, setQuestion, onAddQuestion, onRemoveQuestion, onPublish, publishing, error, onSaveDraft, savingDraft, levels = [] }) {
+function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question, setQuestion, onAddQuestion, onRemoveQuestion, onPublish, publishing, error, onSaveDraft, savingDraft, levels = [], isEnterprise }) {
   const totalQ = exam.sections.reduce((s, sec) => s + (sec.questions?.length || 0), 0);
 
   const updateOption = (idx, field, val) => {
@@ -5789,16 +5802,18 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
             </FormControl>
           </Grid>
         )}
-        <Grid item xs={12} sm={6}>
-          <FormControl size="small">
-            <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
-            <RadioGroup row value={exam.accessType || 'subscription'}
-              onChange={e => setExam(p => ({ ...p, accessType: e.target.value }))}>
-              <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
-              <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
-            </RadioGroup>
-          </FormControl>
-        </Grid>
+        {isEnterprise && (
+          <Grid item xs={12} sm={6}>
+            <FormControl size="small">
+              <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
+              <RadioGroup row value={exam.accessType || 'subscription'}
+                onChange={e => setExam(p => ({ ...p, accessType: e.target.value }))}>
+                <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+                <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
+              </RadioGroup>
+            </FormControl>
+          </Grid>
+        )}
       </Grid>
 
       {/* Section tabs */}
@@ -6512,7 +6527,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
 }
 
 function ExamsSection({ exams, setExams, setActiveSection, user }) {
-  const { hasMarketplaceAccess } = usePlan();
+  const { hasMarketplaceAccess, isEnterprise } = usePlan();
   const [publishExamId, setPublishExamId] = useState(null);
   const [editExam, setEditExam] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
@@ -6787,14 +6802,16 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                     </FormControl>
                   )}
                 </Box>
-                <FormControl sx={{ mt: 1.5 }}>
-                  <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
-                  <RadioGroup row value={editExam.accessType || 'subscription'}
-                    onChange={e => setEditExam(p => ({ ...p, accessType: e.target.value }))}>
-                    <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
-                    <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
-                  </RadioGroup>
-                </FormControl>
+                {isEnterprise && (
+                  <FormControl sx={{ mt: 1.5 }}>
+                    <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
+                    <RadioGroup row value={editExam.accessType || 'subscription'}
+                      onChange={e => setEditExam(p => ({ ...p, accessType: e.target.value }))}>
+                      <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+                      <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
+                    </RadioGroup>
+                  </FormControl>
+                )}
               </Box>
 
               {/* Sections & Questions Summary */}

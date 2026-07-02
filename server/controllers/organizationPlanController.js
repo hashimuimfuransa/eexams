@@ -1,4 +1,5 @@
 const OrganizationPlan = require('../models/OrganizationPlan');
+const { resolvePlanDuration } = require('../utils/planDuration');
 
 // @desc    Get all organization plans
 // @route   GET /api/organization-plans
@@ -56,13 +57,17 @@ const getOrganizationPlanById = async (req, res) => {
 // @access  Private/SuperAdmin
 const createOrganizationPlan = async (req, res) => {
   try {
-    const { tierKey, name, price, currency, durationDays, status, features, discountPercentage } = req.body;
+    const { tierKey, name, price, currency, durationDays, durationValue, durationUnit, status, features, discountPercentage } = req.body;
 
     if (!tierKey || !['basic', 'premium', 'enterprise'].includes(tierKey)) {
       return res.status(400).json({ message: 'Invalid tier. Must be "basic", "premium", or "enterprise"' });
     }
-    if (!name || price === undefined || !durationDays) {
-      return res.status(400).json({ message: 'name, price and durationDays are required' });
+    if (!name || price === undefined) {
+      return res.status(400).json({ message: 'name and price are required' });
+    }
+    const resolvedDuration = resolvePlanDuration({ durationValue, durationUnit, durationDays });
+    if (!resolvedDuration) {
+      return res.status(400).json({ message: 'A valid duration (value and unit, in hours or days) is required' });
     }
 
     const plan = await OrganizationPlan.create({
@@ -70,7 +75,9 @@ const createOrganizationPlan = async (req, res) => {
       name,
       price,
       currency: currency || 'RWF',
-      durationDays,
+      durationDays: resolvedDuration.durationDays,
+      durationValue: resolvedDuration.durationValue,
+      durationUnit: resolvedDuration.durationUnit,
       status: status || 'active',
       features: features || [],
       discountPercentage: discountPercentage || 0,
@@ -89,7 +96,7 @@ const createOrganizationPlan = async (req, res) => {
 // @access  Private/SuperAdmin
 const updateOrganizationPlan = async (req, res) => {
   try {
-    const { tierKey, name, price, currency, durationDays, status, features, discountPercentage } = req.body;
+    const { tierKey, name, price, currency, durationDays, durationValue, durationUnit, status, features, discountPercentage } = req.body;
 
     const plan = await OrganizationPlan.findById(req.params.id);
     if (!plan) {
@@ -104,7 +111,15 @@ const updateOrganizationPlan = async (req, res) => {
     if (name !== undefined) plan.name = name;
     if (price !== undefined) plan.price = price;
     if (currency !== undefined) plan.currency = currency;
-    if (durationDays !== undefined) plan.durationDays = durationDays;
+    if (durationValue !== undefined || durationUnit !== undefined || durationDays !== undefined) {
+      const resolvedDuration = resolvePlanDuration({ durationValue, durationUnit, durationDays });
+      if (!resolvedDuration) {
+        return res.status(400).json({ message: 'A valid duration (value and unit, in hours or days) is required' });
+      }
+      plan.durationDays = resolvedDuration.durationDays;
+      plan.durationValue = resolvedDuration.durationValue;
+      plan.durationUnit = resolvedDuration.durationUnit;
+    }
     if (status !== undefined) plan.status = status;
     if (features !== undefined) plan.features = features;
     if (discountPercentage !== undefined) plan.discountPercentage = discountPercentage;

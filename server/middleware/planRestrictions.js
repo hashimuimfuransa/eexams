@@ -253,19 +253,23 @@ const getPlanUsage = async (userId) => {
     
     // Get counts
     const examCount = await Exam.countDocuments({ createdBy: userId });
-    const studentCount = await User.countDocuments({ 
+    const studentCount = await User.countDocuments({
       role: 'student',
-      createdBy: userId 
+      createdBy: userId
     });
-    
+
+    // Only organisations manage a team of teachers — an individual teacher
+    // account has no "teachers" concept of its own, so omit the limit
+    // entirely instead of showing a meaningless "1 teacher account" bar.
+    const isOrg = user.userType === 'organization';
     let teacherCount = 0;
-    if (user.userType === 'organization') {
-      teacherCount = await User.countDocuments({ 
+    if (isOrg) {
+      teacherCount = await User.countDocuments({
         role: 'teacher',
-        parentAdmin: userId 
+        parentAdmin: userId
       });
     }
-    
+
     // Calculate days left (enterprise plans don't expire)
     let daysLeft = null;
     let subscriptionExpiresAt = null;
@@ -286,7 +290,7 @@ const getPlanUsage = async (userId) => {
       limits: {
         exams: { limit: planConfig.maxExams, used: examCount },
         students: { limit: planConfig.maxStudents, used: studentCount },
-        teachers: { limit: planConfig.maxTeachers, used: teacherCount }
+        teachers: isOrg ? { limit: planConfig.maxTeachers, used: teacherCount } : null
       },
       features: {
         aiFeatures: planConfig.aiFeatures,
@@ -304,8 +308,20 @@ const getPlanUsage = async (userId) => {
   }
 };
 
+// Resolve the accessType a teacher is allowed to save on an exam.
+// Only Enterprise-plan accounts may mark an exam "free" (usable without a
+// level subscription) — everyone else's exams are always subscription-gated,
+// no matter what the client submits. Org teachers inherit their admin's plan
+// via resolveEffectivePlan.
+const resolveExamAccessType = async (user, requestedAccessType) => {
+  const { plan } = await resolveEffectivePlan(user);
+  if (plan !== 'enterprise') return 'subscription';
+  return requestedAccessType === 'free' ? 'free' : 'subscription';
+};
+
 module.exports = {
   resolveEffectivePlan,
+  resolveExamAccessType,
   checkExamLimit,
   checkStudentLimit,
   checkTeacherLimit,

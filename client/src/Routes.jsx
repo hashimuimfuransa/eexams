@@ -21,6 +21,7 @@ import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 import OrganizationSubscriptionPurchase from './components/OrganizationSubscriptionPurchase';
 import IndividualSubscriptionPurchase from './components/IndividualSubscriptionPurchase';
+import PlanLimitModal from './components/PlanLimitModal';
 import { useAuth } from './context/AuthContext';
 
 // Check if user registration is complete (has a subscription plan)
@@ -69,6 +70,8 @@ const AppRoutes = () => {
   const { user, isAuthenticated } = useAuth();
 
   return (
+    <>
+    {isAuthenticated && <PlanLimitModal />}
     <Routes>
       {/* Public exam access - must be before catch-all routes */}
       <Route path="/join/:shareToken" element={<PublicExamAccess />} />
@@ -144,6 +147,7 @@ const AppRoutes = () => {
       {/* 404 route */}
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </>
   );
 };
 

@@ -45,6 +45,17 @@ export default function PendingApproval() {
   const isDark = mode === 'dark';
   const navigate = useNavigate();
   const [checkStatus, setCheckStatus] = useState('idle'); // 'idle' | 'checking' | 'approved'
+  // Live, super-admin-edited pricing catalog — used instead of the hardcoded
+  // tables below whenever a matching active plan exists, so this page never
+  // shows a price that's out of sync with what was actually configured.
+  const [planCatalog, setPlanCatalog] = useState(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const isOrgUser = user?.userType === 'organization' || user?.role === 'admin';
+    const endpoint = isOrgUser ? '/organization-plans/active' : '/individual-plans/active';
+    api.get(endpoint).then(res => setPlanCatalog(res.data || [])).catch(() => setPlanCatalog([]));
+  }, [user?.userType, user?.role]);
 
   const checkApproval = useCallback(async () => {
     const token = localStorage.getItem('token');
@@ -89,6 +100,13 @@ export default function PendingApproval() {
   const planInfo = PLAN_PRICES[plan] || PLAN_PRICES.free;
   const isPaid = plan !== 'free' && planInfo.rwf !== 0;
   const isEnterprise = plan === 'enterprise';
+
+  // Prefer the live catalog entry for this tier (cheapest active plan of that
+  // tier, since the backend sorts by price) over the hardcoded fallback table.
+  const dbPlan = (planCatalog || []).find(p => p.tierKey === plan);
+  const planLabel = dbPlan?.name || planInfo.label;
+  const displayPrice = dbPlan ? `${dbPlan.price.toLocaleString()} ${dbPlan.currency}` : `${planInfo.rwf?.toLocaleString()} RWF`;
+  const displayUsdHint = !dbPlan && planInfo.usd != null ? `(~$${planInfo.usd}/mo)` : null;
 
   const cardBg = isDark ? tokens.dark.surfaceAlt : tokens.surface;
   const innerCardBg = isDark ? tokens.dark.surfaceCard : '#f8fafc';
@@ -177,7 +195,7 @@ export default function PendingApproval() {
 
           <p style={{ fontSize: 15, color: textSecondary, lineHeight: 1.65, marginBottom: 20 }}>
             Thank you for choosing the{' '}
-            <strong style={{ color: textPrimary }}>{planInfo.label}</strong> plan.
+            <strong style={{ color: textPrimary }}>{planLabel}</strong> plan.
             {isPaid && !isEnterprise
               ? ' Pay below to activate your account instantly.'
               : isEnterprise
@@ -211,10 +229,12 @@ export default function PendingApproval() {
             boxShadow: '0 8px 24px rgba(12,189,115,0.3)',
           }}>
             <p style={{ fontSize: 22, fontWeight: 800, color: 'white', marginBottom: 4 }}>
-              {planInfo.rwf?.toLocaleString()} RWF
-              <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.8)', marginLeft: 6 }}>
-                (~${planInfo.usd}/mo)
-              </span>
+              {displayPrice}
+              {displayUsdHint && (
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.8)', marginLeft: 6 }}>
+                  {displayUsdHint}
+                </span>
+              )}
             </p>
             <p style={{ fontSize: 14, color: 'white', marginBottom: 12, fontWeight: 500 }}>
               Pay instantly with Mobile Money, Airtel Money, or Card — your account activates automatically.

@@ -7,6 +7,7 @@ const ActivityLog = require('../models/ActivityLog');
 const SharedExam = require('../models/SharedExam');
 const Question = require('../models/Question');
 const ExamRequest = require('../models/ExamRequest');
+const { resolveExamAccessType } = require('../middleware/planRestrictions');
 
 /**
  * Parse subquestions from an object with letter keys (a, b, c, etc.)
@@ -2195,7 +2196,7 @@ const createExam = async (req, res) => {
       totalPoint: totalMarks,
       level,
       subLevel: subLevel || null,
-      accessType: accessType === 'free' ? 'free' : 'subscription'
+      accessType: await resolveExamAccessType(req.user, accessType)
     });
     console.log('Exam created with _id:', exam._id, 'createdBy:', exam.createdBy);
     
@@ -5145,6 +5146,10 @@ const updateExam = async (req, res) => {
 
     const { title, description, timeLimit, passingScore, sections, status, isLocked, questions, calculatorEnabled, level, subLevel, accessType } = req.body;
 
+    const resolvedAccessType = accessType !== undefined
+      ? await resolveExamAccessType(req.user, accessType)
+      : exam.accessType;
+
     // Handle direct questions array update (for editing individual questions like matching)
     if (questions && Array.isArray(questions)) {
       const Question = require('../models/Question');
@@ -5318,7 +5323,7 @@ const updateExam = async (req, res) => {
           sections: updatedSectionQuestions,
           level: level !== undefined ? (level || null) : exam.level,
           subLevel: subLevel !== undefined ? (subLevel || null) : exam.subLevel,
-          accessType: accessType !== undefined ? (accessType === 'free' ? 'free' : 'subscription') : exam.accessType
+          accessType: resolvedAccessType
         }
       );
     } else {
@@ -5335,7 +5340,7 @@ const updateExam = async (req, res) => {
           calculatorEnabled: typeof calculatorEnabled === 'boolean' ? calculatorEnabled : exam.calculatorEnabled,
           level: level !== undefined ? (level || null) : exam.level,
           subLevel: subLevel !== undefined ? (subLevel || null) : exam.subLevel,
-          accessType: accessType !== undefined ? (accessType === 'free' ? 'free' : 'subscription') : exam.accessType
+          accessType: resolvedAccessType
         }
       );
     }

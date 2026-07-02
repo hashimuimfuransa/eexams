@@ -16,7 +16,9 @@ const {
   createSubscription,
   cancelSubscription,
   renewSubscription,
-  getSubscriptionStats
+  getSubscriptionStats,
+  getAccountPlanSubscribers,
+  cancelAccountPlanSubscription
 } = require('../controllers/subscriptionController');
 const auth = require('../middleware/auth');
 const { isSuperAdmin, isAdmin, isTeacher } = require('../middleware/role');
@@ -48,6 +50,10 @@ router.get('/pending', isSuperAdmin, getPendingPayments);
 router.post('/pending/:id/approve', isSuperAdmin, approvePendingPayment);
 router.patch('/pending/:id/reject', isSuperAdmin, rejectPendingPayment);
 router.get('/stats/overview', isSuperAdmin, getSubscriptionStats);
+// Organisation/individual account-plan subscribers (User.subscriptionPlan) —
+// separate from the level-based Subscription records above.
+router.get('/account-plans/subscribers', isSuperAdmin, getAccountPlanSubscribers);
+router.post('/account-plans/:userId/cancel', isSuperAdmin, cancelAccountPlanSubscription);
 router.post('/', isSuperAdmin, createSubscription);
 router.patch('/:id/renew', isSuperAdmin, renewSubscription);
 router.get('/', isSuperAdmin, getSubscriptions);

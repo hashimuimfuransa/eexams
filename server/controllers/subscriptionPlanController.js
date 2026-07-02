@@ -1,6 +1,7 @@
 const SubscriptionPlan = require('../models/SubscriptionPlan');
 const Level = require('../models/Level');
 const Exam = require('../models/Exam');
+const { resolvePlanDuration } = require('../utils/planDuration');
 
 // @desc    Get all subscription plans
 // @route   GET /api/subscription-plans
@@ -90,11 +91,16 @@ const getActivePlansForExam = async (req, res) => {
 // @access  Private/SuperAdmin
 const createSubscriptionPlan = async (req, res) => {
   try {
-    const { level, exam, subLevel, planType, name, price, currency, durationDays, status, features, discountPercentage } = req.body;
+    const { level, exam, subLevel, planType, name, price, currency, durationDays, durationValue, durationUnit, status, features, discountPercentage } = req.body;
 
     // Validate planType
     if (!planType || !['level', 'exam'].includes(planType)) {
       return res.status(400).json({ message: 'Invalid plan type. Must be "level" or "exam"' });
+    }
+
+    const resolvedDuration = resolvePlanDuration({ durationValue, durationUnit, durationDays });
+    if (!resolvedDuration) {
+      return res.status(400).json({ message: 'A valid duration (value and unit, in hours or days) is required' });
     }
 
     let resolvedSubLevel = null;
@@ -147,7 +153,9 @@ const createSubscriptionPlan = async (req, res) => {
       name,
       price,
       currency: currency || 'RWF',
-      durationDays,
+      durationDays: resolvedDuration.durationDays,
+      durationValue: resolvedDuration.durationValue,
+      durationUnit: resolvedDuration.durationUnit,
       status: status || 'active',
       features: features || [],
       discountPercentage: discountPercentage || 0,
@@ -171,7 +179,7 @@ const createSubscriptionPlan = async (req, res) => {
 // @access  Private/SuperAdmin
 const updateSubscriptionPlan = async (req, res) => {
   try {
-    const { level, exam, subLevel, planType, name, price, currency, durationDays, status, features, discountPercentage } = req.body;
+    const { level, exam, subLevel, planType, name, price, currency, durationDays, durationValue, durationUnit, status, features, discountPercentage } = req.body;
 
     const plan = await SubscriptionPlan.findById(req.params.id);
 
@@ -246,7 +254,15 @@ const updateSubscriptionPlan = async (req, res) => {
     if (name !== undefined) plan.name = name;
     if (price !== undefined) plan.price = price;
     if (currency !== undefined) plan.currency = currency;
-    if (durationDays !== undefined) plan.durationDays = durationDays;
+    if (durationValue !== undefined || durationUnit !== undefined || durationDays !== undefined) {
+      const resolvedDuration = resolvePlanDuration({ durationValue, durationUnit, durationDays });
+      if (!resolvedDuration) {
+        return res.status(400).json({ message: 'A valid duration (value and unit, in hours or days) is required' });
+      }
+      plan.durationDays = resolvedDuration.durationDays;
+      plan.durationValue = resolvedDuration.durationValue;
+      plan.durationUnit = resolvedDuration.durationUnit;
+    }
     if (status !== undefined) plan.status = status;
     if (features !== undefined) plan.features = features;
     if (discountPercentage !== undefined) plan.discountPercentage = discountPercentage;

@@ -123,14 +123,17 @@ function Input({ icon, label, type, value, onChange, autoFocus, autoComplete, na
   );
 }
 
-// Updated steps for both account types - both now have Plan selection
-const ORG_STEPS = ['Account', 'Profile', 'Organization', 'Plan', 'Done'];
-const TEACHER_STEPS = ['Account', 'Profile', 'Plan', 'Done'];
+// Registration no longer offers a plan picker — every account starts on the
+// Free plan and upgrades later from the dashboard. Real step sequence is now
+// uniform for both account types: 0 Account, 1 Credentials, 2 Profile(+Org), 3 Done.
+const DONE_STEP = 3;
+const ORG_STEPS = ['Account', 'Profile', 'Organization'];
+const TEACHER_STEPS = ['Account', 'Profile'];
 // Google flow skips the credentials step (step index 1)
-const GOOGLE_ORG_STEPS = ['Account', 'Profile & Org', 'Plan', 'Done'];
-const GOOGLE_TEACHER_STEPS = ['Account', 'Profile', 'Done'];
+const GOOGLE_ORG_STEPS = ['Account', 'Profile & Org'];
+const GOOGLE_TEACHER_STEPS = ['Account', 'Profile'];
 // Map real activeStep to display step index for Google flow (skips step 1)
-const googleStepDisplayMap = { 0: 0, 2: 1, 3: 2, 4: 3 };
+const googleStepDisplayMap = { 0: 0, 2: 1 };
 
 const Register = () => {
   const [showPurposeModal, setShowPurposeModal] = useState(true);
@@ -143,7 +146,6 @@ const Register = () => {
   const [lastName, setLastName] = useState('');
   const [organization, setOrganization] = useState('');
   const [phone, setPhone] = useState('');
-  const [subscriptionPlan, setSubscriptionPlan] = useState('free');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -226,8 +228,6 @@ const Register = () => {
     }, 500);
   };
 
-  // Get steps based on account type
-  const STEPS = accountType === 'organization' ? ORG_STEPS : TEACHER_STEPS;
   const isDark = mode === 'dark';
 
   const validateStep = (step) => {
@@ -259,9 +259,6 @@ const Register = () => {
         if (!organization) errors.organization = 'Organization/school name is required';
         else if (organization.length < 2) errors.organization = 'Too short';
       }
-    } else if (step === 3) {
-      // Step 3: Plan selection for all account types
-      if (!subscriptionPlan) errors.subscriptionPlan = 'Please select a subscription plan';
     }
     return errors;
   };
@@ -407,12 +404,11 @@ const Register = () => {
     setError('');
     setValidationErrors({});
 
-    // Validate all steps (0-3) for both account types
+    // Validate all steps (0-2) for both account types
     let allErrors = {
       ...validateStep(0),
       ...validateStep(1),
       ...validateStep(2),
-      ...validateStep(3),
     };
     if (Object.keys(allErrors).length > 0) {
       setValidationErrors(allErrors);
@@ -427,11 +423,10 @@ const Register = () => {
       let response;
 
       if (isGoogleFlow && googleCredential) {
-        // Google OAuth registration — sends the chosen plan/accountType to the server
+        // Google OAuth registration — server defaults the account to the free plan
         response = await api.post('/auth/google', {
           credential: googleCredential,
           accountType,
-          subscriptionPlan,
           organization: accountType === 'organization' ? organization : undefined,
           phone
         });
@@ -458,7 +453,7 @@ const Register = () => {
         localStorage.setItem('token', response.data.token);
         setUser(user);
       } else {
-        // Regular email/password registration
+        // Regular email/password registration — server defaults to the free plan
         const registrationData = {
           email,
           password,
@@ -468,24 +463,19 @@ const Register = () => {
           accountType
         };
 
-        // Add organization and subscription data
         if (accountType === 'organization') {
           registrationData.organization = organization;
-          registrationData.subscriptionPlan = subscriptionPlan;
-        } else {
-          // Individual teachers can also select a plan
-          registrationData.subscriptionPlan = subscriptionPlan;
         }
 
         await register(registrationData);
       }
 
       const successMessage = accountType === 'organization'
-        ? `Welcome to eexams, ${firstName}! Organization registered successfully.`
-        : `Welcome to eexams, ${firstName}! Your teacher account is ready.`;
+        ? `Welcome to eexams, ${firstName}! Organization registered successfully on the Free plan.`
+        : `Welcome to eexams, ${firstName}! Your teacher account is ready on the Free plan.`;
       setSnackbar({ open: true, message: successMessage, severity: 'success' });
 
-      setActiveStep(4); // Success step for both account types
+      setActiveStep(DONE_STEP); // Success step for both account types
 
       setTimeout(() => {
         // After registration, always go to pending-approval so the user
@@ -780,111 +770,26 @@ const Register = () => {
               autoComplete="organization" required
               value={organization} onChange={(e) => setOrganization(e.target.value)} error={validationErrors.organization} />
           )}
+
+          {/* No plan picker — every account starts on the Free plan and
+              upgrades later from the dashboard. */}
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '12px 14px', borderRadius: 10, marginTop: 4,
+            background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
+            border: `1px solid ${isDark ? 'rgba(12,189,115,0.25)' : 'rgba(12,189,115,0.2)'}`,
+          }}>
+            <div style={{ flexShrink: 0, marginTop: 1, color: tokens.accent }}><Icon.Check s={16} /></div>
+            <span style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.5, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>
+              Your account starts on the <strong>Free plan</strong> — no payment required. You can upgrade anytime from your dashboard.
+            </span>
+          </div>
         </>
       );
     }
 
-    // Step 3: Subscription Plan for both individuals and organizations
-    if (activeStep === 3) {
-      // Different plans for individuals vs organizations
-      const orgPlans = [
-        { id: 'free', name: 'Free Trial', price: '0 RWF', period: '30 days', teacherLimit: '1 teacher', features: ['1 teacher account', 'Up to 5 students', '5 exams', 'Basic support', 'No credit card required'], color: '#64748B', popular: false },
-        { id: 'basic', name: 'Basic', price: '100,000 RWF', period: '/month', teacherLimit: 'Up to 5 teachers', features: ['Up to 5 teacher accounts', 'Up to 300 students', '50 exams/month', 'AI features', 'Full analytics', 'Priority email support'], color: '#0CBD73', popular: true },
-        { id: 'premium', name: 'Premium', price: '300,000 RWF', period: '/month', teacherLimit: 'Up to 20 teachers', features: ['Up to 20 teacher accounts', 'Unlimited students', 'Unlimited exams', 'Advanced AI', '24/7 priority support', 'Auto-grading'], color: '#0D406C', popular: false }
-      ];
-
-      const individualPlans = [
-        { id: 'free', name: 'Free', price: '0 RWF', period: 'forever', features: ['Up to 5 students', '5 exams', '1 teacher', 'Basic support', 'Standard templates'], color: '#64748B', popular: false },
-        { id: 'basic', name: 'Basic', price: '100,000 RWF', period: '/month', features: ['Up to 200 students', '30 exams', 'AI features', 'Priority support', 'Analytics'], color: '#0CBD73', popular: true },
-        { id: 'premium', name: 'Premium', price: '200,000 RWF', period: '/month', features: ['Unlimited students', 'Unlimited exams', 'Full AI features', '24/7 support', 'Advanced analytics', 'API access'], color: '#0D406C', popular: false }
-      ];
-
-      const plans = accountType === 'organization' ? orgPlans : individualPlans;
-      const planTitle = accountType === 'organization' ? 'Select a plan for your organization' : 'Choose your teacher plan';
-      const planDescription = accountType === 'organization'
-        ? 'Select a subscription plan for your organization. You can upgrade or change plans anytime from your dashboard.'
-        : 'Select the plan that works best for your teaching needs. Upgrade anytime as you grow.';
-
-      return (
-        <div style={{ marginTop: 8 }}>
-          <p style={{ fontSize: 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 20, lineHeight: 1.5 }}>
-            {planDescription}
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {plans.map((plan) => (
-              <div
-                key={plan.id}
-                onClick={() => setSubscriptionPlan(plan.id)}
-                style={{
-                  padding: '16px 20px',
-                  borderRadius: 8,
-                  border: `2px solid ${subscriptionPlan === plan.id ? plan.color : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                  background: subscriptionPlan === plan.id ? `${plan.color}10` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  transition: 'all 0.15s ease',
-                  position: 'relative',
-                  boxShadow: subscriptionPlan === plan.id ? `0 2px 8px ${plan.color}20` : 'none',
-                  transform: subscriptionPlan === plan.id ? 'scale(1.01)' : 'scale(1)'
-                }}
-              >
-                {plan.popular && (
-                  <div style={{
-                    position: 'absolute', top: -8, right: 12,
-                    background: '#0CBD73',
-                    color: 'white', fontSize: 10, fontWeight: 600,
-                    padding: '3px 10px', borderRadius: 6,
-                    textTransform: 'uppercase', letterSpacing: '0.02em'
-                  }}>
-                    Popular
-                  </div>
-                )}
-                <div style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: '50%',
-                  border: `2px solid ${subscriptionPlan === plan.id ? plan.color : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-                  background: subscriptionPlan === plan.id ? plan.color : 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  {subscriptionPlan === plan.id && <Icon.Check s={14} />}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 16, fontWeight: 600, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>{plan.name}</span>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: plan.color }}>{plan.price}<span style={{ fontSize: 12, fontWeight: 500 }}>{plan.period}</span></span>
-                  </div>
-                  {plan.teacherLimit && (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 4, padding: '2px 8px', borderRadius: 6, background: `${plan.color}18`, border: `1px solid ${plan.color}40` }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: plan.color }}>👥 {plan.teacherLimit}</span>
-                    </div>
-                  )}
-                  <div style={{ fontSize: 12, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.4 }}>
-                    {plan.features.join(' • ')}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          {validationErrors.subscriptionPlan && (
-            <div style={{ marginTop: 12, fontSize: 12, color: tokens.danger, fontWeight: 500 }}>
-              {validationErrors.subscriptionPlan}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Step 4 - Success (same for both individual and organization)
-    const isTeacherSuccess = accountType === 'individual' && activeStep === 4;
-    const isOrgSuccess = accountType === 'organization' && activeStep === 4;
-
-    if (isTeacherSuccess || isOrgSuccess) {
+    // Success (same for both individual and organization)
+    if (activeStep === DONE_STEP) {
       return (
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
           <div style={{
@@ -900,7 +805,7 @@ const Register = () => {
             You're all set!
           </h2>
           <p style={{ fontSize: 15, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 28, lineHeight: 1.6 }}>
-            Your account has been created. Redirecting you to your dashboard...
+            Your account has been created on the <strong>Free plan</strong>. Redirecting you to your dashboard — you can upgrade anytime from there.
           </p>
           <button onClick={() => navigate('/login')} style={{
             padding: '12px 24px', borderRadius: 8,
@@ -1320,7 +1225,7 @@ const Register = () => {
           animation: 'fadeInUp 0.3s ease',
         }}>
           {/* Only show header on non-success steps */}
-          {activeStep < (accountType === 'organization' ? 4 : 3) && (
+          {activeStep < DONE_STEP && (
             <>
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -1349,9 +1254,10 @@ const Register = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 24 }}>
                 {(() => {
                   const displaySteps = isGoogleFlow
-                    ? (accountType === 'organization' ? GOOGLE_ORG_STEPS : GOOGLE_TEACHER_STEPS).slice(0, accountType === 'organization' ? 3 : 2)
-                    : STEPS.slice(0, accountType === 'organization' ? 4 : 3);
+                    ? (accountType === 'organization' ? GOOGLE_ORG_STEPS : GOOGLE_TEACHER_STEPS)
+                    : (accountType === 'organization' ? ORG_STEPS : TEACHER_STEPS);
                   const displayActive = isGoogleFlow ? (googleStepDisplayMap[activeStep] ?? 0) : activeStep;
+                  const connectorLimit = displaySteps.length - 1;
                   return displaySteps.map((label, i) => {
                   const active = i === displayActive;
                   const completed = i < displayActive;
@@ -1375,9 +1281,7 @@ const Register = () => {
                           {label}
                         </span>
                       </div>
-                      {i < (isGoogleFlow
-                        ? (accountType === 'organization' ? 3 : 1)
-                        : (accountType === 'organization' ? 3 : 2)) && (
+                      {i < connectorLimit && (
                         <div style={{ flex: 1, height: 2, margin: '0 14px', borderRadius: 2, background: completed || active ? `linear-gradient(90deg, ${tokens.success}, ${tokens.accent})` : isDark ? tokens.dark.border : tokens.surfaceBorder }} />
                       )}
                     </React.Fragment>
@@ -1388,7 +1292,7 @@ const Register = () => {
             </>
           )}
 
-          {error && activeStep < (accountType === 'organization' ? 4 : 3) && (
+          {error && activeStep < DONE_STEP && (
             <div style={{
               display: 'flex', alignItems: 'flex-start', gap: 10,
               padding: '12px 14px', borderRadius: 10, marginBottom: 18,
@@ -1403,7 +1307,7 @@ const Register = () => {
           <form onSubmit={handleSubmit}>
             {renderStep()}
 
-            {activeStep < 4 && (
+            {activeStep < DONE_STEP && (
               <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
                 {activeStep > 0 && (
                   <button type="button" onClick={handleBack} style={{
@@ -1418,20 +1322,8 @@ const Register = () => {
                     <Icon.ArrowLeft /> Back
                   </button>
                 )}
-                {activeStep === 0 && (
-                  <button type="button" onClick={handleNext} style={{
-                    flex: 1, padding: '14px', borderRadius: 12,
-                    fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
-                    background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                    color: 'white', border: 'none', cursor: 'pointer',
-                    boxShadow: '0 8px 24px rgba(12,189,115,0.35)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  }}>
-                    Continue <Icon.Arrow />
-                  </button>
-                )}
-                {/* Show next button for steps 1, 2 */}
-                {(activeStep === 1 || activeStep === 2) ? (
+                {/* Steps 0 and 1: Continue to the next step */}
+                {(activeStep === 0 || activeStep === 1) ? (
                   <button type="button" onClick={handleNext} style={{
                     flex: 1, padding: '14px', borderRadius: 12,
                     fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
@@ -1443,8 +1335,8 @@ const Register = () => {
                     Continue <Icon.Arrow />
                   </button>
                 ) : null}
-                {/* Show submit button on step 3 (plan step) for both account types */}
-                {activeStep === 3 ? (
+                {/* Step 2 (Profile): last step before submission — creates the account */}
+                {activeStep === 2 ? (
                   <button type="submit" disabled={loading} style={{
                     flex: 1, padding: '14px', borderRadius: 12,
                     fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
@@ -1491,7 +1383,7 @@ const Register = () => {
           )}
 
           {/* Show login link during registration steps, not on success */}
-          {activeStep < (accountType === 'organization' ? 4 : 3) && (
+          {activeStep < DONE_STEP && (
             <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`, textAlign: 'center' }}>
               <span style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
                 Already have an account?{' '}

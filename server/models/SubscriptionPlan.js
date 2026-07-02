@@ -39,10 +39,23 @@ const SubscriptionPlanSchema = new mongoose.Schema({
     default: 'RWF',
     trim: true
   },
+  // Canonical duration used by every expiry calculation, always expressed in
+  // days (fractional when the plan was entered in hours, e.g. 12 hours = 0.5).
   durationDays: {
     type: Number,
     required: true,
-    min: 1
+    min: 0.01
+  },
+  // The raw number/unit the admin entered, kept only so the edit UI can
+  // redisplay "12 hours" instead of "0.5 days" — durationDays is authoritative.
+  durationValue: {
+    type: Number,
+    min: 0.01
+  },
+  durationUnit: {
+    type: String,
+    enum: ['hours', 'days'],
+    default: 'days'
   },
   status: {
     type: String,

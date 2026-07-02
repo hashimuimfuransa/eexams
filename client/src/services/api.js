@@ -116,6 +116,13 @@ api.interceptors.response.use(
     // Handle 403 Forbidden errors (insufficient permissions)
     if (error.response && error.response.status === 403) {
       console.error('You do not have permission to access this resource');
+
+      // Plan limit reached (exams/students/teachers) — broadcast so a single
+      // global modal (see PlanLimitModal.jsx) can prompt the user to upgrade,
+      // no matter which screen/action triggered it.
+      if (error.response.data?.code === 'PLAN_LIMIT_EXCEEDED') {
+        window.dispatchEvent(new CustomEvent('plan-limit-exceeded', { detail: error.response.data }));
+      }
     }
 
     // Handle 500 Server errors

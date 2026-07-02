@@ -12,11 +12,14 @@ const {
 const auth = require('../middleware/auth');
 const { isSuperAdmin } = require('../middleware/role');
 
+// Public — the registration page (no account yet) needs to display current
+// pricing/features for the plan picker, same as a public pricing page would.
+router.get('/active', getActiveOrganizationPlans);
+
 router.use(auth);
 
 // Viewable by any authenticated user (org admins need to browse the catalog to purchase)
 router.get('/', getOrganizationPlans);
-router.get('/active', getActiveOrganizationPlans);
 router.get('/:id', getOrganizationPlanById);
 
 // Super Admin only routes

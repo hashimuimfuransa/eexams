@@ -46,6 +46,7 @@ export default function PlanUsageCard({ user }) {
   }
 
   const { plan, planName, subscriptionStatus, subscriptionExpiresAt, daysLeft, limits, features } = planUsage;
+  const isOrg = user?.userType === 'organization' || user?.role === 'admin';
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -140,8 +141,13 @@ export default function PlanUsageCard({ user }) {
         <>
           <Divider sx={{ my: 3 }} />
 
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: tokens.primary }}>
-            Usage Limits
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25, color: tokens.primary }}>
+            {isOrg ? "Your Organisation's Usage" : 'Your Usage'}
+          </Typography>
+          <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block', mb: 2 }}>
+            {isOrg
+              ? "How your organisation's teachers, students and exams stack up against your plan."
+              : 'How your exams and students stack up against your plan.'}
           </Typography>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -198,7 +204,7 @@ export default function PlanUsageCard({ user }) {
                 <TrendingUp sx={{ color: tokens.accent, fontSize: 20 }} />
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" sx={{ color: tokens.textMuted }}>
-                    Teachers
+                    Teacher Accounts
                   </Typography>
                   <Typography variant="body1" sx={{ fontWeight: 600 }}>
                     {limits.teachers.used} / {limits.teachers.limit === -1 ? 'Unlimited' : limits.teachers.limit}

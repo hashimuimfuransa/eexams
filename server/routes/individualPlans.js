@@ -12,11 +12,14 @@ const {
 const auth = require('../middleware/auth');
 const { isSuperAdmin } = require('../middleware/role');
 
+// Public — the registration page (no account yet) needs to display current
+// pricing/features for the plan picker, same as a public pricing page would.
+router.get('/active', getActiveIndividualPlans);
+
 router.use(auth);
 
 // Viewable by any authenticated user (teachers need to browse the catalog to purchase)
 router.get('/', getIndividualPlans);
-router.get('/active', getActiveIndividualPlans);
 router.get('/:id', getIndividualPlanById);
 
 // Super Admin only routes

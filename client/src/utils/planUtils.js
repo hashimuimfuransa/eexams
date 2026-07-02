@@ -4,8 +4,8 @@ export const PLANS = {
     name: 'Free',
     price: 0,
     priceRWF: 0,
-    maxExams: 5,
-    maxStudents: 30,
+    maxExams: 1,
+    maxStudents: 1,
     maxTeachers: 1,
     aiFeatures: false,
     advancedAI: false,
@@ -15,12 +15,12 @@ export const PLANS = {
     apiAccess: false,
     marketplaceAccess: false,
     templates: false,
-    examPerMonth: 5,
+    examPerMonth: 1,
     storageLimit: 100,
     color: '#94A3B8',
     features: [
-      'Create up to 5 exams',
-      'Up to 30 students',
+      'Create up to 1 exam',
+      '1 student',
       'Basic question types',
       'Manual grading',
       'Email support'
@@ -175,4 +175,17 @@ export const formatPriceRWF = (priceRWF) => {
   if (priceRWF === 'custom') return 'Contact Us';
   if (priceRWF === 0 || priceRWF === '0') return 'Free';
   return `${priceRWF.toLocaleString()} RWF`;
+};
+
+// Format a DB-editable plan's duration (SubscriptionPlan/OrganizationPlan/
+// IndividualPlan) for display, honoring durationUnit when present. Older
+// plans only have durationDays (no unit picker yet) — fall back to days.
+export const formatPlanDuration = (plan) => {
+  if (!plan) return '';
+  if (plan.durationUnit === 'hours') {
+    const hours = plan.durationValue ?? Math.round(plan.durationDays * 24);
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  const days = plan.durationValue ?? plan.durationDays;
+  return `${days} day${days === 1 ? '' : 's'}`;
 };

@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { formatPlanDuration } from '../utils/planUtils';
 
 const COUNTRY_CODES = [
   { code: '+250', country: 'Rwanda',   flag: '🇷🇼' },
@@ -457,7 +458,7 @@ const OrganizationSubscriptionPurchase = () => {
                           {plan.currency === 'RWF' ? 'RWF' : '$'} {plan.price.toLocaleString()}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          {plan.durationDays} days access
+                          {formatPlanDuration(plan)} access
                         </Typography>
                         {plan.features?.length > 0 && (
                           <Box sx={{ mt: 2 }}>
@@ -492,7 +493,7 @@ const OrganizationSubscriptionPurchase = () => {
                   </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="body2" color="text.secondary">Duration:</Typography>
-                    <Typography variant="body2">{selectedPlanData?.durationDays} days</Typography>
+                    <Typography variant="body2">{formatPlanDuration(selectedPlanData)}</Typography>
                   </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">Organisation:</Typography>

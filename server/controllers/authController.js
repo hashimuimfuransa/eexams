@@ -72,7 +72,7 @@ const checkPhone = async (req, res) => {
 // @access  Public
 const register = async (req, res) => {
   try {
-    const { email, password, firstName, lastName, organization, phone, subscriptionPlan, accountType, role } = req.body;
+    const { email, password, firstName, lastName, organization, phone, accountType, role } = req.body;
 
     console.log('[Register] Request body:', { email, phone, firstName, lastName, role, accountType });
 
@@ -138,38 +138,18 @@ const register = async (req, res) => {
       finalRole = isOrganization ? 'admin' : 'teacher';
     }
 
-    // Set subscription details based on plan
-    let subscriptionStatus = null;
-    let subscriptionExpiresAt = null;
-    let finalSubscriptionPlan = subscriptionPlan || 'free';
-
-    if (isOrganization) {
-      // Validate subscription plan for organizations
-      if (!subscriptionPlan) {
-        return res.status(400).json({ message: 'Subscription plan is required for organization accounts' });
-      }
-
-      subscriptionStatus = 'pending';
-
-      // Free plan is auto-activated
-      if (subscriptionPlan === 'free') {
-        subscriptionStatus = 'active';
-        subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days free trial
-      }
+    // Registration no longer offers a plan picker — every new organisation
+    // and individual account starts on the free plan, active immediately,
+    // and upgrades later from their dashboard via the real payment flow.
+    const finalSubscriptionPlan = 'free';
+    let subscriptionStatus = 'active';
+    let subscriptionExpiresAt;
+    if (finalRole === 'student') {
+      subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
+    } else if (isOrganization) {
+      subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days free trial for orgs
     } else {
-      // Individual accounts (teacher or student): free plan is auto-active
-      if (finalSubscriptionPlan === 'free') {
-        subscriptionStatus = 'active';
-        // Students get 365 days, teachers get 14 days
-        if (finalRole === 'student') {
-          subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
-        } else {
-          subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
-        }
-      } else {
-        subscriptionStatus = 'pending'; // paid plan needs admin approval
-        subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      }
+      subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for individual teachers
     }
 
     // Create user - only include email/phone if they are provided and not empty
@@ -215,13 +195,6 @@ const register = async (req, res) => {
       emailService.sendWelcomeEmail(user).catch(err => {
         console.error('[Auth] Failed to send welcome email:', err);
       });
-
-      // Send pending approval email for organization accounts or paid plans
-      if (isOrganization || (subscriptionPlan && subscriptionPlan !== 'free')) {
-        emailService.sendPendingApprovalEmail(user, accountType).catch(err => {
-          console.error('[Auth] Failed to send pending approval email:', err);
-        });
-      }
 
       // Generate token
       const token = generateToken(user._id);
@@ -611,7 +584,7 @@ const verifyToken = async (req, res) => {
 // @access  Public
 const googleAuth = async (req, res) => {
   try {
-    const { credential, accountType, subscriptionPlan, organization, phone, role } = req.body;
+    const { credential, accountType, organization, phone, role } = req.body;
 
     if (!credential) {
       return res.status(400).json({ message: 'Google credential is required' });
@@ -665,31 +638,23 @@ const googleAuth = async (req, res) => {
       }
 
       // Apply registration data ONLY for users who haven't completed registration yet
-      // (i.e. they signed up with Google but haven't chosen account type/plan).
+      // (i.e. they signed up with Google but haven't chosen account type).
       // NEVER overwrite role/userType for a returning, fully-registered user.
       const isCompletingRegistration = !user.role || user.role === 'teacher' && !user.subscriptionPlan && !user.parentAdmin;
       if (accountType && isCompletingRegistration) {
         const isOrg = accountType === 'organization';
         user.userType = isOrg ? 'organization' : 'individual';
         user.role = isOrg ? 'admin' : (role || 'teacher');
-        needsSave = true;
-      }
-      if (subscriptionPlan && isCompletingRegistration) {
-        user.subscriptionPlan = subscriptionPlan;
-        const isOrg = (accountType || user.userType) === 'organization';
-        if (subscriptionPlan === 'free') {
-          user.subscriptionStatus = 'active';
-          // Students get 365 days, teachers get 14 days, orgs get 30 days
-          if (user.role === 'student') {
-            user.subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
-          } else if (isOrg) {
-            user.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days for orgs
-          } else {
-            user.subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
-          }
+        // Registration no longer offers a plan picker — start free, active
+        // immediately, and upgrade later from the dashboard.
+        user.subscriptionPlan = 'free';
+        user.subscriptionStatus = 'active';
+        if (user.role === 'student') {
+          user.subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
+        } else if (isOrg) {
+          user.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days for orgs
         } else {
-          user.subscriptionStatus = 'pending';
-          user.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          user.subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
         }
         needsSave = true;
       }
@@ -749,30 +714,18 @@ const googleAuth = async (req, res) => {
       finalRole = isOrganization ? 'admin' : 'teacher';
     }
 
-    // Set subscription details
-    let subscriptionStatus = null;
-    let subscriptionExpiresAt = null;
-    let finalSubscriptionPlan = subscriptionPlan;
-
-    if (isOrganization) {
-      if (!subscriptionPlan) {
-        return res.status(400).json({ message: 'Subscription plan is required for organization accounts' });
-      }
-      subscriptionStatus = 'pending';
-      if (subscriptionPlan === 'free') {
-        subscriptionStatus = 'active';
-        subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      }
+    // Registration no longer offers a plan picker — every new organisation
+    // and individual account starts on the free plan, active immediately,
+    // and upgrades later from their dashboard via the real payment flow.
+    const finalSubscriptionPlan = 'free';
+    const subscriptionStatus = 'active';
+    let subscriptionExpiresAt;
+    if (finalRole === 'student') {
+      subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
+    } else if (isOrganization) {
+      subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days free trial for orgs
     } else {
-      // Individual accounts (teacher or student) get free plan by default
-      finalSubscriptionPlan = subscriptionPlan || 'free';
-      subscriptionStatus = 'active';
-      // Students get 365 days, teachers get 14 days
-      if (finalRole === 'student') {
-        subscriptionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days for students
-      } else {
-        subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for teachers
-      }
+      subscriptionExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days for individual teachers
     }
 
     // Create new user

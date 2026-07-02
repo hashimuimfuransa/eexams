@@ -32,30 +32,6 @@ const spinnerStyles = `
   }
 `;
 
-const PLANS = [
-  {
-    id: 'free',
-    name: 'Free Plan',
-    price: 'Free',
-    description: 'Perfect for individual teachers getting started',
-    features: ['Create up to 5 exams', 'Up to 5 students', '1 teacher account', 'Basic analytics', 'Email support']
-  },
-  {
-    id: 'basic',
-    name: 'Basic Plan',
-    price: '100,000 RWF/month',
-    description: 'For growing educators with more needs',
-    features: ['Up to 30 exams', 'Up to 200 students', 'Advanced analytics', 'Priority support', 'AI features']
-  },
-  {
-    id: 'premium',
-    name: 'Premium Plan',
-    price: '200,000 RWF/month',
-    description: 'Best for schools and institutions',
-    features: ['Unlimited exams', 'Unlimited students', 'Everything in Basic', 'Advanced AI', 'Priority support']
-  }
-];
-
 export default function CompleteRegistration() {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
@@ -63,7 +39,9 @@ export default function CompleteRegistration() {
   const isDark = mode === 'dark';
 
   const [accountType, setAccountType] = useState('individual');
-  const [selectedPlan, setSelectedPlan] = useState('free');
+  // Registration no longer offers a plan picker — every new account starts
+  // free and upgrades later from the dashboard.
+  const selectedPlan = 'free';
   const [organization, setOrganization] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -111,18 +89,14 @@ export default function CompleteRegistration() {
           ...user,
           ...response.data,
           subscriptionPlan: selectedPlan,
-          subscriptionStatus: selectedPlan === 'free' ? 'active' : 'pending'
+          subscriptionStatus: 'active'
         };
 
         localStorage.setItem('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
 
-        // Redirect based on plan type
-        if (selectedPlan === 'free') {
-          navigate('/dashboard');
-        } else {
-          navigate('/pending-approval');
-        }
+        // Free accounts are active immediately — straight to the dashboard.
+        navigate('/dashboard');
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to complete registration');
@@ -327,117 +301,16 @@ export default function CompleteRegistration() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '12px' }}>
-        <button
-          onClick={() => setStep(1)}
-          style={{
-            flex: 1,
-            padding: '14px 24px',
-            borderRadius: '12px',
-            border: `1.5px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-            background: 'transparent',
-            color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
-            fontSize: '15px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          Back
-        </button>
-        <button
-          onClick={() => setStep(3)}
-          style={{
-            flex: 1,
-            padding: '14px 24px',
-            borderRadius: '12px',
-            border: 'none',
-            background: tokens.accent,
-            color: 'white',
-            fontSize: '15px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          Continue
-        </button>
-      </div>
-    </>
-  );
-
-  const renderStep3 = () => (
-    <>
-      <h2 style={{
-        fontSize: '20px',
-        fontWeight: 700,
-        color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
-        marginBottom: '8px'
+      <div style={{
+        padding: '12px 16px',
+        borderRadius: '12px',
+        background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
+        border: `1px solid ${isDark ? 'rgba(12,189,115,0.25)' : 'rgba(12,189,115,0.2)'}`,
+        marginBottom: '20px'
       }}>
-        Select Your Plan
-      </h2>
-      <p style={{
-        fontSize: '14px',
-        color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-        marginBottom: '24px'
-      }}>
-        Choose the plan that best fits your needs
-      </p>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-        {PLANS.map((plan) => (
-          <div
-            key={plan.id}
-            onClick={() => setSelectedPlan(plan.id)}
-            style={{
-              padding: '20px',
-              borderRadius: '12px',
-              border: `3px solid ${selectedPlan === plan.id ? tokens.accent : isDark ? tokens.dark.border : tokens.surfaceBorder}`,
-              background: selectedPlan === plan.id ? `${tokens.accent}15` : isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt,
-              cursor: 'pointer',
-              boxShadow: selectedPlan === plan.id ? '0 4px 20px rgba(43, 127, 255, 0.3)' : 'none',
-              transform: selectedPlan === plan.id ? 'scale(1.02)' : 'scale(1)',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '16px', fontWeight: 700, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>
-                {plan.name}
-              </span>
-              <span style={{ fontSize: '18px', fontWeight: 700, color: tokens.accent }}>
-                {plan.price}
-              </span>
-            </div>
-            <p style={{ fontSize: '13px', color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: '12px' }}>
-              {plan.description}
-            </p>
-            <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-              {plan.features.map((feature, idx) => (
-                <li key={idx} style={{
-                  fontSize: '13px',
-                  color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '4px'
-                }}>
-                  <span style={{ color: tokens.success }}>✓</span> {feature}
-                </li>
-              ))}
-            </ul>
-            {plan.id !== 'free' && (
-              <div style={{
-                marginTop: '12px',
-                padding: '8px 12px',
-                background: 'rgba(239, 68, 68, 0.1)',
-                borderRadius: '8px',
-                fontSize: '12px',
-                color: tokens.danger,
-                textAlign: 'center'
-              }}>
-                ⚠ Requires admin approval before accessing dashboard
-              </div>
-            )}
-          </div>
-        ))}
+        <p style={{ fontSize: '13px', color: isDark ? tokens.dark.textPrimary : tokens.textPrimary, margin: 0, lineHeight: 1.5 }}>
+          Your account starts on the <strong>Free</strong> plan — no payment required. Upgrade anytime from your dashboard.
+        </p>
       </div>
 
       {error && (
@@ -455,7 +328,7 @@ export default function CompleteRegistration() {
 
       <div style={{ display: 'flex', gap: '12px' }}>
         <button
-          onClick={() => setStep(2)}
+          onClick={() => setStep(1)}
           disabled={loading}
           style={{
             flex: 1,
@@ -527,7 +400,7 @@ export default function CompleteRegistration() {
       }}>
         {/* Progress indicator */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-          {[1, 2, 3].map((s) => (
+          {[1, 2].map((s) => (
             <div
               key={s}
               style={{
@@ -543,7 +416,6 @@ export default function CompleteRegistration() {
 
         {step === 1 && renderStep1()}
         {step === 2 && renderStep2()}
-        {step === 3 && renderStep3()}
       </div>
     </div>
     </>

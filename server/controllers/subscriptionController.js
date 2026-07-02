@@ -311,8 +311,7 @@ const activateAccountPlanPendingPayment = async (pendingPayment, Model, planId) 
   const baseDate = (user.subscriptionStatus === 'active' && user.subscriptionEndDate && user.subscriptionEndDate > now)
     ? user.subscriptionEndDate
     : now;
-  const newExpiry = new Date(baseDate);
-  newExpiry.setDate(newExpiry.getDate() + plan.durationDays);
+  const newExpiry = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
 
   user.subscriptionPlan = plan.tierKey;
   user.subscriptionStatus = 'active';
@@ -362,8 +361,7 @@ const activatePendingPayment = async (pendingPaymentId, { amount, currency, tran
   let subscription;
   if (existingSubscription) {
     const baseDate = existingSubscription.expiresAt > new Date() ? existingSubscription.expiresAt : new Date();
-    const newExpiry = new Date(baseDate);
-    newExpiry.setDate(newExpiry.getDate() + plan.durationDays);
+    const newExpiry = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
     await existingSubscription.renew(newExpiry);
     existingSubscription.plan = plan._id;
     existingSubscription.subLevel = plan.subLevel || null;
@@ -534,8 +532,7 @@ const createSubscription = async (req, res) => {
 
     // Calculate expiry date
     const startDate = new Date();
-    const expiresAt = new Date(startDate);
-    expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
+    const expiresAt = new Date(startDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
 
     // Create subscription
     const subscription = await Subscription.create({
@@ -624,8 +621,7 @@ const renewSubscription = async (req, res) => {
     const currentExpiry = new Date(subscription.expiresAt);
     const now = new Date();
     const baseDate = currentExpiry > now ? currentExpiry : now;
-    const newExpiry = new Date(baseDate);
-    newExpiry.setDate(newExpiry.getDate() + subscription.plan.durationDays);
+    const newExpiry = new Date(baseDate.getTime() + subscription.plan.durationDays * 24 * 60 * 60 * 1000);
 
     await subscription.renew(newExpiry);
 
@@ -646,6 +642,77 @@ const renewSubscription = async (req, res) => {
     res.json(populatedSubscription);
   } catch (error) {
     console.error('Renew subscription error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    List organisation admins + independent teachers and their current
+//          account-plan (User.subscriptionPlan/subscriptionStatus), so the
+//          super admin can manage/cancel any active plan from the
+//          Subscription Reports page. Org-managed teachers are excluded
+//          since their plan is inherited from their parentAdmin, not their own.
+// @route   GET /api/subscriptions/account-plans/subscribers
+// @access  Private/SuperAdmin
+const getAccountPlanSubscribers = async (req, res) => {
+  try {
+    const subscribers = await User.find({
+      role: { $in: ['admin', 'teacher'] },
+      parentAdmin: null,
+      subscriptionPlan: { $ne: null }
+    })
+      .select('firstName lastName email organization role userType subscriptionPlan subscriptionStatus subscriptionStartDate subscriptionEndDate subscriptionExpiresAt isBlocked createdAt')
+      .sort({ subscriptionStatus: 1, subscriptionEndDate: 1 });
+
+    res.json(subscribers);
+  } catch (error) {
+    console.error('getAccountPlanSubscribers error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Cancel a user's active organisation/individual account-plan
+//          subscription — immediately reverts them to the Free plan.
+// @route   POST /api/subscriptions/account-plans/:userId/cancel
+// @access  Private/SuperAdmin
+const cancelAccountPlanSubscription = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (!['admin', 'teacher'].includes(user.role)) {
+      return res.status(400).json({ message: 'This user does not have an account-level plan' });
+    }
+    if (user.parentAdmin) {
+      return res.status(400).json({ message: 'Org-managed teachers inherit their plan from their organisation admin — cancel the admin\'s plan instead' });
+    }
+    if (user.subscriptionPlan === 'free') {
+      return res.status(400).json({ message: 'This user is already on the Free plan' });
+    }
+
+    const now = new Date();
+    const isOrg = user.role === 'admin';
+    const expiry = new Date(now.getTime() + (isOrg ? 30 : 14) * 24 * 60 * 60 * 1000);
+
+    user.subscriptionPlan = 'free';
+    user.subscriptionStatus = 'active';
+    user.subscriptionStartDate = now;
+    user.subscriptionEndDate = expiry;
+    user.subscriptionExpiresAt = expiry;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Subscription cancelled — user reverted to the Free plan',
+      user: {
+        _id: user._id,
+        subscriptionPlan: user.subscriptionPlan,
+        subscriptionStatus: user.subscriptionStatus,
+        subscriptionExpiresAt: user.subscriptionExpiresAt
+      }
+    });
+  } catch (error) {
+    console.error('cancelAccountPlanSubscription error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -812,6 +879,58 @@ const getSubscriptionStats = async (req, res) => {
       .sort({ expiresAt: -1 })
       .limit(20);
 
+    // Organisation + individual teacher account-plan subscriptions. These
+    // don't live in the Subscription collection (they're User.subscriptionPlan/
+    // subscriptionStatus fields updated directly — see activateAccountPlanPendingPayment),
+    // so they need their own stats built from PendingPayment (completed) + User.
+    const buildAccountPlanStats = async (kind) => {
+      const { pendingField } = ACCOUNT_PLAN_KINDS[kind];
+      const planCollection = kind === 'organization' ? 'organizationplans' : 'individualplans';
+      const userQuery = kind === 'organization'
+        ? { role: 'admin', userType: 'organization' }
+        : { role: 'teacher', userType: 'individual', parentAdmin: null };
+
+      const activeCount = await User.countDocuments({
+        ...userQuery,
+        subscriptionStatus: 'active',
+        subscriptionEndDate: { $gt: now }
+      });
+
+      const revenueByTier = await PendingPayment.aggregate([
+        { $match: { status: 'completed', [pendingField]: { $ne: null } } },
+        { $group: {
+            _id: `$${pendingField}`,
+            subscriberCount: { $sum: 1 },
+            revenue: { $sum: '$amount' }
+          } },
+        { $lookup: { from: planCollection, localField: '_id', foreignField: '_id', as: 'planInfo' } },
+        { $unwind: { path: '$planInfo', preserveNullAndEmptyArrays: true } },
+        { $project: {
+            plan: { _id: '$_id', name: '$planInfo.name', tierKey: '$planInfo.tierKey' },
+            subscriberCount: 1,
+            revenue: 1
+          }
+        },
+        { $sort: { revenue: -1 } }
+      ]);
+
+      const totalRevenue = revenueByTier.reduce((sum, r) => sum + (r.revenue || 0), 0);
+      const totalPurchases = revenueByTier.reduce((sum, r) => sum + (r.subscriberCount || 0), 0);
+
+      const recentPayments = await PendingPayment.find({ status: 'completed', [pendingField]: { $ne: null } })
+        .populate('user', 'firstName lastName email organization')
+        .populate(pendingField, 'name tierKey')
+        .sort({ updatedAt: -1 })
+        .limit(20);
+
+      return { activeCount, totalRevenue, totalPurchases, revenueByTier, recentPayments };
+    };
+
+    const [organizationPlanStats, individualPlanStats] = await Promise.all([
+      buildAccountPlanStats('organization'),
+      buildAccountPlanStats('individual')
+    ]);
+
     res.json({
       totalSubscriptions,
       activeSubscribers,
@@ -833,7 +952,11 @@ const getSubscriptionStats = async (req, res) => {
       renewals,
       renewalsList,
       pendingPaymentsCount,
-      expiredSubscriptionsList
+      expiredSubscriptionsList,
+      accountPlans: {
+        organization: organizationPlanStats,
+        individual: individualPlanStats
+      }
     });
   } catch (error) {
     console.error('Get subscription stats error:', error);
@@ -1050,5 +1173,7 @@ module.exports = {
   createSubscription,
   cancelSubscription,
   renewSubscription,
-  getSubscriptionStats
+  getSubscriptionStats,
+  getAccountPlanSubscribers,
+  cancelAccountPlanSubscription
 };

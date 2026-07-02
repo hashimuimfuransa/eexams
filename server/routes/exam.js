@@ -31,6 +31,7 @@ const auth = require('../middleware/auth');
 const { isAdmin, isStudent, isAdminOrTeacher, attachOrgAdminId } = require('../middleware/role');
 const {
   resolveEffectivePlan,
+  resolveExamAccessType,
   checkExamLimit,
   requireAIFeatures,
   requireAdvancedAI
@@ -321,6 +322,9 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
     console.log('Save draft - req.orgAdminId:', req.orgAdminId);
     console.log('Save draft - req.user.role:', req.user.role);
     const { title, description, timeLimit, passingScore, questions, totalMarks, examId, sections, accessType, level, subLevel } = req.body;
+    const resolvedAccessType = accessType !== undefined
+      ? await resolveExamAccessType(req.user, accessType)
+      : undefined;
 
     // Log incoming sections data to check if passage is present
     console.log('Incoming sections data:', sections?.map(s => ({
@@ -408,7 +412,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam.timeLimit = timeLimit || 60;
         exam.passingScore = passingScore || 70;
         exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
-        if (accessType !== undefined) exam.accessType = accessType;
+        if (resolvedAccessType !== undefined) exam.accessType = resolvedAccessType;
         if (level !== undefined) exam.level = level;
         if (subLevel !== undefined) exam.subLevel = subLevel || null;
 
@@ -460,7 +464,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
         exam.timeLimit = timeLimit || 60;
         exam.passingScore = passingScore || 70;
         exam.totalPoints = totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0);
-        if (accessType !== undefined) exam.accessType = accessType;
+        if (resolvedAccessType !== undefined) exam.accessType = resolvedAccessType;
         if (level !== undefined) exam.level = level;
         if (subLevel !== undefined) exam.subLevel = subLevel || null;
 
@@ -501,7 +505,7 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
           status: 'draft',
           isLocked: false,
           totalPoints: totalMarks || questions.reduce((sum, q) => sum + (q.marks || q.points || 1), 0),
-          accessType: accessType || 'subscription',
+          accessType: resolvedAccessType !== undefined ? resolvedAccessType : 'subscription',
           level: level || null,
           subLevel: subLevel || null
         });

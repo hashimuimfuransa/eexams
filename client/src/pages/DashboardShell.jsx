@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import {
   NotificationsNone, Menu as MenuIcon, Close, Search, Logout, Star,
-  TrendingUp, TrendingDown
+  TrendingUp, TrendingDown, ErrorOutline, WarningAmber
 } from '@mui/icons-material';
 import { tokens, gradients } from './dashboardTokens';
 import api from '../services/api';
@@ -42,6 +42,21 @@ export function Sidebar({ user, logout, activeSection, setActiveSection, onClose
     navigate(isOrg ? '/organization/subscription' : '/individual/subscription');
     if (isMobile && onClose) onClose();
   };
+
+  // Always-visible expiry indicator — separate from the dismissible banner
+  // (SubscriptionWarning) so a user who closes that banner still sees this.
+  const daysRemaining = (user?.subscriptionExpiresAt && currentPlan !== 'enterprise')
+    ? Math.ceil((new Date(user.subscriptionExpiresAt) - new Date()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isExpired = user?.subscriptionStatus === 'expired' || (daysRemaining !== null && daysRemaining <= 0);
+  const isUrgent = !isExpired && daysRemaining !== null && daysRemaining <= 7;
+  const isWarning = !isExpired && daysRemaining !== null && daysRemaining > 7 && daysRemaining <= 30;
+
+  const upgradePalette = isExpired || isUrgent
+    ? { bg: 'rgba(239,68,68,0.14)', border: 'rgba(239,68,68,0.35)', accent: '#EF4444', chipBg: 'rgba(239,68,68,0.22)', chipColor: '#FCA5A5' }
+    : isWarning
+      ? { bg: 'rgba(245,158,11,0.14)', border: 'rgba(245,158,11,0.32)', accent: '#F59E0B', chipBg: 'rgba(245,158,11,0.22)', chipColor: '#FCD34D' }
+      : { bg: 'rgba(12,189,115,0.12)', border: 'rgba(12,189,115,0.2)', accent: tokens.accent, chipBg: 'rgba(255,255,255,0.1)', chipColor: 'rgba(255,255,255,0.7)' };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: tokens.primary, overflowY: 'auto' }}>
@@ -111,17 +126,35 @@ export function Sidebar({ user, logout, activeSection, setActiveSection, onClose
 
       {/* Upgrade — hide for superadmin and org teachers */}
       {user?.role !== 'superadmin' && !user?.isOrgTeacher && (
-        <Box sx={{ mx: 1.5, mb: 1.5, p: 2, borderRadius: 2.5, bgcolor: 'rgba(12,189,115,0.12)', border: '1px solid rgba(12,189,115,0.2)' }}>
+        <Box sx={{ mx: 1.5, mb: 1.5, p: 2, borderRadius: 2.5, bgcolor: upgradePalette.bg, border: `1px solid ${upgradePalette.border}` }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
-            <Star sx={{ color: '#F59E0B', fontSize: 15 }} />
+            {isExpired || isUrgent
+              ? <ErrorOutline sx={{ color: upgradePalette.accent, fontSize: 15 }} />
+              : isWarning
+                ? <WarningAmber sx={{ color: upgradePalette.accent, fontSize: 15 }} />
+                : <Star sx={{ color: '#F59E0B', fontSize: 15 }} />}
             <Typography sx={{ color: 'white', fontWeight: 700, fontSize: 12, fontFamily: "'DM Sans',sans-serif" }}>
-              {currentPlan === 'free' ? 'Upgrade to Pro' : 'Change Plan'}
+              {isExpired ? 'Plan Expired' : isUrgent || isWarning ? 'Plan Expiring Soon' : currentPlan === 'free' ? 'Upgrade to Pro' : 'Change Plan'}
             </Typography>
           </Box>
-          <Chip label={`Current: ${currentPlan}`} size="small" sx={{ mb: 1, height: 16, fontSize: 9.5, bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'capitalize' }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
+            <Chip label={`Current: ${currentPlan}`} size="small" sx={{ height: 16, fontSize: 9.5, bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'capitalize' }} />
+            {daysRemaining !== null && !isExpired && (
+              <Chip
+                label={isUrgent || isWarning ? `⏳ ${daysRemaining}d left` : `${daysRemaining}d left`}
+                size="small"
+                sx={{ height: 16, fontSize: 9.5, bgcolor: upgradePalette.chipBg, color: upgradePalette.chipColor, fontWeight: 700 }}
+              />
+            )}
+          </Box>
+          {(isExpired || isUrgent || isWarning) && (
+            <Typography sx={{ color: 'rgba(255,255,255,0.65)', fontSize: 10, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.4, mb: 1 }}>
+              {isExpired ? 'Upgrade now to keep using all features.' : 'Upgrade now to avoid any interruption.'}
+            </Typography>
+          )}
           <Button size="small" fullWidth onClick={handleUpgradeClick}
-            sx={{ bgcolor: tokens.accent, color: 'white', borderRadius: 2, fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", py: 0.75, textTransform: 'none', '&:hover': { bgcolor: tokens.accentDark } }}>
-            {currentPlan === 'free' ? 'Upgrade Now →' : 'Change Plan →'}
+            sx={{ bgcolor: upgradePalette.accent, color: 'white', borderRadius: 2, fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", py: 0.75, textTransform: 'none', '&:hover': { bgcolor: upgradePalette.accent, filter: 'brightness(0.92)' } }}>
+            {isExpired || isUrgent || isWarning ? 'Upgrade Now →' : currentPlan === 'free' ? 'Upgrade Now →' : 'Change Plan →'}
           </Button>
         </Box>
       )}

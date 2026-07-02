@@ -7,7 +7,7 @@ const PLANS = {
     price: 0,
     priceRWF: 0,
     maxExams: 1,
-    maxStudents: 5,
+    maxStudents: 1,
     maxTeachers: 1,
     aiFeatures: false,
     advancedAI: false,
@@ -21,7 +21,7 @@ const PLANS = {
     storageLimit: 100, // MB
     features: [
       'Create up to 1 exam',
-      'Up to 5 students',
+      '1 student',
       '1 teacher account',
       'Basic question types',
       'Manual grading',

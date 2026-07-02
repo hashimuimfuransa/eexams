@@ -37,13 +37,15 @@ import {
   Cancel
 } from '@mui/icons-material';
 import api from '../../services/api';
+import { formatPlanDuration } from '../../utils/planUtils';
 
 const DEFAULT_FORM = {
   tierKey: 'basic',
   name: '',
   price: 0,
   currency: 'RWF',
-  durationDays: 30,
+  durationValue: 30,
+  durationUnit: 'days',
   status: 'active',
   features: '',
   discountPercentage: 0
@@ -83,7 +85,8 @@ const IndividualPlanManagement = () => {
         name: plan.name,
         price: plan.price,
         currency: plan.currency || 'RWF',
-        durationDays: plan.durationDays,
+        durationValue: plan.durationValue ?? plan.durationDays,
+        durationUnit: plan.durationUnit || 'days',
         status: plan.status || 'active',
         features: (plan.features || []).join(', '),
         discountPercentage: plan.discountPercentage || 0
@@ -204,7 +207,7 @@ const IndividualPlanManagement = () => {
                     <Typography fontWeight="bold">{plan.name}</Typography>
                   </TableCell>
                   <TableCell>{plan.currency} {plan.price.toLocaleString()}</TableCell>
-                  <TableCell>{plan.durationDays} days</TableCell>
+                  <TableCell>{formatPlanDuration(plan)}</TableCell>
                   <TableCell>
                     <Chip label={plan.status} color={plan.status === 'active' ? 'success' : 'default'} size="small" />
                   </TableCell>
@@ -289,15 +292,29 @@ const IndividualPlanManagement = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={3}>
                 <TextField
                   fullWidth
-                  label="Duration (Days)"
+                  label="Duration"
                   type="number"
-                  value={formData.durationDays}
-                  onChange={(e) => setFormData({ ...formData, durationDays: parseInt(e.target.value) || 30 })}
+                  value={formData.durationValue}
+                  onChange={(e) => setFormData({ ...formData, durationValue: parseFloat(e.target.value) || 0 })}
+                  inputProps={{ min: 0.01, step: 'any' }}
                   required
                 />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormControl fullWidth>
+                  <InputLabel>Unit</InputLabel>
+                  <Select
+                    value={formData.durationUnit}
+                    onChange={(e) => setFormData({ ...formData, durationUnit: e.target.value })}
+                    label="Unit"
+                  >
+                    <MenuItem value="hours">Hours</MenuItem>
+                    <MenuItem value="days">Days</MenuItem>
+                  </Select>
+                </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField

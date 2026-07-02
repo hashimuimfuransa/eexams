@@ -18,7 +18,17 @@ import {
   Button,
   Stack,
   Alert,
-  Snackbar
+  Snackbar,
+  TextField,
+  InputAdornment,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Collapse,
+  IconButton,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   Assessment,
@@ -28,9 +38,130 @@ import {
   School,
   HourglassEmpty,
   CheckCircle,
-  Cancel
+  Cancel,
+  Business,
+  Person,
+  Block,
+  ManageAccounts,
+  Search,
+  FilterAltOff,
+  ExpandMore,
+  ExpandLess
 } from '@mui/icons-material';
 import api from '../../services/api';
+
+// Renders the org/individual-teacher account-plan report block: summary
+// counts, revenue by tier, and the most recent completed purchases. These
+// subscriptions live on User.subscriptionPlan (not the Subscription
+// collection), so they're reported separately from the level-based stats above.
+const AccountPlanSection = ({ title, icon, data }) => {
+  const revenueByTier = data?.revenueByTier || [];
+  const recentPayments = data?.recentPayments || [];
+
+  return (
+    <Card elevation={3}>
+      <CardContent>
+        <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          {icon}
+          {title}
+        </Typography>
+
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          <Grid item xs={12} sm={4}>
+            <Box sx={{ p: 2, bgcolor: 'success.light', borderRadius: 2 }}>
+              <Typography variant="body2" color="text.secondary">Active Accounts</Typography>
+              <Typography variant="h5" fontWeight="bold">{data?.activeCount || 0}</Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Box sx={{ p: 2, bgcolor: 'primary.light', borderRadius: 2 }}>
+              <Typography variant="body2" color="text.secondary">Total Revenue</Typography>
+              <Typography variant="h5" fontWeight="bold">RWF {(data?.totalRevenue || 0).toLocaleString()}</Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Box sx={{ p: 2, bgcolor: 'info.light', borderRadius: 2 }}>
+              <Typography variant="body2" color="text.secondary">Total Purchases</Typography>
+              <Typography variant="h5" fontWeight="bold">{data?.totalPurchases || 0}</Typography>
+            </Box>
+          </Grid>
+        </Grid>
+
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={5}>
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Revenue by Tier</Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Plan</TableCell>
+                    <TableCell align="right">Purchases</TableCell>
+                    <TableCell align="right">Revenue</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {revenueByTier.map((item) => (
+                    <TableRow key={item.plan?._id}>
+                      <TableCell>
+                        <Typography fontWeight="bold">{item.plan?.name || 'Unknown'}</Typography>
+                        <Typography variant="caption" color="text.secondary">{item.plan?.tierKey}</Typography>
+                      </TableCell>
+                      <TableCell align="right">{item.subscriberCount}</TableCell>
+                      <TableCell align="right">{item.revenue ? `RWF ${item.revenue.toLocaleString()}` : '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {revenueByTier.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} align="center">
+                        <Typography variant="body2" color="text.secondary">No purchases yet</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Grid>
+
+          <Grid item xs={12} md={7}>
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Recent Purchases</Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>User</TableCell>
+                    <TableCell>Plan</TableCell>
+                    <TableCell align="right">Amount</TableCell>
+                    <TableCell>Date</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {recentPayments.map((p) => (
+                    <TableRow key={p._id}>
+                      <TableCell>
+                        <Typography fontWeight="bold">{p.user?.firstName} {p.user?.lastName}</Typography>
+                        <Typography variant="caption" color="text.secondary">{p.user?.organization || p.user?.email}</Typography>
+                      </TableCell>
+                      <TableCell>{p.organizationPlan?.name || p.individualPlan?.name || '-'}</TableCell>
+                      <TableCell align="right">{p.currency} {p.amount?.toLocaleString()}</TableCell>
+                      <TableCell>{new Date(p.updatedAt).toLocaleDateString()}</TableCell>
+                    </TableRow>
+                  ))}
+                  {recentPayments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        <Typography variant="body2" color="text.secondary">No purchases yet</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
+  );
+};
 
 const SubscriptionReports = () => {
   const [stats, setStats] = useState(null);
@@ -41,9 +172,94 @@ const SubscriptionReports = () => {
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
 
+  // Organisation admins + individual teachers and their account-level plan —
+  // lets the super admin cancel/disable any active subscriber directly here.
+  const [subscribers, setSubscribers] = useState([]);
+  const [subscribersLoading, setSubscribersLoading] = useState(true);
+  const [subscriberActioningId, setSubscriberActioningId] = useState(null);
+  // Level-based Subscription records (per-exam-level purchases) shown in the
+  // "Recent Subscriptions" table below — cancel action uses a separate id
+  // space since it acts on Subscription documents, not User documents.
+  const [subActioningId, setSubActioningId] = useState(null);
+
+  // Search + filters for the Manage Subscribers table
+  const [subscriberSearch, setSubscriberSearch] = useState('');
+  const [subscriberTypeFilter, setSubscriberTypeFilter] = useState('all');
+  const [subscriberPlanFilter, setSubscriberPlanFilter] = useState('all');
+  const [subscriberStatusFilter, setSubscriberStatusFilter] = useState('all');
+  const [subscriberAccountFilter, setSubscriberAccountFilter] = useState('all');
+
+  const hasActiveSubscriberFilters = !!subscriberSearch.trim()
+    || subscriberTypeFilter !== 'all'
+    || subscriberPlanFilter !== 'all'
+    || subscriberStatusFilter !== 'all'
+    || subscriberAccountFilter !== 'all';
+
+  const clearSubscriberFilters = () => {
+    setSubscriberSearch('');
+    setSubscriberTypeFilter('all');
+    setSubscriberPlanFilter('all');
+    setSubscriberStatusFilter('all');
+    setSubscriberAccountFilter('all');
+  };
+
+  const filteredSubscribers = subscribers.filter((u) => {
+    const q = subscriberSearch.trim().toLowerCase();
+    const matchesSearch = !q
+      || `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase().includes(q)
+      || (u.email || '').toLowerCase().includes(q)
+      || (u.organization || '').toLowerCase().includes(q);
+    const matchesType = subscriberTypeFilter === 'all'
+      || (subscriberTypeFilter === 'organization' ? u.role === 'admin' : u.role === 'teacher');
+    const matchesPlan = subscriberPlanFilter === 'all' || u.subscriptionPlan === subscriberPlanFilter;
+    const matchesStatus = subscriberStatusFilter === 'all' || u.subscriptionStatus === subscriberStatusFilter;
+    const matchesAccount = subscriberAccountFilter === 'all'
+      || (subscriberAccountFilter === 'disabled' ? u.isBlocked : !u.isBlocked);
+    return matchesSearch && matchesType && matchesPlan && matchesStatus && matchesAccount;
+  });
+
+  // "Manage Subscribers" is minimised by default — it's a heavy management
+  // panel, not something needed on every page load.
+  const [subscribersExpanded, setSubscribersExpanded] = useState(false);
+  const [subscriberTab, setSubscriberTab] = useState(0); // 0 = account plans, 1 = exam/level subscribers
+
+  // Exam/level subscribers (Subscription model) — students & teachers who
+  // bought a per-level exam plan, as opposed to the account-wide org/individual
+  // plans above. Fetched in full (not just "recent") so they can be searched here.
+  const [examSubs, setExamSubs] = useState([]);
+  const [examSubsLoading, setExamSubsLoading] = useState(true);
+  const [examSearch, setExamSearch] = useState('');
+  const [examStatusFilter, setExamStatusFilter] = useState('all');
+  const [examLevelFilter, setExamLevelFilter] = useState('all');
+
+  const examLevelOptions = Array.from(
+    new Set(examSubs.map((s) => s.level?.name).filter(Boolean))
+  ).sort();
+
+  const hasActiveExamFilters = !!examSearch.trim() || examStatusFilter !== 'all' || examLevelFilter !== 'all';
+  const clearExamFilters = () => {
+    setExamSearch('');
+    setExamStatusFilter('all');
+    setExamLevelFilter('all');
+  };
+
+  const filteredExamSubs = examSubs.filter((sub) => {
+    const q = examSearch.trim().toLowerCase();
+    const matchesSearch = !q
+      || `${sub.user?.firstName || ''} ${sub.user?.lastName || ''}`.toLowerCase().includes(q)
+      || (sub.user?.email || '').toLowerCase().includes(q)
+      || (sub.plan?.name || '').toLowerCase().includes(q)
+      || (sub.level?.name || '').toLowerCase().includes(q);
+    const matchesStatus = examStatusFilter === 'all' || sub.status === examStatusFilter;
+    const matchesLevel = examLevelFilter === 'all' || sub.level?.name === examLevelFilter;
+    return matchesSearch && matchesStatus && matchesLevel;
+  });
+
   useEffect(() => {
     fetchStats();
     fetchPendingPayments();
+    fetchSubscribers();
+    fetchExamSubs();
   }, []);
 
   const fetchStats = async () => {
@@ -94,6 +310,73 @@ const SubscriptionReports = () => {
       setToast({ severity: 'error', message: err.response?.data?.message || 'Failed to reject' });
     } finally {
       setActioningId(null);
+    }
+  };
+
+  const fetchSubscribers = async () => {
+    try {
+      setSubscribersLoading(true);
+      const res = await api.get('/subscriptions/account-plans/subscribers');
+      setSubscribers(res.data || []);
+    } catch (err) {
+      console.error('Error fetching subscribers:', err);
+    } finally {
+      setSubscribersLoading(false);
+    }
+  };
+
+  const handleCancelAccountPlan = async (user) => {
+    if (!window.confirm(`Cancel ${user.firstName} ${user.lastName}'s ${user.subscriptionPlan} plan and revert them to Free?`)) return;
+    setSubscriberActioningId(user._id);
+    try {
+      const res = await api.post(`/subscriptions/account-plans/${user._id}/cancel`);
+      setToast({ severity: 'success', message: res.data.message || 'Plan cancelled' });
+      await Promise.all([fetchSubscribers(), fetchStats()]);
+    } catch (err) {
+      setToast({ severity: 'error', message: err.response?.data?.message || 'Failed to cancel plan' });
+    } finally {
+      setSubscriberActioningId(null);
+    }
+  };
+
+  const handleToggleBlock = async (user) => {
+    const verb = user.isBlocked ? 'enable' : 'disable';
+    if (!window.confirm(`Are you sure you want to ${verb} ${user.firstName} ${user.lastName}'s account?`)) return;
+    setSubscriberActioningId(user._id);
+    try {
+      await api.put(`/superadmin/users/${user._id}/toggle-block`);
+      setToast({ severity: 'success', message: `Account ${user.isBlocked ? 'enabled' : 'disabled'}` });
+      await fetchSubscribers();
+    } catch (err) {
+      setToast({ severity: 'error', message: err.response?.data?.message || 'Failed to update account' });
+    } finally {
+      setSubscriberActioningId(null);
+    }
+  };
+
+  const fetchExamSubs = async () => {
+    try {
+      setExamSubsLoading(true);
+      const res = await api.get('/subscriptions', { params: { limit: 500 } });
+      setExamSubs(res.data?.subscriptions || []);
+    } catch (err) {
+      console.error('Error fetching exam subscribers:', err);
+    } finally {
+      setExamSubsLoading(false);
+    }
+  };
+
+  const handleCancelLevelSubscription = async (sub) => {
+    if (!window.confirm(`Cancel ${sub.user?.firstName} ${sub.user?.lastName}'s "${sub.plan?.name}" subscription?`)) return;
+    setSubActioningId(sub._id);
+    try {
+      await api.patch(`/subscriptions/${sub._id}/cancel`);
+      setToast({ severity: 'success', message: 'Subscription cancelled' });
+      await Promise.all([fetchStats(), fetchExamSubs()]);
+    } catch (err) {
+      setToast({ severity: 'error', message: err.response?.data?.message || 'Failed to cancel subscription' });
+    } finally {
+      setSubActioningId(null);
     }
   };
 
@@ -201,6 +484,302 @@ const SubscriptionReports = () => {
               </Table>
             </TableContainer>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Manage Subscribers — organisation admins, individual teachers, and exam/level subscribers */}
+      <Card elevation={3} sx={{ mb: 4 }}>
+        <CardContent>
+          <Box
+            onClick={() => setSubscribersExpanded((v) => !v)}
+            sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          >
+            <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ManageAccounts color="primary" />
+              Manage Subscribers
+              <Chip label={subscribers.length + examSubs.length} size="small" />
+            </Typography>
+            <IconButton size="small">
+              {subscribersExpanded ? <ExpandLess /> : <ExpandMore />}
+            </IconButton>
+          </Box>
+
+          <Collapse in={subscribersExpanded} timeout="auto" unmountOnExit>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+              Manage every active subscriber — organisation/individual account plans and per-level exam subscriptions.
+              "Cancel Plan"/"Cancel" ends the active subscription; "Disable" blocks the account entirely until re-enabled.
+            </Typography>
+
+            <Tabs value={subscriberTab} onChange={(e, v) => setSubscriberTab(v)} sx={{ mb: 2 }}>
+              <Tab label={`Account Plans (${subscribers.length})`} />
+              <Tab label={`Exam / Level Subscribers (${examSubs.length})`} />
+            </Tabs>
+
+            {subscriberTab === 0 && (
+              <>
+                <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1.5 }} alignItems="center">
+                  <TextField
+                    size="small"
+                    placeholder="Search name, email, organization..."
+                    value={subscriberSearch}
+                    onChange={(e) => setSubscriberSearch(e.target.value)}
+                    sx={{ minWidth: 260, flexGrow: 1 }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search fontSize="small" />
+                        </InputAdornment>
+                      )
+                    }}
+                  />
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Type</InputLabel>
+                    <Select label="Type" value={subscriberTypeFilter} onChange={(e) => setSubscriberTypeFilter(e.target.value)}>
+                      <MenuItem value="all">All types</MenuItem>
+                      <MenuItem value="organization">Organization</MenuItem>
+                      <MenuItem value="individual">Individual</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Plan</InputLabel>
+                    <Select label="Plan" value={subscriberPlanFilter} onChange={(e) => setSubscriberPlanFilter(e.target.value)}>
+                      <MenuItem value="all">All plans</MenuItem>
+                      <MenuItem value="free">Free</MenuItem>
+                      <MenuItem value="basic">Basic</MenuItem>
+                      <MenuItem value="premium">Premium</MenuItem>
+                      <MenuItem value="enterprise">Enterprise</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Status</InputLabel>
+                    <Select label="Status" value={subscriberStatusFilter} onChange={(e) => setSubscriberStatusFilter(e.target.value)}>
+                      <MenuItem value="all">All statuses</MenuItem>
+                      <MenuItem value="active">Active</MenuItem>
+                      <MenuItem value="pending">Pending</MenuItem>
+                      <MenuItem value="expired">Expired</MenuItem>
+                      <MenuItem value="cancelled">Cancelled</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Account</InputLabel>
+                    <Select label="Account" value={subscriberAccountFilter} onChange={(e) => setSubscriberAccountFilter(e.target.value)}>
+                      <MenuItem value="all">All accounts</MenuItem>
+                      <MenuItem value="enabled">Enabled</MenuItem>
+                      <MenuItem value="disabled">Disabled</MenuItem>
+                    </Select>
+                  </FormControl>
+                  {hasActiveSubscriberFilters && (
+                    <Button size="small" startIcon={<FilterAltOff />} onClick={clearSubscriberFilters}>
+                      Clear filters
+                    </Button>
+                  )}
+                </Stack>
+
+                {!subscribersLoading && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                    Showing {filteredSubscribers.length} of {subscribers.length} subscriber{subscribers.length === 1 ? '' : 's'}
+                  </Typography>
+                )}
+
+                {subscribersLoading ? (
+                  <CircularProgress size={24} />
+                ) : (
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>User</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Plan</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Expires</TableCell>
+                          <TableCell>Account</TableCell>
+                          <TableCell align="right">Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {filteredSubscribers.map((u) => (
+                          <TableRow key={u._id}>
+                            <TableCell>
+                              <Typography fontWeight="bold">{u.firstName} {u.lastName}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {u.organization || u.email}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>{u.role === 'admin' ? 'Organization' : 'Individual'}</TableCell>
+                            <TableCell sx={{ textTransform: 'capitalize' }}>{u.subscriptionPlan}</TableCell>
+                            <TableCell>
+                              <Chip
+                                label={u.subscriptionStatus}
+                                size="small"
+                                color={u.subscriptionStatus === 'active' ? 'success' : u.subscriptionStatus === 'pending' ? 'warning' : 'default'}
+                                sx={{ textTransform: 'capitalize' }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {u.subscriptionEndDate ? new Date(u.subscriptionEndDate).toLocaleDateString() : '-'}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={u.isBlocked ? 'Disabled' : 'Enabled'}
+                                size="small"
+                                color={u.isBlocked ? 'error' : 'success'}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="warning"
+                                  startIcon={<Cancel />}
+                                  disabled={subscriberActioningId === u._id || u.subscriptionPlan === 'free'}
+                                  onClick={() => handleCancelAccountPlan(u)}
+                                >
+                                  Cancel Plan
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color={u.isBlocked ? 'success' : 'error'}
+                                  startIcon={u.isBlocked ? <CheckCircle /> : <Block />}
+                                  disabled={subscriberActioningId === u._id}
+                                  onClick={() => handleToggleBlock(u)}
+                                >
+                                  {u.isBlocked ? 'Enable' : 'Disable'}
+                                </Button>
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {filteredSubscribers.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={7} align="center">
+                              <Typography variant="body2" color="text.secondary">
+                                {subscribers.length === 0 ? 'No subscribers found' : 'No subscribers match your filters'}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </>
+            )}
+
+            {subscriberTab === 1 && (
+              <>
+                <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1.5 }} alignItems="center">
+                  <TextField
+                    size="small"
+                    placeholder="Search name, email, plan, level..."
+                    value={examSearch}
+                    onChange={(e) => setExamSearch(e.target.value)}
+                    sx={{ minWidth: 260, flexGrow: 1 }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search fontSize="small" />
+                        </InputAdornment>
+                      )
+                    }}
+                  />
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Level</InputLabel>
+                    <Select label="Level" value={examLevelFilter} onChange={(e) => setExamLevelFilter(e.target.value)}>
+                      <MenuItem value="all">All levels</MenuItem>
+                      {examLevelOptions.map((name) => (
+                        <MenuItem key={name} value={name}>{name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Status</InputLabel>
+                    <Select label="Status" value={examStatusFilter} onChange={(e) => setExamStatusFilter(e.target.value)}>
+                      <MenuItem value="all">All statuses</MenuItem>
+                      <MenuItem value="active">Active</MenuItem>
+                      <MenuItem value="pending">Pending</MenuItem>
+                      <MenuItem value="expired">Expired</MenuItem>
+                      <MenuItem value="cancelled">Cancelled</MenuItem>
+                    </Select>
+                  </FormControl>
+                  {hasActiveExamFilters && (
+                    <Button size="small" startIcon={<FilterAltOff />} onClick={clearExamFilters}>
+                      Clear filters
+                    </Button>
+                  )}
+                </Stack>
+
+                {!examSubsLoading && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                    Showing {filteredExamSubs.length} of {examSubs.length} subscriber{examSubs.length === 1 ? '' : 's'}
+                  </Typography>
+                )}
+
+                {examSubsLoading ? (
+                  <CircularProgress size={24} />
+                ) : (
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>User</TableCell>
+                          <TableCell>Plan</TableCell>
+                          <TableCell>Level</TableCell>
+                          <TableCell>Expires</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell align="right">Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {filteredExamSubs.map((sub) => (
+                          <TableRow key={sub._id}>
+                            <TableCell>
+                              <Typography fontWeight="bold">{sub.user?.firstName} {sub.user?.lastName}</Typography>
+                              <Typography variant="caption" color="text.secondary">{sub.user?.email}</Typography>
+                            </TableCell>
+                            <TableCell>{sub.plan?.name}</TableCell>
+                            <TableCell>{sub.level?.name}</TableCell>
+                            <TableCell>{sub.expiresAt ? new Date(sub.expiresAt).toLocaleDateString() : '-'}</TableCell>
+                            <TableCell>
+                              <Chip
+                                label={sub.status}
+                                size="small"
+                                color={sub.status === 'active' ? 'success' : 'default'}
+                                sx={{ textTransform: 'capitalize' }}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="warning"
+                                startIcon={<Cancel />}
+                                disabled={subActioningId === sub._id || sub.status !== 'active'}
+                                onClick={() => handleCancelLevelSubscription(sub)}
+                              >
+                                Cancel
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {filteredExamSubs.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={6} align="center">
+                              <Typography variant="body2" color="text.secondary">
+                                {examSubs.length === 0 ? 'No exam subscribers found' : 'No subscribers match your filters'}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </>
+            )}
+          </Collapse>
         </CardContent>
       </Card>
 
@@ -604,6 +1183,7 @@ const SubscriptionReports = () => {
                         <TableCell>Start Date</TableCell>
                         <TableCell>Expiry Date</TableCell>
                         <TableCell>Status</TableCell>
+                        <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -632,6 +1212,18 @@ const SubscriptionReports = () => {
                               size="small"
                             />
                           </TableCell>
+                          <TableCell align="right">
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              startIcon={<Cancel />}
+                              disabled={subActioningId === sub._id || sub.status !== 'active'}
+                              onClick={() => handleCancelLevelSubscription(sub)}
+                            >
+                              Cancel
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -639,6 +1231,24 @@ const SubscriptionReports = () => {
                 </TableContainer>
               </CardContent>
             </Card>
+          </Grid>
+
+          {/* Organization Subscriptions */}
+          <Grid item xs={12}>
+            <AccountPlanSection
+              title="Organization Subscriptions"
+              icon={<Business color="primary" />}
+              data={stats.accountPlans?.organization}
+            />
+          </Grid>
+
+          {/* Individual Teacher Subscriptions */}
+          <Grid item xs={12}>
+            <AccountPlanSection
+              title="Individual Teacher Subscriptions"
+              icon={<Person color="primary" />}
+              data={stats.accountPlans?.individual}
+            />
           </Grid>
         </Grid>
       )}

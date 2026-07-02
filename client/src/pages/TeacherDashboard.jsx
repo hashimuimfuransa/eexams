@@ -2266,7 +2266,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
       {/* Plan Usage Card */}
       <Box sx={{ mb: 2.5 }}>
-        <PlanUsageCard user={user} />
+        <PlanUsageCard user={user} compact />
       </Box>
 
       {/* AI Creator */}

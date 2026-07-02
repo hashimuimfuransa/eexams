@@ -156,7 +156,7 @@ function OverviewSection({ stats, statsLoading, teachers, exams, results, setAct
 
       {/* Plan Usage Card */}
       <Box sx={{ mb: 2.5 }}>
-        <PlanUsageCard user={user} />
+        <PlanUsageCard user={user} compact />
       </Box>
 
       <Grid container spacing={2.5}>

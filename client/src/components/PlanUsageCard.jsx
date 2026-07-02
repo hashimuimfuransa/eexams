@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Box, Typography, Paper, Chip, CircularProgress, Alert, Divider } from '@mui/material';
-import { CalendarToday, TrendingUp, School, Assignment } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
+import { Box, Typography, Paper, Chip, CircularProgress, Alert, Divider, Button } from '@mui/material';
+import { CalendarToday, TrendingUp, School, Assignment, WarningRounded, WorkspacePremium } from '@mui/icons-material';
 import { tokens } from '../pages/dashboardTokens';
 import api from '../services/api';
 
-export default function PlanUsageCard({ user }) {
+export default function PlanUsageCard({ user, compact = false }) {
+  const navigate = useNavigate();
   const [planUsage, setPlanUsage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -48,6 +50,16 @@ export default function PlanUsageCard({ user }) {
   const { plan, planName, subscriptionStatus, subscriptionExpiresAt, daysLeft, limits, features } = planUsage;
   const isOrg = user?.userType === 'organization' || user?.role === 'admin';
 
+  const resourceLabels = { exams: 'Exams', students: 'Students', teachers: 'Teacher Accounts' };
+  const maxedOutResources = Object.entries(limits || {})
+    .filter(([, v]) => v && v.limit !== -1 && v.limit > 0 && v.used >= v.limit)
+    .map(([key, v]) => ({ key, label: resourceLabels[key] || key, ...v }));
+  const hasReachedLimit = maxedOutResources.length > 0;
+
+  const handleUpgradeClick = () => {
+    navigate(isOrg ? '/organization/subscription' : '/individual/subscription');
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'active': return '#10B981';
@@ -63,6 +75,67 @@ export default function PlanUsageCard({ user }) {
     if (days <= 30) return '#F59E0B';
     return '#10B981';
   };
+
+  if (compact) {
+    return (
+      <Paper
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          bgcolor: hasReachedLimit ? '#FEF2F2' : 'white',
+          border: hasReachedLimit ? '1px solid #FECACA' : `1px solid ${tokens.surfaceBorder || 'transparent'}`
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                bgcolor: hasReachedLimit ? '#EF4444' : `${getStatusColor(subscriptionStatus)}15`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}
+            >
+              {hasReachedLimit
+                ? <WarningRounded sx={{ color: '#fff', fontSize: 20 }} />
+                : <WorkspacePremium sx={{ color: getStatusColor(subscriptionStatus), fontSize: 20 }} />}
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2" sx={{ fontWeight: 700, color: tokens.primary, textTransform: 'capitalize' }} noWrap>
+                {planName} Plan
+              </Typography>
+              <Typography variant="caption" sx={{ color: hasReachedLimit ? '#B91C1C' : tokens.textMuted, fontWeight: hasReachedLimit ? 600 : 400 }} noWrap>
+                {hasReachedLimit
+                  ? `${maxedOutResources.map(r => r.label).join(' & ')} limit reached`
+                  : daysLeft !== null
+                  ? `${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining`
+                  : subscriptionStatus}
+              </Typography>
+            </Box>
+          </Box>
+          <Button
+            size="small"
+            onClick={handleUpgradeClick}
+            variant={hasReachedLimit ? 'contained' : 'outlined'}
+            sx={{
+              borderRadius: 2,
+              fontWeight: 700,
+              flexShrink: 0,
+              ...(hasReachedLimit
+                ? { bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' } }
+                : { borderColor: tokens.surfaceBorder, color: tokens.primary })
+            }}
+          >
+            {hasReachedLimit ? 'Upgrade Now' : 'Manage Plan'}
+          </Button>
+        </Box>
+      </Paper>
+    );
+  }
 
   return (
     <Paper sx={{ p: 3, borderRadius: 2, bgcolor: 'white' }}>
@@ -80,6 +153,62 @@ export default function PlanUsageCard({ user }) {
           }}
         />
       </Box>
+
+      {hasReachedLimit && (
+        <Box
+          sx={{
+            mb: 3,
+            p: 2.5,
+            borderRadius: 2.5,
+            background: 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)',
+            boxShadow: '0 8px 20px rgba(239,68,68,0.3)',
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+            <Box
+              sx={{
+                width: 38,
+                height: 38,
+                borderRadius: '50%',
+                bgcolor: 'rgba(255,255,255,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}
+            >
+              <WarningRounded sx={{ color: '#fff', fontSize: 22 }} />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>
+                {isOrg ? "Your organisation has" : "You've"} reached your plan limit
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', mt: 0.5 }}>
+                {maxedOutResources.map(r => `${r.label} (${r.used}/${r.limit})`).join(' · ')} maxed out on the{' '}
+                <strong style={{ textTransform: 'capitalize' }}>{planName}</strong> plan.
+              </Typography>
+            </Box>
+          </Box>
+          <Button
+            fullWidth
+            onClick={handleUpgradeClick}
+            startIcon={<WorkspacePremium />}
+            sx={{
+              mt: 2,
+              bgcolor: '#fff',
+              color: '#B91C1C',
+              fontWeight: 700,
+              borderRadius: 2,
+              py: 1,
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }
+            }}
+          >
+            Upgrade Plan to Continue
+          </Button>
+        </Box>
+      )}
 
       <Box sx={{ mb: 3 }}>
         <Typography variant="body2" sx={{ color: tokens.textMuted, mb: 1 }}>
@@ -152,15 +281,34 @@ export default function PlanUsageCard({ user }) {
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {limits.exams && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Assignment sx={{ color: tokens.accent, fontSize: 20 }} />
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  ...(limits.exams.limit !== -1 && limits.exams.used >= limits.exams.limit && {
+                    p: 1.25,
+                    ml: -1.25,
+                    mr: -1.25,
+                    borderRadius: 2,
+                    bgcolor: '#FEF2F2',
+                    border: '1px solid #FECACA'
+                  })
+                }}
+              >
+                <Assignment sx={{ color: limits.exams.limit !== -1 && limits.exams.used >= limits.exams.limit ? '#EF4444' : tokens.accent, fontSize: 20 }} />
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" sx={{ color: tokens.textMuted }}>
                     Exams
                   </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                    {limits.exams.used} / {limits.exams.limit === -1 ? 'Unlimited' : limits.exams.limit}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {limits.exams.used} / {limits.exams.limit === -1 ? 'Unlimited' : limits.exams.limit}
+                    </Typography>
+                    {limits.exams.limit !== -1 && limits.exams.used >= limits.exams.limit && (
+                      <Chip label="Limit reached" size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700, bgcolor: '#EF4444', color: '#fff' }} />
+                    )}
+                  </Box>
                 </Box>
                 <Box sx={{ width: 100, height: 6, bgcolor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
                   <Box
@@ -176,15 +324,34 @@ export default function PlanUsageCard({ user }) {
             )}
 
             {limits.students && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <School sx={{ color: tokens.accent, fontSize: 20 }} />
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  ...(limits.students.limit !== -1 && limits.students.used >= limits.students.limit && {
+                    p: 1.25,
+                    ml: -1.25,
+                    mr: -1.25,
+                    borderRadius: 2,
+                    bgcolor: '#FEF2F2',
+                    border: '1px solid #FECACA'
+                  })
+                }}
+              >
+                <School sx={{ color: limits.students.limit !== -1 && limits.students.used >= limits.students.limit ? '#EF4444' : tokens.accent, fontSize: 20 }} />
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" sx={{ color: tokens.textMuted }}>
                     Students
                   </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                    {limits.students.used} / {limits.students.limit === -1 ? 'Unlimited' : limits.students.limit}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {limits.students.used} / {limits.students.limit === -1 ? 'Unlimited' : limits.students.limit}
+                    </Typography>
+                    {limits.students.limit !== -1 && limits.students.used >= limits.students.limit && (
+                      <Chip label="Limit reached" size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700, bgcolor: '#EF4444', color: '#fff' }} />
+                    )}
+                  </Box>
                 </Box>
                 <Box sx={{ width: 100, height: 6, bgcolor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
                   <Box
@@ -200,15 +367,34 @@ export default function PlanUsageCard({ user }) {
             )}
 
             {limits.teachers && limits.teachers.limit > 0 && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <TrendingUp sx={{ color: tokens.accent, fontSize: 20 }} />
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  ...(limits.teachers.limit !== -1 && limits.teachers.used >= limits.teachers.limit && {
+                    p: 1.25,
+                    ml: -1.25,
+                    mr: -1.25,
+                    borderRadius: 2,
+                    bgcolor: '#FEF2F2',
+                    border: '1px solid #FECACA'
+                  })
+                }}
+              >
+                <TrendingUp sx={{ color: limits.teachers.limit !== -1 && limits.teachers.used >= limits.teachers.limit ? '#EF4444' : tokens.accent, fontSize: 20 }} />
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" sx={{ color: tokens.textMuted }}>
                     Teacher Accounts
                   </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                    {limits.teachers.used} / {limits.teachers.limit === -1 ? 'Unlimited' : limits.teachers.limit}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {limits.teachers.used} / {limits.teachers.limit === -1 ? 'Unlimited' : limits.teachers.limit}
+                    </Typography>
+                    {limits.teachers.limit !== -1 && limits.teachers.used >= limits.teachers.limit && (
+                      <Chip label="Limit reached" size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700, bgcolor: '#EF4444', color: '#fff' }} />
+                    )}
+                  </Box>
                 </Box>
                 <Box sx={{ width: 100, height: 6, bgcolor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
                   <Box

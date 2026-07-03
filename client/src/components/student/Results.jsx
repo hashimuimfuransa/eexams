@@ -1228,12 +1228,58 @@ const Results = () => {
                   <Typography sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, color: 'text.secondary', mb: 0.75 }}>
                     What to do next
                   </Typography>
-                  <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                  <Box component="ul" sx={{ m: 0, pl: 2.5, mb: 2.5 }}>
                     {recommendation.tips.map((tip, i) => (
                       <Typography key={i} component="li" variant="body2" sx={{ mb: 0.5, lineHeight: 1.6 }}>
                         {tip}
                       </Typography>
                     ))}
+                  </Box>
+
+                  {/* ── App download CTA — practice the flagged topics in the app ── */}
+                  <Box sx={{
+                    p: { xs: 1.75, sm: 2.25 }, borderRadius: 2,
+                    bgcolor: theme.palette.primary.main, color: 'white'
+                  }}>
+                    <Typography fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, fontSize: { xs: '0.85rem', sm: '0.95rem' } }}>
+                      <Psychology fontSize="small" />
+                      Master these topics with Excellence Coaching Hub
+                    </Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.9, lineHeight: 1.5, mb: 1.5, fontSize: { xs: '0.78rem', sm: '0.85rem' } }}>
+                      Download our mobile app for detailed explanations, practice questions, and personalized learning paths on the exact concepts you're struggling with.
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      <Button
+                        variant="contained"
+                        href="https://play.google.com/store/apps/details?id=com.excellencecoachinghub.app&pcampaignid=web_share"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        startIcon={<GooglePlayIcon />}
+                        size="small"
+                        sx={{
+                          bgcolor: 'white', color: theme.palette.primary.main, fontWeight: 600,
+                          textTransform: 'none', fontSize: { xs: '0.72rem', sm: '0.8rem' },
+                          '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }
+                        }}
+                      >
+                        Google Play
+                      </Button>
+                      <Button
+                        variant="contained"
+                        href="https://apps.microsoft.com/detail/9NW5V60BNHNN?hl=en-us&gl=US&ocid=pdpshare"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        startIcon={<MicrosoftStoreIcon />}
+                        size="small"
+                        sx={{
+                          bgcolor: 'white', color: theme.palette.primary.main, fontWeight: 600,
+                          textTransform: 'none', fontSize: { xs: '0.72rem', sm: '0.8rem' },
+                          '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }
+                        }}
+                      >
+                        Microsoft Store
+                      </Button>
+                    </Box>
                   </Box>
                 </Box>
               </Box>

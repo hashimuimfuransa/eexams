@@ -43,7 +43,8 @@ import {
   CalendarMonth,
   CreditCard,
   Loop,
-  ShoppingCart
+  ShoppingCart,
+  Download
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -52,11 +53,35 @@ import StudentLayout from './StudentLayout';
 // ─── Student Subscription Section ────────────────────────────────────────────
 const StudentSubscriptionSection = ({ subscription, subscriptionLoading, user }) => {
   const now = new Date();
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
   const getDaysLeft = (expiresAt) => {
     if (!expiresAt) return null;
     const diff = new Date(expiresAt) - now;
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  const handleDownloadInvoice = async () => {
+    if (!subscription?._id) return;
+    try {
+      setDownloadingInvoice(true);
+      const response = await api.get(`/subscriptions/${subscription._id}/invoice`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `invoice-${subscription._id.slice(-8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading invoice:', err);
+      alert('Failed to download invoice. Please try again.');
+    } finally {
+      setDownloadingInvoice(false);
+    }
   };
 
   const statusMeta = {
@@ -121,11 +146,23 @@ const StudentSubscriptionSection = ({ subscription, subscriptionLoading, user })
             Your current learning subscription
           </Typography>
         </Box>
-        <Chip
-          label={meta.label}
-          size="small"
-          sx={{ bgcolor: meta.bg, color: meta.color, border: `1px solid ${meta.border}`, fontWeight: 700, fontSize: 12 }}
-        />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Chip
+            label={meta.label}
+            size="small"
+            sx={{ bgcolor: meta.bg, color: meta.color, border: `1px solid ${meta.border}`, fontWeight: 700, fontSize: 12 }}
+          />
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleDownloadInvoice}
+            disabled={downloadingInvoice}
+            startIcon={downloadingInvoice ? <CircularProgress size={14} /> : <Download sx={{ fontSize: 16 }} />}
+            sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2, fontSize: 12, borderColor: '#CBD5E1', color: '#334155' }}
+          >
+            {downloadingInvoice ? 'Preparing…' : 'Invoice'}
+          </Button>
+        </Box>
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>

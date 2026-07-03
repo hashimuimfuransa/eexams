@@ -10,7 +10,7 @@ import {
   Alert,
   Button
 } from '@mui/material';
-import { CheckCircle, Error, Home } from '@mui/icons-material';
+import { CheckCircle, Error, Home, Download } from '@mui/icons-material';
 import api from '../services/api';
 
 const SubscriptionCallback = () => {
@@ -18,6 +18,31 @@ const SubscriptionCallback = () => {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
+  const [subscriptionId, setSubscriptionId] = useState(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+
+  const handleDownloadInvoice = async () => {
+    if (!subscriptionId) return;
+    try {
+      setDownloadingInvoice(true);
+      const response = await api.get(`/subscriptions/${subscriptionId}/invoice`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `invoice-${subscriptionId.slice(-8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading invoice:', err);
+      alert('Failed to download invoice. Please try again.');
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
 
   useEffect(() => {
     const processCallback = async () => {
@@ -46,10 +71,7 @@ const SubscriptionCallback = () => {
         if (response.data.success) {
           setStatus('success');
           setMessage('Subscription activated successfully!');
-          // Redirect to dashboard after 3 seconds
-          setTimeout(() => {
-            navigate('/student/dashboard');
-          }, 3000);
+          setSubscriptionId(response.data.subscription?._id || null);
         } else {
           setStatus('error');
           setMessage(response.data.message || 'Payment verification failed');
@@ -92,14 +114,26 @@ const SubscriptionCallback = () => {
               <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
                 {message}
               </Typography>
-              <Button
-                variant="contained"
-                startIcon={<Home />}
-                onClick={() => navigate('/student/dashboard')}
-                size="large"
-              >
-                Go to Dashboard
-              </Button>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5, justifyContent: 'center' }}>
+                <Button
+                  variant="outlined"
+                  color="success"
+                  startIcon={downloadingInvoice ? <CircularProgress size={18} /> : <Download />}
+                  onClick={handleDownloadInvoice}
+                  disabled={!subscriptionId || downloadingInvoice}
+                  size="large"
+                >
+                  {downloadingInvoice ? 'Preparing…' : 'Download Invoice'}
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<Home />}
+                  onClick={() => navigate('/student/dashboard')}
+                  size="large"
+                >
+                  Go to Dashboard
+                </Button>
+              </Box>
             </Box>
           )}
 

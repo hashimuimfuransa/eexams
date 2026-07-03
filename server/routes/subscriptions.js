@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getSubscriptions,
   getSubscriptionById,
+  downloadSubscriptionInvoice,
   getMyActiveSubscription,
   getMyPendingPayment,
   initiateSubscriptionPayment,
@@ -41,6 +42,7 @@ router.post('/individual/initiate', isTeacher, initiateIndividualSubscriptionPay
 router.post('/callback', processPaymentCallback);
 router.get('/payment-status/:reference', checkPaymentStatus);
 router.patch('/:id/cancel', validateSubscriptionOwnership, cancelSubscription);
+router.get('/:id/invoice', validateSubscriptionOwnership, downloadSubscriptionInvoice);
 
 // Super Admin only routes (self-service renewal goes through /initiate + /callback,
 // which is payment-verified; this manual route is for admin overrides only)

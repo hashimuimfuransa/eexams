@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Result = require('../models/Result');
 const PendingPayment = require('../models/PendingPayment');
 const itecPayment = require('../services/itecPayment');
+const { streamSubscriptionInvoice } = require('../utils/invoiceGenerator');
 
 // @desc    Get all subscriptions
 // @route   GET /api/subscriptions
@@ -68,6 +69,31 @@ const getSubscriptionById = async (req, res) => {
   } catch (error) {
     console.error('Get subscription error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Download a PDF invoice for a paid subscription
+// @route   GET /api/subscriptions/:id/invoice
+// @access  Private (owner or SuperAdmin — enforced by validateSubscriptionOwnership)
+const downloadSubscriptionInvoice = async (req, res) => {
+  try {
+    const subscription = await Subscription.findById(req.params.id)
+      .populate('user', 'firstName lastName email')
+      .populate('level', 'name')
+      .populate('exam', 'title')
+      .populate('plan', 'name durationDays durationValue durationUnit');
+
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+
+    // Ownership already checked by validateSubscriptionOwnership middleware.
+    streamSubscriptionInvoice(res, subscription);
+  } catch (error) {
+    console.error('Download subscription invoice error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Server error while generating invoice' });
+    }
   }
 };
 
@@ -1197,6 +1223,7 @@ module.exports = {
   initiateIndividualSubscriptionPayment,
   getSubscriptions,
   getSubscriptionById,
+  downloadSubscriptionInvoice,
   getMyActiveSubscription,
   getMyPendingPayment,
   initiateSubscriptionPayment,

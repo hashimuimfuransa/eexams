@@ -36,7 +36,10 @@ import {
   Phone,
   Refresh,
   School,
-  Quiz
+  Quiz,
+  Download,
+  FilterList,
+  Info
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -139,6 +142,16 @@ const SubscriptionPurchase = () => {
   const [examOptions, setExamOptions] = useState([]);
   const [examOptionsLoading, setExamOptionsLoading] = useState(false);
   const [selectedExamId, setSelectedExamId] = useState('');
+
+  // Filters for "Whole Level" scope — plans are fetched once across every
+  // level, then narrowed down client-side so the filters feel instant.
+  const [allLevelPlans, setAllLevelPlans] = useState([]);
+  const [levelsList, setLevelsList] = useState([]);
+  const [filterLevelId, setFilterLevelId] = useState('');
+  const [filterSubLevel, setFilterSubLevel] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [sortBy, setSortBy] = useState('recommended');
   const [paymentMethod, setPaymentMethod] = useState('mobile_money');
   const [countryCode, setCountryCode] = useState('+250');
   const [localPhone, setLocalPhone] = useState('');
@@ -151,15 +164,29 @@ const SubscriptionPurchase = () => {
   const [pendingPlanData, setPendingPlanData] = useState(null);
   const [paymentCancelled, setPaymentCancelled] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [newSubscriptionId, setNewSubscriptionId] = useState(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
   useEffect(() => {
     if (!user?.level) {
       navigate('/student/dashboard');
       return;
     }
-    fetchPlans();
+    setFilterLevelId(user.level._id);
+    setFilterSubLevel(user.subLevel || '');
+    fetchAllLevelPlans();
+    fetchLevelsList();
     fetchExamOptions();
   }, [user]);
+
+  const fetchLevelsList = async () => {
+    try {
+      const response = await api.get('/levels');
+      setLevelsList(response.data || []);
+    } catch (err) {
+      console.error('Error fetching levels:', err);
+    }
+  };
 
   const fetchExamOptions = async () => {
     try {
@@ -184,13 +211,12 @@ const SubscriptionPurchase = () => {
     setPlanScope(value);
     setSelectedPlan('');
     setError(null);
-    if (value === 'level') {
-      fetchPlans();
-    } else if (selectedExamId) {
-      fetchExamPlans(selectedExamId);
-    } else {
-      setPlans([]);
+    if (value === 'exam') {
+      if (selectedExamId) fetchExamPlans(selectedExamId);
+      else setPlans([]);
     }
+    // Switching to 'level' needs no fetch — the filter effect below
+    // recomputes `plans` from the already-fetched `allLevelPlans`.
   };
 
   const handleExamSelect = (examId) => {
@@ -259,7 +285,7 @@ const SubscriptionPurchase = () => {
           setMobilePending(false);
           setPendingReference(null);
           setPaymentSuccess(true);
-          setTimeout(() => navigate('/student/dashboard'), 4000);
+          fetchNewSubscriptionId();
         } else if (cancelled || status === 'cancelled') {
           clearInterval(interval);
           sessionStorage.removeItem('pendingMobilePayment');
@@ -277,14 +303,51 @@ const SubscriptionPurchase = () => {
     return () => clearInterval(interval);
   }, [mobilePending, pendingReference, navigate]);
 
-  const fetchPlans = async () => {
+  // After a successful payment, grab the resulting subscription's ID so the
+  // success screen can offer an invoice download.
+  const fetchNewSubscriptionId = async () => {
+    try {
+      const response = await api.get('/subscriptions/my/active');
+      setNewSubscriptionId(response.data?._id || null);
+    } catch (err) {
+      console.error('Error fetching new subscription:', err);
+    }
+  };
+
+  const handleDownloadInvoice = async () => {
+    if (!newSubscriptionId) return;
+    try {
+      setDownloadingInvoice(true);
+      const response = await api.get(`/subscriptions/${newSubscriptionId}/invoice`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `invoice-${newSubscriptionId.slice(-8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading invoice:', err);
+      alert('Failed to download invoice. Please try again.');
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
+  // Fetches every active level-wide plan (across all levels) once — the
+  // filter controls below then narrow this down client-side, so changing a
+  // filter feels instant instead of round-tripping to the server each time.
+  const fetchAllLevelPlans = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get(`/subscription-plans/level/${user.level._id}/active`, {
-        params: user.subLevel ? { subLevel: user.subLevel } : {}
+      const response = await api.get('/subscription-plans', {
+        params: { planType: 'level', status: 'active' }
       });
-      setPlans(response.data || []);
+      setAllLevelPlans(response.data || []);
     } catch (err) {
       console.error('Error fetching plans:', err);
       setError('Failed to load subscription plans. Please try again.');
@@ -292,6 +355,37 @@ const SubscriptionPurchase = () => {
       setLoading(false);
     }
   };
+
+  // Sub-levels available for whichever level is currently selected in the
+  // filter — used to populate the sub-level dropdown.
+  const filterLevelObj = levelsList.find(l => l._id === filterLevelId);
+  const availableFilterSubLevels = (filterLevelObj?.subLevels || []).filter(s => s.isActive);
+
+  // Recompute the visible plan list whenever the level scope is "level" and
+  // any filter (or the raw plan set) changes.
+  useEffect(() => {
+    if (planScope !== 'level') return;
+
+    const filtered = allLevelPlans
+      .filter(p => !filterLevelId || p.level?._id === filterLevelId)
+      .filter(p => {
+        if (!filterSubLevel) return true;
+        if (filterSubLevel === '__entire__') return !p.subLevel;
+        return p.subLevel === filterSubLevel;
+      })
+      .filter(p => minPrice === '' || p.price >= Number(minPrice))
+      .filter(p => maxPrice === '' || p.price <= Number(maxPrice))
+      .sort((a, b) => {
+        if (sortBy === 'price_asc') return a.price - b.price;
+        if (sortBy === 'price_desc') return b.price - a.price;
+        return a.durationDays - b.durationDays; // recommended: shortest/cheapest plans first
+      });
+
+    setPlans(filtered);
+    // Deselect a plan that's been filtered out, so Order Summary can't be
+    // left pointing at a plan that's no longer in the visible list.
+    setSelectedPlan(prev => (filtered.some(p => p._id === prev) ? prev : ''));
+  }, [planScope, allLevelPlans, filterLevelId, filterSubLevel, minPrice, maxPrice, sortBy]);
 
   const selectedMethodConfig = PAYMENT_METHODS.find(m => m.id === paymentMethod);
 
@@ -381,22 +475,33 @@ const SubscriptionPurchase = () => {
           <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" color="success.main" gutterBottom>
             Payment Successful!
           </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
             Your subscription is now active. You can access all subscription exams immediately.
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Redirecting to your dashboard in a few seconds...
-          </Typography>
-          <Button
-            variant="contained"
-            color="success"
-            size="large"
-            fullWidth={isMobile}
-            onClick={() => navigate('/student/dashboard')}
-            sx={{ borderRadius: 2 }}
-          >
-            Go to Dashboard Now
-          </Button>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5, justifyContent: 'center' }}>
+            <Button
+              variant="outlined"
+              color="success"
+              size="large"
+              fullWidth={isMobile}
+              onClick={handleDownloadInvoice}
+              disabled={!newSubscriptionId || downloadingInvoice}
+              startIcon={downloadingInvoice ? <CircularProgress size={18} /> : <Download />}
+              sx={{ borderRadius: 2 }}
+            >
+              {downloadingInvoice ? 'Preparing…' : 'Download Invoice'}
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              size="large"
+              fullWidth={isMobile}
+              onClick={() => navigate('/student/dashboard')}
+              sx={{ borderRadius: 2 }}
+            >
+              Go to Dashboard
+            </Button>
+          </Box>
         </Paper>
       </Container>
     );
@@ -436,7 +541,7 @@ const SubscriptionPurchase = () => {
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ px: { xs: 1, sm: 0 } }}>
           {planScope === 'level'
-            ? `Select a plan for ${user?.level?.name || 'your level'} to access all subscription exams`
+            ? 'Browse plans by level, sub-level, or price to find the right fit'
             : 'Unlock a single exam without subscribing to the whole level'}
         </Typography>
       </Box>
@@ -501,6 +606,91 @@ const SubscriptionPurchase = () => {
         </Box>
       )}
 
+      {planScope === 'level' && (
+        <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: { xs: 3, sm: 4 }, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+            <FilterList fontSize="small" color="action" />
+            <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">
+              Filter Plans
+            </Typography>
+          </Box>
+          <Grid container spacing={1.5}>
+            <Grid item xs={6} sm={3}>
+              <FormControl fullWidth size="small" disabled={mobilePending}>
+                <InputLabel>Level</InputLabel>
+                <Select
+                  value={filterLevelId}
+                  label="Level"
+                  onChange={(e) => { setFilterLevelId(e.target.value); setFilterSubLevel(''); }}
+                >
+                  {levelsList.map((lvl) => (
+                    <MenuItem key={lvl._id} value={lvl._id}>
+                      {lvl.name}{lvl._id === user?.level?._id ? ' (Your level)' : ''}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <FormControl fullWidth size="small" disabled={mobilePending || availableFilterSubLevels.length === 0}>
+                <InputLabel>Sub-level</InputLabel>
+                <Select
+                  value={filterSubLevel}
+                  label="Sub-level"
+                  onChange={(e) => setFilterSubLevel(e.target.value)}
+                >
+                  <MenuItem value="">All Sub-levels</MenuItem>
+                  <MenuItem value="__entire__">Entire Level Only</MenuItem>
+                  {availableFilterSubLevels.map((sub) => (
+                    <MenuItem key={sub._id || sub.name} value={sub.name}>{sub.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <TextField
+                fullWidth
+                size="small"
+                type="number"
+                label="Min Price"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                disabled={mobilePending}
+                inputProps={{ min: 0 }}
+              />
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <TextField
+                fullWidth
+                size="small"
+                type="number"
+                label="Max Price"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                disabled={mobilePending}
+                inputProps={{ min: 0 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={2}>
+              <FormControl fullWidth size="small" disabled={mobilePending}>
+                <InputLabel>Sort By</InputLabel>
+                <Select value={sortBy} label="Sort By" onChange={(e) => setSortBy(e.target.value)}>
+                  <MenuItem value="recommended">Recommended</MenuItem>
+                  <MenuItem value="price_asc">Price: Low to High</MenuItem>
+                  <MenuItem value="price_desc">Price: High to Low</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+
+          {filterLevelId && filterLevelId !== user?.level?._id && (
+            <Alert severity="info" icon={<Info fontSize="small" />} sx={{ mt: 1.5, py: 0, fontSize: '0.8rem' }}>
+              You're browsing plans for a different level. Purchasing one will switch your account to that level.
+            </Alert>
+          )}
+        </Paper>
+      )}
+
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
           {error}
@@ -562,11 +752,13 @@ const SubscriptionPurchase = () => {
         <Paper sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', borderRadius: 2 }}>
           <Typography variant={isMobile ? 'subtitle1' : 'h6'} color="text.secondary">
             {planScope === 'level'
-              ? 'No subscription plans available for your level yet.'
+              ? 'No plans match your filters.'
               : 'No subscription plans available for this exam yet.'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Please contact support for more information.
+            {planScope === 'level'
+              ? 'Try widening your price range or choosing a different level/sub-level.'
+              : 'Please contact support for more information.'}
           </Typography>
         </Paper>
       ) : !loading && (
@@ -654,9 +846,14 @@ const SubscriptionPurchase = () => {
                     <Typography variant="body2" sx={{ textAlign: 'right' }}>
                       {planScope === 'exam'
                         ? (examOptions.find(e => e._id === selectedExamId)?.title || '—')
-                        : user?.level?.name}
+                        : `${selectedPlanData?.level?.name || '—'}${selectedPlanData?.subLevel ? ` — ${selectedPlanData.subLevel}` : ''}`}
                     </Typography>
                   </Box>
+                  {planScope === 'level' && selectedPlanData?.level?._id && selectedPlanData.level._id !== user?.level?._id && (
+                    <Alert severity="warning" sx={{ mb: 2, py: 0, fontSize: '0.75rem' }}>
+                      This will switch your account level to {selectedPlanData.level.name}.
+                    </Alert>
+                  )}
                   <Divider sx={{ my: 2 }} />
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                     <Typography variant="h6" fontWeight="bold">Total:</Typography>

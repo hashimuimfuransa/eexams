@@ -19,7 +19,13 @@ import {
   TextField,
   InputAdornment,
   Select,
-  MenuItem
+  MenuItem,
+  ToggleButtonGroup,
+  ToggleButton,
+  FormControl,
+  InputLabel,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import {
   WorkspacePremium,
@@ -28,7 +34,9 @@ import {
   PhoneAndroid,
   CreditCard,
   Phone,
-  Refresh
+  Refresh,
+  School,
+  Quiz
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -123,8 +131,14 @@ const getFriendlyErrorMessage = (rawMessage, paymentMethod) => {
 const SubscriptionPurchase = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [planScope, setPlanScope] = useState('level'); // 'level' | 'exam'
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState('');
+  const [examOptions, setExamOptions] = useState([]);
+  const [examOptionsLoading, setExamOptionsLoading] = useState(false);
+  const [selectedExamId, setSelectedExamId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('mobile_money');
   const [countryCode, setCountryCode] = useState('+250');
   const [localPhone, setLocalPhone] = useState('');
@@ -144,7 +158,61 @@ const SubscriptionPurchase = () => {
       return;
     }
     fetchPlans();
+    fetchExamOptions();
   }, [user]);
+
+  const fetchExamOptions = async () => {
+    try {
+      setExamOptionsLoading(true);
+      const response = await api.get('/student/exams');
+      // Only exams that actually need unlocking — already-accessible ones
+      // (free, legacy grant, or already covered by a level subscription)
+      // don't need a separate exam-scoped purchase.
+      const subscriptionExams = Array.isArray(response.data)
+        ? response.data.filter(e => e.accessType === 'subscription' && e.accessUnlocked === false)
+        : [];
+      setExamOptions(subscriptionExams);
+    } catch (err) {
+      console.error('Error fetching exams:', err);
+    } finally {
+      setExamOptionsLoading(false);
+    }
+  };
+
+  const handleScopeChange = (_e, value) => {
+    if (!value || value === planScope) return;
+    setPlanScope(value);
+    setSelectedPlan('');
+    setError(null);
+    if (value === 'level') {
+      fetchPlans();
+    } else if (selectedExamId) {
+      fetchExamPlans(selectedExamId);
+    } else {
+      setPlans([]);
+    }
+  };
+
+  const handleExamSelect = (examId) => {
+    setSelectedExamId(examId);
+    setSelectedPlan('');
+    if (examId) fetchExamPlans(examId);
+    else setPlans([]);
+  };
+
+  const fetchExamPlans = async (examId) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.get(`/subscription-plans/exam/${examId}/active`);
+      setPlans(response.data || []);
+    } catch (err) {
+      console.error('Error fetching exam plans:', err);
+      setError('Failed to load subscription plans for this exam. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Auto-fill phone from profile on mount + restore any pending state
   // that survived a mobile-browser reload (USSD hijacks the browser focus)
@@ -164,6 +232,11 @@ const SubscriptionPurchase = () => {
           setPaymentMethod(data.paymentMethod);
           if (data.planId) setSelectedPlan(data.planId);
           if (data.plan) setPendingPlanData(data.plan);
+          if (data.planScope === 'exam' && data.examId) {
+            setPlanScope('exam');
+            setSelectedExamId(data.examId);
+            fetchExamPlans(data.examId);
+          }
           setMobilePending(true);
         }
       } catch {
@@ -281,6 +354,8 @@ const SubscriptionPurchase = () => {
             paymentMethod,
             planId: selectedPlan,
             plan: planSnapshot,
+            planScope,
+            examId: planScope === 'exam' ? selectedExamId : null,
           }));
           setPendingPlanData(planSnapshot);
           setPendingReference(response.data.reference);
@@ -300,10 +375,10 @@ const SubscriptionPurchase = () => {
 
   if (paymentSuccess) {
     return (
-      <Container maxWidth="sm" sx={{ mt: 8, textAlign: 'center' }}>
-        <Paper elevation={3} sx={{ p: 6, borderRadius: 3 }}>
-          <CheckCircle color="success" sx={{ fontSize: 80, mb: 2 }} />
-          <Typography variant="h5" fontWeight="bold" color="success.main" gutterBottom>
+      <Container maxWidth="sm" sx={{ mt: { xs: 4, sm: 8 }, px: { xs: 2, sm: 3 }, textAlign: 'center' }}>
+        <Paper elevation={3} sx={{ p: { xs: 3, sm: 6 }, borderRadius: 3 }}>
+          <CheckCircle color="success" sx={{ fontSize: { xs: 56, sm: 80 }, mb: 2 }} />
+          <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" color="success.main" gutterBottom>
             Payment Successful!
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
@@ -316,6 +391,7 @@ const SubscriptionPurchase = () => {
             variant="contained"
             color="success"
             size="large"
+            fullWidth={isMobile}
             onClick={() => navigate('/student/dashboard')}
             sx={{ borderRadius: 2 }}
           >
@@ -328,7 +404,7 @@ const SubscriptionPurchase = () => {
 
   if (loading && !mobilePending) {
     return (
-      <Container maxWidth="lg" sx={{ mt: 4, textAlign: 'center' }}>
+      <Container maxWidth="lg" sx={{ mt: 4, px: { xs: 2, sm: 3 }, textAlign: 'center' }}>
         <CircularProgress />
         <Typography variant="h6" sx={{ mt: 2 }}>Loading subscription plans...</Typography>
       </Container>
@@ -338,24 +414,92 @@ const SubscriptionPurchase = () => {
   const selectedPlanData = plans.find(p => p._id === selectedPlan);
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>
+    <Container maxWidth="lg" sx={{ mt: { xs: 2, sm: 4 }, mb: { xs: 4, sm: 8 }, px: { xs: 2, sm: 3 } }}>
       <Button
         startIcon={<ArrowBack />}
         onClick={() => navigate('/student/dashboard')}
-        sx={{ mb: 3 }}
+        size={isMobile ? 'small' : 'medium'}
+        sx={{ mb: { xs: 2, sm: 3 } }}
       >
         Back to Dashboard
       </Button>
 
-      <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <Typography variant="h4" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-          <WorkspacePremium color="primary" fontSize="large" />
+      <Box sx={{ textAlign: 'center', mb: { xs: 3, sm: 4 } }}>
+        <Typography
+          variant={isMobile ? 'h5' : 'h4'}
+          fontWeight="bold"
+          gutterBottom
+          sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: { xs: 1, sm: 2 } }}
+        >
+          <WorkspacePremium color="primary" fontSize={isMobile ? 'medium' : 'large'} />
           Choose Your Subscription Plan
         </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Select a plan for {user?.level?.name || 'your level'} to access all subscription exams
+        <Typography variant="body2" color="text.secondary" sx={{ px: { xs: 1, sm: 0 } }}>
+          {planScope === 'level'
+            ? `Select a plan for ${user?.level?.name || 'your level'} to access all subscription exams`
+            : 'Unlock a single exam without subscribing to the whole level'}
         </Typography>
       </Box>
+
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: { xs: 3, sm: 4 } }}>
+        <ToggleButtonGroup
+          value={planScope}
+          exclusive
+          onChange={handleScopeChange}
+          disabled={mobilePending}
+          fullWidth={isMobile}
+          sx={{
+            bgcolor: 'background.paper',
+            boxShadow: 1,
+            borderRadius: 2,
+            width: { xs: '100%', sm: 'auto' },
+            '& .MuiToggleButton-root': {
+              textTransform: 'none',
+              px: { xs: 1.5, sm: 3 },
+              py: 1,
+              fontWeight: 600,
+              borderRadius: 2,
+              fontSize: { xs: '0.8rem', sm: '0.875rem' },
+              flex: { xs: 1, sm: 'initial' },
+              whiteSpace: 'nowrap'
+            }
+          }}
+        >
+          <ToggleButton value="level">
+            <School fontSize="small" sx={{ mr: 1 }} />
+            Whole Level
+          </ToggleButton>
+          <ToggleButton value="exam">
+            <Quiz fontSize="small" sx={{ mr: 1 }} />
+            Single Exam
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+
+      {planScope === 'exam' && (
+        <Box sx={{ maxWidth: 480, mx: 'auto', mb: { xs: 3, sm: 4 } }}>
+          <FormControl fullWidth disabled={mobilePending}>
+            <InputLabel>Choose an exam</InputLabel>
+            <Select
+              value={selectedExamId}
+              label="Choose an exam"
+              onChange={(e) => handleExamSelect(e.target.value)}
+            >
+              {examOptionsLoading && (
+                <MenuItem value="" disabled>Loading exams...</MenuItem>
+              )}
+              {!examOptionsLoading && examOptions.length === 0 && (
+                <MenuItem value="" disabled>No subscription-only exams available for your level</MenuItem>
+              )}
+              {examOptions.map((exam) => (
+                <MenuItem key={exam._id} value={exam._id}>
+                  {exam.title}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
@@ -408,17 +552,25 @@ const SubscriptionPurchase = () => {
         </Box>
       )}
 
-      {!loading && plans.length === 0 && !mobilePending ? (
-        <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
-          <Typography variant="h6" color="text.secondary">
-            No subscription plans available for your level yet.
+      {planScope === 'exam' && !selectedExamId && !mobilePending ? (
+        <Paper sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', borderRadius: 2 }}>
+          <Typography variant={isMobile ? 'subtitle1' : 'h6'} color="text.secondary">
+            Pick an exam above to see its subscription plans.
+          </Typography>
+        </Paper>
+      ) : !loading && plans.length === 0 && !mobilePending ? (
+        <Paper sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', borderRadius: 2 }}>
+          <Typography variant={isMobile ? 'subtitle1' : 'h6'} color="text.secondary">
+            {planScope === 'level'
+              ? 'No subscription plans available for your level yet.'
+              : 'No subscription plans available for this exam yet.'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             Please contact support for more information.
           </Typography>
         </Paper>
       ) : !loading && (
-        <Grid container spacing={3}>
+        <Grid container spacing={{ xs: 2, sm: 3 }}>
           {/* Plans list */}
           <Grid item xs={12} md={8}>
             <RadioGroup value={selectedPlan} onChange={(e) => setSelectedPlan(e.target.value)}>
@@ -437,15 +589,15 @@ const SubscriptionPurchase = () => {
                   }}
                   onClick={() => setSelectedPlan(plan._id)}
                 >
-                  <CardContent>
+                  <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-                      <Box sx={{ flex: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                          <Radio checked={selectedPlan === plan._id} value={plan._id} />
-                          <Typography variant="h6" fontWeight="bold">{plan.name}</Typography>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, mb: 1, flexWrap: 'wrap' }}>
+                          <Radio checked={selectedPlan === plan._id} value={plan._id} sx={{ p: { xs: 0.5, sm: 1 } }} />
+                          <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">{plan.name}</Typography>
                           <Chip
-                            label={plan.subLevel ? plan.subLevel : 'Entire Level'}
-                            color={plan.subLevel ? 'default' : 'primary'}
+                            label={planScope === 'exam' ? 'Single Exam' : (plan.subLevel ? plan.subLevel : 'Entire Level')}
+                            color={planScope === 'exam' ? 'secondary' : (plan.subLevel ? 'default' : 'primary')}
                             size="small"
                             variant="outlined"
                           />
@@ -453,7 +605,7 @@ const SubscriptionPurchase = () => {
                             <Chip label={`${plan.discountPercentage}% OFF`} color="error" size="small" sx={{ fontWeight: 500 }} />
                           )}
                         </Box>
-                        <Typography variant="h4" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
+                        <Typography variant="h4" fontWeight="bold" color="primary" sx={{ mb: 1, fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>
                           {plan.currency === 'RWF' ? 'RWF' : '$'} {plan.price.toLocaleString()}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -479,7 +631,7 @@ const SubscriptionPurchase = () => {
 
           {/* Order summary + payment method */}
           <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 3, position: 'sticky', top: 100, borderRadius: 2 }}>
+            <Paper sx={{ p: { xs: 2, sm: 3 }, position: { xs: 'static', md: 'sticky' }, top: 100, borderRadius: 2 }}>
               <Typography variant="h6" fontWeight="bold" gutterBottom>
                 Order Summary
               </Typography>
@@ -496,8 +648,14 @@ const SubscriptionPurchase = () => {
                     <Typography variant="body2">{formatPlanDuration(selectedPlanData)}</Typography>
                   </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="body2" color="text.secondary">Level:</Typography>
-                    <Typography variant="body2">{user?.level?.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {planScope === 'exam' ? 'Exam:' : 'Level:'}
+                    </Typography>
+                    <Typography variant="body2" sx={{ textAlign: 'right' }}>
+                      {planScope === 'exam'
+                        ? (examOptions.find(e => e._id === selectedExamId)?.title || '—')
+                        : user?.level?.name}
+                    </Typography>
                   </Box>
                   <Divider sx={{ my: 2 }} />
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -536,8 +694,8 @@ const SubscriptionPurchase = () => {
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 1.5,
-                      p: 1.5,
+                      gap: { xs: 1, sm: 1.5 },
+                      p: { xs: 1, sm: 1.5 },
                       borderRadius: 2,
                       border: '2px solid',
                       borderColor: paymentMethod === method.id ? method.color : 'divider',
@@ -549,8 +707,8 @@ const SubscriptionPurchase = () => {
                   >
                     <Box
                       sx={{
-                        width: 36,
-                        height: 36,
+                        width: { xs: 32, sm: 36 },
+                        height: { xs: 32, sm: 36 },
                         borderRadius: 1.5,
                         bgcolor: method.color,
                         display: 'flex',

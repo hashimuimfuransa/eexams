@@ -40,7 +40,9 @@ import {
   Security,
   Calculate,
   PlaylistAddCheck,
-  PhoneAndroid
+  PhoneAndroid,
+  History as HistoryIcon,
+  Person
 } from '@mui/icons-material';
 import { AlertTitle } from '@mui/material';
 import { AuthContext } from '../../context/AuthContext';
@@ -194,6 +196,8 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setSubscriptionLoading(false);
+      setPendingPaymentLoading(false);
     }
   };
 
@@ -456,6 +460,47 @@ const Dashboard = () => {
           Welcome, {user?.firstName || 'Student'}! Here are your available exams and results.
         </Typography>
 
+        {/* Quick Actions */}
+        <Paper elevation={0} sx={{
+          mb: { xs: 3, sm: 4 }, p: { xs: 1.75, sm: 2.5 }, borderRadius: 3,
+          border: '1px solid', borderColor: 'divider'
+        }}>
+          <Typography fontWeight={700} sx={{ fontSize: { xs: 13, sm: 15 }, color: 'text.primary', mb: { xs: 1.25, sm: 2 } }}>
+            Quick Actions
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 1.5 } }}>
+            {[
+              { label: 'Browse Exams', icon: <School sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0D406C', bg: 'rgba(13,64,108,0.08)', to: '/student/exams' },
+              { label: 'My Results', icon: <Assessment sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0CBD73', bg: 'rgba(12,189,115,0.09)', to: '/student/results' },
+              { label: 'Exam History', icon: <HistoryIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#6366F1', bg: 'rgba(99,102,241,0.09)', to: '/student/history' },
+              { label: 'Leaderboard', icon: <LeaderboardIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', to: '/student/leaderboard' },
+              { label: 'My Profile', icon: <Person sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0D406C', bg: 'rgba(13,64,108,0.08)', to: '/student/profile' },
+              { label: 'Subscriptions', icon: <WorkspacePremium sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#D97706', bg: 'rgba(217,119,6,0.1)', to: '/student/subscriptions' },
+            ].map((a) => (
+              <Box
+                key={a.label}
+                component={RouterLink}
+                to={a.to}
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25 },
+                  px: { xs: 1.25, sm: 2.5 }, py: { xs: 1, sm: 1.5 },
+                  borderRadius: 2.5, bgcolor: a.bg, textDecoration: 'none',
+                  flex: { xs: '1 1 calc(50% - 8px)', sm: '1 1 150px' },
+                  minWidth: { xs: 0, sm: 150 },
+                  border: `1px solid ${a.color}25`,
+                  transition: 'opacity 0.15s, transform 0.15s',
+                  '&:hover': { opacity: 0.85, transform: 'translateY(-1px)' }
+                }}
+              >
+                <Box sx={{ color: a.color, display: 'flex', flexShrink: 0 }}>{a.icon}</Box>
+                <Typography fontWeight={700} noWrap sx={{ color: a.color, fontSize: { xs: 12, sm: 13.5 } }}>
+                  {a.label}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Paper>
+
         {/* Pending Payment Banner */}
         {pendingPayment && !pendingPaymentLoading && (
           <Card
@@ -603,8 +648,8 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Free Exam Exhausted — Subscribe prompt */}
-        {user?.freeExamUsed && !subscription && !subscriptionLoading && (
+        {/* No Active Subscription — Subscribe prompt */}
+        {!subscription && !subscriptionLoading && !pendingPayment && (
           <Card
             elevation={0}
             sx={{
@@ -640,11 +685,14 @@ const Dashboard = () => {
                 {/* Text */}
                 <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
                   <Typography variant="h6" fontWeight={800} sx={{ color: '#92400E', mb: 0.5, fontSize: { xs: '1rem', sm: '1.15rem' } }}>
-                    Your free exam has been used
+                    {user?.freeExamUsed ? 'Your free exam has been used' : 'You don\'t have an active subscription'}
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#78350F', lineHeight: 1.6, mb: 2 }}>
-                    You've completed your 1 free exam for <strong>{user?.level?.name || 'your level'}{user?.subLevel ? ` — ${user.subLevel}` : ''}</strong>.
-                    To continue taking exams and unlock the full exam library, you need an active subscription.
+                    {user?.freeExamUsed ? (
+                      <>You've completed your 1 free exam for <strong>{user?.level?.name || 'your level'}{user?.subLevel ? ` — ${user.subLevel}` : ''}</strong>. To continue taking exams and unlock the full exam library, you need an active subscription.</>
+                    ) : (
+                      <>You still have your 1 free exam available, but to unlock the full exam library for <strong>{user?.level?.name || 'your level'}{user?.subLevel ? ` — ${user.subLevel}` : ''}</strong> and keep taking exams afterward, you'll need an active subscription.</>
+                    )}
                   </Typography>
 
                   {/* What they get */}

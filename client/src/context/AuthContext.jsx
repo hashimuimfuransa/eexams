@@ -385,6 +385,10 @@ export const AuthProvider = ({ children }) => {
 
   // Logout function
   const logout = () => {
+    // Best-effort: clear the server-side active session marker so this
+    // device's token can't be mistaken for a still-active session. Don't
+    // block local logout on it.
+    api.post('/auth/logout').catch(() => {});
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     localStorage.removeItem('lastActivity');

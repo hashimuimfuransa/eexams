@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const cacheService = require('../utils/cacheService');
+const { hasActivePaidAccess } = require('../utils/paidAccess');
 
 // Middleware to verify JWT token with caching
 const auth = async (req, res, next) => {
@@ -18,19 +19,33 @@ const auth = async (req, res, next) => {
     // Try to get user from cache first
     const cacheKey = cacheService.generateKey('user', decoded.id);
     let user = await cacheService.get(cacheKey);
+    let paidAccess = user?._paidAccess;
 
     if (!user) {
       // Cache miss - fetch from database
       user = await User.findById(decoded.id).select('-password');
-      
+
       if (user) {
-        // Cache user for 5 minutes
-        await cacheService.set(cacheKey, user, 300);
+        // Resolve once per cache window (5 min) - re-checked on every login anyway
+        paidAccess = await hasActivePaidAccess(user);
+        const toCache = user.toObject();
+        toCache._paidAccess = paidAccess;
+        await cacheService.set(cacheKey, toCache, 300);
       }
     }
 
     if (!user) {
       return res.status(401).json({ message: 'Token is not valid' });
+    }
+
+    // Single-active-session guard for paid accounts: reject any token whose
+    // sessionId doesn't match the most recently issued login, so sharing
+    // credentials logs the previous device out instead of both staying in.
+    if (decoded.sessionId && paidAccess && user.activeSessionId && user.activeSessionId !== decoded.sessionId) {
+      return res.status(401).json({
+        message: 'This account was signed in on another device. Please log in again.',
+        code: 'SESSION_REVOKED'
+      });
     }
 
     // Add user to request object

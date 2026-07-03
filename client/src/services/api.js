@@ -74,6 +74,11 @@ api.interceptors.response.use(
       // This prevents infinite loops
       if (originalRequest.url && originalRequest.url.includes('/auth/verify')) {
         console.log('Token verification failed - clearing auth data');
+        // Account was signed in from another device (single-active-session
+        // guard on paid plans) - stash a message for the login page to show.
+        if (error.response.data?.code === 'SESSION_REVOKED') {
+          localStorage.setItem('authMessage', error.response.data.message);
+        }
         // Clear auth data
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -103,6 +108,14 @@ api.interceptors.response.use(
         }
       } catch (verifyError) {
         console.log('Authentication failed - clearing auth data');
+        // Account was signed in from another device (single-active-session
+        // guard on paid plans) - stash a message for the login page to show.
+        const revokedCode = error.response?.data?.code === 'SESSION_REVOKED'
+          ? error.response.data.message
+          : (verifyError.response?.data?.code === 'SESSION_REVOKED' ? verifyError.response.data.message : null);
+        if (revokedCode) {
+          localStorage.setItem('authMessage', revokedCode);
+        }
         // Clear auth data
         localStorage.removeItem('token');
         localStorage.removeItem('user');

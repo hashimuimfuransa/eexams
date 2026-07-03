@@ -6,6 +6,7 @@ const ExamRequest = require('../models/ExamRequest');
 const Subscription = require('../models/Subscription');
 const emailService = require('../utils/emailService');
 const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
+const { generateOverallRecommendation } = require('../utils/resultRecommendation');
 
 // @desc    Get available exams for student (level-scoped exam bank)
 // @route   GET /api/student/exams
@@ -35,12 +36,26 @@ const getAvailableExams = async (req, res) => {
       .filter(r => !r.isRetake || !r.accessCodeUsed)
       .map(r => r.exam.toString());
 
-    // Exam bank = exams belonging to the student's selected level, PLUS any
-    // exam explicitly granted via a legacy assignment/approved request
-    // (regardless of level), so teacher-shared exams keep working.
+    // Exam bank = exams belonging to the student's selected level AND
+    // matching their sub-level (or sub-level-agnostic, level-wide exams),
+    // PLUS any exam explicitly granted via a legacy assignment/approved
+    // request (regardless of level/sub-level), so teacher-shared exams keep
+    // working. Without the sub-level filter, a student would see every other
+    // sub-level's exams mixed into their list as permanently "locked" —
+    // confusingly implying their subscription (which is correctly sub-level
+    // scoped) isn't working, when it actually is.
+    const levelWithSubLevelMatch = {
+      level: user.level._id,
+      $or: [
+        { subLevel: null },
+        { subLevel: { $exists: false } },
+        ...(user.subLevel ? [{ subLevel: user.subLevel }] : [])
+      ]
+    };
+
     const exams = await Exam.find({
       $or: [
-        { level: user.level._id },
+        levelWithSubLevelMatch,
         { assignedTo: req.user._id },
         { _id: { $in: approvedExamIds } }
       ],
@@ -69,6 +84,16 @@ const getAvailableExams = async (req, res) => {
     const hasActiveSubscription = !!(activeSubscription && activeSubscription.isValid());
     const freeExamAvailableForLevel = !(user.freeExamUsed && user.freeExamLevel &&
       user.freeExamLevel.toString() === user.level._id.toString());
+
+    // Exam-scoped subscriptions (bought for one specific exam rather than
+    // the whole level) — each one unlocks just its own exam.
+    const examSubscriptions = await Subscription.find({
+      user: req.user._id,
+      exam: { $ne: null },
+      status: 'active',
+      expiresAt: { $gt: new Date() }
+    }).select('exam');
+    const examSubscribedIds = new Set(examSubscriptions.map(s => s.exam.toString()));
 
     // Current time for availability check
     const now = new Date();
@@ -103,6 +128,8 @@ const getAvailableExams = async (req, res) => {
       const hasLegacyGrant = approvedAccessExamIds.includes(exam._id.toString());
       let accessUnlocked;
       if (hasLegacyGrant) {
+        accessUnlocked = true;
+      } else if (examSubscribedIds.has(exam._id.toString())) {
         accessUnlocked = true;
       } else if (exam.accessType === 'free') {
         accessUnlocked = freeExamAvailableForLevel && freeExamMatchesUserSubLevel(exam, user);
@@ -255,17 +282,21 @@ const getExamById = async (req, res) => {
             });
           }
         } else {
-          const activeSubscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
-          const hasActiveSubscription = !!(activeSubscription && activeSubscription.isValid());
-          if (!hasActiveSubscription || !subscriptionCoversExam(activeSubscription, exam)) {
-            return res.json({
-              _id: exam._id,
-              title: exam.title,
-              description: exam.description,
-              timeLimit: exam.timeLimit,
-              isLocked: true,
-              message: 'This exam requires an active subscription'
-            });
+          const examSubscription = await Subscription.getActiveSubscriptionForExam(req.user._id, exam._id);
+          const hasExamSubscription = !!(examSubscription && examSubscription.isValid());
+          if (!hasExamSubscription) {
+            const activeSubscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
+            const hasActiveSubscription = !!(activeSubscription && activeSubscription.isValid());
+            if (!hasActiveSubscription || !subscriptionCoversExam(activeSubscription, exam)) {
+              return res.json({
+                _id: exam._id,
+                title: exam.title,
+                description: exam.description,
+                timeLimit: exam.timeLimit,
+                isLocked: true,
+                message: 'This exam requires an active subscription'
+              });
+            }
           }
         }
       }
@@ -510,6 +541,20 @@ const getDetailedResult = async (req, res) => {
       // Recalculate total score if needed
       if (result.answers.length > 0) {
         result.totalScore = result.answers.reduce((total, answer) => total + (answer.score || 0), 0);
+      }
+    }
+
+    // Lazily generate the AI overall recommendation on first view, then cache
+    // it on the Result document so later views are instant and don't re-call
+    // the AI. Failures here must never block the result from loading — the
+    // frontend has its own heuristic fallback if this stays null.
+    if (!result.overallRecommendation && result.answers.length > 0) {
+      const recommendation = await generateOverallRecommendation(result);
+      if (recommendation) {
+        result.overallRecommendation = recommendation;
+        Result.findByIdAndUpdate(req.params.resultId, { overallRecommendation: recommendation }).catch(err =>
+          console.error('Failed to persist overallRecommendation:', err.message)
+        );
       }
     }
 

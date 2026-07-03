@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getProfile, updateProfile, changePassword, verifyToken, googleAuth, forgotPassword, resetPassword, verifyResetToken, checkEmail, checkPhone, selectLevel } = require('../controllers/authController');
+const { register, login, logout, getProfile, updateProfile, changePassword, verifyToken, googleAuth, forgotPassword, resetPassword, verifyResetToken, checkEmail, checkPhone, selectLevel } = require('../controllers/authController');
 const auth = require('../middleware/auth');
 const { validateLogin, validateRegister } = require('../middleware/validation');
 const { authLimiter } = require('../middleware/rateLimiter');
@@ -29,6 +29,11 @@ router.post('/login', authLimiter, validateLogin, login);
 // @desc    Google OAuth login/register
 // @access  Public
 router.post('/google', authLimiter, googleAuth);
+
+// @route   POST /api/auth/logout
+// @desc    Log out current session
+// @access  Private
+router.post('/logout', auth, logout);
 
 // @route   POST /api/auth/forgot-password
 // @desc    Send password reset email

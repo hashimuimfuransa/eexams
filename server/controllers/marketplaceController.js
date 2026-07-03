@@ -8,11 +8,18 @@ const emailService = require('../utils/emailService');
 const { subscriptionCoversExam } = require('../utils/subLevelAccess');
 
 // Determine whether an authenticated student already has subscription-based
-// access to a given exam (active subscription for the exam's level, with
-// sub-level matching). Free exams and unauthenticated requests are handled
-// separately by callers — this only covers the "subscription" accessType case.
+// access to a given exam — either an exam-scoped subscription bought for
+// this exam specifically, or an active subscription for the exam's level
+// (with sub-level matching). Free exams and unauthenticated requests are
+// handled separately by callers — this only covers the "subscription"
+// accessType case.
 const hasActiveSubscriptionForExam = async (userId, exam) => {
-  if (!userId || !exam.level) return false;
+  if (!userId) return false;
+
+  const examSubscription = await Subscription.getActiveSubscriptionForExam(userId, exam._id);
+  if (examSubscription && examSubscription.isValid()) return true;
+
+  if (!exam.level) return false;
   const subscription = await Subscription.getActiveSubscriptionForLevel(userId, exam.level);
   if (!subscription || !subscription.isValid()) return false;
   return subscriptionCoversExam(subscription, exam);

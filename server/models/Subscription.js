@@ -18,6 +18,20 @@ const SubscriptionSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Set only for exam-scoped subscriptions (planType 'exam') — grants access
+  // to this one exam instead of every exam in `level`. `level` is still
+  // populated (the exam's own level) so existing level-based reporting
+  // queries keep working; access checks key off `exam` when it's set.
+  exam: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Exam',
+    default: null
+  },
+  planType: {
+    type: String,
+    enum: ['level', 'exam'],
+    default: 'level'
+  },
   plan: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SubscriptionPlan',
@@ -91,6 +105,7 @@ SubscriptionSchema.index({ user: 1, status: 1 });
 SubscriptionSchema.index({ level: 1, status: 1 });
 SubscriptionSchema.index({ expiresAt: 1, status: 1 });
 SubscriptionSchema.index({ user: 1, level: 1, status: 1 });
+SubscriptionSchema.index({ user: 1, exam: 1, status: 1 });
 
 // Static method to get active subscription for user
 SubscriptionSchema.statics.getActiveSubscription = async function(userId) {
@@ -102,12 +117,38 @@ SubscriptionSchema.statics.getActiveSubscription = async function(userId) {
   }).populate('level').populate('plan');
 };
 
-// Static method to get active subscription for user and level
+// Static method to get active subscription for user and level. Excludes
+// exam-scoped subscriptions — those grant access to one exam, not the level.
 SubscriptionSchema.statics.getActiveSubscriptionForLevel = async function(userId, levelId) {
   const now = new Date();
   return this.findOne({
     user: userId,
     level: levelId,
+    exam: null,
+    status: 'active',
+    expiresAt: { $gt: now }
+  }).populate('level').populate('plan');
+};
+
+// Static method to get an active exam-scoped subscription for user and exam.
+SubscriptionSchema.statics.getActiveSubscriptionForExam = async function(userId, examId) {
+  const now = new Date();
+  return this.findOne({
+    user: userId,
+    exam: examId,
+    status: 'active',
+    expiresAt: { $gt: now }
+  }).populate('plan');
+};
+
+// Static method to get the user's active level-wide subscription (if any),
+// regardless of which level — used to detect "already subscribed to a
+// different level" conflicts. Excludes exam-scoped subscriptions.
+SubscriptionSchema.statics.getActiveLevelSubscription = async function(userId) {
+  const now = new Date();
+  return this.findOne({
+    user: userId,
+    exam: null,
     status: 'active',
     expiresAt: { $gt: now }
   }).populate('level').populate('plan');

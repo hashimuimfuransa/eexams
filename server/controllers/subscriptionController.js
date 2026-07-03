@@ -105,7 +105,7 @@ const initiateSubscriptionPayment = async (req, res) => {
     }
 
     // Get the plan
-    const plan = await SubscriptionPlan.findById(planId).populate('level');
+    const plan = await SubscriptionPlan.findById(planId).populate('level').populate('exam');
     if (!plan) {
       return res.status(404).json({ message: 'Subscription plan not found' });
     }
@@ -114,28 +114,58 @@ const initiateSubscriptionPayment = async (req, res) => {
       return res.status(400).json({ message: 'This plan is not currently available' });
     }
 
-    if (!plan.level) {
-      return res.status(400).json({ message: 'This plan is not associated with a level' });
-    }
+    let pendingPaymentData;
 
-    // Check if user has a level
-    if (!req.user.level) {
-      return res.status(400).json({ message: 'Please select a learning level first' });
-    }
+    if (plan.planType === 'exam') {
+      if (!plan.exam) {
+        return res.status(400).json({ message: 'This plan is not associated with an exam' });
+      }
 
-    // An existing active subscription for a DIFFERENT level blocks purchase
-    // (must change level first). An existing active subscription for the
-    // SAME level as this plan is allowed through — the callback will treat
-    // it as a renewal (extend) rather than rejecting the purchase.
-    const existingSubscription = await Subscription.getActiveSubscription(req.user._id);
-    if (existingSubscription && existingSubscription.level._id.toString() !== plan.level._id.toString()) {
-      return res.status(400).json({
-        message: 'You already have an active subscription for a different level',
-        existingSubscription
-      });
-    }
+      // Courtesy check so students don't pay for an exam they can never
+      // reach — the real enforcement is examAccess.js at start/answer time.
+      if (req.user.level && plan.exam.level && plan.exam.level.toString() !== req.user.level.toString()) {
+        return res.status(400).json({ message: 'This exam is not available for your current level' });
+      }
 
-    console.log(`[Payment] plan="${plan.name}" price=${plan.price} ${plan.currency}, level=${plan.level?.name}`);
+      console.log(`[Payment] plan="${plan.name}" price=${plan.price} ${plan.currency}, exam=${plan.exam?.title}`);
+
+      pendingPaymentData = {
+        plan: plan._id,
+        exam: plan.exam._id,
+        level: plan.exam.level || null,
+        subLevel: null
+      };
+    } else {
+      if (!plan.level) {
+        return res.status(400).json({ message: 'This plan is not associated with a level' });
+      }
+
+      // Check if user has a level
+      if (!req.user.level) {
+        return res.status(400).json({ message: 'Please select a learning level first' });
+      }
+
+      // An existing active level-wide subscription for a DIFFERENT level blocks
+      // purchase (must change level first). An existing active subscription for
+      // the SAME level as this plan is allowed through — the callback will treat
+      // it as a renewal (extend) rather than rejecting the purchase. Exam-scoped
+      // subscriptions don't count toward this conflict check.
+      const existingSubscription = await Subscription.getActiveLevelSubscription(req.user._id);
+      if (existingSubscription && existingSubscription.level._id.toString() !== plan.level._id.toString()) {
+        return res.status(400).json({
+          message: 'You already have an active subscription for a different level',
+          existingSubscription
+        });
+      }
+
+      console.log(`[Payment] plan="${plan.name}" price=${plan.price} ${plan.currency}, level=${plan.level?.name}`);
+
+      pendingPaymentData = {
+        plan: plan._id,
+        level: plan.level._id,
+        subLevel: plan.subLevel || null
+      };
+    }
 
     const paymentResult = await itecPayment.createPaymentRequest({
       amount: plan.price,
@@ -152,9 +182,7 @@ const initiateSubscriptionPayment = async (req, res) => {
     await PendingPayment.create({
       reference: paymentResult.reference,
       user: req.user._id,
-      plan: plan._id,
-      level: plan.level._id,
-      subLevel: plan.subLevel || null,
+      ...pendingPaymentData,
       paymentId: paymentResult.paymentId,
       amount: plan.price,
       currency: plan.currency,
@@ -348,15 +376,16 @@ const activatePendingPayment = async (pendingPaymentId, { amount, currency, tran
     return Subscription.findById(pendingPayment.subscription);
   }
 
-  const plan = await SubscriptionPlan.findById(pendingPayment.plan).populate('level');
+  const plan = await SubscriptionPlan.findById(pendingPayment.plan).populate('level').populate('exam');
   if (!plan) {
     throw new Error('Subscription plan not found for pending payment');
   }
 
-  const existingSubscription = await Subscription.getActiveSubscriptionForLevel(
-    pendingPayment.user,
-    plan.level._id
-  );
+  const isExamPlan = plan.planType === 'exam';
+
+  const existingSubscription = isExamPlan
+    ? await Subscription.getActiveSubscriptionForExam(pendingPayment.user, plan.exam._id)
+    : await Subscription.getActiveSubscriptionForLevel(pendingPayment.user, plan.level._id);
 
   let subscription;
   if (existingSubscription) {
@@ -364,7 +393,7 @@ const activatePendingPayment = async (pendingPaymentId, { amount, currency, tran
     const newExpiry = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
     await existingSubscription.renew(newExpiry);
     existingSubscription.plan = plan._id;
-    existingSubscription.subLevel = plan.subLevel || null;
+    if (!isExamPlan) existingSubscription.subLevel = plan.subLevel || null;
     existingSubscription.paymentReference = transactionId || pendingPayment.paymentId;
     // Accumulate, don't overwrite — amountPaid is the running total ever paid
     // on this subscription across all renewals, so total-revenue reporting
@@ -376,8 +405,10 @@ const activatePendingPayment = async (pendingPaymentId, { amount, currency, tran
   } else {
     subscription = await Subscription.create({
       user: pendingPayment.user,
-      level: plan.level._id,
-      subLevel: plan.subLevel || null,
+      level: isExamPlan ? (plan.exam.level || null) : plan.level._id,
+      subLevel: isExamPlan ? null : (plan.subLevel || null),
+      exam: isExamPlan ? plan.exam._id : null,
+      planType: isExamPlan ? 'exam' : 'level',
       plan: plan._id,
       startsAt: new Date(),
       expiresAt: new Date(Date.now() + plan.durationDays * 24 * 60 * 60 * 1000),
@@ -389,7 +420,11 @@ const activatePendingPayment = async (pendingPaymentId, { amount, currency, tran
     });
   }
 
-  await User.findByIdAndUpdate(pendingPayment.user, { level: plan.level._id });
+  // Exam-scoped purchases grant access to that one exam only — unlike a
+  // level plan, they must not change the student's selected level.
+  if (!isExamPlan) {
+    await User.findByIdAndUpdate(pendingPayment.user, { level: plan.level._id });
+  }
 
   pendingPayment.status = 'completed';
   pendingPayment.subscription = subscription._id;

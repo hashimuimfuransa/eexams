@@ -496,7 +496,7 @@ const Results = () => {
 
         {/* ── Not answered banner ── */}
         {notAnswered && (
-          <Box sx={{ mb: 2, p: 1.5, bgcolor: alpha('#d32f2f', 0.08), borderRadius: 2,
+          <Box sx={{ mb: 2, p: 1.5, bgcolor: alpha(theme.palette.error.main, 0.08), borderRadius: 2,
             border: '1px solid', borderColor: 'error.light',
             display: 'flex', alignItems: 'center', gap: 1 }}>
             <Cancel fontSize="small" sx={{ color: 'error.main', flexShrink: 0 }} />
@@ -527,9 +527,9 @@ const Results = () => {
                       display: 'flex', alignItems: 'flex-start', gap: 1,
                       p: { xs: 1, sm: 1.25 }, mb: 0.75, borderRadius: 2,
                       bgcolor: isCorrectOpt
-                        ? alpha('#2e7d32', 0.1)
+                        ? alpha(theme.palette.success.main, 0.1)
                         : isStudentAnswer
-                          ? alpha('#d32f2f', 0.09)
+                          ? alpha(theme.palette.error.main, 0.09)
                           : 'grey.50',
                       border: '1.5px solid',
                       borderColor: isCorrectOpt ? 'success.light' : isStudentAnswer ? 'error.light' : 'transparent'
@@ -565,7 +565,7 @@ const Results = () => {
 
                 {/* Always show the correct answer clearly at bottom */}
                 {!answer.isCorrect && (
-                  <Box sx={{ mt: 1.5, p: 1.25, bgcolor: alpha('#2e7d32', 0.08), borderRadius: 2,
+                  <Box sx={{ mt: 1.5, p: 1.25, bgcolor: alpha(theme.palette.success.main, 0.08), borderRadius: 2,
                     border: '1px solid', borderColor: 'success.light',
                     display: 'flex', alignItems: 'center', gap: 1 }}>
                     <TaskAlt fontSize="small" sx={{ color: 'success.main', flexShrink: 0 }} />
@@ -581,7 +581,7 @@ const Results = () => {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Box>
                   <Typography sx={labelStyle}>Your Answer</Typography>
-                  <Box sx={{ p: 1.5, bgcolor: notAnswered ? alpha('#d32f2f', 0.07) : answer.isCorrect ? alpha('#2e7d32', 0.07) : alpha('#d32f2f', 0.07),
+                  <Box sx={{ p: 1.5, bgcolor: notAnswered ? alpha(theme.palette.error.main, 0.07) : answer.isCorrect ? alpha(theme.palette.success.main, 0.07) : alpha(theme.palette.error.main, 0.07),
                     borderRadius: 1.5, border: '1px solid', borderColor: notAnswered ? 'error.light' : answer.isCorrect ? 'success.light' : 'error.light' }}>
                     <Typography variant="body2" sx={{ color: notAnswered ? 'text.secondary' : answer.isCorrect ? 'success.dark' : 'error.dark', fontStyle: notAnswered ? 'italic' : 'normal' }}>
                       {notAnswered ? 'Not answered' : (answer.selectedOptionLetter ? `${answer.selectedOptionLetter}. ` : '') + String(answer.selectedOption || '')}
@@ -590,7 +590,7 @@ const Results = () => {
                 </Box>
                 <Box>
                   <Typography sx={labelStyle}>Correct Answer</Typography>
-                  <Box sx={{ p: 1.5, bgcolor: alpha('#2e7d32', 0.07), borderRadius: 1.5, border: '1px solid', borderColor: 'success.light' }}>
+                  <Box sx={{ p: 1.5, bgcolor: alpha(theme.palette.success.main, 0.07), borderRadius: 1.5, border: '1px solid', borderColor: 'success.light' }}>
                     <Typography variant="body2" color="success.dark" fontWeight={600}>
                       {answer.correctOptionLetter ? `${answer.correctOptionLetter}. ` : ''}{String(answer.question?.correctAnswer || answer.correctedAnswer || 'N/A')}
                     </Typography>
@@ -621,9 +621,9 @@ const Results = () => {
                   display: 'flex', alignItems: 'center', gap: 1,
                   p: { xs: 1, sm: 1.25 }, mb: 0.75, borderRadius: 2,
                   bgcolor: isCorrectOpt
-                    ? alpha('#2e7d32', 0.1)
+                    ? alpha(theme.palette.success.main, 0.1)
                     : isStudentAnswer
-                      ? alpha('#d32f2f', 0.09)
+                      ? alpha(theme.palette.error.main, 0.09)
                       : 'grey.50',
                   border: '1.5px solid',
                   borderColor: isCorrectOpt ? 'success.light' : isStudentAnswer ? 'error.light' : 'transparent'
@@ -656,7 +656,7 @@ const Results = () => {
 
             {/* Always show correct answer clearly when wrong */}
             {!answer.isCorrect && (
-              <Box sx={{ mt: 1.5, p: 1.25, bgcolor: alpha('#2e7d32', 0.08), borderRadius: 2,
+              <Box sx={{ mt: 1.5, p: 1.25, bgcolor: alpha(theme.palette.success.main, 0.08), borderRadius: 2,
                 border: '1px solid', borderColor: 'success.light',
                 display: 'flex', alignItems: 'center', gap: 1 }}>
                 <TaskAlt fontSize="small" sx={{ color: 'success.main', flexShrink: 0 }} />
@@ -686,7 +686,7 @@ const Results = () => {
                   const correct = correctPairs.some(cp => cp.left === pair.left && cp.right === pair.right);
                   return (
                     <Box key={pi} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, p: 1, borderRadius: 1.5,
-                      bgcolor: correct ? alpha('#2e7d32', 0.08) : alpha('#d32f2f', 0.08),
+                      bgcolor: correct ? alpha(theme.palette.success.main, 0.08) : alpha(theme.palette.error.main, 0.08),
                       border: '1px solid', borderColor: correct ? 'success.light' : 'error.light' }}>
                       {correct
                         ? <TaskAlt fontSize="small" sx={{ color: 'success.main', flexShrink: 0 }} />
@@ -697,7 +697,7 @@ const Results = () => {
                     </Box>
                   );
                 }) : (
-                  <Box sx={{ p: 1.5, bgcolor: alpha('#d32f2f', 0.07), borderRadius: 1.5, border: '1px solid', borderColor: 'error.light' }}>
+                  <Box sx={{ p: 1.5, bgcolor: alpha(theme.palette.error.main, 0.07), borderRadius: 1.5, border: '1px solid', borderColor: 'error.light' }}>
                     <Typography variant="body2" color="error.main" fontStyle="italic">Not answered</Typography>
                   </Box>
                 )}
@@ -706,7 +706,7 @@ const Results = () => {
                 <Typography sx={labelStyle}>Correct Matches</Typography>
                 {correctPairs.map((pair, pi) => (
                   <Box key={pi} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, p: 1, borderRadius: 1.5,
-                    bgcolor: alpha('#2e7d32', 0.08), border: '1px solid', borderColor: 'success.light' }}>
+                    bgcolor: alpha(theme.palette.success.main, 0.08), border: '1px solid', borderColor: 'success.light' }}>
                     <TaskAlt fontSize="small" sx={{ color: 'success.main', flexShrink: 0 }} />
                     <Typography variant="body2" color="success.dark" sx={{ wordBreak: 'break-word' }}>
                       <strong>{getMatchLabel(leftItems[pair.left])}</strong> <span style={{ opacity: 0.6 }}>→</span> {getMatchLabel(rightItems[pair.right])}
@@ -724,7 +724,7 @@ const Results = () => {
             <Box>
               <Typography sx={labelStyle}>Your Answer</Typography>
               <Box sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid',
-                bgcolor: notAnswered ? alpha('#d32f2f', 0.05) : answer.isCorrect ? alpha('#2e7d32', 0.07) : alpha('#d32f2f', 0.07),
+                bgcolor: notAnswered ? alpha(theme.palette.error.main, 0.05) : answer.isCorrect ? alpha(theme.palette.success.main, 0.07) : alpha(theme.palette.error.main, 0.07),
                 borderColor: notAnswered ? 'error.light' : answer.isCorrect ? 'success.light' : 'error.light' }}>
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap',
                   color: notAnswered ? 'text.secondary' : answer.isCorrect ? 'success.dark' : 'error.dark',
@@ -735,7 +735,7 @@ const Results = () => {
             </Box>
             <Box>
               <Typography sx={labelStyle}>Correct / Model Answer</Typography>
-              <Box sx={{ p: 1.5, bgcolor: alpha('#2e7d32', 0.07), borderRadius: 1.5, border: '1px solid', borderColor: 'success.light' }}>
+              <Box sx={{ p: 1.5, bgcolor: alpha(theme.palette.success.main, 0.07), borderRadius: 1.5, border: '1px solid', borderColor: 'success.light' }}>
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: 'success.dark' }}>
                   {String(answer.correctedAnswer || answer.question?.correctAnswer || 'Not provided')}
                 </Typography>
@@ -794,7 +794,7 @@ const Results = () => {
                         </Typography>
                       )}
                       {subResult?.feedback && (
-                        <Box sx={{ mt: 0.75, p: 1, bgcolor: alpha('#1565c0', 0.06), borderRadius: 1, borderLeft: '3px solid', borderColor: 'primary.light' }}>
+                        <Box sx={{ mt: 0.75, p: 1, bgcolor: alpha(theme.palette.primary.main, 0.06), borderRadius: 1, borderLeft: '3px solid', borderColor: 'primary.light' }}>
                           <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'primary.dark', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                             {subResult.feedback}
                           </Typography>
@@ -810,7 +810,7 @@ const Results = () => {
 
         {/* ── Feedback — always shown when present (including MC and unanswered) ── */}
         {answer.feedback && (
-          <Box sx={{ mt: 2, p: { xs: 1.5, sm: 2 }, bgcolor: alpha('#1565c0', 0.06), borderRadius: 2,
+          <Box sx={{ mt: 2, p: { xs: 1.5, sm: 2 }, bgcolor: alpha(theme.palette.primary.main, 0.06), borderRadius: 2,
             borderLeft: '4px solid', borderColor: 'primary.main' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
               <Feedback fontSize="small" color="primary" />
@@ -844,7 +844,7 @@ const Results = () => {
             <Grid container spacing={1.25}>
               {answer.conceptsPresent?.length > 0 && (
                 <Grid item xs={12} sm={6}>
-                  <Box sx={{ p: 1.5, bgcolor: alpha('#2e7d32', 0.07), borderRadius: 1.5, height: '100%' }}>
+                  <Box sx={{ p: 1.5, bgcolor: alpha(theme.palette.success.main, 0.07), borderRadius: 1.5, height: '100%' }}>
                     <Typography variant="caption" fontWeight={700} color="success.dark"
                       sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                       <TaskAlt fontSize="small" /> Concepts Identified
@@ -860,7 +860,7 @@ const Results = () => {
               )}
               {answer.conceptsMissing?.length > 0 && (
                 <Grid item xs={12} sm={6}>
-                  <Box sx={{ p: 1.5, bgcolor: alpha('#d32f2f', 0.07), borderRadius: 1.5, height: '100%' }}>
+                  <Box sx={{ p: 1.5, bgcolor: alpha(theme.palette.error.main, 0.07), borderRadius: 1.5, height: '100%' }}>
                     <Typography variant="caption" fontWeight={700} color="error.dark"
                       sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                       <ErrorOutline fontSize="small" /> Missing Concepts
@@ -892,7 +892,7 @@ const Results = () => {
               )}
               {answer.technicalAccuracy && (
                 <Grid item xs={12}>
-                  <Box sx={{ p: 1.5, bgcolor: alpha('#1565c0', 0.06), borderRadius: 1.5 }}>
+                  <Box sx={{ p: 1.5, bgcolor: alpha(theme.palette.primary.main, 0.06), borderRadius: 1.5 }}>
                     <Typography variant="caption" fontWeight={700} color="primary.dark"
                       sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
                       <BarChart fontSize="small" /> Technical Accuracy
@@ -941,45 +941,152 @@ const Results = () => {
       ? Math.round((new Date(detailedResult.endTime) - new Date(detailedResult.startTime)) / 60000)
       : null;
 
+    // ─── Build an overall study recommendation from section performance,
+    // AI-flagged missing concepts, and unanswered questions ──────────────────
+    const buildRecommendation = () => {
+      const answers = detailedResult.answers || [];
+
+      const notAnsweredCount = answers.filter(a => {
+        return !a.selectedOption && !a.textAnswer &&
+          (!a.matchingAnswers || a.matchingAnswers.length === 0) &&
+          (!a.subQuestionAnswers || a.subQuestionAnswers.length === 0);
+      }).length;
+
+      const sectionStats = examSections.map(section => {
+        const sAnswers = answers.filter(a =>
+          a.question && String(a.question.section || 'A') === String(section.name || 'A')
+        );
+        const sCorrect = sAnswers.filter(a => a.isCorrect).length;
+        return {
+          name: section.name || 'A',
+          pct: sAnswers.length > 0 ? Math.round((sCorrect / sAnswers.length) * 100) : null,
+          total: sAnswers.length
+        };
+      }).filter(s => s.total > 0);
+
+      const weakSections = sectionStats
+        .filter(s => s.pct !== null && s.pct < 70)
+        .sort((a, b) => a.pct - b.pct);
+
+      // Most frequently missing concepts across all AI-graded answers
+      const conceptFreq = {};
+      answers.forEach(a => {
+        (a.conceptsMissing || []).forEach(c => {
+          conceptFreq[c] = (conceptFreq[c] || 0) + 1;
+        });
+      });
+      const topConcepts = Object.entries(conceptFreq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([c]) => c);
+
+      // Unique AI improvement suggestions from wrong answers
+      const suggestions = [];
+      answers.forEach(a => {
+        if (!a.isCorrect && a.improvementSuggestions?.length) {
+          a.improvementSuggestions.forEach(s => {
+            if (!suggestions.includes(s)) suggestions.push(s);
+          });
+        }
+      });
+
+      let tone = 'success';
+      let headline;
+      if (percentage >= 90) {
+        headline = "Outstanding work! You've shown a strong command of this material — keep this level of preparation going.";
+      } else if (percentage >= 70) {
+        tone = 'success';
+        headline = "Good performance — you passed comfortably. A little extra focus on the areas below will help you aim even higher.";
+      } else if (percentage >= 50) {
+        tone = 'warning';
+        headline = "You're close, but a few knowledge gaps are holding your score back. Focus your revision on the areas below before retaking.";
+      } else {
+        tone = 'error';
+        headline = 'This topic needs focused revision. Review the concepts and sections below carefully before attempting a retake.';
+      }
+
+      // Concrete action tips, most relevant first
+      const tips = [];
+      if (weakSections.length > 0) {
+        tips.push(`Prioritize revising Section${weakSections.length > 1 ? 's' : ''} ${weakSections.map(s => `${s.name} (${s.pct}%)`).join(', ')} — your weakest area${weakSections.length > 1 ? 's' : ''}.`);
+      }
+      if (topConcepts.length > 0) {
+        tips.push(`Go back over these specific concepts: ${topConcepts.join(', ')}.`);
+      }
+      if (notAnsweredCount > 0) {
+        tips.push(`You left ${notAnsweredCount} question${notAnsweredCount !== 1 ? 's' : ''} unanswered — always attempt every question, since partial answers can still earn credit.`);
+      }
+      suggestions.slice(0, 3).forEach(s => tips.push(s));
+      if (tips.length === 0) {
+        tips.push('Keep practicing regularly and take a retake or a related exam to reinforce what you already know well.');
+      }
+
+      return { tone, headline, weakSections, topConcepts, tips: tips.slice(0, 5), notAnsweredCount };
+    };
+
+    // Prefer the AI-generated recommendation (grounded in this student's
+    // actual answers, computed server-side and cached on the result) — it's
+    // far more accurate than the client-side heuristic below, which only
+    // kicks in as a fallback if the AI call hasn't completed/succeeded yet.
+    const aiRecommendation = detailedResult.overallRecommendation;
+    const recommendation = aiRecommendation
+      ? {
+          tone: aiRecommendation.tone || 'success',
+          headline: aiRecommendation.headline,
+          weakSections: (aiRecommendation.focusAreas || []).map(f => ({
+            name: String(f.name || '').replace(/^section\s*/i, '').trim() || f.name,
+            pct: f.pct
+          })),
+          topConcepts: aiRecommendation.topConcepts || [],
+          tips: aiRecommendation.tips || [],
+          isAiGenerated: true
+        }
+      : { ...buildRecommendation(), isAiGenerated: false };
+
     return (
       <StudentLayout>
-        <Container maxWidth="lg" sx={{ mb: 8 }}>
+        <Container maxWidth="lg" sx={{ mb: { xs: 4, sm: 8 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
           {/* ── Header ── */}
           <Grow in={true} timeout={600}>
             <Paper elevation={0} sx={{
-              p: { xs: 2.5, sm: 3.5 }, mb: 3, borderRadius: 3,
-              background: 'linear-gradient(135deg, #0D406C 0%, #1565c0 60%, #0CBD73 100%)',
+              p: { xs: 2, sm: 3.5 }, mb: { xs: 2, sm: 3 }, borderRadius: 3,
+              background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 50%, ${theme.palette.secondary.main} 100%)`,
               color: 'white'
             }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' },
-                flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-                <Box>
-                  <Typography variant="h5" fontWeight={800} sx={{ mb: 0.5 }}>
+                flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1.5, sm: 2 } }}>
+                <Box sx={{ minWidth: 0, width: '100%' }}>
+                  <Typography variant="h5" fontWeight={800} sx={{ mb: 0.5, fontSize: { xs: '1.15rem', sm: '1.5rem' }, wordBreak: 'break-word' }}>
                     {detailedResult.exam?.title || 'Exam Result'}
                   </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                  <Typography variant="body2" sx={{ opacity: 0.85, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                     Completed on {formatDate(detailedResult.endTime)}
                     {timeTaken !== null && ` · ${timeTaken} min taken`}
                   </Typography>
                 </Box>
-                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                <Box sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: { xs: 1, sm: 1.5 },
+                  width: { xs: '100%', sm: 'auto' }
+                }}>
                   <Button variant="contained" onClick={() => navigate('/student/results')}
-                    startIcon={<ArrowBack />}
-                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700 }}>
+                    startIcon={<ArrowBack />} size={isMobile ? 'small' : 'medium'}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>
                     All Results
                   </Button>
-                  <Button variant="contained" component={RouterLink} to="/student/dashboard"
-                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700 }}>
+                  <Button variant="contained" component={RouterLink} to="/student/dashboard" size={isMobile ? 'small' : 'medium'}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>
                     Dashboard
                   </Button>
                   <Button variant="contained" onClick={() => { fetchMyReclamations(); setReclamationsDialogOpen(true); }}
-                    startIcon={<ReportProblem />}
-                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700 }}>
-                    My Reclamations
+                    startIcon={<ReportProblem />} size={isMobile ? 'small' : 'medium'}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>
+                    {isMobile ? 'Reclamations' : 'My Reclamations'}
                   </Button>
                   <Button variant="contained" onClick={() => setClaimDialogOpen(true)}
-                    startIcon={<ReportProblem />}
-                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700 }}>
+                    startIcon={<ReportProblem />} size={isMobile ? 'small' : 'medium'}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>
                     Claim Result
                   </Button>
                 </Box>
@@ -988,11 +1095,11 @@ const Results = () => {
           </Grow>
 
           {/* ── Summary Row ── */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid container spacing={{ xs: 1.5, sm: 2 }} sx={{ mb: { xs: 2, sm: 3 } }}>
             {/* Score card */}
             <Grid item xs={12} sm={4}>
               <Zoom in={true} style={{ transitionDelay: '100ms' }}>
-                <Card elevation={2} sx={{ borderRadius: 3, textAlign: 'center', p: 2.5 }}>
+                <Card elevation={2} sx={{ borderRadius: 3, textAlign: 'center', p: { xs: 2, sm: 2.5 } }}>
                   <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2, position: 'relative' }}>
                     <ScoreCircle score={percentage}>
                       <Typography variant="h4" fontWeight={800}>{percentage}%</Typography>
@@ -1011,7 +1118,7 @@ const Results = () => {
             {/* Stats */}
             <Grid item xs={12} sm={4}>
               <Zoom in={true} style={{ transitionDelay: '200ms' }}>
-                <Card elevation={2} sx={{ borderRadius: 3, p: 2.5, height: '100%' }}>
+                <Card elevation={2} sx={{ borderRadius: 3, p: { xs: 2, sm: 2.5 }, height: '100%' }}>
                   <Typography variant="subtitle2" fontWeight={700} color="text.secondary" gutterBottom>Performance Stats</Typography>
                   <Divider sx={{ mb: 1.5 }} />
                   {[
@@ -1035,7 +1142,7 @@ const Results = () => {
             {/* Time & meta */}
             <Grid item xs={12} sm={4}>
               <Zoom in={true} style={{ transitionDelay: '300ms' }}>
-                <Card elevation={2} sx={{ borderRadius: 3, p: 2.5, height: '100%' }}>
+                <Card elevation={2} sx={{ borderRadius: 3, p: { xs: 2, sm: 2.5 }, height: '100%' }}>
                   <Typography variant="subtitle2" fontWeight={700} color="text.secondary" gutterBottom>Exam Info</Typography>
                   <Divider sx={{ mb: 1.5 }} />
                   {[
@@ -1054,22 +1161,101 @@ const Results = () => {
             </Grid>
           </Grid>
 
+          {/* ── Overall Recommendation ── */}
+          <Zoom in={true} style={{ transitionDelay: '350ms' }}>
+            <Paper elevation={2} sx={{
+              borderRadius: 3, mb: { xs: 2, sm: 3 }, p: { xs: 2, sm: 3 }, position: 'relative', overflow: 'hidden',
+              border: '1.5px solid',
+              borderColor: `${recommendation.tone}.light`,
+              bgcolor: alpha(theme.palette[recommendation.tone].main, 0.04)
+            }}>
+              <Box sx={{
+                position: 'absolute', top: 0, left: 0, width: 5, height: '100%',
+                bgcolor: `${recommendation.tone}.main`
+              }} />
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1.5, sm: 2 } }}>
+                <Box sx={{
+                  width: { xs: 40, sm: 48 }, height: { xs: 40, sm: 48 }, borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  bgcolor: alpha(theme.palette[recommendation.tone].main, 0.12)
+                }}>
+                  <Psychology sx={{ color: `${recommendation.tone}.main`, fontSize: { xs: 22, sm: 26 } }} />
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
+                    <Typography variant="subtitle1" fontWeight={800} sx={{ fontSize: { xs: '0.95rem', sm: '1.05rem' } }}>
+                      Your Personalized Recommendation
+                    </Typography>
+                    {recommendation.isAiGenerated ? (
+                      <Chip label="AI-generated" size="small" color={recommendation.tone}
+                        sx={{ height: 18, fontSize: 9.5, fontWeight: 700 }} />
+                    ) : (
+                      <Chip label="Auto-generated" size="small" variant="outlined"
+                        sx={{ height: 18, fontSize: 9.5, fontWeight: 700 }} />
+                    )}
+                  </Box>
+                  <Typography variant="body2" sx={{ mb: 2, lineHeight: 1.6, color: 'text.secondary' }}>
+                    {recommendation.headline}
+                  </Typography>
+
+                  {recommendation.weakSections.length > 0 && (
+                    <Box sx={{ mb: 1.5 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, color: 'text.secondary', mb: 0.75 }}>
+                        Focus Areas
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                        {recommendation.weakSections.map(s => (
+                          <Chip key={s.name} label={`Section ${s.name} — ${s.pct}%`} size="small" color="warning"
+                            sx={{ fontWeight: 700 }} />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {recommendation.topConcepts.length > 0 && (
+                    <Box sx={{ mb: 1.5 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, color: 'text.secondary', mb: 0.75 }}>
+                        Concepts to Review
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                        {recommendation.topConcepts.map((c, i) => (
+                          <Chip key={i} label={c} size="small" variant="outlined" color="error" />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  <Typography sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, color: 'text.secondary', mb: 0.75 }}>
+                    What to do next
+                  </Typography>
+                  <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                    {recommendation.tips.map((tip, i) => (
+                      <Typography key={i} component="li" variant="body2" sx={{ mb: 0.5, lineHeight: 1.6 }}>
+                        {tip}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Box>
+              </Box>
+            </Paper>
+          </Zoom>
+
           {/* ── Answers by Section ── */}
           <Zoom in={true} style={{ transitionDelay: '400ms' }}>
             <Card elevation={2} sx={{ borderRadius: 3 }}>
               <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                <Tabs value={tabValue} onChange={handleTabChange} variant={allSections.length > 4 ? 'scrollable' : 'fullWidth'}
-                  scrollButtons="auto" indicatorColor="primary" textColor="primary">
+                <Tabs value={tabValue} onChange={handleTabChange} variant={isMobile || allSections.length > 4 ? 'scrollable' : 'fullWidth'}
+                  scrollButtons="auto" allowScrollButtonsMobile indicatorColor="primary" textColor="primary">
                   {examSections.map((section, idx) => {
-                    const sectionAnswers = detailedResult.answers.filter(a => 
+                    const sectionAnswers = detailedResult.answers.filter(a =>
                       a.question && String(a.question.section || 'A') === String(section.name || 'A')
                     );
                     const sCorrect = sectionAnswers.filter(a => a.isCorrect).length;
                     return (
-                      <Tab key={section.name || idx} label={
+                      <Tab key={section.name || idx} sx={{ minWidth: { xs: 88, sm: 120 }, px: { xs: 1.5, sm: 2 } }} label={
                         <Box sx={{ textAlign: 'center' }}>
-                          <Typography variant="caption" fontWeight={700}>Section {section.name || 'A'}</Typography>
-                          <Typography variant="caption" display="block" color={sCorrect === sectionAnswers.length ? 'success.main' : 'text.secondary'}>
+                          <Typography variant="caption" fontWeight={700} sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>Section {section.name || 'A'}</Typography>
+                          <Typography variant="caption" display="block" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }} color={sCorrect === sectionAnswers.length ? 'success.main' : 'text.secondary'}>
                             {sCorrect}/{sectionAnswers.length}
                           </Typography>
                         </Box>
@@ -1119,7 +1305,7 @@ const Results = () => {
                                 borderColor: answer.isCorrect ? 'success.light' : isPartial ? 'warning.light' : 'error.light',
                                 '&:before': { display: 'none' }, '&.Mui-expanded': { margin: '0 0 12px 0 !important' } }}>
                               <AccordionSummary expandIcon={<ExpandMore />} sx={{
-                                bgcolor: answer.isCorrect ? alpha('#2e7d32', 0.05) : isPartial ? alpha('#e65100', 0.05) : alpha('#d32f2f', 0.05),
+                                bgcolor: answer.isCorrect ? alpha(theme.palette.success.main, 0.05) : isPartial ? alpha('#e65100', 0.05) : alpha(theme.palette.error.main, 0.05),
                                 px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.25 } }}>
                                 <Box sx={{ display: 'flex', alignItems: 'flex-start', width: '100%', gap: 1 }}>
                                   {answer.isCorrect
@@ -1167,7 +1353,7 @@ const Results = () => {
         </Container>
 
         {/* Claim Dialog */}
-        <Dialog open={claimDialogOpen} onClose={() => setClaimDialogOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={claimDialogOpen} onClose={() => setClaimDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
           <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
             <ReportProblem color="warning" />
             Submit a Reclamation
@@ -1208,7 +1394,7 @@ const Results = () => {
               sx={{ mb: 1 }}
             />
           </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 2.5 } }}>
             <Button onClick={() => setClaimDialogOpen(false)} sx={{ textTransform: 'none', fontWeight: 600 }}>
               Cancel
             </Button>
@@ -1224,7 +1410,7 @@ const Results = () => {
         </Dialog>
 
         {/* My Reclamations Dialog */}
-        <Dialog open={reclamationsDialogOpen} onClose={() => setReclamationsDialogOpen(false)} maxWidth="md" fullWidth>
+        <Dialog open={reclamationsDialogOpen} onClose={() => setReclamationsDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
           <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
             <ReportProblem color="info" />
             My Reclamations
@@ -1289,14 +1475,14 @@ const Results = () => {
   // Show list of all results
   return (
     <StudentLayout>
-      <Container maxWidth="lg" sx={{ mb: { xs: 4, sm: 6, md: 8 }, mt: { xs: 3, sm: 4, md: 5 }, px: { xs: 1, sm: 2, md: 3 } }}>
+      <Container maxWidth="lg" sx={{ mb: { xs: 4, sm: 6, md: 8 }, mt: { xs: 2, sm: 4, md: 5 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
         <Grow in={true} timeout={800}>
           <Paper
             elevation={0}
             sx={{
-              p: { xs: 4, sm: 5, md: 6 },
-              mb: { xs: 3, sm: 4 },
-              borderRadius: { xs: 4, md: 6 },
+              p: { xs: 2.5, sm: 5, md: 6 },
+              mb: { xs: 2.5, sm: 4 },
+              borderRadius: { xs: 3, md: 6 },
               background: `linear-gradient(135deg,
                 ${theme.palette.primary.dark} 0%,
                 ${theme.palette.primary.main} 50%,
@@ -1357,15 +1543,16 @@ const Results = () => {
               justifyContent: 'space-between',
               alignItems: { xs: 'flex-start', sm: 'center' },
               flexDirection: { xs: 'column', sm: 'row' },
-              gap: { xs: 3, sm: 2 },
+              gap: { xs: 2, sm: 2 },
               position: 'relative',
               zIndex: 1
             }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
                 <Avatar
                   sx={{
-                    width: { xs: 60, sm: 70 },
-                    height: { xs: 60, sm: 70 },
+                    width: { xs: 48, sm: 70 },
+                    height: { xs: 48, sm: 70 },
+                    flexShrink: 0,
                     bgcolor: 'rgba(255,255,255,0.2)',
                     border: '3px solid rgba(255,255,255,0.3)',
                     animation: 'resultsIconFloat 6s ease-in-out infinite',
@@ -1375,21 +1562,21 @@ const Results = () => {
                     }
                   }}
                 >
-                  <EmojiEvents sx={{ fontSize: { xs: '2rem', sm: '2.5rem' }, color: 'white' }} />
+                  <EmojiEvents sx={{ fontSize: { xs: '1.5rem', sm: '2.5rem' }, color: 'white' }} />
                 </Avatar>
 
-                <Box>
+                <Box sx={{ minWidth: 0 }}>
                   <Typography
                     variant="h3"
                     component="h1"
                     fontWeight="bold"
                     sx={{
-                      fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
+                      fontSize: { xs: '1.4rem', sm: '2.5rem', md: '3rem' },
                       background: 'linear-gradient(135deg, #ffffff 0%, #f0f0f0 50%, #ffffff 100%)',
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
                       backgroundClip: 'text',
-                      mb: 1,
+                      mb: { xs: 0.5, sm: 1 },
                       letterSpacing: '-0.02em',
                       position: 'relative',
                       '&::after': {
@@ -1410,7 +1597,7 @@ const Results = () => {
                     variant="h6"
                     sx={{
                       color: 'rgba(255,255,255,0.9)',
-                      fontSize: { xs: '1rem', sm: '1.2rem' },
+                      fontSize: { xs: '0.8rem', sm: '1.2rem' },
                       fontWeight: 'medium'
                     }}
                   >
@@ -1419,37 +1606,41 @@ const Results = () => {
                 </Box>
               </Box>
 
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Chip
-                  icon={<TrendingUp />}
-                  label="Performance Analytics"
-                  sx={{
-                    bgcolor: 'rgba(255,255,255,0.2)',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.3)'
-                    }
-                  }}
-                />
-                <Chip
-                  icon={<AutoGraph />}
-                  label="Detailed Insights"
-                  sx={{
-                    bgcolor: 'rgba(255,255,255,0.2)',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.3)'
-                    }
-                  }}
-                />
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>
+                <Box sx={{ display: { xs: 'none', sm: 'flex' }, gap: 1, flexWrap: 'wrap' }}>
+                  <Chip
+                    icon={<TrendingUp />}
+                    label="Performance Analytics"
+                    sx={{
+                      bgcolor: 'rgba(255,255,255,0.2)',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.3)'
+                      }
+                    }}
+                  />
+                  <Chip
+                    icon={<AutoGraph />}
+                    label="Detailed Insights"
+                    sx={{
+                      bgcolor: 'rgba(255,255,255,0.2)',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.3)'
+                      }
+                    }}
+                  />
+                </Box>
                 <Button
                   variant="contained"
                   onClick={() => { fetchMyReclamations(); setReclamationsDialogOpen(true); }}
                   startIcon={<ReportProblem />}
+                  fullWidth={isMobile}
+                  size={isMobile ? 'small' : 'medium'}
                   sx={{
                     bgcolor: 'rgba(255,255,255,0.2)',
                     color: 'white',
@@ -1533,8 +1724,8 @@ const Results = () => {
                       }}
                     />
 
-                    <CardContent sx={{ flexGrow: 1, pt: 4, px: 3, position: 'relative', zIndex: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
+                    <CardContent sx={{ flexGrow: 1, pt: { xs: 2.5, sm: 4 }, px: { xs: 2, sm: 3 }, position: 'relative', zIndex: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: { xs: 2, sm: 3 } }}>
                         <Box sx={{ flex: 1, mr: 2 }}>
                           <Typography
                             variant="h6"
@@ -1635,22 +1826,23 @@ const Results = () => {
                         </Box>
                       </Box>
 
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[100], 0.5) }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: { xs: 2, sm: 3 }, p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[100], 0.5) }}>
                         <Avatar
                           sx={{
                             width: 32,
                             height: 32,
                             bgcolor: theme.palette.info.main,
-                            mr: 1.5
+                            mr: 1.5,
+                            flexShrink: 0
                           }}
                         >
                           <AccessTime sx={{ fontSize: '1rem' }} />
                         </Avatar>
-                        <Box sx={{ flex: 1 }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', fontWeight: 'medium' }}>
                             Completed on {formatDate(result.endTime)}
                           </Typography>
-                          <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+                          <Box sx={{ display: 'flex', gap: { xs: 1, sm: 2 }, mt: 0.5, flexWrap: 'wrap' }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                               <strong>Time:</strong> {result.exam?.timeLimit || 'N/A'} min
                             </Typography>
@@ -1747,7 +1939,7 @@ const Results = () => {
 
                     <Divider sx={{ opacity: 0.3 }} />
 
-                    <Box sx={{ p: 3 }}>
+                    <Box sx={{ p: { xs: 2, sm: 3 } }}>
                       <Button
                         variant="contained"
                         color="primary"
@@ -1798,7 +1990,7 @@ const Results = () => {
           <Paper
             elevation={8}
             sx={{
-              p: { xs: 4, sm: 6, md: 8 },
+              p: { xs: 3, sm: 6, md: 8 },
               textAlign: 'center',
               borderRadius: 4,
               background: `linear-gradient(135deg,
@@ -1880,13 +2072,14 @@ const Results = () => {
               You haven't completed any exams yet. Start taking exams to see your performance analytics and detailed results here.
             </Typography>
 
-            <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+            <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' }, width: { xs: '100%', sm: 'auto' } }}>
               <Button
                 variant="contained"
                 color="primary"
                 component={RouterLink}
                 to="/student/exams"
                 size="large"
+                fullWidth={isMobile}
                 startIcon={<School />}
                 sx={{
                   px: 4,
@@ -1911,6 +2104,7 @@ const Results = () => {
                 component={RouterLink}
                 to="/student/dashboard"
                 size="large"
+                fullWidth={isMobile}
                 startIcon={<TrendingUp />}
                 sx={{
                   px: 4,

@@ -23,8 +23,10 @@ import {
   InputLabel,
   Pagination,
   useTheme,
+  useMediaQuery,
   Tooltip,
   Avatar,
+  Paper,
   LinearProgress,
   Badge
 } from '@mui/material';
@@ -117,6 +119,7 @@ const ExamCard = styled(Card, {
 
 const Exams = () => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { mode } = useThemeMode();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -127,6 +130,8 @@ const Exams = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortBy, setSortBy] = useState('date');
   const [page, setPage] = useState(1);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const examsPerPage = 6;
 
   useEffect(() => {
@@ -144,7 +149,19 @@ const Exams = () => {
       }
     };
 
+    const fetchSubscription = async () => {
+      try {
+        const response = await api.get('/subscriptions/my/active');
+        setHasActiveSubscription(!!response.data);
+      } catch (err) {
+        console.error('Error fetching subscription status:', err);
+      } finally {
+        setSubscriptionLoading(false);
+      }
+    };
+
     fetchExams();
+    fetchSubscription();
   }, []);
 
   // Filter and sort exams
@@ -250,22 +267,36 @@ const Exams = () => {
 
   return (
     <StudentLayout>
-      <Container maxWidth="lg" sx={{ mb: 8 }}>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
-            Available Exams
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Showing exams for your level: {user?.level?.name || 'Not selected'}{user?.subLevel ? ` — ${user.subLevel}` : ''}
-          </Typography>
-        </Box>
+      <Container maxWidth="lg" sx={{ mb: 8, px: { xs: 1.5, sm: 2, md: 3 } }}>
+        <Paper elevation={0} sx={{
+          p: { xs: 2.5, sm: 3.5 }, mb: 3, borderRadius: 3,
+          background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 50%, ${theme.palette.secondary.main} 100%)`,
+          color: 'white', overflow: 'hidden', position: 'relative'
+        }}>
+          <Box sx={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160,
+            borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%)' }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 }, position: 'relative' }}>
+            <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: { xs: 44, sm: 52 }, height: { xs: 44, sm: 52 }, flexShrink: 0 }}>
+              <School sx={{ fontSize: { xs: '1.4rem', sm: '1.8rem' } }} />
+            </Avatar>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography fontWeight={800} sx={{ fontSize: { xs: '1.4rem', sm: '1.8rem' }, lineHeight: 1.2 }}>
+                Available Exams
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.25 }}>
+                Showing exams for your level: {user?.level?.name || 'Not selected'}{user?.subLevel ? ` — ${user.subLevel}` : ''}
+              </Typography>
+            </Box>
+          </Box>
+        </Paper>
 
-        {exams.some(
-          (e) => e.accessType === 'subscription' && e.accessUnlocked === false
-        ) && (
-
+        {/* Show whenever the student has used up their free exam and has no
+            active subscription — independent of whether any specific exam
+            in the current list happens to be locked, so the nudge is
+            reliable even if the list is empty or has no locked exams shown. */}
+        {!subscriptionLoading && user?.freeExamUsed && !hasActiveSubscription && (
           <Alert
-            severity={user?.freeExamUsed ? 'warning' : 'info'}
+            severity="warning"
             sx={{ mb: 3, borderRadius: 2 }}
             action={
               <Button
@@ -278,17 +309,30 @@ const Exams = () => {
               </Button>
             }
           >
-            {/* Only show subscription prompts when some exams are actually locked */}
-            {user?.freeExamUsed ? (
-              <>
-                <strong>Your free exam has been used.</strong> You need an active subscription to access more exams for your level.
-              </>
-            ) : (
-              <>
-                You have <strong>1 free exam</strong> available. Subscribe to unlock every exam in this level.
-              </>
-            )}
+            <strong>Your free exam has been used.</strong> Subscribe to unlock more exams for your level.
+          </Alert>
+        )}
 
+        {/* Otherwise, still nudge if some exams in the list are locked (e.g.
+            student hasn't used their free exam yet but can see paid content). */}
+        {!(user?.freeExamUsed && !hasActiveSubscription) && exams.some(
+          (e) => e.accessType === 'subscription' && e.accessUnlocked === false
+        ) && (
+          <Alert
+            severity="info"
+            sx={{ mb: 3, borderRadius: 2 }}
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => navigate('/student/subscriptions')}
+                sx={{ fontWeight: 'bold' }}
+              >
+                Subscribe Now
+              </Button>
+            }
+          >
+            You have <strong>1 free exam</strong> available. Subscribe to unlock every exam in this level.
           </Alert>
         )}
 
@@ -351,6 +395,28 @@ const Exams = () => {
           </FormControl>
         </Box>
 
+        {/* Free / Subscription category explainers — shown once above the
+            grid rather than interleaved between the exam cards themselves. */}
+        {!loading && !error && displayedExams.some(e => e.accessType !== 'subscription') && (
+          <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }} icon={<CardMembership />}>
+            <strong>Free Exams</strong> — try one exam per level at no cost. Once you complete a free exam, it's used up; subscribe to unlock unlimited exams.
+          </Alert>
+        )}
+        {!loading && !error && displayedExams.some(e => e.accessType === 'subscription') && (
+          <Alert
+            severity="info"
+            sx={{ mb: 3, borderRadius: 2 }}
+            icon={<WorkspacePremium />}
+            action={
+              <Button color="inherit" size="small" onClick={() => navigate('/student/subscriptions')} sx={{ fontWeight: 'bold' }}>
+                Subscribe
+              </Button>
+            }
+          >
+            <strong>Subscription Exams</strong> — requires subscription to unlock.
+          </Alert>
+        )}
+
         {/* Exams Grid */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', my: 8 }}>
@@ -372,37 +438,9 @@ const Exams = () => {
         ) : (
           <>
             <Grid container spacing={3}>
-              {displayedExams.map((exam, idx) => {
-                const isFirstFree = idx === 0 && exam.accessType !== 'subscription';
-                const isFirstSubscription = exam.accessType === 'subscription' &&
-                  (idx === 0 || displayedExams[idx - 1].accessType !== 'subscription');
-
+              {displayedExams.map((exam) => {
                 return (
                 <React.Fragment key={exam._id}>
-                  {isFirstFree && (
-                    <Grid item xs={12}>
-                      <Alert severity="success" sx={{ borderRadius: 2 }} icon={<CardMembership />}>
-                        <strong>Free Exams</strong> — try one exam per level at no cost. Once you complete a free exam, it's used up; subscribe to unlock unlimited exams.
-                      </Alert>
-                    </Grid>
-                  )}
-                  {isFirstSubscription && (
-                    <Grid item xs={12}>
-                      <Alert
-                        severity="info"
-                        sx={{ borderRadius: 2 }}
-                        icon={<WorkspacePremium />}
-                        action={
-                          <Button color="inherit" size="small" onClick={() => navigate('/student/subscriptions')} sx={{ fontWeight: 'bold' }}>
-                            Subscribe
-                          </Button>
-                        }
-                      >
-                        <strong>Subscription Exams</strong> — requires subscription to unlock.
-
-                      </Alert>
-                    </Grid>
-                  )}
                 <Grid item xs={12} sm={6} md={4}>
                   <ExamCard
                     elevation={mode === 'dark' ? 8 : 3}

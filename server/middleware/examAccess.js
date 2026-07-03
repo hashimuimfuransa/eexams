@@ -71,6 +71,18 @@ const validateExamAccess = async (req, res, next) => {
 
     // If exam requires subscription, check subscription status
     if (exam.accessType === 'subscription') {
+      // An exam-scoped subscription (bought for this exam specifically)
+      // unlocks it regardless of whether the student also has a level plan.
+      const examSubscription = await Subscription.getActiveSubscriptionForExam(userId, exam._id);
+      if (examSubscription && examSubscription.isValid()) {
+        req.examAccess = {
+          type: 'subscription-exam',
+          canAccess: true,
+          subscription: examSubscription
+        };
+        return next();
+      }
+
       const subscription = await Subscription.getActiveSubscriptionForLevel(
         userId,
         user.level._id

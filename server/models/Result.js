@@ -221,6 +221,20 @@ const ResultSchema = new mongoose.Schema({
     enum: ['pending', 'in-progress', 'completed', 'failed'],
     default: 'pending'
   },
+  // AI-generated overall study recommendation, computed once (lazily, on first
+  // detail-view fetch) and cached here so repeat views don't re-call the AI.
+  overallRecommendation: {
+    headline: { type: String },
+    tone: { type: String, enum: ['success', 'warning', 'error'] },
+    focusAreas: [{
+      name: { type: String },
+      pct: { type: Number },
+      _id: false
+    }],
+    topConcepts: [{ type: String }],
+    tips: [{ type: String }],
+    generatedAt: { type: Date }
+  },
   createdAt: {
     type: Date,
     default: Date.now

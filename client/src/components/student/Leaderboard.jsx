@@ -150,11 +150,11 @@ const Leaderboard = () => {
           <Box key={entry.id || idx} sx={{
             display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 2 },
             px: { xs: 1, sm: 2 }, py: { xs: 0.9, sm: 1.25 }, borderRadius: 2, mb: 0.75,
-            bgcolor: entry.isCurrentUser ? alpha('#0D406C', 0.09) : idx % 2 === 0 ? 'grey.50' : 'white',
+            bgcolor: entry.isCurrentUser ? alpha(theme.palette.primary.main, 0.09) : idx % 2 === 0 ? 'grey.50' : 'white',
             border: entry.isCurrentUser ? '2px solid' : '1px solid transparent',
             borderColor: entry.isCurrentUser ? 'primary.main' : 'transparent',
             transition: 'all 0.15s ease',
-            '&:hover': { bgcolor: entry.isCurrentUser ? alpha('#0D406C', 0.13) : 'grey.100' }
+            '&:hover': { bgcolor: entry.isCurrentUser ? alpha(theme.palette.primary.main, 0.13) : 'grey.100' }
           }}>
             <RankBadge rank={entry.rank} small={isMobile} />
 
@@ -215,8 +215,8 @@ const Leaderboard = () => {
                 width: sz.avatar, height: sz.avatar, borderRadius: '50%', bgcolor: PODIUM_COLOR[rank],
                 display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 0.5,
                 fontSize: isMobile ? 16 : 22,
-                border: entry.isCurrentUser ? '3px solid #0D406C' : '2px solid white',
-                boxShadow: entry.isCurrentUser ? '0 0 0 3px #0D406C' : '0 2px 8px rgba(0,0,0,0.2)'
+                border: entry.isCurrentUser ? `3px solid ${theme.palette.primary.main}` : '2px solid white',
+                boxShadow: entry.isCurrentUser ? `0 0 0 3px ${theme.palette.primary.main}` : '0 2px 8px rgba(0,0,0,0.2)'
               }}>
                 {MEDAL[rank]}
               </Box>
@@ -263,7 +263,7 @@ const Leaderboard = () => {
         <Grow in={true} timeout={500}>
           <Paper elevation={0} sx={{
             p: { xs: 2.5, sm: 3.5 }, mb: 3, borderRadius: 3,
-            background: 'linear-gradient(135deg, #0D406C 0%, #1565c0 60%, #0CBD73 100%)',
+            background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 50%, ${theme.palette.secondary.main} 100%)`,
             color: 'white'
           }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' },
@@ -309,7 +309,7 @@ const Leaderboard = () => {
                 {myClassEntry && (
                   <Grid item xs={6} sm={4}>
                     <Card elevation={2} sx={{ borderRadius: 2, p: { xs: 1.5, sm: 2 }, textAlign: 'center',
-                      background: alpha('#0D406C', 0.06), border: '1.5px solid', borderColor: 'primary.light' }}>
+                      background: alpha(theme.palette.primary.main, 0.06), border: '1.5px solid', borderColor: 'primary.light' }}>
                       <Typography variant="caption" color="text.secondary" fontWeight={700}
                         sx={{ textTransform: 'uppercase', fontSize: { xs: 9, sm: 11 } }}>
                         Class Rank

@@ -195,7 +195,7 @@ const History = () => {
         {/* ── Header ── */}
         <Paper elevation={0} sx={{
           p: { xs: 2.5, sm: 3.5 }, mb: 3, borderRadius: 3,
-          background: `linear-gradient(135deg, ${theme.palette.secondary.dark} 0%, ${theme.palette.secondary.main} 60%, ${theme.palette.info.main} 100%)`,
+          background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 50%, ${theme.palette.secondary.main} 100%)`,
           color: 'white', overflow: 'hidden', position: 'relative'
         }}>
           <Box sx={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160,
@@ -235,10 +235,10 @@ const History = () => {
         {/* ── Stats Row ── */}
         <Grid container spacing={1.5} sx={{ mb: 3 }}>
           {[
-            { label: 'Completed', value: completedCount, color: 'success.main', bgcolor: alpha('#2e7d32', 0.08), icon: <CheckCircle sx={{ fontSize: 20 }} /> },
+            { label: 'Completed', value: completedCount, color: 'success.main', bgcolor: alpha(theme.palette.success.main, 0.08), icon: <CheckCircle sx={{ fontSize: 20 }} /> },
             { label: 'Passed', value: passedCount, color: '#e65100', bgcolor: alpha('#e65100', 0.08), icon: <EmojiEvents sx={{ fontSize: 20 }} /> },
-            { label: 'In Progress', value: inProgressCount, color: 'warning.main', bgcolor: alpha('#ed6c02', 0.08), icon: <AccessTime sx={{ fontSize: 20 }} /> },
-            { label: 'Available', value: availableCount, color: 'primary.main', bgcolor: alpha('#0D406C', 0.08), icon: <School sx={{ fontSize: 20 }} /> },
+            { label: 'In Progress', value: inProgressCount, color: 'warning.main', bgcolor: alpha(theme.palette.warning.main, 0.08), icon: <AccessTime sx={{ fontSize: 20 }} /> },
+            { label: 'Available', value: availableCount, color: 'primary.main', bgcolor: alpha(theme.palette.primary.main, 0.08), icon: <School sx={{ fontSize: 20 }} /> },
           ].map(stat => (
             <Grid item xs={6} sm={3} key={stat.label}>
               <Card elevation={1} sx={{ borderRadius: 2.5, p: { xs: 1.5, sm: 2 }, bgcolor: stat.bgcolor,
@@ -296,13 +296,13 @@ const History = () => {
                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
                           <Avatar sx={{
                             width: { xs: 36, sm: 42 }, height: { xs: 36, sm: 42 },
-                            bgcolor: dotColor, boxShadow: `0 0 0 3px white, 0 0 0 4px ${alpha(dotColor === 'success.main' ? '#2e7d32' : dotColor === 'warning.main' ? '#ed6c02' : dotColor === 'error.main' ? '#d32f2f' : '#0D406C', 0.25)}`
+                            bgcolor: dotColor, boxShadow: `0 0 0 3px white, 0 0 0 4px ${alpha(dotColor === 'success.main' ? theme.palette.success.main : dotColor === 'warning.main' ? theme.palette.warning.main : dotColor === 'error.main' ? theme.palette.error.main : theme.palette.primary.main, 0.25)}`
                           }}>
                             {getItemIcon(item)}
                           </Avatar>
                           {!isLast && (
                             <Box sx={{ width: 2, flex: 1, minHeight: 20, mt: 0.5,
-                              background: `linear-gradient(to bottom, ${alpha('#0D406C', 0.2)}, ${alpha('#0D406C', 0.05)})` }} />
+                              background: `linear-gradient(to bottom, ${alpha(theme.palette.primary.main, 0.2)}, ${alpha(theme.palette.primary.main, 0.05)})` }} />
                           )}
                         </Box>
 
@@ -312,8 +312,8 @@ const History = () => {
                             p: { xs: 1.5, sm: 2 }, borderRadius: 2.5,
                             border: '1px solid', borderColor: 'divider',
                             bgcolor: isResult
-                              ? (pct >= 70 ? alpha('#2e7d32', 0.04) : alpha('#d32f2f', 0.04))
-                              : item.status === 'in-progress' ? alpha('#ed6c02', 0.04) : 'background.paper',
+                              ? (pct >= 70 ? alpha(theme.palette.success.main, 0.04) : alpha(theme.palette.error.main, 0.04))
+                              : item.status === 'in-progress' ? alpha(theme.palette.warning.main, 0.04) : 'background.paper',
                             transition: 'box-shadow 0.2s',
                             '&:hover': { boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }
                           }}>
@@ -335,7 +335,7 @@ const History = () => {
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.25 }}>
                               <Chip label={getItemLabel(item)} size="small"
                                 sx={{ height: 20, fontSize: 10, fontWeight: 700,
-                                  bgcolor: isResult ? (pct >= 70 ? alpha('#2e7d32', 0.12) : alpha('#d32f2f', 0.1)) : alpha('#0D406C', 0.1),
+                                  bgcolor: isResult ? (pct >= 70 ? alpha(theme.palette.success.main, 0.12) : alpha(theme.palette.error.main, 0.1)) : alpha(theme.palette.primary.main, 0.1),
                                   color: isResult ? (pct >= 70 ? 'success.dark' : 'error.dark') : 'primary.dark' }} />
                               {isResult && pct !== null && (
                                 <Chip label={`${pct}%`} size="small"

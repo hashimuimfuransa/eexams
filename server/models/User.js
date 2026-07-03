@@ -142,6 +142,12 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Identifies the token issued by the most recent login. Used to detect
+  // and reject concurrent logins on paid accounts (account-sharing guard).
+  activeSessionId: {
+    type: String,
+    default: null
+  },
   isBlocked: {
     type: Boolean,
     default: false

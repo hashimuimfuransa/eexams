@@ -20,10 +20,19 @@ const PendingPaymentSchema = new mongoose.Schema({
     ref: 'SubscriptionPlan',
     required: function() { return !this.organizationPlan && !this.individualPlan; }
   },
+  // Required for level-type `plan` purchases; null for exam-type plans
+  // (see `exam` below) and account-tier plans.
   level: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Level',
-    required: function() { return !this.organizationPlan && !this.individualPlan; }
+    required: function() { return !this.organizationPlan && !this.individualPlan && !this.exam; }
+  },
+  // Set when `plan` is an exam-type SubscriptionPlan — the specific exam
+  // being purchased access to.
+  exam: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Exam',
+    default: null
   },
   organizationPlan: {
     type: mongoose.Schema.Types.ObjectId,

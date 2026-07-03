@@ -194,6 +194,16 @@ const Login = () => {
     }
   }, [navigate]);
 
+  // Show a message if we were redirected here because the account was
+  // signed in from another device (single-active-session guard).
+  useEffect(() => {
+    const authMessage = localStorage.getItem('authMessage');
+    if (authMessage) {
+      setSnackbar({ open: true, message: authMessage, severity: 'warning' });
+      localStorage.removeItem('authMessage');
+    }
+  }, []);
+
   useEffect(() => {
     const storedLockoutEnd = localStorage.getItem('loginLockoutEnd');
     const storedFailedAttempts = localStorage.getItem('loginFailedAttempts');

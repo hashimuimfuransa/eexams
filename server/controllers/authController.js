@@ -17,8 +17,8 @@ if (process.env.SENDGRID_API_KEY) {
 }
 
 // Generate JWT token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (id, sessionId) => {
+  return jwt.sign({ id, sessionId }, process.env.JWT_SECRET, {
     expiresIn: '30d'
   });
 };
@@ -153,6 +153,7 @@ const register = async (req, res) => {
     }
 
     // Create user - only include email/phone if they are provided and not empty
+    const sessionId = crypto.randomUUID();
     const userData = {
       password,
       firstName,
@@ -162,7 +163,8 @@ const register = async (req, res) => {
       subscriptionPlan: finalSubscriptionPlan,
       subscriptionStatus,
       subscriptionExpiresAt,
-      signinMethod: (phone && phone.trim() && (!email || !email.trim())) ? 'phone' : 'email'
+      signinMethod: (phone && phone.trim() && (!email || !email.trim())) ? 'phone' : 'email',
+      activeSessionId: sessionId
     };
 
     console.log('[Register] Signin method set to:', userData.signinMethod, 'for phone:', phone, 'email:', email);
@@ -197,7 +199,7 @@ const register = async (req, res) => {
       });
 
       // Generate token
-      const token = generateToken(user._id);
+      const token = generateToken(user._id, sessionId);
 
       const responseData = {
         _id: user._id,
@@ -319,7 +321,8 @@ const login = async (req, res) => {
     }
 
     // Generate token immediately after successful authentication
-    const token = generateToken(user._id);
+    const sessionId = crypto.randomUUID();
+    const token = generateToken(user._id, sessionId);
 
     // For org teachers: resolve effective plan/status from their parent admin
     let effectivePlan = user.subscriptionPlan || 'free';
@@ -363,10 +366,13 @@ const login = async (req, res) => {
     // Send response immediately - don't wait for lastLogin update
     res.json(responseData);
 
-    // Update last login time asynchronously (non-blocking)
+    // Update last login time + active session asynchronously (non-blocking).
+    // Overwriting activeSessionId here is what kicks out any previous
+    // session on this account once the cache for it is invalidated.
     setImmediate(async () => {
       try {
-        await User.findByIdAndUpdate(user._id, { lastLogin: Date.now() }, { lean: true });
+        await User.findByIdAndUpdate(user._id, { lastLogin: Date.now(), activeSessionId: sessionId }, { lean: true });
+        await invalidateUserCache(user._id);
       } catch (updateError) {
         console.error('Last login update error:', updateError);
         // Don't fail the login for this
@@ -667,10 +673,16 @@ const googleAuth = async (req, res) => {
         needsSave = true;
       }
 
+      // Rotate the session on every Google login too, same as password login
+      const sessionId = crypto.randomUUID();
+      user.activeSessionId = sessionId;
+      needsSave = true;
+
       if (needsSave) await user.save();
+      await invalidateUserCache(user._id);
 
       // Generate token
-      const token = generateToken(user._id);
+      const token = generateToken(user._id, sessionId);
 
       const responseData = {
         _id: user._id,
@@ -729,6 +741,7 @@ const googleAuth = async (req, res) => {
     }
 
     // Create new user
+    const newUserSessionId = crypto.randomUUID();
     const userData = {
       email,
       googleId,
@@ -742,7 +755,8 @@ const googleAuth = async (req, res) => {
       role: finalRole,
       subscriptionPlan: finalSubscriptionPlan,
       subscriptionStatus,
-      subscriptionExpiresAt
+      subscriptionExpiresAt,
+      activeSessionId: newUserSessionId
     };
 
     // Add organization only for organization accounts
@@ -753,7 +767,7 @@ const googleAuth = async (req, res) => {
     user = await User.create(userData);
 
     // Generate token
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, newUserSessionId);
 
     const responseData = {
       _id: user._id,
@@ -981,9 +995,26 @@ const selectLevel = async (req, res) => {
   }
 };
 
+// @desc    Log out the current session (clears the active-session marker so
+//          a previous device isn't left in limbo when this user logs in
+//          elsewhere, and so the token can no longer pass the session check)
+// @route   POST /api/auth/logout
+// @access  Private
+const logout = async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, { activeSessionId: null });
+    await invalidateUserCache(req.user._id);
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   register,
   login,
+  logout,
   getProfile,
   selectLevel,
   updateProfile,

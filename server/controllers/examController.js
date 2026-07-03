@@ -649,6 +649,11 @@ const getExamById = async (req, res) => {
           }
 
           if (exam.accessType === 'subscription') {
+            const examSubscription = await Subscription.getActiveSubscriptionForExam(req.user._id, exam._id);
+            if (examSubscription && examSubscription.isValid()) {
+              return null;
+            }
+
             const subscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
             if (!subscription || !subscription.isValid()) {
               return { isLocked: true, message: 'This exam requires an active subscription' };

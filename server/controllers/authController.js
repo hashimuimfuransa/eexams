@@ -712,6 +712,23 @@ const googleAuth = async (req, res) => {
       return res.json({ ...responseData, isNewUser: false });
     }
 
+    // No existing account for this Google identity. If this is a bare
+    // "Continue with Google" login check (no accountType/role supplied — the
+    // case used by the Login page just to detect new vs. returning users),
+    // do NOT create an account yet. The user must first choose an account
+    // type (teacher/organization/student) on the registration page; creating
+    // one here silently provisioned an active 'teacher' account before that
+    // choice was made, and the account type they picked afterwards was then
+    // ignored because the account already looked "complete".
+    if (!accountType && !role) {
+      return res.json({
+        isNewUser: true,
+        email,
+        firstName: firstName || email.split('@')[0],
+        lastName: lastName || (email ? email.split('@')[0] : 'User'),
+      });
+    }
+
     // New user - create account
     const isOrganization = accountType === 'organization';
 

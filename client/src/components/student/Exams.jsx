@@ -223,32 +223,6 @@ const Exams = () => {
     }
   };
 
-  // Function to get access type badge
-  const getAccessBadge = (exam) => {
-    if (exam.accessType === 'free') {
-      return (
-        <Chip
-          icon={<CardMembership />}
-          label="Free"
-          size="small"
-          color="success"
-          sx={{ fontWeight: 'bold' }}
-        />
-      );
-    } else if (exam.accessType === 'subscription') {
-      return (
-        <Chip
-          icon={<WorkspacePremium />}
-          label="Subscription"
-          size="small"
-          color="primary"
-          sx={{ fontWeight: 'bold' }}
-        />
-      );
-    }
-    return null;
-  };
-
   // Function to get status icon
   const getStatusIcon = (status, isLocked) => {
     if (isLocked) return <Lock />;
@@ -288,27 +262,67 @@ const Exams = () => {
               </Typography>
             </Box>
           </Box>
+
+          {/* Hero banner: one clean line explaining free vs. subscription access. */}
+          {!subscriptionLoading && (
+            <Box
+              sx={{
+                position: 'relative',
+                mt: 2.5,
+                pt: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 1.5,
+                borderTop: '1px solid rgba(255,255,255,0.25)'
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {hasActiveSubscription ? <WorkspacePremium fontSize="small" /> : <CardMembership fontSize="small" />}
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {hasActiveSubscription
+                    ? 'Your plan is active — every exam in your level is unlocked.'
+                    : 'Free exams are open to everyone. Subscribe to unlock the full library.'}
+                </Typography>
+              </Box>
+              {!hasActiveSubscription && (
+                <Button
+                  size="small"
+                  onClick={() => navigate('/student/subscriptions')}
+                  sx={{
+                    fontWeight: 'bold',
+                    color: theme.palette.primary.dark,
+                    bgcolor: 'white',
+                    borderRadius: '10px',
+                    px: 2,
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.85)' }
+                  }}
+                >
+                  View Plans
+                </Button>
+              )}
+            </Box>
+          )}
         </Paper>
 
-        {/* Nudge to subscribe if some subscription-only exams in the list are locked. */}
-        {exams.some(
-          (e) => e.accessType === 'subscription' && e.accessUnlocked === false
-        ) && (
+        {/* Nudge to select a level when none is set yet. */}
+        {!user?.level && (
           <Alert
-            severity="info"
+            severity="warning"
             sx={{ mb: 3, borderRadius: 2 }}
             action={
               <Button
                 color="inherit"
                 size="small"
-                onClick={() => navigate('/student/subscriptions')}
+                onClick={() => navigate('/student/profile')}
                 sx={{ fontWeight: 'bold' }}
               >
-                Subscribe Now
+                Select Level
               </Button>
             }
           >
-            Subscribe to unlock every exam in this level.
+            Select your education level to see exams for you.
           </Alert>
         )}
 
@@ -370,28 +384,6 @@ const Exams = () => {
             </Select>
           </FormControl>
         </Box>
-
-        {/* Free / Subscription category explainers — shown once above the
-            grid rather than interleaved between the exam cards themselves. */}
-        {!loading && !error && displayedExams.some(e => e.accessType !== 'subscription') && (
-          <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }} icon={<CardMembership />}>
-            <strong>Free Exams</strong> — take as many free exams as are available at no cost.
-          </Alert>
-        )}
-        {!loading && !error && displayedExams.some(e => e.accessType === 'subscription') && (
-          <Alert
-            severity="info"
-            sx={{ mb: 3, borderRadius: 2 }}
-            icon={<WorkspacePremium />}
-            action={
-              <Button color="inherit" size="small" onClick={() => navigate('/student/subscriptions')} sx={{ fontWeight: 'bold' }}>
-                Subscribe
-              </Button>
-            }
-          >
-            <strong>Subscription Exams</strong> — requires subscription to unlock.
-          </Alert>
-        )}
 
         {/* Exams Grid */}
         {loading ? (
@@ -554,9 +546,6 @@ const Exams = () => {
                           }
                         }}
                       />
-
-                      {/* Access Type Badge */}
-                      {getAccessBadge(exam)}
 
                       {/* Enhanced Selective Answering Badge */}
                       {exam.allowSelectiveAnswering && (
@@ -925,9 +914,7 @@ const Exams = () => {
                           })
                         }}
                       >
-                        {exam.isLocked
-                          ? (exam.accessUnlocked === false ? '🔒 Locked (Subscribe to Unlock)' : 'Exam Locked')
-                          : 'Start Exam'}
+                        {exam.isLocked ? '🔒 Locked' : 'Start Exam'}
 
                       </Button>
 

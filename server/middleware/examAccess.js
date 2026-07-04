@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Exam = require('../models/Exam');
 const Level = require('../models/Level');
 const ExamRequest = require('../models/ExamRequest');
+const SharedExam = require('../models/SharedExam');
 const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
 
 /**
@@ -35,6 +36,31 @@ const validateExamAccess = async (req, res, next) => {
 
     if (hasLegacyGrant) {
       req.examAccess = { type: 'legacy-grant', canAccess: true };
+      return next();
+    }
+
+    // A student who joined this exam via a teacher's public/private share
+    // link was explicitly let in through that flow (join password, invite,
+    // etc.) — that should also bypass level/sub-level/subscription gating,
+    // the same way a direct assignment does. Without this, students who
+    // haven't picked a level yet (or whose level doesn't match) get a 403
+    // on /exam/:id/start even though they were just allowed to join.
+    const hasShareGrant = !!(await SharedExam.exists({
+      exam: exam._id,
+      isActive: true,
+      students: {
+        $elemMatch: {
+          $or: [
+            { student: userId },
+            { studentId: userId },
+            ...(user.email ? [{ email: user.email.toLowerCase().trim() }] : [])
+          ]
+        }
+      }
+    }));
+
+    if (hasShareGrant) {
+      req.examAccess = { type: 'share-grant', canAccess: true };
       return next();
     }
 

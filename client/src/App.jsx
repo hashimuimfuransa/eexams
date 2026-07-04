@@ -118,7 +118,7 @@ function Hero({ mode, isAuthenticated, user }) {
   }, []);
 
   return (
-    <section id="home" style={{
+    <section id="home" className="hero-section" style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center',
       position: 'relative',
       background: isDark ? '#030712' : '#FFFFFF',
@@ -148,8 +148,8 @@ function Hero({ mode, isAuthenticated, user }) {
               letterSpacing: '-0.02em', marginBottom: 'clamp(16px, 4vw, 24px)',
               color: isDark ? '#E8F8F1' : '#0F172A',
             }}>
-              Exams that run<br />
-              <span style={{ color: '#0D406C' }}>smarter, not harder</span>
+              One platform.<br />
+              <span style={{ color: '#0CBD73' }}>Every exam, graded.</span>
             </h1>
 
             <p style={{
@@ -157,7 +157,7 @@ function Hero({ mode, isAuthenticated, user }) {
               color: isDark ? '#9DC4D9' : '#64748B',
               marginBottom: 'clamp(24px, 6vw, 40px)', maxWidth: 500,
             }}>
-              AI-powered grading, real-time analytics, and secure online exams — built for Rwanda's schools and universities.
+              AI grading, real-time analytics, and secure exams — built for Rwanda's schools and universities.
             </p>
 
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 'clamp(32px, 8vw, 52px)' }} className="hero-buttons">
@@ -180,7 +180,7 @@ function Hero({ mode, isAuthenticated, user }) {
                       e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
                     }}
                   >
-                    Go to Dashboard
+                    Dashboard
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </RouterLink>
                   <RouterLink to="/marketplace" style={{
@@ -202,7 +202,7 @@ function Hero({ mode, isAuthenticated, user }) {
                       e.currentTarget.style.background = 'transparent';
                     }}
                   >
-                    Browse Exam Bank
+                    Browse Exams
                   </RouterLink>
                 </>
               ) : (
@@ -224,28 +224,29 @@ function Hero({ mode, isAuthenticated, user }) {
                       e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
                     }}
                   >
-                    Browse Exam Bank
+                    Browse Exams
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M3 3h18v18H3zM9 9h6M9 12h6M9 15h6"/></svg>
                   </RouterLink>
                   <RouterLink to="/login" style={{
                     padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
-                    background: '#0D406C',
-                    color: 'white', textDecoration: 'none',
-                    boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)',
-                    display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+                    border: '1.5px solid #E2E8F0',
+                    color: isDark ? '#9DC4D9' : '#64748B',
+                    background: 'transparent',
+                    textDecoration: 'none', whiteSpace: 'nowrap',
                     transition: 'all 0.15s ease',
                   }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.background = '#082545';
-                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(13, 64, 108, 0.25)';
+                      e.currentTarget.style.borderColor = '#0D406C';
+                      e.currentTarget.style.color = '#0D406C';
+                      e.currentTarget.style.background = 'rgba(13, 64, 108, 0.04)';
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.background = '#0D406C';
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
+                      e.currentTarget.style.borderColor = '#E2E8F0';
+                      e.currentTarget.style.color = isDark ? '#9DC4D9' : '#64748B';
+                      e.currentTarget.style.background = 'transparent';
                     }}
                   >
-                    Login
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    Log In
                   </RouterLink>
                 </>
               )}
@@ -296,6 +297,7 @@ function Hero({ mode, isAuthenticated, user }) {
           .mobile-menu-btn { display: flex !important; }
           .desktop-nav-links { display: none !important; }
           .desktop-auth { display: none !important; }
+          .hero-section { min-height: auto !important; padding-top: 96px !important; padding-bottom: 40px !important; }
           .hero-grid { grid-template-columns: 1fr !important; }
           .hero-mockup { display: none !important; }
           .features-grid { grid-template-columns: 1fr !important; }
@@ -304,12 +306,13 @@ function Hero({ mode, isAuthenticated, user }) {
           .contact-grid { grid-template-columns: 1fr !important; }
           .footer-grid { grid-template-columns: 1fr !important; }
         }
-        
+
         @media (max-width: 640px) {
           body { font-size: 14px; }
           .mobile-menu-btn { display: flex !important; }
           .desktop-nav-links { display: none !important; }
           .desktop-auth { display: none !important; }
+          .hero-section { min-height: auto !important; padding-top: 88px !important; padding-bottom: 32px !important; }
           .hero-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
           .hero-mockup { display: none !important; }
           .hero-buttons { gap: 10px !important; }
@@ -319,11 +322,12 @@ function Hero({ mode, isAuthenticated, user }) {
           .contact-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
           .footer-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
         }
-        
+
         @media (max-width: 480px) {
           .mobile-menu-btn { display: flex !important; }
           .desktop-nav-links { display: none !important; }
           .desktop-auth { display: none !important; }
+          .hero-section { min-height: auto !important; padding-top: 80px !important; padding-bottom: 28px !important; }
           .hero-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
           .hero-mockup { display: none !important; }
           .hero-buttons { gap: 8px !important; flex-direction: column !important; }

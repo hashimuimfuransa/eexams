@@ -441,7 +441,6 @@ const Dashboard = () => {
   const subscriptionDaysRemaining = subscription?.expiresAt
     ? Math.max(0, Math.ceil((new Date(subscription.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)))
     : null;
-  const freeExamAvailable = !user?.freeExamUsed;
   const unlockedExamCount = availableExams.filter(e => e.accessUnlocked !== false).length;
 
   return (
@@ -586,13 +585,9 @@ const Dashboard = () => {
                 </Typography>
                 <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <Chip
-                    label={freeExamAvailable ? '1 Free Exam Available' : 'Free Exam Used'}
+                    label="Free Exams Available"
                     size="small"
-                    icon={freeExamAvailable ? undefined : <Lock sx={{ fontSize: '14px !important', color: '#92400E !important' }} />}
-                    sx={freeExamAvailable
-                      ? { bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }
-                      : { bgcolor: '#FDE68A', color: '#92400E', fontWeight: 700, border: '1px solid #F59E0B' }
-                    }
+                    sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
                   />
                   <Button
                     variant="outlined"
@@ -685,14 +680,10 @@ const Dashboard = () => {
                 {/* Text */}
                 <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}>
                   <Typography variant="h6" fontWeight={800} sx={{ color: '#92400E', mb: 0.5, fontSize: { xs: '1rem', sm: '1.15rem' } }}>
-                    {user?.freeExamUsed ? 'Your free exam has been used' : 'You don\'t have an active subscription'}
+                    You don't have an active subscription
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#78350F', lineHeight: 1.6, mb: 2 }}>
-                    {user?.freeExamUsed ? (
-                      <>You've completed your 1 free exam for <strong>{user?.level?.name || 'your level'}{user?.subLevel ? ` — ${user.subLevel}` : ''}</strong>. To continue taking exams and unlock the full exam library, you need an active subscription.</>
-                    ) : (
-                      <>You still have your 1 free exam available, but to unlock the full exam library for <strong>{user?.level?.name || 'your level'}{user?.subLevel ? ` — ${user.subLevel}` : ''}</strong> and keep taking exams afterward, you'll need an active subscription.</>
-                    )}
+                    You can keep taking free exams for <strong>{user?.level?.name || 'your level'}{user?.subLevel ? ` — ${user.subLevel}` : ''}</strong>, but to unlock the full exam library, you'll need an active subscription.
                   </Typography>
 
                   {/* What they get */}

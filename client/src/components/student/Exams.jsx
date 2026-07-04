@@ -290,32 +290,8 @@ const Exams = () => {
           </Box>
         </Paper>
 
-        {/* Show whenever the student has used up their free exam and has no
-            active subscription — independent of whether any specific exam
-            in the current list happens to be locked, so the nudge is
-            reliable even if the list is empty or has no locked exams shown. */}
-        {!subscriptionLoading && user?.freeExamUsed && !hasActiveSubscription && (
-          <Alert
-            severity="warning"
-            sx={{ mb: 3, borderRadius: 2 }}
-            action={
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => navigate('/student/subscriptions')}
-                sx={{ fontWeight: 'bold' }}
-              >
-                Subscribe Now
-              </Button>
-            }
-          >
-            <strong>Your free exam has been used.</strong> Subscribe to unlock more exams for your level.
-          </Alert>
-        )}
-
-        {/* Otherwise, still nudge if some exams in the list are locked (e.g.
-            student hasn't used their free exam yet but can see paid content). */}
-        {!(user?.freeExamUsed && !hasActiveSubscription) && exams.some(
+        {/* Nudge to subscribe if some subscription-only exams in the list are locked. */}
+        {exams.some(
           (e) => e.accessType === 'subscription' && e.accessUnlocked === false
         ) && (
           <Alert
@@ -332,7 +308,7 @@ const Exams = () => {
               </Button>
             }
           >
-            You have <strong>1 free exam</strong> available. Subscribe to unlock every exam in this level.
+            Subscribe to unlock every exam in this level.
           </Alert>
         )}
 
@@ -399,7 +375,7 @@ const Exams = () => {
             grid rather than interleaved between the exam cards themselves. */}
         {!loading && !error && displayedExams.some(e => e.accessType !== 'subscription') && (
           <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }} icon={<CardMembership />}>
-            <strong>Free Exams</strong> — try one exam per level at no cost. Once you complete a free exam, it's used up; subscribe to unlock unlimited exams.
+            <strong>Free Exams</strong> — take as many free exams as are available at no cost.
           </Alert>
         )}
         {!loading && !error && displayedExams.some(e => e.accessType === 'subscription') && (

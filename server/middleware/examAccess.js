@@ -2,6 +2,7 @@ const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const Exam = require('../models/Exam');
 const Level = require('../models/Level');
+const ExamRequest = require('../models/ExamRequest');
 const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
 
 /**
@@ -24,17 +25,22 @@ const validateExamAccess = async (req, res, next) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Check if user has selected a level
-    if (!user.level) {
-      return res.status(403).json({ 
-        message: 'Please select your learning level before accessing exams',
-        requiresLevelSelection: true
-      });
+    // A direct assignment (teacher/marketplace grant) or an approved exam
+    // request is a legacy grant that bypasses level/sub-level/subscription
+    // gating entirely — the student was explicitly given this exam, so it
+    // shouldn't matter whether they've selected a level yet or whether it
+    // matches the exam's level/sub-level.
+    const hasLegacyGrant = (exam.assignedTo || []).some(id => id.toString() === userId.toString()) ||
+      !!(await ExamRequest.exists({ exam: exam._id, student: userId, status: 'approved' }));
+
+    if (hasLegacyGrant) {
+      req.examAccess = { type: 'legacy-grant', canAccess: true };
+      return next();
     }
 
-    // Check if exam belongs to user's level
-    if (exam.level && exam.level.toString() !== user.level._id.toString()) {
-      return res.status(403).json({ 
+    // Check if exam belongs to user's level (only enforced once a level is selected)
+    if (user.level && exam.level && exam.level.toString() !== user.level._id.toString()) {
+      return res.status(403).json({
         message: 'This exam is not available for your current level',
         userLevel: user.level.name,
         examLevel: exam.level ? (await Level.findById(exam.level)).name : 'Not assigned'
@@ -51,17 +57,7 @@ const validateExamAccess = async (req, res, next) => {
         });
       }
 
-      // Check if user has already used their free exam for this level
-      if (user.freeExamUsed && user.freeExamLevel &&
-          user.freeExamLevel.toString() === user.level._id.toString()) {
-        return res.status(403).json({
-          message: 'You have already used your free exam for this level. Subscribe to access more exams.',
-          freeExamUsed: true,
-          requiresSubscription: true
-        });
-      }
-
-      // Allow access to free exam
+      // Free exams have no usage cap — allow access
       req.examAccess = {
         type: 'free',
         canAccess: true
@@ -83,16 +79,15 @@ const validateExamAccess = async (req, res, next) => {
         return next();
       }
 
-      const subscription = await Subscription.getActiveSubscriptionForLevel(
-        userId,
-        user.level._id
-      );
+      const subscription = user.level
+        ? await Subscription.getActiveSubscriptionForLevel(userId, user.level._id)
+        : null;
 
       if (!subscription || !subscription.isValid()) {
         return res.status(403).json({
           message: 'This exam requires an active subscription',
           requiresSubscription: true,
-          currentLevel: user.level.name
+          currentLevel: user.level?.name
         });
       }
 

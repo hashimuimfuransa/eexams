@@ -5,9 +5,9 @@ import {
   Button,
   Typography,
   Box,
+  Avatar,
   CircularProgress,
   Alert,
-  Chip,
   useTheme,
   useMediaQuery,
   Stepper,
@@ -22,6 +22,15 @@ import {
   ArrowBack
 } from '@mui/icons-material';
 import api from '../services/api';
+
+// Brand palette (matches client/src/context/ThemeContext.jsx)
+const BRAND = {
+  navy: '#0D406C',
+  navyDark: '#052037',
+  emerald: '#0CBD73',
+  mint: '#9DF6D6'
+};
+const BRAND_GRADIENT = `linear-gradient(135deg, ${BRAND.navy} 0%, ${BRAND.emerald} 100%)`;
 
 const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
   const theme = useTheme();
@@ -110,8 +119,8 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
   };
 
   const levelColors = [
-    { bg: '#EFF6FF', border: '#BFDBFE', icon: '#3B82F6', text: '#1E40AF' },
-    { bg: '#F0FDF4', border: '#BBF7D0', icon: '#22C55E', text: '#166534' },
+    { bg: '#EAF3FB', border: '#BFDBFE', icon: BRAND.navy, text: BRAND.navy },
+    { bg: '#ECFDF5', border: '#A7F3D0', icon: BRAND.emerald, text: '#0A7A4A' },
     { bg: '#FFF7ED', border: '#FED7AA', icon: '#F97316', text: '#9A3412' },
     { bg: '#FAF5FF', border: '#E9D5FF', icon: '#A855F7', text: '#6B21A8' },
   ];
@@ -135,7 +144,7 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
       {/* Header */}
       <Box
         sx={{
-          background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)',
+          background: BRAND_GRADIENT,
           p: { xs: 3, sm: 4 },
           pb: { xs: 2.5, sm: 3 },
           color: '#fff',
@@ -143,27 +152,37 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
-          <Box sx={{ bgcolor: 'rgba(255,255,255,0.2)', borderRadius: '50%', p: 1.5, display: 'flex' }}>
-            <School sx={{ fontSize: 32 }} />
-          </Box>
+          <Avatar
+            src="/logo.png"
+            alt="eexams"
+            sx={{
+              width: 56,
+              height: 56,
+              bgcolor: '#fff',
+              border: '3px solid rgba(255,255,255,0.5)',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.2)'
+            }}
+          >
+            <School sx={{ fontSize: 28, color: BRAND.navy }} />
+          </Avatar>
         </Box>
         <Typography variant="h5" fontWeight={800} sx={{ mb: 0.5, lineHeight: 1.2 }}>
-          Welcome to Fyr Rwanda!
+          Welcome to eexams!
         </Typography>
         <Typography variant="body2" sx={{ opacity: 0.85, fontSize: { xs: 13, sm: 14 } }}>
-          Let's personalise your experience. This helps us show you the right exams.
+          Tell us your education level so we can show you the right exams for you.
         </Typography>
 
         {hasSubLevels && (
           <Box sx={{ mt: 2.5 }}>
             <Stepper activeStep={step} alternativeLabel sx={{ '& .MuiStepLabel-label': { color: 'rgba(255,255,255,0.7)', fontSize: 12 }, '& .MuiStepLabel-label.Mui-active': { color: '#fff', fontWeight: 700 }, '& .MuiStepConnector-line': { borderColor: 'rgba(255,255,255,0.3)' } }}>
               <Step>
-                <StepLabel StepIconProps={{ sx: { color: step >= 0 ? '#fff' : 'rgba(255,255,255,0.4)', '& .MuiStepIcon-text': { fill: '#1E40AF' } } }}>
+                <StepLabel StepIconProps={{ sx: { color: step >= 0 ? '#fff' : 'rgba(255,255,255,0.4)', '& .MuiStepIcon-text': { fill: BRAND.navy } } }}>
                   Education Level
                 </StepLabel>
               </Step>
               <Step>
-                <StepLabel StepIconProps={{ sx: { color: step >= 1 ? '#fff' : 'rgba(255,255,255,0.4)', '& .MuiStepIcon-text': { fill: '#1E40AF' } } }}>
+                <StepLabel StepIconProps={{ sx: { color: step >= 1 ? '#fff' : 'rgba(255,255,255,0.4)', '& .MuiStepIcon-text': { fill: BRAND.navy } } }}>
                   Specific Level
                 </StepLabel>
               </Step>
@@ -281,8 +300,8 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
                           sx={{
                             p: 2,
                             borderRadius: 2.5,
-                            border: `2px solid ${isSelected ? '#3B82F6' : '#E2E8F0'}`,
-                            bgcolor: isSelected ? '#EFF6FF' : '#fff',
+                            border: `2px solid ${isSelected ? BRAND.navy : '#E2E8F0'}`,
+                            bgcolor: isSelected ? '#EAF3FB' : '#fff',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -290,10 +309,10 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
                             transition: 'all 0.18s ease',
                             boxShadow: isSelected ? '0 0 0 3px #BFDBFE' : '0 1px 3px rgba(0,0,0,0.06)',
                             '&:hover': {
-                              border: '2px solid #3B82F6',
-                              bgcolor: '#EFF6FF',
+                              border: `2px solid ${BRAND.navy}`,
+                              bgcolor: '#EAF3FB',
                               transform: 'translateY(-1px)',
-                              boxShadow: '0 4px 12px rgba(59,130,246,0.15)',
+                              boxShadow: '0 4px 12px rgba(13,64,108,0.15)',
                             }
                           }}
                         >
@@ -302,7 +321,7 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
                               width: 32,
                               height: 32,
                               borderRadius: '50%',
-                              bgcolor: isSelected ? '#3B82F6' : '#F1F5F9',
+                              bgcolor: isSelected ? BRAND.navy : '#F1F5F9',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -314,10 +333,10 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
                               {idx + 1}
                             </Typography>
                           </Box>
-                          <Typography fontWeight={600} sx={{ color: isSelected ? '#1E40AF' : '#1E293B', fontSize: { xs: 13, sm: 14 }, flex: 1 }}>
+                          <Typography fontWeight={600} sx={{ color: isSelected ? BRAND.navy : '#1E293B', fontSize: { xs: 13, sm: 14 }, flex: 1 }}>
                             {sub.name}
                           </Typography>
-                          {isSelected && <CheckCircle sx={{ color: '#3B82F6', fontSize: 18, flexShrink: 0 }} />}
+                          {isSelected && <CheckCircle sx={{ color: BRAND.navy, fontSize: 18, flexShrink: 0 }} />}
                         </Box>
                       );
                     })}
@@ -381,9 +400,9 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
               px: 3,
               py: 1.25,
               minWidth: 140,
-              background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)',
-              boxShadow: '0 4px 12px rgba(59,130,246,0.3)',
-              '&:hover': { background: 'linear-gradient(135deg, #1D3A9E 0%, #2563EB 100%)' },
+              background: BRAND_GRADIENT,
+              boxShadow: '0 4px 12px rgba(13,64,108,0.3)',
+              '&:hover': { background: `linear-gradient(135deg, ${BRAND.navyDark} 0%, ${BRAND.emerald} 100%)` },
               '&:disabled': { background: '#E2E8F0', boxShadow: 'none' }
             }}
           >

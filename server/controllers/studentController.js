@@ -15,11 +15,6 @@ const getAvailableExams = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate('level');
 
-    // Student must select a level before the exam bank can be loaded
-    if (!user.level) {
-      return res.json([]);
-    }
-
     // Get all approved exam requests for this student (retake and initial) —
     // these are explicit teacher/marketplace grants, kept as a supplementary
     // always-unlocked access path layered on top of level + subscription checks.
@@ -44,18 +39,18 @@ const getAvailableExams = async (req, res) => {
     // sub-level's exams mixed into their list as permanently "locked" —
     // confusingly implying their subscription (which is correctly sub-level
     // scoped) isn't working, when it actually is.
-    const levelWithSubLevelMatch = {
+    const levelWithSubLevelMatch = user.level ? {
       level: user.level._id,
       $or: [
         { subLevel: null },
         { subLevel: { $exists: false } },
         ...(user.subLevel ? [{ subLevel: user.subLevel }] : [])
       ]
-    };
+    } : null;
 
     const exams = await Exam.find({
       $or: [
-        levelWithSubLevelMatch,
+        ...(levelWithSubLevelMatch ? [levelWithSubLevelMatch] : []),
         { assignedTo: req.user._id },
         { _id: { $in: approvedExamIds } }
       ],
@@ -80,10 +75,10 @@ const getAvailableExams = async (req, res) => {
       .map(result => result.exam.toString());
 
     // Active subscription (if any) for the student's current level
-    const activeSubscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
+    const activeSubscription = user.level
+      ? await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id)
+      : null;
     const hasActiveSubscription = !!(activeSubscription && activeSubscription.isValid());
-    const freeExamAvailableForLevel = !(user.freeExamUsed && user.freeExamLevel &&
-      user.freeExamLevel.toString() === user.level._id.toString());
 
     // Exam-scoped subscriptions (bought for one specific exam rather than
     // the whole level) — each one unlocks just its own exam.
@@ -132,7 +127,7 @@ const getAvailableExams = async (req, res) => {
       } else if (examSubscribedIds.has(exam._id.toString())) {
         accessUnlocked = true;
       } else if (exam.accessType === 'free') {
-        accessUnlocked = freeExamAvailableForLevel && freeExamMatchesUserSubLevel(exam, user);
+        accessUnlocked = freeExamMatchesUserSubLevel(exam, user);
       } else {
         accessUnlocked = hasActiveSubscription && subscriptionCoversExam(activeSubscription, exam);
       }
@@ -244,7 +239,11 @@ const getExamById = async (req, res) => {
         student: req.user._id,
         status: 'approved'
       });
-      hasLegacyGrant = !!approvedRequest;
+      // A direct assignment (teacher/marketplace grant) is a legacy grant
+      // just like an approved request — it bypasses level/subscription
+      // gating regardless of whether the student has selected a level.
+      const isAssigned = await Exam.exists({ _id: req.params.examId, assignedTo: req.user._id });
+      hasLegacyGrant = !!approvedRequest || !!isAssigned;
 
       exam = await Exam.findOne({
         _id: req.params.examId,
@@ -262,23 +261,15 @@ const getExamById = async (req, res) => {
       // grant), gate it by subscription/free-exam status just like the exam
       // bank listing does, so this endpoint stays consistent with it.
       if (exam && !hasLegacyGrant) {
-        if (!user?.level) {
-          return res.status(403).json({ message: 'Please select your learning level before accessing exams' });
-        }
-
         if (exam.accessType === 'free') {
-          const freeExamAvailable = !(user.freeExamUsed && user.freeExamLevel &&
-            user.freeExamLevel.toString() === user.level._id.toString());
-          if (!freeExamAvailable || !freeExamMatchesUserSubLevel(exam, user)) {
+          if (!freeExamMatchesUserSubLevel(exam, user)) {
             return res.json({
               _id: exam._id,
               title: exam.title,
               description: exam.description,
               timeLimit: exam.timeLimit,
               isLocked: true,
-              message: !freeExamAvailable
-                ? 'You have already used your free exam for this level. Subscribe to access more exams.'
-                : 'This free exam is not available for your sub-level'
+              message: 'This free exam is not available for your sub-level'
             });
           }
         } else {

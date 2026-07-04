@@ -633,8 +633,8 @@ const getExamById = async (req, res) => {
           const { subscriptionCoversExam, freeExamMatchesUserSubLevel } = require('../utils/subLevelAccess');
 
           const user = await User.findById(req.user._id).populate('level');
-          if (!user || !user.level) {
-            return { isLocked: true, message: 'Please select your learning level before accessing exams' };
+          if (!user) {
+            return { isLocked: true, message: 'Exam not found' };
           }
 
           // If exam is locked by admin, preserve existing behavior below
@@ -654,7 +654,9 @@ const getExamById = async (req, res) => {
               return null;
             }
 
-            const subscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
+            const subscription = user.level
+              ? await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id)
+              : null;
             if (!subscription || !subscription.isValid()) {
               return { isLocked: true, message: 'This exam requires an active subscription' };
             }
@@ -677,6 +679,11 @@ const getExamById = async (req, res) => {
         exam: exam._id,
         status: 'approved'
       });
+      // A direct assignment (teacher/marketplace grant) is a legacy grant
+      // just like an approved request — it bypasses level/subscription
+      // gating regardless of whether the student has selected a level.
+      const hasLegacyGrant = !!approvedRequest ||
+        !!exam.assignedTo?.some(id => id.toString() === req.user._id.toString());
 
       if (exam.isLocked && !approvedRequest) {
         console.log(`Student ${req.user._id} attempted to access locked exam ${exam._id}`);
@@ -693,7 +700,7 @@ const getExamById = async (req, res) => {
         });
       }
 
-      const accessBlock = await accessMessage();
+      const accessBlock = hasLegacyGrant ? null : await accessMessage();
       if (accessBlock) {
         return res.json({
           _id: exam._id,

@@ -22,7 +22,11 @@ import {
   useTheme,
   alpha,
   Zoom,
-  LinearProgress
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Person,
@@ -44,7 +48,10 @@ import {
   CreditCard,
   Loop,
   ShoppingCart,
-  Download
+  Download,
+  Phone,
+  SupportAgent,
+  Close
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -235,7 +242,8 @@ const LevelSection = ({
   user, levels, selectedLevel, setSelectedLevel,
   selectedSubLevel, setSelectedSubLevel, availableSubLevels,
   levelChangeMode, setLevelChangeMode, levelChangeStep, setLevelChangeStep,
-  levelChangeWarning, setLevelChangeWarning, changingLevel, handleLevelChange, theme
+  levelChangeWarning, setLevelChangeWarning, changingLevel, handleLevelChange,
+  clearingLevel, handleClearLevel, theme
 }) => {
   const levelColors = [
     { bg: '#EFF6FF', border: '#BFDBFE', icon: '#3B82F6', text: '#1E40AF' },
@@ -245,6 +253,8 @@ const LevelSection = ({
   ];
   const selectedLevelObj = levels.find(l => l._id === selectedLevel);
   const hasSubLevels = availableSubLevels.length > 0;
+  const levelMissing = !user?.level;
+  const accentColor = levelMissing ? theme.palette.warning.main : theme.palette.info.main;
 
   const cancelChange = () => {
     setLevelChangeMode(false);
@@ -255,35 +265,65 @@ const LevelSection = ({
   };
 
   return (
-    <Box sx={{ mb: 2, p: 2, borderRadius: 3, background: `linear-gradient(135deg, ${alpha(theme.palette.info.main, 0.05)}, ${alpha(theme.palette.info.light, 0.03)})`, border: `1px solid ${alpha(theme.palette.info.main, 0.15)}` }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: levelChangeMode ? 2 : 0 }}>
-        <Avatar sx={{ width: 36, height: 36, bgcolor: theme.palette.info.main, mr: 1.5, boxShadow: `0 4px 12px ${alpha(theme.palette.info.main, 0.3)}` }}>
-          <School sx={{ fontSize: '1rem' }} />
+    <Box
+      id="learning-level-section"
+      sx={{
+        p: { xs: 2.5, sm: 3 },
+        borderRadius: 3,
+        bgcolor: 'white',
+        border: `1px solid ${levelMissing ? alpha(theme.palette.warning.main, 0.4) : '#E2E8F0'}`,
+        boxShadow: levelMissing
+          ? `0 2px 12px ${alpha(theme.palette.warning.main, 0.15)}`
+          : '0 2px 8px rgba(0,0,0,0.06)'
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: levelChangeMode ? 2 : 0, flexWrap: 'wrap', gap: 1.5 }}>
+        <Avatar sx={{ width: 44, height: 44, bgcolor: accentColor, boxShadow: `0 4px 12px ${alpha(accentColor, 0.3)}` }}>
+          <School sx={{ fontSize: '1.2rem' }} />
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, fontSize: 12 }}>
             LEARNING LEVEL
           </Typography>
-          <Typography variant="body1" fontWeight="bold" color="info.main" sx={{ fontSize: 14 }}>
-            {user?.level?.name || 'Not selected'}
+          <Typography variant="h6" fontWeight="bold" sx={{ fontSize: { xs: 16, sm: 18 }, color: levelMissing ? theme.palette.warning.dark : theme.palette.info.contrastText }}>
+            {user?.level?.name || 'Not selected yet'}
             {user?.subLevel ? <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}> · {user.subLevel}</Box> : ''}
           </Typography>
         </Box>
         {!levelChangeMode ? (
-          <Button
-            size="small"
-            onClick={() => { setLevelChangeMode(true); setLevelChangeStep(0); }}
-            startIcon={<Edit />}
-            sx={{ ml: 1, textTransform: 'none', fontSize: 12, fontWeight: 600 }}
-          >
-            Change
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant={levelMissing ? 'contained' : 'outlined'}
+              color={levelMissing ? 'warning' : 'primary'}
+              onClick={() => { setLevelChangeMode(true); setLevelChangeStep(0); }}
+              startIcon={<Edit />}
+              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
+            >
+              {levelMissing ? 'Select Level' : 'Change'}
+            </Button>
+            {!levelMissing && (
+              <Button
+                variant="text"
+                color="error"
+                onClick={() => handleClearLevel(false)}
+                disabled={clearingLevel}
+                sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
+              >
+                {clearingLevel ? 'Removing…' : 'Deselect'}
+              </Button>
+            )}
+          </Box>
         ) : (
-          <Button size="small" onClick={cancelChange} sx={{ ml: 1, textTransform: 'none', fontSize: 12 }}>
+          <Button size="small" onClick={cancelChange} sx={{ textTransform: 'none', fontSize: 12 }}>
             Cancel
           </Button>
         )}
       </Box>
+      {levelMissing && !levelChangeMode && (
+        <Typography variant="body2" sx={{ color: theme.palette.warning.dark, mt: 1.5 }}>
+          Select your education level to unlock exams and subscription plans made for you.
+        </Typography>
+      )}
 
       {levelChangeMode && (
         <Box>
@@ -407,25 +447,30 @@ const LevelSection = ({
               </Box>
             </Box>
           )}
-
-          {/* Warning: will cancel active subscription */}
-          {levelChangeWarning && (
-            <Alert
-              severity="warning"
-              sx={{ mt: 2 }}
-              action={
-                <Button color="inherit" size="small" onClick={() => handleLevelChange(true)} disabled={changingLevel}>
-                  Confirm
-                </Button>
-              }
-            >
-              <Typography variant="body2" fontWeight="bold">{levelChangeWarning.message}</Typography>
-              <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-                Current: {levelChangeWarning.currentLevel} · Expires: {new Date(levelChangeWarning.currentSubscriptionExpiry).toLocaleDateString()}
-              </Typography>
-            </Alert>
-          )}
         </Box>
+      )}
+
+      {/* Warning: will cancel active subscription (shown for both "Change" and "Deselect") */}
+      {levelChangeWarning && (
+        <Alert
+          severity="warning"
+          sx={{ mt: 2 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => levelChangeWarning.actionType === 'clear' ? handleClearLevel(true) : handleLevelChange(true)}
+              disabled={changingLevel || clearingLevel}
+            >
+              Confirm
+            </Button>
+          }
+        >
+          <Typography variant="body2" fontWeight="bold">{levelChangeWarning.message}</Typography>
+          <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+            Current: {levelChangeWarning.currentLevel} · Expires: {new Date(levelChangeWarning.currentSubscriptionExpiry).toLocaleDateString()}
+          </Typography>
+        </Alert>
       )}
     </Box>
   );
@@ -433,7 +478,7 @@ const LevelSection = ({
 
 const Profile = () => {
   const theme = useTheme();
-  const { user, updateUserProfile, updateUserLevel } = useContext(AuthContext);
+  const { user, updateUserProfile, updateUserLevel, clearUserLevel } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -449,6 +494,8 @@ const Profile = () => {
   const [levelChangeStep, setLevelChangeStep] = useState(0); // 0=pick level, 1=pick sub-level
   const [levelChangeWarning, setLevelChangeWarning] = useState(null);
   const [changingLevel, setChangingLevel] = useState(false);
+  const [clearingLevel, setClearingLevel] = useState(false);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [subscription, setSubscription] = useState(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
 
@@ -615,7 +662,7 @@ const Profile = () => {
       const response = await api.put('/profile/change-level', { levelId: selectedLevel, subLevel: selectedSubLevel || undefined, confirm });
 
       if (response.data.requiresConfirmation) {
-        setLevelChangeWarning(response.data);
+        setLevelChangeWarning({ ...response.data, actionType: 'change' });
         setChangingLevel(false);
         return;
       }
@@ -642,6 +689,41 @@ const Profile = () => {
       });
     } finally {
       setChangingLevel(false);
+    }
+  };
+
+  const handleClearLevel = async (confirm = false) => {
+    try {
+      setClearingLevel(true);
+      const response = await api.put('/profile/clear-level', { confirm });
+
+      if (response.data.requiresConfirmation) {
+        setLevelChangeWarning({ ...response.data, actionType: 'clear' });
+        setClearingLevel(false);
+        return;
+      }
+
+      setSnackbar({
+        open: true,
+        message: 'Level deselected',
+        severity: 'success'
+      });
+      setLevelChangeMode(false);
+      setLevelChangeStep(0);
+      setLevelChangeWarning(null);
+      setSelectedLevel('');
+      setSelectedSubLevel('');
+      clearUserLevel();
+      fetchSubscription();
+    } catch (err) {
+      console.error('Error clearing level:', err);
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.message || 'Failed to deselect level',
+        severity: 'error'
+      });
+    } finally {
+      setClearingLevel(false);
     }
   };
 
@@ -775,33 +857,150 @@ const Profile = () => {
                 </Typography>
               </Box>
 
-              <Button
-                variant="contained"
-                color="secondary"
-                onClick={handleToggleEditMode}
-                startIcon={editMode ? <Cancel /> : <Edit />}
-                sx={{
-                  color: 'black',
-                  fontWeight: 'bold',
-                  borderRadius: 3,
-                  px: { xs: 3, sm: 4 },
-                  py: { xs: 1.2, sm: 1.5 },
-                  fontSize: { xs: '0.9rem', sm: '1rem' },
-                  boxShadow: `0 4px 12px ${alpha(theme.palette.secondary.main, 0.3)}`,
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                    boxShadow: `0 6px 16px ${alpha(theme.palette.secondary.main, 0.4)}`
-                  }
-                }}
-              >
-                {editMode ? 'Cancel Changes' : 'Edit Profile'}
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => setContactDialogOpen(true)}
+                  startIcon={<SupportAgent />}
+                  sx={{
+                    fontWeight: 'bold',
+                    borderRadius: 3,
+                    px: { xs: 3, sm: 4 },
+                    py: { xs: 1.2, sm: 1.5 },
+                    fontSize: { xs: '0.9rem', sm: '1rem' },
+                    color: 'white',
+                    borderColor: 'rgba(255,255,255,0.6)',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      borderColor: 'white',
+                      backgroundColor: 'rgba(255,255,255,0.1)',
+                      transform: 'translateY(-2px)'
+                    }
+                  }}
+                >
+                  Contact Us
+                </Button>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  onClick={handleToggleEditMode}
+                  startIcon={editMode ? <Cancel /> : <Edit />}
+                  sx={{
+                    color: 'black',
+                    fontWeight: 'bold',
+                    borderRadius: 3,
+                    px: { xs: 3, sm: 4 },
+                    py: { xs: 1.2, sm: 1.5 },
+                    fontSize: { xs: '0.9rem', sm: '1rem' },
+                    boxShadow: `0 4px 12px ${alpha(theme.palette.secondary.main, 0.3)}`,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateY(-2px)',
+                      boxShadow: `0 6px 16px ${alpha(theme.palette.secondary.main, 0.4)}`
+                    }
+                  }}
+                >
+                  {editMode ? 'Cancel Changes' : 'Edit Profile'}
+                </Button>
+              </Box>
             </Box>
           </Paper>
         </Grow>
 
-        {/* Student Subscription + Level Card */}
+        <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <SupportAgent color="primary" />
+              <Typography variant="h6" fontWeight="bold">Contact Us</Typography>
+            </Box>
+            <IconButton size="small" onClick={() => setContactDialogOpen(false)}>
+              <Close fontSize="small" />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+              Have a question or need help with your account? Reach out to our support team.
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box
+                component="a"
+                href="mailto:info@excellencecoachinghub.com"
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, borderRadius: 2,
+                  textDecoration: 'none', color: 'inherit', border: '1px solid #E2E8F0',
+                  transition: 'all 0.2s ease', '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06), borderColor: theme.palette.primary.main }
+                }}
+              >
+                <Email color="primary" />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>EMAIL</Typography>
+                  <Typography variant="body2" fontWeight="bold">info@excellencecoachinghub.com</Typography>
+                </Box>
+              </Box>
+
+              <Box
+                component="a"
+                href="tel:+250788535156"
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, borderRadius: 2,
+                  textDecoration: 'none', color: 'inherit', border: '1px solid #E2E8F0',
+                  transition: 'all 0.2s ease', '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06), borderColor: theme.palette.primary.main }
+                }}
+              >
+                <Phone color="primary" />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>PHONE</Typography>
+                  <Typography variant="body2" fontWeight="bold">+250 788 535 156</Typography>
+                </Box>
+              </Box>
+
+              <Box
+                component="a"
+                href="tel:+250793828834"
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, borderRadius: 2,
+                  textDecoration: 'none', color: 'inherit', border: '1px solid #E2E8F0',
+                  transition: 'all 0.2s ease', '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06), borderColor: theme.palette.primary.main }
+                }}
+              >
+                <Phone color="primary" />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>PHONE</Typography>
+                  <Typography variant="body2" fontWeight="bold">+250 793 828 834</Typography>
+                </Box>
+              </Box>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setContactDialogOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Learning Level: kept front-and-center, right under the header, so it's the first thing seen and always easy to find/change */}
+        <Box sx={{ mb: 3 }}>
+          <LevelSection
+            user={user}
+            levels={levels}
+            selectedLevel={selectedLevel}
+            setSelectedLevel={setSelectedLevel}
+            selectedSubLevel={selectedSubLevel}
+            setSelectedSubLevel={setSelectedSubLevel}
+            availableSubLevels={availableSubLevels}
+            levelChangeMode={levelChangeMode}
+            setLevelChangeMode={setLevelChangeMode}
+            levelChangeStep={levelChangeStep}
+            setLevelChangeStep={setLevelChangeStep}
+            levelChangeWarning={levelChangeWarning}
+            setLevelChangeWarning={setLevelChangeWarning}
+            changingLevel={changingLevel}
+            handleLevelChange={handleLevelChange}
+            clearingLevel={clearingLevel}
+            handleClearLevel={handleClearLevel}
+            theme={theme}
+          />
+        </Box>
+
+        {/* Student Subscription Card */}
         <Box sx={{ mb: 3 }}>
           <StudentSubscriptionSection
             subscription={subscription}
@@ -1062,31 +1261,11 @@ const Profile = () => {
                         <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 'medium' }}>
                           Organization
                         </Typography>
-                        <Typography variant="body1" fontWeight="bold" color="secondary.main">
+                        <Typography variant="body1" fontWeight="bold" sx={{ color: theme.palette.success.dark }}>
                           {user?.organization || 'Not specified'}
                         </Typography>
                       </Box>
                     </Box>
-
-                    {/* Learning Level Section */}
-                    <LevelSection
-                      user={user}
-                      levels={levels}
-                      selectedLevel={selectedLevel}
-                      setSelectedLevel={setSelectedLevel}
-                      selectedSubLevel={selectedSubLevel}
-                      setSelectedSubLevel={setSelectedSubLevel}
-                      availableSubLevels={availableSubLevels}
-                      levelChangeMode={levelChangeMode}
-                      setLevelChangeMode={setLevelChangeMode}
-                      levelChangeStep={levelChangeStep}
-                      setLevelChangeStep={setLevelChangeStep}
-                      levelChangeWarning={levelChangeWarning}
-                      setLevelChangeWarning={setLevelChangeWarning}
-                      changingLevel={changingLevel}
-                      handleLevelChange={handleLevelChange}
-                      theme={theme}
-                    />
                   </Box>
                 </CardContent>
               </Card>

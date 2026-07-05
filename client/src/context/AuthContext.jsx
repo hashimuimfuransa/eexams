@@ -383,6 +383,21 @@ export const AuthProvider = ({ children }) => {
     setUser(updatedUser);
   };
 
+  // Clear the user's learning level (e.g. user opts to deselect it)
+  const clearUserLevel = () => {
+    if (!user) return;
+    const updatedUser = {
+      ...user,
+      level: null,
+      subLevel: null,
+      requiresLevelSelection: user.role === 'student',
+      freeExamUsed: false,
+      freeExamLevel: null
+    };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  };
+
   // Logout function
   const logout = () => {
     // Best-effort: clear the server-side active session marker so this
@@ -436,6 +451,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         updateUserProfile,
         updateUserLevel,
+        clearUserLevel,
         setUser
       }}
     >

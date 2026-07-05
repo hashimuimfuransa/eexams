@@ -315,4 +315,79 @@ router.put('/change-level', auth, async (req, res) => {
   }
 });
 
+// @route   PUT /api/profile/clear-level
+// @desc    Deselect (clear) the user's learning level
+// @access  Private
+router.put('/clear-level', auth, async (req, res) => {
+  try {
+    const { confirm } = req.body;
+
+    const currentUser = await User.findById(req.user._id);
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!currentUser.level) {
+      return res.json({
+        _id: currentUser._id,
+        level: null,
+        subLevel: null,
+        freeExamUsed: currentUser.freeExamUsed,
+        freeExamLevel: currentUser.freeExamLevel,
+        subscriptionCancelled: false
+      });
+    }
+
+    // Check if user has an active subscription tied to the current level
+    const activeSubscription = await Subscription.getActiveSubscription(req.user._id);
+
+    if (activeSubscription && !confirm) {
+      return res.status(400).json({
+        message: 'You have an active subscription for your current level. Deselecting your level will cancel it.',
+        hasActiveSubscription: true,
+        currentLevel: activeSubscription.level.name,
+        currentSubscriptionExpiry: activeSubscription.expiresAt,
+        requiresConfirmation: true
+      });
+    }
+
+    if (activeSubscription && confirm) {
+      await activeSubscription.cancel();
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        level: null,
+        subLevel: null,
+        freeExamUsed: false,
+        freeExamLevel: null
+      },
+      { new: true }
+    );
+
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'edit_profile',
+      details: {
+        userId: user._id,
+        userName: `${user.firstName} ${user.lastName}`,
+        change: 'cleared learning level'
+      }
+    });
+
+    res.json({
+      _id: user._id,
+      level: null,
+      subLevel: null,
+      freeExamUsed: user.freeExamUsed,
+      freeExamLevel: user.freeExamLevel,
+      subscriptionCancelled: !!activeSubscription
+    });
+  } catch (error) {
+    console.error('Clear level error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -58,6 +58,7 @@ import { styled, alpha } from '@mui/material/styles';
 import { useThemeMode } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import StudentLayout from './StudentLayout';
+import LevelSelectionModal from '../LevelSelectionModal';
 import api from '../../services/api';
 
 // Styled components for enhanced exam cards
@@ -121,7 +122,7 @@ const Exams = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { mode } = useThemeMode();
-  const { user } = useAuth();
+  const { user, updateUserLevel } = useAuth();
   const navigate = useNavigate();
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -134,32 +135,32 @@ const Exams = () => {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const examsPerPage = 6;
 
+  const fetchExams = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/student/exams');
+      setExams(response.data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching exams:', err);
+      setError('Failed to load exams. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSubscription = async () => {
+    try {
+      const response = await api.get('/subscriptions/my/active');
+      setHasActiveSubscription(!!response.data);
+    } catch (err) {
+      console.error('Error fetching subscription status:', err);
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchExams = async () => {
-      try {
-        setLoading(true);
-        const response = await api.get('/student/exams');
-        setExams(response.data);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching exams:', err);
-        setError('Failed to load exams. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const fetchSubscription = async () => {
-      try {
-        const response = await api.get('/subscriptions/my/active');
-        setHasActiveSubscription(!!response.data);
-      } catch (err) {
-        console.error('Error fetching subscription status:', err);
-      } finally {
-        setSubscriptionLoading(false);
-      }
-    };
-
     fetchExams();
     fetchSubscription();
   }, []);
@@ -241,6 +242,14 @@ const Exams = () => {
 
   return (
     <StudentLayout>
+      <LevelSelectionModal
+        open={!!user?.requiresLevelSelection}
+        onClose={() => {}}
+        onSelectLevel={(levelId, levelData, subLevel) => {
+          updateUserLevel(levelData || { _id: levelId }, subLevel);
+          fetchExams();
+        }}
+      />
       <Container maxWidth="lg" sx={{ mb: 8, px: { xs: 1.5, sm: 2, md: 3 } }}>
         <Paper elevation={0} sx={{
           p: { xs: 2.5, sm: 3.5 }, mb: 3, borderRadius: 3,
@@ -305,27 +314,6 @@ const Exams = () => {
             </Box>
           )}
         </Paper>
-
-        {/* Nudge to select a level when none is set yet. */}
-        {!user?.level && (
-          <Alert
-            severity="warning"
-            sx={{ mb: 3, borderRadius: 2 }}
-            action={
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => navigate('/student/profile')}
-                sx={{ fontWeight: 'bold' }}
-              >
-                Select Level
-              </Button>
-            }
-          >
-            Select your education level to see exams for you.
-          </Alert>
-        )}
-
 
         {/* Filters and Search */}
         <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
@@ -613,12 +601,12 @@ const Exams = () => {
                               : '0 1px 4px rgba(0,0,0,0.1)'
                           }}
                         >
-                          <CheckBox fontSize="small" color="secondary" />
+                          <CheckBox fontSize="small" sx={{ color: mode === 'dark' ? theme.palette.secondary.main : theme.palette.success.dark }} />
                           <Typography
                             variant="caption"
                             sx={{
                               fontWeight: 'bold',
-                              color: theme.palette.secondary.main,
+                              color: mode === 'dark' ? theme.palette.secondary.main : theme.palette.success.dark,
                               textTransform: 'uppercase',
                               letterSpacing: 0.5
                             }}
@@ -684,11 +672,11 @@ const Exams = () => {
                             bgcolor: mode === 'dark'
                               ? alpha(theme.palette.info.main, 0.15)
                               : alpha(theme.palette.info.main, 0.08),
-                            color: theme.palette.info.main,
+                            color: mode === 'dark' ? theme.palette.info.main : theme.palette.info.contrastText,
                             border: `1px solid ${alpha(theme.palette.info.main, 0.3)}`,
                             fontWeight: 'medium',
                             '& .MuiChip-icon': {
-                              color: theme.palette.info.main
+                              color: mode === 'dark' ? theme.palette.info.main : theme.palette.info.contrastText
                             }
                           }}
                         />
@@ -727,7 +715,7 @@ const Exams = () => {
                                 ? alpha(theme.palette.grey[500], 0.15)
                                 : alpha(theme.palette.grey[500], 0.08),
                             color: exam.allowSelectiveAnswering
-                              ? theme.palette.secondary.main
+                              ? (mode === 'dark' ? theme.palette.secondary.main : theme.palette.success.dark)
                               : theme.palette.grey[600],
                             border: `1px solid ${exam.allowSelectiveAnswering
                               ? alpha(theme.palette.secondary.main, 0.3)
@@ -735,7 +723,7 @@ const Exams = () => {
                             fontWeight: 'medium',
                             '& .MuiChip-icon': {
                               color: exam.allowSelectiveAnswering
-                                ? theme.palette.secondary.main
+                                ? (mode === 'dark' ? theme.palette.secondary.main : theme.palette.success.dark)
                                 : theme.palette.grey[600]
                             }
                           }}

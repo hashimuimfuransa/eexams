@@ -1449,7 +1449,7 @@ const Dashboard = () => {
                 <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" sx={{ fontSize: { xs: '1.1rem', sm: '1.5rem' } }}>
                   Exam Leaderboards
                 </Typography>
-                <Chip label="Compare with classmates" size="small" color="info" variant="outlined" sx={{ ml: 1, display: { xs: 'none', sm: 'flex' } }} />
+                <Chip label="Compare with classmates" size="small" color="primary" variant="outlined" sx={{ ml: 1, display: { xs: 'none', sm: 'flex' } }} />
               </Box>
               <Button
                 variant="contained"

@@ -1393,6 +1393,11 @@ function ReclamationsSection() {
   const [responseStatus, setResponseStatus] = useState('resolved');
   const [submitting, setSubmitting] = useState(false);
 
+  const [localSearch, setLocalSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+
   useEffect(() => {
     fetchReclamations();
   }, []);
@@ -1448,22 +1453,100 @@ function ReclamationsSection() {
     }
   };
 
+  const filteredReclamations = reclamations.filter(r => {
+    const q = localSearch.toLowerCase();
+    const matchesSearch = !q ||
+      r.student?.firstName?.toLowerCase().includes(q) ||
+      r.student?.lastName?.toLowerCase().includes(q) ||
+      r.student?.email?.toLowerCase().includes(q) ||
+      r.exam?.title?.toLowerCase().includes(q) ||
+      r.claim?.toLowerCase().includes(q);
+    const matchesStatus = !statusFilter || r.status === statusFilter;
+    const matchesPriority = !priorityFilter || r.priority === priorityFilter;
+    const matchesCategory = !categoryFilter || r.category === categoryFilter;
+    return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
+  });
+
+  const clearFilters = () => {
+    setLocalSearch('');
+    setStatusFilter('');
+    setPriorityFilter('');
+    setCategoryFilter('');
+  };
+
   return (
     <Box>
       <SectionTitle>Student Reclamations</SectionTitle>
+
+      {/* Filter Bar */}
+      <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search by student, exam, or claim..."
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              InputProps={{
+                startAdornment: <Box component="span" sx={{ color: tokens.textMuted, mr: 1 }}>🔍</Box>
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#FAFBFC' } }}
+            />
+          </Grid>
+          <Grid item xs={6} md={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MenuItem value="">All Status</MenuItem>
+                <MenuItem value="pending">Pending</MenuItem>
+                <MenuItem value="under-review">Under Review</MenuItem>
+                <MenuItem value="resolved">Resolved</MenuItem>
+                <MenuItem value="rejected">Rejected</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} md={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Priority</InputLabel>
+              <Select label="Priority" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MenuItem value="">All Priority</MenuItem>
+                <MenuItem value="high">High</MenuItem>
+                <MenuItem value="medium">Medium</MenuItem>
+                <MenuItem value="low">Low</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Category</InputLabel>
+              <Select label="Category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MenuItem value="">All Categories</MenuItem>
+                <MenuItem value="grading-error">Grading Error</MenuItem>
+                <MenuItem value="technical-issue">Technical Issue</MenuItem>
+                <MenuItem value="content-error">Content Error</MenuItem>
+                <MenuItem value="other">Other</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} md={1}>
+            <Button fullWidth variant="outlined" onClick={clearFilters} sx={{ borderRadius: 2, height: 37, textTransform: 'none', fontWeight: 600 }}>Clear</Button>
+          </Grid>
+        </Grid>
+      </Paper>
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
         </Box>
-      ) : reclamations.length === 0 ? (
+      ) : filteredReclamations.length === 0 ? (
         <Paper elevation={0} sx={{ p: 4, borderRadius: 3, textAlign: 'center', border: `1px solid ${tokens.surfaceBorder}` }}>
           <ReportProblem sx={{ fontSize: 48, color: tokens.textMuted, mb: 2 }} />
           <Typography variant="h6" color="text.secondary">No reclamations found</Typography>
         </Paper>
       ) : (
         <Grid container spacing={2}>
-          {reclamations.map((reclamation) => (
+          {filteredReclamations.map((reclamation) => (
             <Grid item xs={12} md={6} key={reclamation._id}>
               <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, cursor: 'pointer', '&:hover': { borderColor: tokens.primary } }}
                 onClick={() => setSelectedReclamation(reclamation)}>

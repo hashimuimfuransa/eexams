@@ -4,6 +4,7 @@ const Exam = require('../models/Exam');
 const Level = require('../models/Level');
 const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
+const Result = require('../models/Result');
 const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
 
 /**
@@ -83,7 +84,34 @@ const validateExamAccess = async (req, res, next) => {
         });
       }
 
-      // Free exams have no usage cap — allow access
+      // A free exam grants exactly one attempt to non-subscribers — retaking
+      // it (once a completed result already exists) requires an active
+      // subscription, the same as any subscription-gated exam, so students
+      // can't keep retaking free content indefinitely without ever paying.
+      const alreadyCompleted = await Result.exists({
+        student: userId,
+        exam: exam._id,
+        isCompleted: true
+      });
+
+      if (alreadyCompleted) {
+        const examSubscription = await Subscription.getActiveSubscriptionForExam(userId, exam._id);
+        const hasExamSubscription = !!(examSubscription && examSubscription.isValid());
+
+        const levelSubscription = user.level
+          ? await Subscription.getActiveSubscriptionForLevel(userId, user.level._id)
+          : null;
+        const hasLevelSubscription = !!(levelSubscription && levelSubscription.isValid() &&
+          levelSubscription.expiresAt >= new Date() && subscriptionCoversExam(levelSubscription, exam));
+
+        if (!hasExamSubscription && !hasLevelSubscription) {
+          return res.status(403).json({
+            message: 'This exam requires an active subscription to retake. Subscribe to unlock unlimited retakes.',
+            requiresSubscription: true
+          });
+        }
+      }
+
       req.examAccess = {
         type: 'free',
         canAccess: true

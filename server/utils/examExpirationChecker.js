@@ -122,23 +122,13 @@ const autoSubmitExpiredExam = async (result, exam) => {
       // Use fast chunked grading
       const gradingResult = await fastChunkedGrading(populatedResult, exam);
 
-      // Update result with grading results
+      // fastChunkedGrading mutates populatedResult.answers in place, so only
+      // the aggregate totals need to be copied over here.
       populatedResult.totalScore = gradingResult.totalScore;
       populatedResult.maxPossibleScore = gradingResult.maxPossibleScore;
       populatedResult.isCompleted = true;
       populatedResult.endTime = new Date();
       populatedResult.aiGradingStatus = 'completed';
-
-      // Update individual answer scores
-      gradingResult.answerScores.forEach((answerScore, index) => {
-        if (populatedResult.answers[index]) {
-          populatedResult.answers[index].score = answerScore.score;
-          populatedResult.answers[index].isCorrect = answerScore.isCorrect;
-          populatedResult.answers[index].feedback = answerScore.feedback;
-          populatedResult.answers[index].correctedAnswer = answerScore.correctedAnswer;
-          populatedResult.answers[index].gradingMethod = answerScore.gradingMethod || 'background_ai_grading';
-        }
-      });
 
       await populatedResult.save();
 

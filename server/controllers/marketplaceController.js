@@ -303,9 +303,13 @@ const requestMarketplaceExam = async (req, res) => {
         });
 
         if (completedResult) {
-          // User has completed the exam, allow re-request by updating the existing request
+          // User has completed the exam, allow re-request by updating the existing request.
+          // A completed result already proves this is a retake regardless of
+          // whether the caller's isRetake flag was set (some callers, like the
+          // dashboard's quick "Retake" button, don't send it) — force it true
+          // so a later rejection correctly remembers this as a retake.
           existingRequest.status = 'pending';
-          existingRequest.isRetake = isRetake;
+          existingRequest.isRetake = true;
           existingRequest.processedAt = null;
           existingRequest.shareToken = null;
           existingRequest.sharedExam = null;
@@ -314,10 +318,11 @@ const requestMarketplaceExam = async (req, res) => {
 
           console.log(`Re-request allowed for completed exam: ${exam._id}, student: ${isAuthenticated ? req.user._id : email}, isRetake: ${isRetake}`);
 
-          // Free exams always auto-approve; subscription exams require an
-          // active subscription covering this exam's level/sub-level.
-          const canAutoApprove = exam.accessType === 'free' ||
-            (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam));
+          // A completed exam being re-requested is always a retake, even for
+          // free exams — free exams grant one attempt to non-subscribers;
+          // retaking (any exam) requires an active subscription covering
+          // this exam's level/sub-level.
+          const canAutoApprove = isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam);
 
           if (canAutoApprove) {
             console.log(`Auto-approving retake (existing request path): ${exam._id}, student: ${isAuthenticated ? req.user._id : email}`);
@@ -374,8 +379,13 @@ const requestMarketplaceExam = async (req, res) => {
     const rejectedRequest = await ExamRequest.findOne(rejectedQuery);
 
     if (rejectedRequest) {
-      const canAutoApprove = exam.accessType === 'free' ||
-        (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam));
+      // A rejected retake request still needs an active subscription to
+      // re-approve, even for free exams — only a non-retake (first-time)
+      // rejection can fall back to the free-exam auto-approve.
+      const canAutoApprove = rejectedRequest.isRetake
+        ? (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam))
+        : (exam.accessType === 'free' ||
+          (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam)));
 
       if (!canAutoApprove) {
         return res.status(403).json({
@@ -430,11 +440,24 @@ const requestMarketplaceExam = async (req, res) => {
       }
     }
 
-    // Free exams always auto-approve; subscription exams require an active
+    // No ExamRequest exists yet for this student/exam, but they may have
+    // already completed it directly (e.g. via the level exam bank, without
+    // ever going through this request flow) — that still counts as a retake
+    // attempt, so free exams don't get an unlimited self-service loophole.
+    const alreadyCompletedDirectly = isAuthenticated && !!(await Result.findOne({
+      student: req.user._id,
+      exam: exam._id,
+      isCompleted: true
+    }));
+
+    // Free exams always auto-approve on a genuine first attempt; subscription
+    // exams (and any retake, including of a free exam) require an active
     // subscription covering this exam's level/sub-level. Unauthenticated
     // (guest) requests can never satisfy a subscription requirement.
-    const canAutoApprove = exam.accessType === 'free' ||
-      (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam));
+    const canAutoApprove = alreadyCompletedDirectly
+      ? (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam))
+      : (exam.accessType === 'free' ||
+        (isAuthenticated && await hasActiveSubscriptionForExam(req.user._id, exam)));
 
     if (!canAutoApprove) {
       return res.status(403).json({
@@ -459,7 +482,7 @@ const requestMarketplaceExam = async (req, res) => {
         phone: phone?.trim() || null
       },
       amount: amount,
-      isRetake: isRetake
+      isRetake: isRetake || alreadyCompletedDirectly
     };
 
     // Add student reference if authenticated

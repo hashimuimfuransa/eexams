@@ -127,7 +127,12 @@ const getAvailableExams = async (req, res) => {
       } else if (examSubscribedIds.has(exam._id.toString())) {
         accessUnlocked = true;
       } else if (exam.accessType === 'free') {
-        accessUnlocked = freeExamMatchesUserSubLevel(exam, user);
+        // A free exam grants exactly one attempt to non-subscribers — once
+        // completed, retaking it requires an active subscription just like
+        // any other subscription-gated content.
+        const isCompletedFree = completedExams.includes(exam._id.toString());
+        accessUnlocked = freeExamMatchesUserSubLevel(exam, user) &&
+          (!isCompletedFree || (hasActiveSubscription && subscriptionCoversExam(activeSubscription, exam)));
       } else {
         accessUnlocked = hasActiveSubscription && subscriptionCoversExam(activeSubscription, exam);
       }

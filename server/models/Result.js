@@ -179,7 +179,8 @@ const ResultSchema = new mongoose.Schema({
         'letter_based',
         'isCorrect_flag',
         'modelAnswer_comparison',
-        'spreadsheet_manual_grading'
+        'spreadsheet_manual_grading',
+        'flexible_normalization'
       ],
       default: 'enhanced_grading'
     },

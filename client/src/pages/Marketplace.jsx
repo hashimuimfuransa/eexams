@@ -132,6 +132,10 @@ const Marketplace = () => {
     } catch (err) {
       console.error('Error fetching marketplace exams:', err);
       setError('Failed to load marketplace exams. Please try again later.');
+      // Stop infinite-scroll retries — otherwise the sentinel stays visible
+      // (nothing new rendered) and the observer keeps incrementing the page,
+      // hammering the server with an unbounded retry loop.
+      setHasMore(false);
     } finally {
       setLoading(false);
       setLoadingMore(false);

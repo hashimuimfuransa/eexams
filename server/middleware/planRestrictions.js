@@ -1,16 +1,22 @@
 const { checkLimit, hasFeature, getPlanConfig, getPlanConfigForUser } = require('../config/plans');
 const Exam = require('../models/Exam');
 const User = require('../models/User');
+const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, syncSubscriptionStatus } = require('../utils/subscriptionStatus');
 
 // Resolve the effective plan for a user:
 // - Org teachers inherit their parentAdmin's plan
 // - Everyone else uses their own plan
+// statusSource is whichever account (self, or parentAdmin for org teachers)
+// actually owns the subscriptionStatus/subscriptionExpiresAt that should be
+// shown/enforced — an org teacher's own subscription fields are unused
+// boilerplate, the org's plan is what governs their access.
 const resolveEffectivePlan = async (user) => {
   if (user.role === 'teacher' && user.parentAdmin) {
-    const admin = await User.findById(user.parentAdmin).select('subscriptionPlan userType');
-    if (admin) return { plan: admin.subscriptionPlan || 'free', userType: 'organization' };
+    const admin = await User.findById(user.parentAdmin)
+      .select('subscriptionPlan userType subscriptionStatus subscriptionExpiresAt subscriptionEndDate');
+    if (admin) return { plan: admin.subscriptionPlan || 'free', userType: 'organization', statusSource: admin };
   }
-  return { plan: user.subscriptionPlan || 'free', userType: user.userType || 'individual' };
+  return { plan: user.subscriptionPlan || 'free', userType: user.userType || 'individual', statusSource: user };
 };
 
 // Middleware to check if user can create more exams
@@ -18,12 +24,12 @@ const checkExamLimit = async (req, res, next) => {
   try {
     const user = req.user;
     const { plan, userType } = await resolveEffectivePlan(user);
-    const planConfig = getPlanConfigForUser(plan, userType);
-    
+    const planConfig = await getPlanConfigForUser(plan, userType);
+
     // Count current exams created by this user
     const examCount = await Exam.countDocuments({ createdBy: user._id });
-    
-    const check = checkLimit(plan, 'maxExams', examCount);
+
+    const check = checkLimit(planConfig, 'maxExams', examCount);
     
     if (!check.allowed) {
       return res.status(403).json({
@@ -54,12 +60,12 @@ const checkStudentLimit = async (req, res, next) => {
   try {
     const user = req.user;
     const { plan, userType } = await resolveEffectivePlan(user);
-    const planConfig = getPlanConfigForUser(plan, userType);
-    
+    const planConfig = await getPlanConfigForUser(plan, userType);
+
     const studentQuery = { role: 'student', createdBy: user._id };
     const studentCount = await User.countDocuments(studentQuery);
-    
-    const check = checkLimit(plan, 'maxStudents', studentCount);
+
+    const check = checkLimit(planConfig, 'maxStudents', studentCount);
     
     if (!check.allowed) {
       return res.status(403).json({
@@ -96,15 +102,15 @@ const checkTeacherLimit = async (req, res, next) => {
     }
     
     const { plan, userType } = await resolveEffectivePlan(user);
-    const planConfig = getPlanConfigForUser(plan, userType);
-    
+    const planConfig = await getPlanConfigForUser(plan, userType);
+
     // Count teachers in this organization
-    const teacherCount = await User.countDocuments({ 
+    const teacherCount = await User.countDocuments({
       role: 'teacher',
-      parentAdmin: user._id 
+      parentAdmin: user._id
     });
-    
-    const check = checkLimit(plan, 'maxTeachers', teacherCount);
+
+    const check = checkLimit(planConfig, 'maxTeachers', teacherCount);
     
     if (!check.allowed) {
       return res.status(403).json({
@@ -126,9 +132,10 @@ const checkTeacherLimit = async (req, res, next) => {
 // Middleware to check if user has access to AI features
 const requireAIFeatures = async (req, res, next) => {
   const user = req.user;
-  const { plan } = await resolveEffectivePlan(user);
-  
-  if (!hasFeature(plan, 'aiFeatures')) {
+  const { plan, userType } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType);
+
+  if (!hasFeature(planConfig, 'aiFeatures')) {
     return res.status(403).json({
       message: 'AI features require Basic plan or higher. Please upgrade your subscription.',
       code: 'FEATURE_NOT_AVAILABLE',
@@ -143,9 +150,10 @@ const requireAIFeatures = async (req, res, next) => {
 // Middleware to check if user has access to advanced AI features
 const requireAdvancedAI = async (req, res, next) => {
   const user = req.user;
-  const { plan } = await resolveEffectivePlan(user);
-  
-  if (!hasFeature(plan, 'advancedAI')) {
+  const { plan, userType } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType);
+
+  if (!hasFeature(planConfig, 'advancedAI')) {
     return res.status(403).json({
       message: 'Advanced AI features require Premium plan or higher. Please upgrade your subscription.',
       code: 'FEATURE_NOT_AVAILABLE',
@@ -160,9 +168,10 @@ const requireAdvancedAI = async (req, res, next) => {
 // Middleware to check if user has access to analytics
 const requireAnalytics = async (req, res, next) => {
   const user = req.user;
-  const { plan } = await resolveEffectivePlan(user);
-  
-  if (!hasFeature(plan, 'analytics')) {
+  const { plan, userType } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType);
+
+  if (!hasFeature(planConfig, 'analytics')) {
     return res.status(403).json({
       message: 'Analytics dashboard requires Basic plan or higher. Please upgrade your subscription.',
       code: 'FEATURE_NOT_AVAILABLE',
@@ -177,9 +186,10 @@ const requireAnalytics = async (req, res, next) => {
 // Middleware to check if user has API access
 const requireAPIAccess = async (req, res, next) => {
   const user = req.user;
-  const { plan } = await resolveEffectivePlan(user);
-  
-  if (!hasFeature(plan, 'apiAccess')) {
+  const { plan, userType } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType);
+
+  if (!hasFeature(planConfig, 'apiAccess')) {
     return res.status(403).json({
       message: 'API access requires Enterprise plan. Please upgrade your subscription.',
       code: 'FEATURE_NOT_AVAILABLE',
@@ -194,9 +204,10 @@ const requireAPIAccess = async (req, res, next) => {
 // Middleware to check if user has custom branding
 const requireCustomBranding = async (req, res, next) => {
   const user = req.user;
-  const { plan } = await resolveEffectivePlan(user);
-  
-  if (!hasFeature(plan, 'customBranding')) {
+  const { plan, userType } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType);
+
+  if (!hasFeature(planConfig, 'customBranding')) {
     return res.status(403).json({
       message: 'Custom branding requires Enterprise plan. Please upgrade your subscription.',
       code: 'FEATURE_NOT_AVAILABLE',
@@ -211,9 +222,10 @@ const requireCustomBranding = async (req, res, next) => {
 // Middleware to check if user has marketplace access
 const requireMarketplaceAccess = async (req, res, next) => {
   const user = req.user;
-  const { plan } = await resolveEffectivePlan(user);
-  
-  if (!hasFeature(plan, 'marketplaceAccess')) {
+  const { plan, userType } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType);
+
+  if (!hasFeature(planConfig, 'marketplaceAccess')) {
     return res.status(403).json({
       message: 'Marketplace access requires Enterprise plan. Please upgrade your subscription to list and sell exams on the marketplace.',
       code: 'FEATURE_NOT_AVAILABLE',
@@ -228,9 +240,10 @@ const requireMarketplaceAccess = async (req, res, next) => {
 // Middleware to check if user has templates access
 const requireTemplatesAccess = async (req, res, next) => {
   const user = req.user;
-  const { plan } = await resolveEffectivePlan(user);
-  
-  if (!hasFeature(plan, 'templates')) {
+  const { plan, userType } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType);
+
+  if (!hasFeature(planConfig, 'templates')) {
     return res.status(403).json({
       message: 'Templates feature requires Basic plan or higher. Please upgrade your subscription to save and use exam templates.',
       code: 'FEATURE_NOT_AVAILABLE',
@@ -247,10 +260,10 @@ const getPlanUsage = async (userId) => {
   try {
     const user = await User.findById(userId);
     if (!user) return null;
-    
-    const { plan, userType } = await resolveEffectivePlan(user);
-    const planConfig = getPlanConfigForUser(plan, userType);
-    
+
+    const { plan, userType, statusSource } = await resolveEffectivePlan(user);
+    const planConfig = await getPlanConfigForUser(plan, userType);
+
     // Get counts
     const examCount = await Exam.countDocuments({ createdBy: userId });
     const studentCount = await User.countDocuments({
@@ -270,27 +283,52 @@ const getPlanUsage = async (userId) => {
       });
     }
 
-    // Calculate days left (enterprise plans don't expire)
+    // Effective status: subscriptionStatus on statusSource is only flipped to
+    // 'expired' lazily, so compare the actual expiry timestamp (hour-precise,
+    // not just the calendar date) rather than trusting that stored field —
+    // otherwise a plan that expired a few hours ago still reads as "active".
+    const effectiveExpiresAt = getSubscriptionExpiryDate(statusSource);
+    const subscriptionStatus = getEffectiveSubscriptionStatus(statusSource);
+    await syncSubscriptionStatus(statusSource);
+
+    // Calculate time left (enterprise plans don't expire)
     let daysLeft = null;
+    let hoursLeft = null;
     let subscriptionExpiresAt = null;
-    if (user.subscriptionExpiresAt && plan !== 'enterprise') {
-      subscriptionExpiresAt = user.subscriptionExpiresAt;
-      const now = new Date();
-      const diffTime = subscriptionExpiresAt - now;
-      daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (daysLeft < 0) daysLeft = 0;
+    if (effectiveExpiresAt && plan !== 'enterprise') {
+      subscriptionExpiresAt = effectiveExpiresAt;
+      const diffTime = new Date(effectiveExpiresAt).getTime() - Date.now();
+      if (diffTime <= 0) {
+        daysLeft = 0;
+        hoursLeft = 0;
+      } else {
+        daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        // Under a day left: report hours instead, so a plan measured in
+        // hours (e.g. a 4-hour plan) doesn't misleadingly show "1 day".
+        if (diffTime < 24 * 60 * 60 * 1000) {
+          hoursLeft = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60)));
+        }
+      }
     }
-    
+
+    // JSON has no Infinity — it silently serializes to null over the wire,
+    // which the frontend can't distinguish from "no limit set". Send the
+    // same -1 sentinel used by the DB catalog (server/utils/planLimits.js)
+    // instead, which PlanUsageCard.jsx already expects.
+    const toWireLimit = (limit) => (limit === Infinity ? -1 : limit);
+
     return {
       plan,
+      userType,
       planName: planConfig.name,
-      subscriptionStatus: user.subscriptionStatus,
+      subscriptionStatus,
       subscriptionExpiresAt,
       daysLeft,
+      hoursLeft,
       limits: {
-        exams: { limit: planConfig.maxExams, used: examCount },
-        students: { limit: planConfig.maxStudents, used: studentCount },
-        teachers: isOrg ? { limit: planConfig.maxTeachers, used: teacherCount } : null
+        exams: { limit: toWireLimit(planConfig.maxExams), used: examCount },
+        students: { limit: toWireLimit(planConfig.maxStudents), used: studentCount },
+        teachers: isOrg ? { limit: toWireLimit(planConfig.maxTeachers), used: teacherCount } : null
       },
       features: {
         aiFeatures: planConfig.aiFeatures,
@@ -299,7 +337,8 @@ const getPlanUsage = async (userId) => {
         prioritySupport: planConfig.prioritySupport,
         customBranding: planConfig.customBranding,
         apiAccess: planConfig.apiAccess,
-        marketplaceAccess: planConfig.marketplaceAccess
+        marketplaceAccess: planConfig.marketplaceAccess,
+        templates: planConfig.templates
       }
     };
   } catch (error) {

@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { getEffectiveSubscriptionStatus, syncSubscriptionStatus } = require('../utils/subscriptionStatus');
 
 // Middleware to check subscription expiration
 const checkSubscriptionExpiration = async (req, res, next) => {
@@ -19,19 +20,10 @@ const checkSubscriptionExpiration = async (req, res, next) => {
       return next();
     }
 
-    // Enterprise subscribers don't expire
-    if (user.subscriptionPlan === 'enterprise') {
-      return next();
-    }
-
-    // Check if subscription is expired
-    if (user.subscriptionExpiresAt && new Date() > user.subscriptionExpiresAt) {
-      // Update status to expired if not already
-      if (user.subscriptionStatus !== 'expired') {
-        user.subscriptionStatus = 'expired';
-        await user.save();
-      }
-    }
+    // Compares the full expiry timestamp (hour-precise, not just the
+    // calendar date) against now, and persists the flip if it changed —
+    // catches plans measured in hours as soon as they run out.
+    await syncSubscriptionStatus(user);
 
     req.user = user;
     next();
@@ -65,11 +57,18 @@ const blockExpiredUsers = async (req, res, next) => {
       return next();
     }
 
+    // Self-heals user.subscriptionStatus against the real expiry timestamp
+    // (hour-precise) before checking it, so a plan that just ran out — even
+    // a few hours ago, not necessarily a full calendar day — is blocked
+    // immediately instead of waiting for some other request to flip the flag.
+    await syncSubscriptionStatus(user);
+
     // Check if subscription is expired
     if (user.subscriptionStatus === 'expired') {
       return res.status(403).json({
-        message: 'Your subscription has expired. Please renew your subscription to continue.',
-        subscriptionExpired: true
+        message: `Your subscription expired on ${user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).toLocaleString() : 'an earlier date'}. Please renew your subscription to continue.`,
+        subscriptionExpired: true,
+        subscriptionExpiresAt: user.subscriptionExpiresAt
       });
     }
 

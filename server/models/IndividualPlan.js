@@ -58,6 +58,21 @@ const IndividualPlanSchema = new mongoose.Schema({
     min: 0,
     max: 100
   },
+  // Enforcement overrides — when unset (null), server/config/plans.js falls
+  // back to the hardcoded default for this tierKey. -1 means "unlimited".
+  maxExams: { type: Number, default: null },
+  maxStudents: { type: Number, default: null },
+  maxTeachers: { type: Number, default: null },
+  examPerMonth: { type: Number, default: null },
+  storageLimit: { type: Number, default: null }, // MB
+  aiFeatures: { type: Boolean, default: null },
+  advancedAI: { type: Boolean, default: null },
+  analytics: { type: Boolean, default: null },
+  prioritySupport: { type: Boolean, default: null },
+  customBranding: { type: Boolean, default: null },
+  apiAccess: { type: Boolean, default: null },
+  marketplaceAccess: { type: Boolean, default: null },
+  templates: { type: Boolean, default: null },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

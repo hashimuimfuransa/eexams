@@ -2465,7 +2465,11 @@ function ExamBankMarketplaceSection({ searchQuery }) {
         params: { status: statusFilter, sortBy, page: reset ? 1 : page, limit: 50 }
       });
       const newExams = res.data.exams || [];
-      setExams(prev => reset ? newExams : [...prev, ...newExams]);
+      setExams(prev => {
+        if (reset) return newExams;
+        const existingIds = new Set(prev.map(e => e._id));
+        return [...prev, ...newExams.filter(e => !existingIds.has(e._id))];
+      });
       if (res.data.stats) setStats(res.data.stats);
       setHasMore(newExams.length >= 50);
     } catch (err) {
@@ -4391,6 +4395,15 @@ function ReclamationsSection({ searchQuery }) {
   const [responseStatus, setResponseStatus] = useState('resolved');
   const [submitting, setSubmitting] = useState(false);
 
+  const [localSearch, setLocalSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+
+  useEffect(() => {
+    setLocalSearch(searchQuery || '');
+  }, [searchQuery]);
+
   useEffect(() => {
     fetchReclamations();
   }, []);
@@ -4447,16 +4460,87 @@ function ReclamationsSection({ searchQuery }) {
     }
   };
 
-  const filteredReclamations = reclamations.filter(r =>
-    !searchQuery || 
-    r.student?.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.student?.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.exam?.title?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredReclamations = reclamations.filter(r => {
+    const q = localSearch.toLowerCase();
+    const matchesSearch = !q ||
+      r.student?.firstName?.toLowerCase().includes(q) ||
+      r.student?.lastName?.toLowerCase().includes(q) ||
+      r.student?.email?.toLowerCase().includes(q) ||
+      r.exam?.title?.toLowerCase().includes(q) ||
+      r.claim?.toLowerCase().includes(q);
+    const matchesStatus = !statusFilter || r.status === statusFilter;
+    const matchesPriority = !priorityFilter || r.priority === priorityFilter;
+    const matchesCategory = !categoryFilter || r.category === categoryFilter;
+    return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
+  });
+
+  const clearFilters = () => {
+    setLocalSearch('');
+    setStatusFilter('');
+    setPriorityFilter('');
+    setCategoryFilter('');
+  };
 
   return (
     <Box>
       <SectionTitle>Student Reclamations</SectionTitle>
+
+      {/* Filter Bar */}
+      <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search by student, exam, or claim..."
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              InputProps={{
+                startAdornment: <Box component="span" sx={{ color: tokens.textMuted, mr: 1 }}>🔍</Box>
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#FAFBFC' } }}
+            />
+          </Grid>
+          <Grid item xs={6} md={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="">All Status</MuiMenuItem>
+                <MuiMenuItem value="pending">Pending</MuiMenuItem>
+                <MuiMenuItem value="under-review">Under Review</MuiMenuItem>
+                <MuiMenuItem value="resolved">Resolved</MuiMenuItem>
+                <MuiMenuItem value="rejected">Rejected</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} md={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Priority</InputLabel>
+              <Select label="Priority" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="">All Priority</MuiMenuItem>
+                <MuiMenuItem value="high">High</MuiMenuItem>
+                <MuiMenuItem value="medium">Medium</MuiMenuItem>
+                <MuiMenuItem value="low">Low</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Category</InputLabel>
+              <Select label="Category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
+                <MuiMenuItem value="">All Categories</MuiMenuItem>
+                <MuiMenuItem value="grading-error">Grading Error</MuiMenuItem>
+                <MuiMenuItem value="technical-issue">Technical Issue</MuiMenuItem>
+                <MuiMenuItem value="content-error">Content Error</MuiMenuItem>
+                <MuiMenuItem value="other">Other</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6} md={1}>
+            <Button fullWidth variant="outlined" onClick={clearFilters} sx={{ borderRadius: 2, height: 37, textTransform: 'none', fontWeight: 600 }}>Clear</Button>
+          </Grid>
+        </Grid>
+      </Paper>
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -4578,9 +4662,9 @@ function ReclamationsSection({ searchQuery }) {
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>Status</InputLabel>
             <Select value={responseStatus} onChange={(e) => setResponseStatus(e.target.value)} label="Status">
-              <MenuItem value="under-review">Under Review</MenuItem>
-              <MenuItem value="resolved">Resolved</MenuItem>
-              <MenuItem value="rejected">Rejected</MenuItem>
+              <MuiMenuItem value="under-review">Under Review</MuiMenuItem>
+              <MuiMenuItem value="resolved">Resolved</MuiMenuItem>
+              <MuiMenuItem value="rejected">Rejected</MuiMenuItem>
             </Select>
           </FormControl>
           <TextField

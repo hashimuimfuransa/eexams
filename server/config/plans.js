@@ -1,4 +1,11 @@
-// Plan configuration - defines features and limits for each subscription tier
+// Plan configuration - defines features and limits for each subscription tier.
+// The objects below (PLANS/ORG_PLANS) are the hardcoded DEFAULTS for each
+// tier. Basic/Premium/Enterprise limits are now super-admin-editable via the
+// OrganizationPlan/IndividualPlan DB catalogs (Organization/Individual Plan
+// Management in Super Admin) — resolvePlanConfig() below merges any DB
+// overrides on top of these defaults at request time. Free stays purely
+// hardcoded since it's never a purchasable catalog entry.
+const { LIMIT_FIELDS, FEATURE_FLAGS, UNLIMITED_SENTINEL } = require('../utils/planLimits');
 
 // Individual teacher plans
 const PLANS = {
@@ -113,24 +120,28 @@ const PLANS = {
   }
 };
 
-// Helper function to get plan config
+// Helper function to get plan config (hardcoded defaults only, individual
+// plans, no DB lookup — kept for any sync-context caller that just needs the
+// baseline; getPlanConfigForUser below is the authoritative, DB-aware one).
 const getPlanConfig = (planName) => {
   return PLANS[planName?.toLowerCase()] || PLANS.free;
 };
 
-// Check if user has access to a feature
-const hasFeature = (userPlan, feature) => {
-  const plan = getPlanConfig(userPlan);
-  return plan[feature] === true;
+// Check if a *resolved* plan config (from getPlanConfigForUser) has a feature.
+// Takes the config object itself, not a plan name — callers must resolve the
+// plan first so org vs individual and DB overrides are already applied.
+const hasFeature = (planConfig, feature) => {
+  return planConfig[feature] === true;
 };
 
-// Check if user is within limits
-const checkLimit = (userPlan, limitType, currentCount) => {
-  const plan = getPlanConfig(userPlan);
-  const limit = plan[limitType];
-  
+// Check if a *resolved* plan config (from getPlanConfigForUser) permits
+// currentCount more of limitType. Takes the config object itself, not a plan
+// name — see hasFeature.
+const checkLimit = (planConfig, limitType, currentCount) => {
+  const limit = planConfig[limitType];
+
   if (limit === Infinity) return { allowed: true };
-  
+
   return {
     allowed: currentCount < limit,
     limit,
@@ -248,10 +259,46 @@ const ORG_PLANS = {
   }
 };
 
-// Get the right plan config based on userType
-const getPlanConfigForUser = (planName, userType) => {
+// Hardcoded default for a tier/userType, with no DB lookup — the fallback
+// base that DB overrides are merged onto.
+const getHardcodedPlanConfig = (planName, userType) => {
   const map = userType === 'organization' ? ORG_PLANS : PLANS;
   return map[planName?.toLowerCase()] || map.free;
+};
+
+// Get the right plan config based on userType, merging in any super-admin
+// edited limits/features from the DB catalog (OrganizationPlan/IndividualPlan)
+// on top of the hardcoded defaults. Async because it may hit the DB — every
+// caller must await it. Free tier is never in the DB catalog, so it always
+// returns the hardcoded config untouched.
+const getPlanConfigForUser = async (planName, userType) => {
+  const key = planName?.toLowerCase() || 'free';
+  const base = getHardcodedPlanConfig(key, userType);
+  if (key === 'free') return base;
+
+  // Lazy require avoids any load-order issues if a model file ever ends up
+  // requiring config/plans.js transitively.
+  const Model = userType === 'organization'
+    ? require('../models/OrganizationPlan')
+    : require('../models/IndividualPlan');
+
+  let dbPlan = null;
+  try {
+    dbPlan = await Model.findOne({ tierKey: key, status: 'active' }).sort({ updatedAt: -1 }).lean();
+  } catch (error) {
+    console.error('getPlanConfigForUser: failed to load DB plan overrides, falling back to defaults', error);
+  }
+
+  if (!dbPlan) return base;
+
+  const merged = { ...base, name: dbPlan.name || base.name };
+  [...LIMIT_FIELDS, ...FEATURE_FLAGS].forEach((field) => {
+    const value = dbPlan[field];
+    if (value === undefined || value === null) return;
+    merged[field] = value === UNLIMITED_SENTINEL ? Infinity : value;
+  });
+
+  return merged;
 };
 
 module.exports = {

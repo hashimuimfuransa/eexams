@@ -26,7 +26,11 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
+  FormControlLabel,
+  Divider,
+  Stack,
+  Tooltip
 } from '@mui/material';
 import {
   Add,
@@ -39,6 +43,38 @@ import {
 import api from '../../services/api';
 import { formatPlanDuration } from '../../utils/planUtils';
 
+// -1 is the "Unlimited" sentinel (JSON-safe stand-in for Infinity) — the
+// server converts it back to Infinity when resolving enforcement, see
+// server/utils/planLimits.js and server/config/plans.js.
+const UNLIMITED = -1;
+
+const LIMIT_FIELD_DEFS = [
+  { key: 'maxExams', label: 'Max Exams' },
+  { key: 'maxStudents', label: 'Max Students' },
+  { key: 'maxTeachers', label: 'Max Teacher Accounts' }
+];
+
+const FEATURE_FLAG_DEFS = [
+  { key: 'aiFeatures', label: 'AI Question Generation' },
+  { key: 'advancedAI', label: 'Advanced AI Features' },
+  { key: 'analytics', label: 'Analytics Dashboard' },
+  { key: 'prioritySupport', label: 'Priority Support' },
+  { key: 'customBranding', label: 'Custom Branding' },
+  { key: 'apiAccess', label: 'API Access' },
+  { key: 'marketplaceAccess', label: 'Marketplace Access' },
+  { key: 'templates', label: 'Exam Templates' }
+];
+
+// Only used to pre-fill sensible starting values when adding a new plan or
+// switching tier — NOT authoritative. The actual enforced defaults live in
+// server/config/plans.js PLANS; leaving a field blank/"Default" here means
+// the server falls back to those hardcoded numbers.
+const TIER_DEFAULTS = {
+  basic: { maxExams: 30, maxStudents: 200, maxTeachers: 3, aiFeatures: true, advancedAI: false, analytics: true, prioritySupport: false, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: true },
+  premium: { maxExams: UNLIMITED, maxStudents: UNLIMITED, maxTeachers: 10, aiFeatures: true, advancedAI: true, analytics: true, prioritySupport: true, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: true },
+  enterprise: { maxExams: UNLIMITED, maxStudents: UNLIMITED, maxTeachers: UNLIMITED, aiFeatures: true, advancedAI: true, analytics: true, prioritySupport: true, customBranding: true, apiAccess: true, marketplaceAccess: true, templates: true }
+};
+
 const DEFAULT_FORM = {
   tierKey: 'basic',
   name: '',
@@ -47,8 +83,28 @@ const DEFAULT_FORM = {
   durationValue: 30,
   durationUnit: 'days',
   status: 'active',
-  features: '',
-  discountPercentage: 0
+  discountPercentage: 0,
+  ...TIER_DEFAULTS.basic
+};
+
+const formatLimitDisplay = (value) => {
+  if (value === UNLIMITED) return 'Unlimited';
+  if (value === null || value === undefined) return 'Default';
+  return value;
+};
+
+// Builds the checkout-facing feature bullets straight from the actual
+// selected limits/toggles, so what a buyer sees always matches what's
+// enforced — no separately-typed marketing copy to drift out of sync.
+const buildFeatureList = (formData) => {
+  const list = LIMIT_FIELD_DEFS.map(({ key, label }) => {
+    const noun = label.replace(/^Max /, '').toLowerCase();
+    return formData[key] === UNLIMITED ? `Unlimited ${noun}` : `Up to ${formData[key]} ${noun}`;
+  });
+  FEATURE_FLAG_DEFS.forEach(({ key, label }) => {
+    if (formData[key]) list.push(label);
+  });
+  return list;
 };
 
 const IndividualPlanManagement = () => {
@@ -80,6 +136,11 @@ const IndividualPlanManagement = () => {
   const handleOpenDialog = (plan = null) => {
     if (plan) {
       setEditingPlan(plan);
+      const tierDefaults = TIER_DEFAULTS[plan.tierKey] || TIER_DEFAULTS.basic;
+      const limitFields = {};
+      [...LIMIT_FIELD_DEFS, ...FEATURE_FLAG_DEFS].forEach(({ key }) => {
+        limitFields[key] = (plan[key] === undefined || plan[key] === null) ? tierDefaults[key] : plan[key];
+      });
       setFormData({
         tierKey: plan.tierKey || 'basic',
         name: plan.name,
@@ -88,14 +149,25 @@ const IndividualPlanManagement = () => {
         durationValue: plan.durationValue ?? plan.durationDays,
         durationUnit: plan.durationUnit || 'days',
         status: plan.status || 'active',
-        features: (plan.features || []).join(', '),
-        discountPercentage: plan.discountPercentage || 0
+        discountPercentage: plan.discountPercentage || 0,
+        ...limitFields
       });
     } else {
       setEditingPlan(null);
       setFormData(DEFAULT_FORM);
     }
     setDialogOpen(true);
+  };
+
+  const handleTierChange = (newTier) => {
+    setFormData((prev) => ({
+      ...prev,
+      tierKey: newTier,
+      // Only reset limits to the new tier's suggested defaults when adding a
+      // new plan — editing an existing plan should never silently overwrite
+      // values the admin already set.
+      ...(editingPlan ? {} : TIER_DEFAULTS[newTier])
+    }));
   };
 
   const handleCloseDialog = () => {
@@ -108,7 +180,7 @@ const IndividualPlanManagement = () => {
       setSubmitting(true);
       setError(null);
 
-      const payload = { ...formData, features: formData.features.split(',').map(f => f.trim()).filter(Boolean) };
+      const payload = { ...formData, features: buildFeatureList(formData) };
 
       if (editingPlan) {
         await api.put(`/individual-plans/${editingPlan._id}`, payload);
@@ -194,6 +266,7 @@ const IndividualPlanManagement = () => {
                 <TableCell>Duration</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Discount</TableCell>
+                <TableCell>Limits &amp; Features</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -212,6 +285,34 @@ const IndividualPlanManagement = () => {
                     <Chip label={plan.status} color={plan.status === 'active' ? 'success' : 'default'} size="small" />
                   </TableCell>
                   <TableCell>{plan.discountPercentage > 0 ? `${plan.discountPercentage}%` : '-'}</TableCell>
+                  <TableCell>
+                    <Tooltip
+                      title={
+                        <Box>
+                          {LIMIT_FIELD_DEFS.map((f) => (
+                            <Typography key={f.key} variant="caption" display="block">
+                              {f.label}: {formatLimitDisplay(plan[f.key])}
+                            </Typography>
+                          ))}
+                          {FEATURE_FLAG_DEFS.map((f) => (
+                            <Typography key={f.key} variant="caption" display="block">
+                              {f.label}: {plan[f.key] === true ? 'On' : plan[f.key] === false ? 'Off' : 'Default'}
+                            </Typography>
+                          ))}
+                        </Box>
+                      }
+                    >
+                      <Chip
+                        label={
+                          [...LIMIT_FIELD_DEFS, ...FEATURE_FLAG_DEFS].some((f) => plan[f.key] !== null && plan[f.key] !== undefined)
+                            ? 'Custom limits'
+                            : 'Default limits'
+                        }
+                        size="small"
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  </TableCell>
                   <TableCell align="right">
                     <IconButton onClick={() => handleOpenDialog(plan)} size="small">
                       <Edit />
@@ -227,7 +328,7 @@ const IndividualPlanManagement = () => {
               ))}
               {plans.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">
+                  <TableCell colSpan={8} align="center">
                     <Typography color="text.secondary" sx={{ py: 3 }}>No individual plans yet.</Typography>
                   </TableCell>
                 </TableRow>
@@ -249,7 +350,7 @@ const IndividualPlanManagement = () => {
                   <InputLabel>Tier</InputLabel>
                   <Select
                     value={formData.tierKey}
-                    onChange={(e) => setFormData({ ...formData, tierKey: e.target.value })}
+                    onChange={(e) => handleTierChange(e.target.value)}
                     label="Tier"
                     required
                   >
@@ -327,15 +428,77 @@ const IndividualPlanManagement = () => {
                 />
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Features (comma-separated)"
-                  value={formData.features}
-                  onChange={(e) => setFormData({ ...formData, features: e.target.value })}
-                  multiline
-                  rows={2}
-                  placeholder="e.g., 30 exams/month, 200 students, AI question generation"
-                />
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                  Usage Limits
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  These are enforced server-side. Leave "Unlimited" off and set a number, or turn it on to remove the cap entirely.
+                </Typography>
+              </Grid>
+              {LIMIT_FIELD_DEFS.map(({ key, label }) => (
+                <Grid item xs={12} sm={4} key={key}>
+                  <Stack spacing={0.5}>
+                    <TextField
+                      fullWidth
+                      label={label}
+                      type="number"
+                      value={formData[key] === UNLIMITED ? '' : formData[key]}
+                      onChange={(e) => setFormData({ ...formData, [key]: parseInt(e.target.value, 10) || 0 })}
+                      disabled={formData[key] === UNLIMITED}
+                      inputProps={{ min: 0 }}
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={formData[key] === UNLIMITED}
+                          onChange={(e) => {
+                            const tierDefaults = TIER_DEFAULTS[formData.tierKey] || TIER_DEFAULTS.basic;
+                            const fallback = tierDefaults[key] === UNLIMITED ? 0 : tierDefaults[key];
+                            setFormData({ ...formData, [key]: e.target.checked ? UNLIMITED : fallback });
+                          }}
+                        />
+                      }
+                      label="Unlimited"
+                    />
+                  </Stack>
+                </Grid>
+              ))}
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                  Feature Access
+                </Typography>
+              </Grid>
+              {FEATURE_FLAG_DEFS.map(({ key, label }) => (
+                <Grid item xs={12} sm={6} key={key}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={!!formData[key]}
+                        onChange={(e) => setFormData({ ...formData, [key]: e.target.checked })}
+                      />
+                    }
+                    label={label}
+                  />
+                </Grid>
+              ))}
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                  Checkout Preview
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  This is exactly what buyers will see on the pricing/checkout page — generated from the limits and toggles above.
+                </Typography>
+                <Stack direction="row" flexWrap="wrap" gap={1}>
+                  {buildFeatureList(formData).map((feature) => (
+                    <Chip key={feature} label={feature} size="small" color="primary" variant="outlined" />
+                  ))}
+                </Stack>
               </Grid>
             </Grid>
           </Box>

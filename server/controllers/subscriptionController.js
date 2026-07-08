@@ -8,6 +8,7 @@ const Result = require('../models/Result');
 const PendingPayment = require('../models/PendingPayment');
 const itecPayment = require('../services/itecPayment');
 const { streamSubscriptionInvoice } = require('../utils/invoiceGenerator');
+const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, getEffectiveLevelSubscriptionStatus } = require('../utils/subscriptionStatus');
 
 // @desc    Get all subscriptions
 // @route   GET /api/subscriptions
@@ -20,20 +21,37 @@ const getSubscriptions = async (req, res) => {
     if (user) query.user = user;
     if (level) query.level = level;
     if (plan) query.plan = plan;
-    if (status) query.status = status;
+    // Status is filtered in-memory below, against the effective (not raw
+    // stored) status — filtering the query on the raw field here would miss
+    // subscriptions whose expiresAt has passed but status is still stuck at
+    // 'active' (no job ever flips it).
 
-    const subscriptions = await Subscription.find(query)
+    const allMatching = await Subscription.find(query)
       .populate('user', 'firstName lastName email')
       .populate('level', 'name')
       .populate('plan', 'name price durationDays')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .sort({ createdAt: -1 });
 
-    const total = await Subscription.countDocuments(query);
+    // Subscription.status is only ever set at creation/cancellation — there's
+    // no scheduled job that flips it to 'expired' — so recompute it against
+    // the real expiry timestamp (hour-precise, not just the calendar date)
+    // instead of trusting the stored field.
+    let subscriptions = allMatching.map((sub) => {
+      const obj = sub.toObject();
+      obj.status = getEffectiveLevelSubscriptionStatus(sub);
+      return obj;
+    });
+
+    if (status) {
+      subscriptions = subscriptions.filter((s) => s.status === status);
+    }
+
+    const total = subscriptions.length;
+    const start = (page - 1) * limit;
+    const paged = subscriptions.slice(start, start + Number(limit));
 
     res.json({
-      subscriptions,
+      subscriptions: paged,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total
@@ -722,9 +740,20 @@ const getAccountPlanSubscribers = async (req, res) => {
       subscriptionPlan: { $ne: null }
     })
       .select('firstName lastName email organization role userType subscriptionPlan subscriptionStatus subscriptionStartDate subscriptionEndDate subscriptionExpiresAt isBlocked createdAt')
-      .sort({ subscriptionStatus: 1, subscriptionEndDate: 1 });
+      .sort({ subscriptionStatus: 1, subscriptionEndDate: 1 })
+      .lean();
 
-    res.json(subscribers);
+    // subscriptionStatus is only flipped to 'expired' lazily elsewhere, so it
+    // can still read 'active' here even after subscriptionExpiresAt has
+    // passed (including plans measured in hours) — recompute it against the
+    // real expiry timestamp instead of trusting the stored field.
+    const withEffectiveStatus = subscribers.map((u) => ({
+      ...u,
+      subscriptionStatus: getEffectiveSubscriptionStatus(u),
+      subscriptionExpiresAt: getSubscriptionExpiryDate(u)
+    }));
+
+    res.json(withEffectiveStatus);
   } catch (error) {
     console.error('getAccountPlanSubscribers error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -796,13 +825,21 @@ const getSubscriptionStats = async (req, res) => {
     const now = new Date();
 
     const totalSubscriptions = await Subscription.countDocuments(matchQuery);
+    // status is only ever set at creation/cancellation — nothing flips it to
+    // 'expired' once expiresAt passes — so "active" here also requires the
+    // real expiry timestamp to still be in the future, and "expired" also
+    // counts subscriptions still stuck at status 'active' past their expiry.
     const activeSubscribers = await Subscription.countDocuments({
       ...matchQuery,
-      status: 'active'
+      status: 'active',
+      expiresAt: { $gt: now }
     });
     const expiredSubscriptions = await Subscription.countDocuments({
       ...matchQuery,
-      status: 'expired'
+      $or: [
+        { status: 'expired' },
+        { status: 'active', expiresAt: { $lte: now } }
+      ]
     });
     const cancelledSubscriptions = await Subscription.countDocuments({
       ...matchQuery,
@@ -821,7 +858,7 @@ const getSubscriptionStats = async (req, res) => {
       { $group: {
           _id: '$level',
           totalCount: { $sum: 1 },
-          activeCount: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+          activeCount: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'active'] }, { $gt: ['$expiresAt', now] }] }, 1, 0] } },
           revenue: { $sum: '$amountPaid' }
         } },
       { $lookup: { from: 'levels', localField: '_id', foreignField: '_id', as: 'levelInfo' } },
@@ -858,12 +895,17 @@ const getSubscriptionStats = async (req, res) => {
     ]);
 
     // Recent subscriptions (most recent 20)
-    const recentSubscriptions = await Subscription.find(matchQuery)
+    const recentSubscriptionsRaw = await Subscription.find(matchQuery)
       .populate('user', 'firstName lastName email')
       .populate('level', 'name')
       .populate('plan', 'name')
       .sort({ createdAt: -1 })
       .limit(20);
+    const recentSubscriptions = recentSubscriptionsRaw.map((sub) => {
+      const obj = sub.toObject();
+      obj.status = getEffectiveLevelSubscriptionStatus(sub);
+      return obj;
+    });
 
     // Revenue by period (last 7 / 30 / 365 days)
     const periodStart = (days) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
@@ -932,8 +974,15 @@ const getSubscriptionStats = async (req, res) => {
     // Pending payments awaiting activation (stuck / needs admin review)
     const pendingPaymentsCount = await PendingPayment.countDocuments({ status: 'pending' });
 
-    // Expired subscriptions detail (most recent 20)
-    const expiredSubscriptionsList = await Subscription.find({ ...matchQuery, status: 'expired' })
+    // Expired subscriptions detail (most recent 20) — includes ones still
+    // stuck at status 'active' whose expiresAt has already passed.
+    const expiredSubscriptionsList = await Subscription.find({
+      ...matchQuery,
+      $or: [
+        { status: 'expired' },
+        { status: 'active', expiresAt: { $lte: now } }
+      ]
+    })
       .populate('user', 'firstName lastName email')
       .populate('level', 'name')
       .populate('plan', 'name')

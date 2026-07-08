@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import { AuthProvider } from './context/AuthContext.jsx';
+import { PlanProvider } from './context/PlanContext.jsx';
 import { BrowserRouter } from 'react-router-dom';
 import AppRoutes from './Routes.jsx';
 import { ThemeProvider } from './context/ThemeContext';
@@ -22,7 +23,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <ThemeProvider>
         <BrowserRouter>
           <AuthProvider>
-            <AppRoutes />
+            <PlanProvider>
+              <AppRoutes />
+            </PlanProvider>
           </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>

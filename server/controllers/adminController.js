@@ -4067,7 +4067,7 @@ const registerTeacher = async (req, res) => {
 
     // Enforce teacher limit based on org plan
     const { getPlanConfigForUser } = require('../config/plans');
-    const planConfig = getPlanConfigForUser(admin.subscriptionPlan, 'organization');
+    const planConfig = await getPlanConfigForUser(admin.subscriptionPlan, 'organization');
     const currentTeacherCount = await User.countDocuments({ parentAdmin: req.user._id, role: 'teacher' });
     if (planConfig.maxTeachers !== Infinity && currentTeacherCount >= planConfig.maxTeachers) {
       return res.status(403).json({

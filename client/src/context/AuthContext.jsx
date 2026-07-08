@@ -98,6 +98,7 @@ export const AuthProvider = ({ children }) => {
                   // Use ?? for plan/status so superadmin null values don't overwrite localStorage
                   subscriptionPlan: verifyRes.data.subscriptionPlan ?? userData.subscriptionPlan,
                   subscriptionStatus: verifyRes.data.subscriptionStatus ?? userData.subscriptionStatus,
+                  subscriptionExpiresAt: verifyRes.data.subscriptionExpiresAt ?? userData.subscriptionExpiresAt,
                   level: verifyRes.data.level ?? userData.level,
                   subLevel: verifyRes.data.subLevel ?? userData.subLevel,
                   freeExamUsed: verifyRes.data.freeExamUsed ?? userData.freeExamUsed,
@@ -207,6 +208,7 @@ export const AuthProvider = ({ children }) => {
         token: response.data.token,
         subscriptionPlan: response.data.subscriptionPlan,
         subscriptionStatus: response.data.subscriptionStatus,
+        subscriptionExpiresAt: response.data.subscriptionExpiresAt,
         organization: response.data.organization,
         isOrgTeacher: response.data.isOrgTeacher ?? false,
         phone: response.data.phone,

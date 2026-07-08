@@ -1605,7 +1605,7 @@ function ExamLevelAccessPanel({ exam, levels, saving, onSave, isEnterprise }) {
 /* ── HOME ── */
 function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const { canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess, isEnterprise } = usePlan();
+  const { canUseAI: hasAIFeatureAccess, canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess, isEnterprise } = usePlan();
   const [aiMode, setAiMode] = useState(canUseAdvancedAI ? 'describe' : 'upload');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, level: '', subLevel: '', accessType: 'subscription', sections: [{ name: 'A', description: 'Section A', questions: [] }] });
   const [levels, setLevels] = useState([]);
@@ -1738,7 +1738,12 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
   const effectivePlan = (user?.subscriptionPlan || 'free').toLowerCase();
   const planLimits = PLAN_Q_LIMITS[effectivePlan] || PLAN_Q_LIMITS.free;
-  const canUseAI = planLimits.maxQuestions > 0;
+  // Both gates must pass: the per-tier question-count table (unrelated to
+  // the super-admin-editable plan flags) AND the actual aiFeatures flag,
+  // which a super admin can turn off for a tier independently — without
+  // this, a plan with AI disabled would still show the generator as usable
+  // and only fail once the user hit the server-enforced 403.
+  const canUseAI = hasAIFeatureAccess && planLimits.maxQuestions > 0;
 
   // Smart message analyzer to detect incomplete inputs
   const analyzeMessage = (msg) => {

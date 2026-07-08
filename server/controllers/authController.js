@@ -7,6 +7,7 @@ const Level = require('../models/Level');
 const emailService = require('../utils/emailService');
 const cacheService = require('../utils/cacheService');
 const { invalidateUserCache } = require('../middleware/auth');
+const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, syncSubscriptionStatus } = require('../utils/subscriptionStatus');
 
 // Google OAuth client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -324,17 +325,21 @@ const login = async (req, res) => {
     const sessionId = crypto.randomUUID();
     const token = generateToken(user._id, sessionId);
 
-    // For org teachers: resolve effective plan/status from their parent admin
+    // For org teachers: resolve effective plan/status/expiry from their parent admin
     let effectivePlan = user.subscriptionPlan || 'free';
-    let effectiveStatus = user.subscriptionStatus || 'pending';
+    let effectiveStatus = getEffectiveSubscriptionStatus(user) || 'pending';
+    let effectiveExpiresAt = getSubscriptionExpiryDate(user);
     let isOrgTeacher = false;
     if (user.role === 'teacher' && user.parentAdmin) {
-      const admin = await User.findById(user.parentAdmin).select('subscriptionPlan subscriptionStatus').lean();
+      const admin = await User.findById(user.parentAdmin).select('subscriptionPlan subscriptionStatus subscriptionExpiresAt subscriptionEndDate').lean();
       if (admin) {
         effectivePlan = admin.subscriptionPlan || 'free';
-        effectiveStatus = admin.subscriptionStatus || 'active';
+        effectiveStatus = getEffectiveSubscriptionStatus(admin) || 'active';
+        effectiveExpiresAt = getSubscriptionExpiryDate(admin);
         isOrgTeacher = true;
       }
+    } else {
+      await syncSubscriptionStatus(user);
     }
 
     // Prepare response data
@@ -352,7 +357,7 @@ const login = async (req, res) => {
       subscriptionStatus: effectiveStatus,
       subscriptionStartDate: user.subscriptionStartDate,
       subscriptionEndDate: user.subscriptionEndDate,
-      subscriptionExpiresAt: user.subscriptionExpiresAt,
+      subscriptionExpiresAt: effectiveExpiresAt,
       lastPaymentDate: user.lastPaymentDate,
       isOrgTeacher,
       organization: user.organization,
@@ -546,17 +551,22 @@ const verifyToken = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // For org teachers, inherit plan and status from their parent admin
+    // For org teachers, inherit plan, status and expiry from their parent admin
     let effectivePlan = user.subscriptionPlan;
-    let effectiveStatus = user.subscriptionStatus;
+    let effectiveStatus = getEffectiveSubscriptionStatus(user);
+    let effectiveExpiresAt = getSubscriptionExpiryDate(user);
     let isOrgTeacher = false;
     if (user.role === 'teacher' && user.parentAdmin) {
-      const admin = await User.findById(user.parentAdmin).select('subscriptionPlan subscriptionStatus');
+      const admin = await User.findById(user.parentAdmin).select('subscriptionPlan subscriptionStatus subscriptionExpiresAt subscriptionEndDate');
       if (admin) {
         effectivePlan = admin.subscriptionPlan;
-        effectiveStatus = admin.subscriptionStatus;
+        effectiveStatus = getEffectiveSubscriptionStatus(admin);
+        effectiveExpiresAt = getSubscriptionExpiryDate(admin);
+        await syncSubscriptionStatus(admin);
         isOrgTeacher = true;
       }
+    } else {
+      await syncSubscriptionStatus(user);
     }
 
     res.json({
@@ -571,6 +581,7 @@ const verifyToken = async (req, res) => {
       isVerified: true,
       subscriptionPlan: effectivePlan,
       subscriptionStatus: effectiveStatus,
+      subscriptionExpiresAt: effectiveExpiresAt,
       organization: user.organization,
       isOrgTeacher,
       level: user.level,

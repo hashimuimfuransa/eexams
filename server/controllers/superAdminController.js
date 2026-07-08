@@ -5,6 +5,7 @@ const Result = require('../models/Result');
 const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
 const bcrypt = require('bcryptjs');
+const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate } = require('../utils/subscriptionStatus');
 
 // @desc    Create a new super admin
 // @route   POST /api/superadmin/create-superadmin
@@ -2175,7 +2176,14 @@ const getAllSubscriptions = async (req, res) => {
         userTypeLabel = 'Organization';
       }
 
-      console.log('[getAllSubscriptions] User:', user.email, 'Plan:', user.subscriptionPlan, 'Status:', user.subscriptionStatus, 'StartDate:', startDate, 'EndDate:', endDate, 'UserType:', userTypeLabel);
+      // subscriptionStatus is only flipped to 'expired' lazily elsewhere, so
+      // recompute it against the real expiry timestamp (hour-precise) rather
+      // than trusting the stored field, which can still read 'active' after
+      // a plan — including one measured in hours — has already run out.
+      const effectiveStatus = getEffectiveSubscriptionStatus(user) || user.subscriptionStatus;
+      endDate = getSubscriptionExpiryDate(user) || endDate;
+
+      console.log('[getAllSubscriptions] User:', user.email, 'Plan:', user.subscriptionPlan, 'Status:', effectiveStatus, 'StartDate:', startDate, 'EndDate:', endDate, 'UserType:', userTypeLabel);
 
       return {
         _id: user._id,
@@ -2187,7 +2195,7 @@ const getAllSubscriptions = async (req, res) => {
           organization: user.organization
         },
         plan: user.subscriptionPlan,
-        status: user.subscriptionStatus,
+        status: effectiveStatus,
         startDate: startDate,
         endDate: endDate,
         lastPaymentDate: lastPayment,

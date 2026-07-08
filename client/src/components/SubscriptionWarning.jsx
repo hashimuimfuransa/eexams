@@ -138,8 +138,8 @@ function SubscriptionWarning({ user, onLogout }) {
           <Box sx={{ textAlign: 'center', pb: 1 }}>
             <Typography variant="body2" sx={{ color: tokens.textMuted, mb: 2 }}>
               {isFreePlan
-                ? `Your free plan expired on ${user?.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'unknown'}. Upgrade now to keep creating exams, adding students, and using every feature without interruption.`
-                : `Your ${user?.subscriptionPlan} plan expired on ${user?.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'unknown'}. Renew now to pick up right where you left off.`}
+                ? `Your free plan expired on ${user?.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown'}. Upgrade now to keep creating exams, adding students, and using every feature without interruption.`
+                : `Your ${user?.subscriptionPlan} plan expired on ${user?.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown'}. Renew now to pick up right where you left off.`}
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 3 }}>
               <Button

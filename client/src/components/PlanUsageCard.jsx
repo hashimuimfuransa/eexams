@@ -1,33 +1,27 @@
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, Paper, Chip, CircularProgress, Alert, Divider, Button } from '@mui/material';
-import { CalendarToday, TrendingUp, School, Assignment, WarningRounded, WorkspacePremium } from '@mui/icons-material';
+import { Box, Typography, Paper, Chip, CircularProgress, Alert, Divider, Button, Stack } from '@mui/material';
+import { CalendarToday, TrendingUp, School, Assignment, WarningRounded, WorkspacePremium, CheckCircle, Lock } from '@mui/icons-material';
 import { tokens } from '../pages/dashboardTokens';
-import api from '../services/api';
+import { usePlanContext } from '../context/PlanContext';
+
+// Mirrors FEATURE_FLAG_DEFS in the Super Admin Organization/Individual Plan
+// Management dialogs — same fields, same order, so what an admin toggles
+// there is exactly what a user sees included/locked here.
+const FEATURE_LABELS = [
+  { key: 'aiFeatures', label: 'AI Question Generation' },
+  { key: 'advancedAI', label: 'Advanced AI Features' },
+  { key: 'analytics', label: 'Analytics Dashboard' },
+  { key: 'prioritySupport', label: 'Priority Support' },
+  { key: 'customBranding', label: 'Custom Branding' },
+  { key: 'apiAccess', label: 'API Access' },
+  { key: 'marketplaceAccess', label: 'Marketplace Access' },
+  { key: 'templates', label: 'Exam Templates' }
+];
 
 export default function PlanUsageCard({ user, compact = false }) {
   const navigate = useNavigate();
-  const [planUsage, setPlanUsage] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    fetchPlanUsage();
-  }, [user?._id]);
-
-  const fetchPlanUsage = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get('/profile/plan-usage');
-      setPlanUsage(res.data);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to fetch plan usage:', err);
-      setError('Failed to load plan information');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { usage: planUsage, loading } = usePlanContext();
+  const error = !loading && !planUsage ? 'Failed to load plan information' : null;
 
   if (loading) {
     return (
@@ -47,7 +41,15 @@ export default function PlanUsageCard({ user, compact = false }) {
     );
   }
 
-  const { plan, planName, subscriptionStatus, subscriptionExpiresAt, daysLeft, limits, features } = planUsage;
+  const { plan, planName, subscriptionStatus, subscriptionExpiresAt, daysLeft, hoursLeft, limits, features } = planUsage;
+  const isExpired = subscriptionStatus === 'expired';
+  const formatExpiry = (date) => new Date(date).toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
   const isOrg = user?.userType === 'organization' || user?.role === 'admin';
 
   const resourceLabels = { exams: 'Exams', students: 'Students', teachers: 'Teacher Accounts' };
@@ -111,6 +113,10 @@ export default function PlanUsageCard({ user, compact = false }) {
               <Typography variant="caption" sx={{ color: hasReachedLimit ? '#B91C1C' : tokens.textMuted, fontWeight: hasReachedLimit ? 600 : 400 }} noWrap>
                 {hasReachedLimit
                   ? `${maxedOutResources.map(r => r.label).join(' & ')} limit reached`
+                  : isExpired
+                  ? `Expired${subscriptionExpiresAt ? ` on ${formatExpiry(subscriptionExpiresAt)}` : ''}`
+                  : hoursLeft !== null
+                  ? `${hoursLeft} hour${hoursLeft !== 1 ? 's' : ''} remaining`
                   : daysLeft !== null
                   ? `${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining`
                   : subscriptionStatus}
@@ -230,10 +236,21 @@ export default function PlanUsageCard({ user, compact = false }) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <CalendarToday sx={{ fontSize: 18, color: tokens.textMuted }} />
             <Typography variant="body2" sx={{ color: tokens.textMuted }}>
-              {daysLeft !== null ? `Days Remaining` : 'Expires On'}
+              {isExpired ? 'Expired' : hoursLeft !== null ? 'Hours Remaining' : daysLeft !== null ? 'Days Remaining' : 'Expires On'}
             </Typography>
           </Box>
-          {daysLeft !== null ? (
+          {isExpired ? (
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#EF4444' }}>
+              Expired on {formatExpiry(subscriptionExpiresAt)}
+            </Typography>
+          ) : hoursLeft !== null ? (
+            <Typography
+              variant="h4"
+              sx={{ fontWeight: 700, color: getDaysLeftColor(0), fontSize: '2rem' }}
+            >
+              {hoursLeft} hour{hoursLeft !== 1 ? 's' : ''}
+            </Typography>
+          ) : daysLeft !== null ? (
             <Typography
               variant="h4"
               sx={{
@@ -246,20 +263,12 @@ export default function PlanUsageCard({ user, compact = false }) {
             </Typography>
           ) : (
             <Typography variant="body1" sx={{ fontWeight: 600, color: tokens.textMuted }}>
-              {new Date(subscriptionExpiresAt).toLocaleDateString('en-GB', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric'
-              })}
+              {formatExpiry(subscriptionExpiresAt)}
             </Typography>
           )}
-          {daysLeft !== null && (
+          {!isExpired && (daysLeft !== null || hoursLeft !== null) && (
             <Typography variant="caption" sx={{ color: tokens.textMuted, display: 'block', mt: 0.5 }}>
-              Expires: {new Date(subscriptionExpiresAt).toLocaleDateString('en-GB', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric'
-              })}
+              Expires: {formatExpiry(subscriptionExpiresAt)}
             </Typography>
           )}
         </Box>
@@ -409,6 +418,31 @@ export default function PlanUsageCard({ user, compact = false }) {
               </Box>
             )}
           </Box>
+
+          <Divider sx={{ my: 3 }} />
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: tokens.primary }}>
+            What's Included
+          </Typography>
+          <Stack direction="row" flexWrap="wrap" gap={1}>
+            {FEATURE_LABELS.map(({ key, label }) => {
+              const included = !!(features && features[key]);
+              return (
+                <Chip
+                  key={key}
+                  size="small"
+                  icon={included ? <CheckCircle sx={{ fontSize: 16 }} /> : <Lock sx={{ fontSize: 14 }} />}
+                  label={label}
+                  sx={{
+                    bgcolor: included ? 'rgba(16,185,129,0.1)' : '#F1F5F9',
+                    color: included ? '#10B981' : tokens.textMuted,
+                    fontWeight: 600,
+                    '& .MuiChip-icon': { color: included ? '#10B981' : tokens.textMuted }
+                  }}
+                />
+              );
+            })}
+          </Stack>
         </>
       )}
     </Paper>

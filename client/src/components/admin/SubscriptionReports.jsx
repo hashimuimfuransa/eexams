@@ -617,7 +617,11 @@ const SubscriptionReports = () => {
                               />
                             </TableCell>
                             <TableCell>
-                              {u.subscriptionEndDate ? new Date(u.subscriptionEndDate).toLocaleDateString() : '-'}
+                              {(u.subscriptionExpiresAt || u.subscriptionEndDate)
+                                ? new Date(u.subscriptionExpiresAt || u.subscriptionEndDate).toLocaleString('en-GB', {
+                                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                  })
+                                : '-'}
                             </TableCell>
                             <TableCell>
                               <Chip

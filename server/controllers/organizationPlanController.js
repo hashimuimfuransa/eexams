@@ -1,5 +1,6 @@
 const OrganizationPlan = require('../models/OrganizationPlan');
 const { resolvePlanDuration } = require('../utils/planDuration');
+const { extractLimitOverrides } = require('../utils/planLimits');
 
 // @desc    Get all organization plans
 // @route   GET /api/organization-plans
@@ -81,7 +82,8 @@ const createOrganizationPlan = async (req, res) => {
       status: status || 'active',
       features: features || [],
       discountPercentage: discountPercentage || 0,
-      createdBy: req.user._id
+      createdBy: req.user._id,
+      ...extractLimitOverrides(req.body)
     });
 
     res.status(201).json(plan);
@@ -123,6 +125,7 @@ const updateOrganizationPlan = async (req, res) => {
     if (status !== undefined) plan.status = status;
     if (features !== undefined) plan.features = features;
     if (discountPercentage !== undefined) plan.discountPercentage = discountPercentage;
+    Object.assign(plan, extractLimitOverrides(req.body));
 
     await plan.save();
 

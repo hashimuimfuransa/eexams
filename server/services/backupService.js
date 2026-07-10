@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const readline = require('readline');
+const { pipeline } = require('stream/promises');
 const cron = require('node-cron');
 const mongoose = require('mongoose');
 const { EJSON } = require('bson');
@@ -38,10 +40,26 @@ function s3Client() {
   return new S3Client({ region: process.env.AWS_REGION });
 }
 
+const COLLECTION_MARKER = '__collection__';
+const DUMP_BATCH_SIZE = 500;
+
+async function writeAsync(writable, chunk) {
+  if (!writable.write(chunk)) {
+    await new Promise((resolve) => writable.once('drain', resolve));
+  }
+}
+
 /**
  * Dumps every collection in the connected database to a single gzip-compressed
- * EJSON file. Uses the mongoose connection already established by the app -
+ * file, streamed document-by-document as newline-delimited EJSON records
+ * (one `{__collection__: name}` marker line per collection, followed by its
+ * documents). Uses the mongoose connection already established by the app -
  * no mongodump/mongorestore binary required.
+ *
+ * This streams because loading every collection into memory at once (the
+ * previous approach) OOM-killed the backup on collections in the tens of MB -
+ * building one giant object, EJSON.stringify-ing it, and gzipping it all held
+ * several full copies of the database in memory simultaneously.
  */
 async function dumpDatabaseToFile(filePath) {
   const db = mongoose.connection.db;
@@ -50,22 +68,54 @@ async function dumpDatabaseToFile(filePath) {
   }
 
   const collections = await db.listCollections().toArray();
-  const dump = {};
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
+  const gzip = zlib.createGzip();
+  const output = fs.createWriteStream(filePath);
+  const pipelineDone = pipeline(gzip, output);
+
+  const collectionCounts = {};
   for (const { name } of collections) {
     if (EXCLUDED_COLLECTIONS.includes(name)) continue;
-    dump[name] = await db.collection(name).find({}).toArray();
+    collectionCounts[name] = 0;
+
+    await writeAsync(gzip, EJSON.stringify({ [COLLECTION_MARKER]: name }) + '\n');
+
+    const cursor = db.collection(name).find({}).batchSize(DUMP_BATCH_SIZE);
+    for await (const doc of cursor) {
+      await writeAsync(gzip, EJSON.stringify(doc) + '\n');
+      collectionCounts[name]++;
+    }
   }
 
-  const serialized = EJSON.stringify(dump);
-  const compressed = zlib.gzipSync(Buffer.from(serialized, 'utf8'));
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, compressed);
+  gzip.end();
+  await pipelineDone;
 
-  const collectionCounts = Object.fromEntries(
-    Object.entries(dump).map(([name, docs]) => [name, docs.length])
-  );
-  return { collectionCounts, sizeBytes: compressed.length };
+  const { size } = fs.statSync(filePath);
+  return { collectionCounts, sizeBytes: size };
+}
+
+/**
+ * Streams a backup file produced by dumpDatabaseToFile, invoking
+ * onEntry('collection-start', name) once per collection and
+ * onEntry('doc', { collection, doc }) for each document, in file order.
+ * Never holds more than one line in memory - safe for arbitrarily large backups.
+ */
+async function forEachDumpEntry(filePath, onEntry) {
+  const input = fs.createReadStream(filePath).pipe(zlib.createGunzip());
+  const rl = readline.createInterface({ input, crlfDelay: Infinity });
+
+  let currentCollection = null;
+  for await (const line of rl) {
+    if (!line) continue;
+    const parsed = EJSON.parse(line);
+    if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, COLLECTION_MARKER)) {
+      currentCollection = parsed[COLLECTION_MARKER];
+      await onEntry('collection-start', currentCollection);
+    } else {
+      await onEntry('doc', { collection: currentCollection, doc: parsed });
+    }
+  }
 }
 
 async function uploadToS3(filePath) {
@@ -241,6 +291,7 @@ module.exports = {
   BACKUP_DIR,
   RETENTION_DAYS,
   runBackup,
+  forEachDumpEntry,
   listAllBackups,
   listLocalBackups,
   listS3Backups,

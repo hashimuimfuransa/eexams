@@ -1,10 +1,9 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
-const fs = require('fs');
 const path = require('path');
-const zlib = require('zlib');
 const mongoose = require('mongoose');
-const { EJSON } = require('bson');
 const backupService = require('../services/backupService');
+
+const BATCH_SIZE = 500;
 
 function parseArgs(argv) {
   const args = { mode: 'replace' };
@@ -70,46 +69,107 @@ async function resolveSourceFile(args) {
   throw new Error('No source specified: pass --latest, --file=, or --s3-key=');
 }
 
-function loadDump(filePath) {
-  const compressed = fs.readFileSync(filePath);
-  const serialized = zlib.gunzipSync(compressed).toString('utf8');
-  return EJSON.parse(serialized);
+function matches(name, wantedLower) {
+  return !wantedLower || wantedLower.includes(name.toLowerCase());
 }
 
-function filterCollections(dump, wantedNames) {
-  if (!wantedNames || wantedNames.length === 0) return dump;
-  const wantedLower = wantedNames.map((n) => n.toLowerCase());
-  const filtered = {};
-  for (const [name, docs] of Object.entries(dump)) {
-    if (wantedLower.includes(name.toLowerCase())) filtered[name] = docs;
+/** Cheap streaming pass: just counts documents per wanted collection, never holds them. */
+async function planRestore(filePath, wantedNames) {
+  const wantedLower = wantedNames ? wantedNames.map((n) => n.toLowerCase()) : null;
+  const counts = {};
+  let current = null;
+  let currentWanted = false;
+
+  await backupService.forEachDumpEntry(filePath, async (type, payload) => {
+    if (type === 'collection-start') {
+      current = payload;
+      currentWanted = matches(current, wantedLower);
+      if (currentWanted) counts[current] = 0;
+    } else if (currentWanted) {
+      counts[current]++;
+    }
+  });
+
+  if (wantedNames) {
+    const found = Object.keys(counts);
+    const missing = wantedNames.filter((n) => !found.some((f) => f.toLowerCase() === n.toLowerCase()));
+    if (missing.length > 0) {
+      console.warn(`Warning: collection(s) not found in backup, skipping: ${missing.join(', ')}`);
+    }
   }
-  const found = Object.keys(filtered);
-  const missing = wantedNames.filter((n) => !found.some((f) => f.toLowerCase() === n.toLowerCase()));
-  if (missing.length > 0) {
-    console.warn(`Warning: collection(s) not found in backup, skipping: ${missing.join(', ')}`);
-  }
-  return filtered;
+
+  return counts;
 }
 
-async function restoreCollection(db, name, docs, mode) {
-  const collection = db.collection(name);
+function createCollectionWriter(db, name, mode) {
+  let batch = [];
+  let inserted = 0;
+  let upserted = 0;
 
-  if (mode === 'merge') {
-    if (docs.length === 0) return { inserted: 0, deleted: 0 };
-    const ops = docs.map((doc) => ({
-      replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true },
-    }));
-    const result = await collection.bulkWrite(ops, { ordered: false });
-    return { upserted: (result.upsertedCount || 0) + (result.modifiedCount || 0) };
+  async function flush() {
+    if (batch.length === 0) return;
+    if (mode === 'merge') {
+      const ops = batch.map((doc) => ({
+        replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true },
+      }));
+      const result = await db.collection(name).bulkWrite(ops, { ordered: false });
+      upserted += (result.upsertedCount || 0) + (result.modifiedCount || 0);
+    } else {
+      const result = await db.collection(name).insertMany(batch, { ordered: false });
+      inserted += result.insertedCount;
+    }
+    batch = [];
   }
 
-  const deleteResult = await collection.deleteMany({});
-  let insertedCount = 0;
-  if (docs.length > 0) {
-    const insertResult = await collection.insertMany(docs, { ordered: false });
-    insertedCount = insertResult.insertedCount;
+  return {
+    async deleteExisting() {
+      const result = await db.collection(name).deleteMany({});
+      return result.deletedCount;
+    },
+    async push(doc) {
+      batch.push(doc);
+      if (batch.length >= BATCH_SIZE) await flush();
+    },
+    async finish() {
+      await flush();
+      return mode === 'merge' ? { upserted } : { inserted };
+    },
+  };
+}
+
+/** Batched streaming pass: writes to MongoDB in chunks of BATCH_SIZE, never holds a full collection. */
+async function performRestore(db, filePath, wantedNames, mode) {
+  const wantedLower = wantedNames ? wantedNames.map((n) => n.toLowerCase()) : null;
+  const summary = {};
+  let current = null;
+  let currentWanted = false;
+  let writer = null;
+
+  async function closeCurrent() {
+    if (!writer) return;
+    const stats = await writer.finish();
+    summary[current] = { ...(summary[current] || {}), ...stats };
+    writer = null;
   }
-  return { deleted: deleteResult.deletedCount, inserted: insertedCount };
+
+  await backupService.forEachDumpEntry(filePath, async (type, payload) => {
+    if (type === 'collection-start') {
+      await closeCurrent();
+      current = payload;
+      currentWanted = matches(current, wantedLower);
+      if (currentWanted) {
+        writer = createCollectionWriter(db, current, mode);
+        if (mode === 'replace') {
+          summary[current] = { deleted: await writer.deleteExisting() };
+        }
+      }
+    } else if (currentWanted) {
+      await writer.push(payload.doc);
+    }
+  });
+  await closeCurrent();
+
+  return summary;
 }
 
 async function main() {
@@ -127,8 +187,8 @@ async function main() {
 
   const sourceFile = await resolveSourceFile(args);
   console.log(`Reading backup: ${sourceFile}`);
-  const dump = filterCollections(loadDump(sourceFile), args.collections);
-  const collectionNames = Object.keys(dump);
+  const counts = await planRestore(sourceFile, args.collections);
+  const collectionNames = Object.keys(counts);
 
   if (collectionNames.length === 0) {
     console.log('Nothing to restore (no matching collections in backup).');
@@ -137,7 +197,7 @@ async function main() {
 
   console.log(`\nRestore plan (mode: ${args.mode}):`);
   for (const name of collectionNames) {
-    console.log(`  ${name}: ${dump[name].length} document(s)`);
+    console.log(`  ${name}: ${counts[name]} document(s)`);
   }
   if (args.mode === 'replace') {
     console.log('\nreplace mode will DELETE all existing documents in each collection above before reinserting.');
@@ -162,8 +222,8 @@ async function main() {
   console.log(`\nConnected to database: ${mongoose.connection.db.databaseName}`);
 
   try {
-    for (const name of collectionNames) {
-      const stats = await restoreCollection(mongoose.connection.db, name, dump[name], args.mode);
+    const summary = await performRestore(mongoose.connection.db, sourceFile, args.collections, args.mode);
+    for (const [name, stats] of Object.entries(summary)) {
       console.log(`  ${name}: ${JSON.stringify(stats)}`);
     }
     console.log('\nRestore complete.');

@@ -435,8 +435,23 @@ const Dashboard = () => {
       return String(a._id || '').localeCompare(String(b._id || ''));
     });
 
+  // Exams the student already completed but can retake right now because their
+  // level subscription (or a still-available free attempt) still covers them —
+  // distinct from approvedRetakeRequests, which is the separate manual
+  // marketplace request/approval flow. Without this, a paying subscriber's
+  // retakable exams simply vanished from the dashboard once completed.
+  const subscriptionRetakeExams = availableExams
+    .filter(
+      (exam) =>
+        exam.status === 'completed' &&
+        exam.allowRetake &&
+        exam.accessUnlocked !== false &&
+        !approvedRetakeExamIds.includes(exam._id?.toString())
+    )
+    .slice()
+    .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
 
-  const hasAvailableExams = regularAvailableExams.length > 0 || approvedRetakeRequests.length > 0;
+  const hasAvailableExams = regularAvailableExams.length > 0 || approvedRetakeRequests.length > 0 || subscriptionRetakeExams.length > 0;
 
   const subscriptionDaysRemaining = subscription?.expiresAt
     ? Math.max(0, Math.ceil((new Date(subscription.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)))
@@ -1048,7 +1063,8 @@ const Dashboard = () => {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h5" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <School color="primary" />
-                Available Exams
+                New Exams
+                <Chip label={regularAvailableExams.length} size="small" color="primary" sx={{ fontWeight: 700 }} />
               </Typography>
               <Button
                 variant="contained"
@@ -1164,6 +1180,24 @@ const Dashboard = () => {
                             >
                               {approvedRetakeRequest ? 'Start Retake' : 'Start Exam'}
                             </Button>
+                          ) : exam.accessUnlocked === false ? (
+                            <Button
+                              variant="contained"
+                              onClick={() => navigate('/student/subscriptions')}
+                              size={isMobile ? 'medium' : 'large'}
+                              startIcon={<Lock />}
+                              fullWidth={isMobile}
+                              sx={{
+                                fontWeight: 'bold',
+                                px: { xs: 2, sm: 3 },
+                                py: { xs: 1.2, sm: 1.5 },
+                                textTransform: 'none',
+                                bgcolor: '#D97706',
+                                '&:hover': { bgcolor: '#B45309' }
+                              }}
+                            >
+                              Subscribe to Unlock
+                            </Button>
                           ) : (
                             <Button
                               variant="outlined"
@@ -1189,6 +1223,91 @@ const Dashboard = () => {
               })}
             </Box>
 
+          </Box>
+        )}
+
+        {/* Retake Exams Section — exams already completed but still unlocked via
+            an active level subscription (or an unused free attempt) */}
+        {subscriptionRetakeExams.length > 0 && (
+          <Box sx={{ mt: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Replay color="secondary" />
+                Retake Exams
+                <Chip label={subscriptionRetakeExams.length} size="small" color="secondary" sx={{ fontWeight: 700 }} />
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              You've already completed these — your subscription keeps them unlocked so you can practice again anytime.
+            </Typography>
+
+            <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
+              {subscriptionRetakeExams.map((exam) => (
+                <Card
+                  key={exam._id}
+                  elevation={1}
+                  sx={{
+                    mb: 0,
+                    bgcolor: 'background.paper',
+                    border: '1px solid',
+                    borderColor: alpha('#8B5CF6', 0.4),
+                    borderRadius: 1,
+                    transition: 'all 0.15s ease',
+                    '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 }
+                  }}
+                >
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                      <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
+                        <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" sx={{ mb: 1 }}>
+                          {exam.title || 'Exam'}
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                          <Chip
+                            icon={<School fontSize="small" />}
+                            label={`${exam.questions || 0} Questions`}
+                            size="small"
+                            variant="outlined"
+                          />
+                          {exam.timeLimit && (
+                            <Chip
+                              icon={<AccessTime fontSize="small" />}
+                              label={`${exam.timeLimit} minutes`}
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', justifyContent: { xs: 'stretch', sm: 'flex-start' }, width: { xs: '100%', sm: 'auto' } }}>
+                        <Chip
+                          label="Completed · Retake Available"
+                          size="medium"
+                          sx={{ fontWeight: 'bold', fontSize: '0.875rem', bgcolor: alpha('#8B5CF6', 0.12), color: '#6D28D9' }}
+                        />
+                        <Button
+                          variant="contained"
+                          onClick={() => handleExamClick(exam)}
+                          size={isMobile ? 'medium' : 'large'}
+                          startIcon={<Replay />}
+                          fullWidth={isMobile}
+                          sx={{
+                            fontWeight: 'bold',
+                            px: { xs: 2, sm: 3 },
+                            py: { xs: 1.2, sm: 1.5 },
+                            textTransform: 'none',
+                            bgcolor: '#8B5CF6',
+                            '&:hover': { bgcolor: '#7C3AED' }
+                          }}
+                        >
+                          Retake Exam
+                        </Button>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
           </Box>
         )}
 

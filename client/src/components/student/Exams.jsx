@@ -908,36 +908,65 @@ const Exams = () => {
 
                       {/* Enhanced Retake button for completed exams */}
                       {exam.status === 'completed' && exam.allowRetake && (
-                        <Button
-                          variant="outlined"
-                          component={RouterLink}
-                          to={`/student/exam/start/${exam._id}`}
-                          endIcon={<Refresh />}
-                          fullWidth
-                          sx={{
-                            borderRadius: '12px',
-                            py: 1.5,
-                            fontWeight: 'bold',
-                            textTransform: 'none',
-                            fontSize: '0.95rem',
-                            borderColor: theme.palette.primary.main,
-                            color: theme.palette.primary.main,
-                            border: `2px solid ${theme.palette.primary.main}`,
-                            bgcolor: mode === 'dark'
-                              ? alpha(theme.palette.primary.main, 0.1)
-                              : 'transparent',
-                            '&:hover': {
-                              transform: 'translateY(-2px)',
-                              bgcolor: alpha(theme.palette.primary.main, 0.1),
-                              borderColor: theme.palette.primary.dark,
-                              boxShadow: mode === 'dark'
-                                ? '0 6px 20px rgba(25, 118, 210, 0.3)'
-                                : '0 4px 12px rgba(25, 118, 210, 0.2)',
-                            }
-                          }}
-                        >
-                          Retake Exam
-                        </Button>
+                        exam.accessUnlocked === false ? (
+                          <Button
+                            variant="outlined"
+                            component={RouterLink}
+                            to="/student/subscriptions"
+                            endIcon={<LockOutlined />}
+                            fullWidth
+                            sx={{
+                              borderRadius: '12px',
+                              py: 1.5,
+                              fontWeight: 'bold',
+                              textTransform: 'none',
+                              fontSize: '0.95rem',
+                              borderColor: theme.palette.warning.main,
+                              color: theme.palette.warning.dark,
+                              border: `2px solid ${theme.palette.warning.main}`,
+                              bgcolor: mode === 'dark'
+                                ? alpha(theme.palette.warning.main, 0.1)
+                                : 'transparent',
+                              '&:hover': {
+                                transform: 'translateY(-2px)',
+                                bgcolor: alpha(theme.palette.warning.main, 0.1),
+                              }
+                            }}
+                          >
+                            Subscribe to Retake
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outlined"
+                            component={RouterLink}
+                            to={`/student/exam/start/${exam._id}`}
+                            endIcon={<Refresh />}
+                            fullWidth
+                            sx={{
+                              borderRadius: '12px',
+                              py: 1.5,
+                              fontWeight: 'bold',
+                              textTransform: 'none',
+                              fontSize: '0.95rem',
+                              borderColor: theme.palette.primary.main,
+                              color: theme.palette.primary.main,
+                              border: `2px solid ${theme.palette.primary.main}`,
+                              bgcolor: mode === 'dark'
+                                ? alpha(theme.palette.primary.main, 0.1)
+                                : 'transparent',
+                              '&:hover': {
+                                transform: 'translateY(-2px)',
+                                bgcolor: alpha(theme.palette.primary.main, 0.1),
+                                borderColor: theme.palette.primary.dark,
+                                boxShadow: mode === 'dark'
+                                  ? '0 6px 20px rgba(25, 118, 210, 0.3)'
+                                  : '0 4px 12px rgba(25, 118, 210, 0.2)',
+                              }
+                            }}
+                          >
+                            Retake Exam
+                          </Button>
+                        )
                       )}
                     </CardActions>
                   </ExamCard>

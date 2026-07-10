@@ -100,7 +100,7 @@ const createSubscriptionPlan = async (req, res) => {
 
     const resolvedDuration = resolvePlanDuration({ durationValue, durationUnit, durationDays });
     if (!resolvedDuration) {
-      return res.status(400).json({ message: 'A valid duration (value and unit, in hours or days) is required' });
+      return res.status(400).json({ message: 'A valid duration (value and unit, in hours, days, weeks or months) is required' });
     }
 
     let resolvedSubLevel = null;
@@ -257,7 +257,7 @@ const updateSubscriptionPlan = async (req, res) => {
     if (durationValue !== undefined || durationUnit !== undefined || durationDays !== undefined) {
       const resolvedDuration = resolvePlanDuration({ durationValue, durationUnit, durationDays });
       if (!resolvedDuration) {
-        return res.status(400).json({ message: 'A valid duration (value and unit, in hours or days) is required' });
+        return res.status(400).json({ message: 'A valid duration (value and unit, in hours, days, weeks or months) is required' });
       }
       plan.durationDays = resolvedDuration.durationDays;
       plan.durationValue = resolvedDuration.durationValue;

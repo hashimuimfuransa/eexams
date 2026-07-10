@@ -180,12 +180,12 @@ export const formatPriceRWF = (priceRWF) => {
 // Format a DB-editable plan's duration (SubscriptionPlan/OrganizationPlan/
 // IndividualPlan) for display, honoring durationUnit when present. Older
 // plans only have durationDays (no unit picker yet) — fall back to days.
+const UNIT_LABELS = { hours: 'hour', days: 'day', weeks: 'week', months: 'month' };
+
 export const formatPlanDuration = (plan) => {
   if (!plan) return '';
-  if (plan.durationUnit === 'hours') {
-    const hours = plan.durationValue ?? Math.round(plan.durationDays * 24);
-    return `${hours} hour${hours === 1 ? '' : 's'}`;
-  }
-  const days = plan.durationValue ?? plan.durationDays;
-  return `${days} day${days === 1 ? '' : 's'}`;
+  const unit = plan.durationUnit && UNIT_LABELS[plan.durationUnit] ? plan.durationUnit : 'days';
+  const value = plan.durationValue ?? (unit === 'hours' ? Math.round(plan.durationDays * 24) : plan.durationDays);
+  const label = UNIT_LABELS[unit];
+  return `${value} ${label}${value === 1 ? '' : 's'}`;
 };

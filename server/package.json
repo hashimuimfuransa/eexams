@@ -9,7 +9,8 @@
     "seed:superadmin": "node seeds/seedSuperAdmin.js",
     "backup": "node scripts/runBackup.js",
     "backup:list": "node scripts/listBackups.js",
-    "backup:restore": "node scripts/restoreBackup.js"
+    "backup:restore": "node scripts/restoreBackup.js",
+    "plans:generate-variants": "node scripts/generatePlanVariants.js"
   },
   "keywords": [],
   "author": "",

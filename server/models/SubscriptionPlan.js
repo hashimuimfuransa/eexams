@@ -54,7 +54,7 @@ const SubscriptionPlanSchema = new mongoose.Schema({
   },
   durationUnit: {
     type: String,
-    enum: ['hours', 'days'],
+    enum: ['hours', 'days', 'weeks', 'months'],
     default: 'days'
   },
   status: {

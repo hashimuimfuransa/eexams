@@ -4,15 +4,18 @@
 // durationUnit are stored alongside purely to let the super-admin UI redisplay
 // and re-edit the value in the unit it was entered in (e.g. "12 hours" instead
 // of "0.5 days").
+// Multiplier to convert one unit of durationValue into days.
+const UNIT_TO_DAYS = { hours: 1 / 24, days: 1, weeks: 7, months: 30 };
+
 const resolvePlanDuration = ({ durationValue, durationUnit, durationDays }) => {
   if (durationValue !== undefined && durationValue !== null && durationValue !== '') {
-    const unit = durationUnit === 'hours' ? 'hours' : 'days';
+    const unit = UNIT_TO_DAYS[durationUnit] ? durationUnit : 'days';
     const value = Number(durationValue);
     if (!Number.isFinite(value) || value <= 0) return null;
     return {
       durationValue: value,
       durationUnit: unit,
-      durationDays: unit === 'hours' ? value / 24 : value
+      durationDays: value * UNIT_TO_DAYS[unit]
     };
   }
 

@@ -42,6 +42,46 @@ import {
 import api from '../../services/api';
 import { formatPlanDuration } from '../../utils/planUtils';
 
+// Duration units a plan's pricing options can be sold in.
+const UNIT_OPTIONS = [
+  { value: 'hours', label: 'Hours' },
+  { value: 'days', label: 'Days' },
+  { value: 'weeks', label: 'Weeks' },
+  { value: 'months', label: 'Months' }
+];
+const UNIT_SINGULAR = { hours: 'Hour', days: 'Day', weeks: 'Week', months: 'Month' };
+
+// One-click starting points for common billing cadences, so an admin can
+// spin up an hourly + daily + weekly + monthly option without retyping units.
+const VARIANT_PRESETS = [
+  { label: 'Hourly', durationValue: 4, durationUnit: 'hours' },
+  { label: 'Daily', durationValue: 1, durationUnit: 'days' },
+  { label: 'Weekly', durationValue: 1, durationUnit: 'weeks' },
+  { label: 'Monthly', durationValue: 1, durationUnit: 'months' }
+];
+
+let variantKeySeq = 0;
+const makeVariant = (overrides = {}) => ({
+  key: `v${++variantKeySeq}`,
+  price: 0,
+  durationValue: 30,
+  durationUnit: 'days',
+  discountPercentage: 0,
+  ...overrides
+});
+
+const emptyFormData = () => ({
+  planType: 'level',
+  levelId: '',
+  subLevel: '',
+  examId: '',
+  name: '',
+  currency: 'RWF',
+  status: 'active',
+  features: '',
+  variants: [makeVariant()]
+});
+
 const SubscriptionPlanManagement = () => {
   const [plans, setPlans] = useState([]);
   const [levels, setLevels] = useState([]);
@@ -50,20 +90,7 @@ const SubscriptionPlanManagement = () => {
   const [error, setError] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
-  const [formData, setFormData] = useState({
-    planType: 'level',
-    levelId: '',
-    subLevel: '',
-    examId: '',
-    name: '',
-    price: 0,
-    currency: 'RWF',
-    durationValue: 30,
-    durationUnit: 'days',
-    status: 'active',
-    features: [],
-    discountPercentage: 0
-  });
+  const [formData, setFormData] = useState(emptyFormData());
   const [submitting, setSubmitting] = useState(false);
   const [subscribersDialog, setSubscribersDialog] = useState({ open: false, plan: null, subscribers: [], loading: false });
 
@@ -102,30 +129,19 @@ const SubscriptionPlanManagement = () => {
         subLevel: plan.subLevel || '',
         examId: plan.exam?._id || '',
         name: plan.name,
-        price: plan.price,
         currency: plan.currency || 'RWF',
-        durationValue: plan.durationValue ?? plan.durationDays,
-        durationUnit: plan.durationUnit || 'days',
         status: plan.status || 'active',
         features: (plan.features || []).join(', '),
-        discountPercentage: plan.discountPercentage || 0
+        variants: [makeVariant({
+          price: plan.price,
+          durationValue: plan.durationValue ?? plan.durationDays,
+          durationUnit: plan.durationUnit || 'days',
+          discountPercentage: plan.discountPercentage || 0
+        })]
       });
     } else {
       setEditingPlan(null);
-      setFormData({
-        planType: 'level',
-        levelId: '',
-        subLevel: '',
-        examId: '',
-        name: '',
-        price: 0,
-        currency: 'RWF',
-        durationValue: 30,
-        durationUnit: 'days',
-        status: 'active',
-        features: '',
-        discountPercentage: 0
-      });
+      setFormData(emptyFormData());
     }
     setDialogOpen(true);
   };
@@ -135,30 +151,79 @@ const SubscriptionPlanManagement = () => {
     setEditingPlan(null);
   };
 
+  const updateVariant = (key, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      variants: prev.variants.map(v => (v.key === key ? { ...v, [field]: value } : v))
+    }));
+  };
+
+  const addVariant = (preset = {}) => {
+    setFormData(prev => ({ ...prev, variants: [...prev.variants, makeVariant(preset)] }));
+  };
+
+  const removeVariant = (key) => {
+    setFormData(prev => ({ ...prev, variants: prev.variants.filter(v => v.key !== key) }));
+  };
+
+  const buildVariantName = (baseName, variant, multiple) => {
+    if (!multiple) return baseName;
+    const unitLabel = UNIT_SINGULAR[variant.durationUnit] || 'Day';
+    return `${baseName} — ${variant.durationValue} ${unitLabel}${Number(variant.durationValue) === 1 ? '' : 's'}`;
+  };
+
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
       setError(null);
 
-      const submitData = {
-        ...formData,
+      const sharedData = {
+        planType: formData.planType,
         level: formData.planType === 'level' ? formData.levelId : null,
         subLevel: formData.planType === 'level' ? (formData.subLevel || null) : null,
         exam: formData.planType === 'exam' ? formData.examId : null,
+        currency: formData.currency,
+        status: formData.status,
         features: formData.features.split(',').map(f => f.trim()).filter(Boolean)
       };
 
       if (editingPlan) {
-        await api.put(`/subscription-plans/${editingPlan._id}`, submitData);
+        const variant = formData.variants[0];
+        await api.put(`/subscription-plans/${editingPlan._id}`, {
+          ...sharedData,
+          name: formData.name,
+          price: variant.price,
+          durationValue: variant.durationValue,
+          durationUnit: variant.durationUnit,
+          discountPercentage: variant.discountPercentage
+        });
       } else {
-        await api.post('/subscription-plans', submitData);
+        const multiple = formData.variants.length > 1;
+        const failures = [];
+        for (const variant of formData.variants) {
+          try {
+            await api.post('/subscription-plans', {
+              ...sharedData,
+              name: buildVariantName(formData.name, variant, multiple),
+              price: variant.price,
+              durationValue: variant.durationValue,
+              durationUnit: variant.durationUnit,
+              discountPercentage: variant.discountPercentage
+            });
+          } catch (err) {
+            failures.push(`${variant.durationValue} ${variant.durationUnit} — ${err.response?.data?.message || 'failed'}`);
+          }
+        }
+        if (failures.length) {
+          throw new Error(`Some pricing options could not be saved: ${failures.join('; ')}`);
+        }
       }
 
       await fetchData();
       handleCloseDialog();
     } catch (err) {
       console.error('Error saving plan:', err);
-      setError(err.response?.data?.message || 'Failed to save plan');
+      setError(err.response?.data?.message || err.message || 'Failed to save plan');
     } finally {
       setSubmitting(false);
     }
@@ -382,16 +447,11 @@ const SubscriptionPlanManagement = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Price"
-                  type="number"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                  required
+                  helperText={
+                    !editingPlan && formData.variants.length > 1
+                      ? 'Base name — each pricing option below becomes its own plan, e.g. "Name — 1 Week".'
+                      : ' '
+                  }
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -408,40 +468,109 @@ const SubscriptionPlanManagement = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={3}>
-                <TextField
-                  fullWidth
-                  label="Duration"
-                  type="number"
-                  value={formData.durationValue}
-                  onChange={(e) => setFormData({ ...formData, durationValue: parseFloat(e.target.value) || 0 })}
-                  inputProps={{ min: 0.01, step: 'any' }}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <FormControl fullWidth>
-                  <InputLabel>Unit</InputLabel>
-                  <Select
-                    value={formData.durationUnit}
-                    onChange={(e) => setFormData({ ...formData, durationUnit: e.target.value })}
-                    label="Unit"
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" fontWeight="bold" sx={{ mt: 1 }}>
+                  Pricing &amp; Duration Options
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
+                  {editingPlan
+                    ? 'Price and billing period for this plan.'
+                    : 'Add one row per billing period — hourly, daily, weekly, monthly. Each row is saved as its own plan.'}
+                </Typography>
+
+                {formData.variants.map((variant) => (
+                  <Box
+                    key={variant.key}
+                    sx={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 1.5,
+                      alignItems: 'flex-start',
+                      p: 1.5,
+                      mb: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1
+                    }}
                   >
-                    <MenuItem value="hours">Hours</MenuItem>
-                    <MenuItem value="days">Days</MenuItem>
-                  </Select>
-                </FormControl>
+                    <TextField
+                      label="Duration"
+                      type="number"
+                      size="small"
+                      value={variant.durationValue}
+                      onChange={(e) => updateVariant(variant.key, 'durationValue', parseFloat(e.target.value) || 0)}
+                      inputProps={{ min: 0.01, step: 'any' }}
+                      sx={{ width: 110 }}
+                      required
+                    />
+                    <FormControl size="small" sx={{ width: 130 }}>
+                      <InputLabel>Unit</InputLabel>
+                      <Select
+                        value={variant.durationUnit}
+                        label="Unit"
+                        onChange={(e) => updateVariant(variant.key, 'durationUnit', e.target.value)}
+                      >
+                        {UNIT_OPTIONS.map((u) => (
+                          <MenuItem key={u.value} value={u.value}>{u.label}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <TextField
+                      label="Price"
+                      type="number"
+                      size="small"
+                      value={variant.price}
+                      onChange={(e) => updateVariant(variant.key, 'price', parseFloat(e.target.value) || 0)}
+                      sx={{ width: 130 }}
+                      required
+                    />
+                    <TextField
+                      label="Discount %"
+                      type="number"
+                      size="small"
+                      value={variant.discountPercentage}
+                      onChange={(e) => updateVariant(variant.key, 'discountPercentage', parseInt(e.target.value) || 0)}
+                      inputProps={{ min: 0, max: 100 }}
+                      sx={{ width: 110 }}
+                    />
+                    {!editingPlan && formData.variants.length > 1 && (
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => removeVariant(variant.key)}
+                        sx={{ ml: 'auto' }}
+                        title="Remove this pricing option"
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+
+                {!editingPlan && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                    {VARIANT_PRESETS.map((preset) => (
+                      <Chip
+                        key={preset.label}
+                        icon={<Add fontSize="small" />}
+                        label={preset.label}
+                        onClick={() => addVariant(preset)}
+                        variant="outlined"
+                        clickable
+                      />
+                    ))}
+                    <Chip
+                      icon={<Add fontSize="small" />}
+                      label="Custom option"
+                      onClick={() => addVariant()}
+                      variant="outlined"
+                      clickable
+                    />
+                  </Box>
+                )}
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Discount Percentage"
-                  type="number"
-                  value={formData.discountPercentage}
-                  onChange={(e) => setFormData({ ...formData, discountPercentage: parseInt(e.target.value) || 0 })}
-                  inputProps={{ min: 0, max: 100 }}
-                />
-              </Grid>
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -464,7 +593,13 @@ const SubscriptionPlanManagement = () => {
             onClick={handleSubmit}
             variant="contained"
             startIcon={<Save />}
-            disabled={submitting || !formData.name || (formData.planType === 'level' ? !formData.levelId : !formData.examId)}
+            disabled={
+              submitting ||
+              !formData.name ||
+              (formData.planType === 'level' ? !formData.levelId : !formData.examId) ||
+              formData.variants.length === 0 ||
+              formData.variants.some((v) => !v.durationValue || v.price === '' || v.price === null || v.price === undefined || v.price < 0)
+            }
           >
             {submitting ? <CircularProgress size={20} /> : 'Save'}
           </Button>

@@ -47,7 +47,7 @@ services:
   - type: cron
     name: eexams-db-backup
     env: docker
-    plan: free
+    plan: starter
     rootDir: server
     dockerfilePath: server/Dockerfile
     dockerCommand: node scripts/runBackup.js

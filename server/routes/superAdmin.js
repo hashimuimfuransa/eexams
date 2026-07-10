@@ -42,7 +42,9 @@ const {
   getSystemLeaderboard,
   getOrganizationActivity,
   getAllTeachers,
-  getTeacherActivity
+  getTeacherActivity,
+  getBackups,
+  runBackupNow
 } = require('../controllers/superAdminController');
 const auth = require('../middleware/auth');
 
@@ -134,6 +136,10 @@ router.get('/marketplace/results', getAllMarketplaceResults);
 
 // System-wide leaderboard route
 router.get('/leaderboard', getSystemLeaderboard);
+
+// Database backup routes (list + on-demand trigger only; restore is CLI-only, see BACKUP.md)
+router.get('/backups', getBackups);
+router.post('/backups/run', runBackupNow);
 
 // 404 handler for unmatched superadmin routes
 router.use((req, res) => {

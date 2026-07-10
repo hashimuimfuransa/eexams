@@ -3403,6 +3403,41 @@ const getTeacherActivity = async (req, res) => {
   }
 };
 
+// @desc    List database backups (local + S3)
+// @route   GET /api/superadmin/backups
+// @access  Private/SuperAdmin
+const getBackups = async (req, res) => {
+  try {
+    const backupService = require('../services/backupService');
+    const backups = await backupService.listAllBackups();
+    res.json({ backups, retentionDays: backupService.RETENTION_DAYS });
+  } catch (error) {
+    console.error('Get backups error:', error);
+    res.status(500).json({ message: 'Server error listing backups' });
+  }
+};
+
+// @desc    Trigger an on-demand database backup
+// @route   POST /api/superadmin/backups/run
+// @access  Private/SuperAdmin
+const runBackupNow = async (req, res) => {
+  try {
+    const backupService = require('../services/backupService');
+    const result = await backupService.runBackup();
+    res.json({
+      message: 'Backup completed',
+      fileName: result.fileName,
+      sizeBytes: result.sizeBytes,
+      collectionCounts: result.collectionCounts,
+      s3Key: result.s3Key,
+      s3Error: result.s3Error,
+    });
+  } catch (error) {
+    console.error('Run backup error:', error);
+    res.status(500).json({ message: 'Backup failed', error: error.message });
+  }
+};
+
 module.exports = {
   createSuperAdmin,
   getAllOrganizations,
@@ -3445,5 +3480,7 @@ module.exports = {
   getSystemLeaderboard,
   getOrganizationActivity,
   getAllTeachers,
-  getTeacherActivity
+  getTeacherActivity,
+  getBackups,
+  runBackupNow
 };

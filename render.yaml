@@ -40,3 +40,28 @@ services:
         sync: false # Set manually in Render dashboard
       - key: CLOUDINARY_API_SECRET
         sync: false # Set manually in Render dashboard
+
+  # Scheduled database backup - runs independently of the web service, so a
+  # backup still happens even if the web service has spun down (free/starter
+  # instances sleep when idle, which would silently skip an in-process cron tick).
+  - type: cron
+    name: eexams-db-backup
+    env: docker
+    plan: free
+    rootDir: server
+    dockerfilePath: server/Dockerfile
+    dockerCommand: node scripts/runBackup.js
+    schedule: "0 2 * * *" # 2am UTC daily; adjust to taste
+    envVars:
+      - key: MONGODB_URI
+        sync: false # Same value as the web service
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: BACKUP_RETENTION_DAYS
+        value: "14"

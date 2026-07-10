@@ -292,7 +292,20 @@ const connectWithRetry = async (retries = 0) => {
       console.error('Failed to load examExpirationChecker:', error);
       console.log('Server will continue without expired exam checking');
     }
-    
+
+    // Start database backup scheduler + catch-up check (safety net for hosts
+    // where the process isn't guaranteed to be alive at the scheduled hour)
+    try {
+      const backupService = require('./services/backupService');
+      backupService.schedule();
+      backupService.ensureRecentBackup().catch((error) => {
+        console.error('Backup catch-up check failed:', error);
+      });
+    } catch (error) {
+      console.error('Failed to load backupService:', error);
+      console.log('Server will continue without automated backups');
+    }
+
     // Start server only after successful connection
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {

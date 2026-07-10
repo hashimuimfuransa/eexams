@@ -24,9 +24,11 @@ import {
   ToggleButton,
   FormControl,
   InputLabel,
+  Avatar,
   useTheme,
   useMediaQuery
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   WorkspacePremium,
   CheckCircle,
@@ -39,7 +41,10 @@ import {
   Quiz,
   Download,
   FilterList,
-  Info
+  Info,
+  Timer,
+  TouchApp,
+  ArrowForward
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -166,6 +171,8 @@ const SubscriptionPurchase = () => {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [newSubscriptionId, setNewSubscriptionId] = useState(null);
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+  const [activeSubscription, setActiveSubscription] = useState(null);
+  const [activeSubscriptionTimeLeft, setActiveSubscriptionTimeLeft] = useState(null);
 
   useEffect(() => {
     if (!user?.level) {
@@ -177,7 +184,46 @@ const SubscriptionPurchase = () => {
     fetchAllLevelPlans();
     fetchLevelsList();
     fetchExamOptions();
+    fetchActiveSubscription();
   }, [user]);
+
+  const fetchActiveSubscription = async () => {
+    try {
+      const response = await api.get('/subscriptions/my/active');
+      setActiveSubscription(response.data || null);
+    } catch (err) {
+      setActiveSubscription(null);
+    }
+  };
+
+  // Live countdown so a student renewing their plan can see exactly how
+  // much time is left on their current subscription before it lapses.
+  useEffect(() => {
+    if (!activeSubscription?.expiresAt) {
+      setActiveSubscriptionTimeLeft(null);
+      return;
+    }
+
+    const expiresAt = new Date(activeSubscription.expiresAt).getTime();
+    const tick = () => setActiveSubscriptionTimeLeft(Math.max(0, expiresAt - Date.now()));
+    tick();
+    const interval = setInterval(tick, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeSubscription?.expiresAt]);
+
+  const formatCountdown = (milliseconds) => {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  };
 
   const fetchLevelsList = async () => {
     try {
@@ -309,6 +355,7 @@ const SubscriptionPurchase = () => {
     try {
       const response = await api.get('/subscriptions/my/active');
       setNewSubscriptionId(response.data?._id || null);
+      setActiveSubscription(response.data || null);
     } catch (err) {
       console.error('Error fetching new subscription:', err);
     }
@@ -546,6 +593,62 @@ const SubscriptionPurchase = () => {
         </Typography>
       </Box>
 
+      {activeSubscription && activeSubscriptionTimeLeft !== null && (
+        <Paper
+          elevation={0}
+          sx={{
+            mb: { xs: 3, sm: 4 },
+            p: { xs: 2, sm: 2.5 },
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: activeSubscriptionTimeLeft <= 0
+              ? 'error.main'
+              : activeSubscriptionTimeLeft < 3 * 24 * 60 * 60 * 1000
+                ? 'warning.main'
+                : 'success.main',
+            bgcolor: activeSubscriptionTimeLeft <= 0
+              ? 'error.lighter'
+              : activeSubscriptionTimeLeft < 3 * 24 * 60 * 60 * 1000
+                ? 'warning.lighter'
+                : 'success.lighter',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 1.5
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+            <Timer color={activeSubscriptionTimeLeft <= 0 ? 'error' : activeSubscriptionTimeLeft < 3 * 24 * 60 * 60 * 1000 ? 'warning' : 'success'} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2" fontWeight="bold">
+                {activeSubscriptionTimeLeft <= 0
+                  ? `Your ${activeSubscription.plan?.name || 'plan'} has expired`
+                  : `Current plan: ${activeSubscription.plan?.name || 'Active'}`}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {activeSubscriptionTimeLeft <= 0
+                  ? 'Renew below to restore access to your level\'s exams.'
+                  : `Expires ${new Date(activeSubscription.expiresAt).toLocaleDateString()}`}
+              </Typography>
+            </Box>
+          </Box>
+          {activeSubscriptionTimeLeft > 0 && (
+            <Chip
+              label={`${formatCountdown(activeSubscriptionTimeLeft)} left`}
+              sx={{
+                fontWeight: 800,
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                px: 0.5,
+                bgcolor: activeSubscriptionTimeLeft < 3 * 24 * 60 * 60 * 1000 ? 'warning.main' : 'success.main',
+                color: 'white'
+              }}
+            />
+          )}
+        </Paper>
+      )}
+
       <Box sx={{ display: 'flex', justifyContent: 'center', mb: { xs: 3, sm: 4 } }}>
         <ToggleButtonGroup
           value={planScope}
@@ -765,27 +868,54 @@ const SubscriptionPurchase = () => {
         <Grid container spacing={{ xs: 2, sm: 3 }}>
           {/* Plans list */}
           <Grid item xs={12} md={8}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
+              <Avatar sx={{ width: 26, height: 26, bgcolor: 'primary.main', fontSize: '0.8rem', fontWeight: 700 }}>1</Avatar>
+              <Typography variant="subtitle1" fontWeight="bold">
+                Select a plan
+              </Typography>
+            </Box>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 0.75 }}
+            >
+              <TouchApp fontSize="small" color="action" />
+              Click anywhere on a card, or use the “Select this plan” button, to choose it.
+            </Typography>
             <RadioGroup value={selectedPlan} onChange={(e) => setSelectedPlan(e.target.value)}>
-              {plans.map((plan) => (
+              {plans.map((plan) => {
+                const isSelected = selectedPlan === plan._id;
+                return (
                 <Card
                   key={plan._id}
-                  elevation={selectedPlan === plan._id ? 3 : 1}
+                  elevation={isSelected ? 4 : 1}
                   sx={{
                     mb: 2,
-                    border: selectedPlan === plan._id ? '2px solid' : '1px solid',
-                    borderColor: selectedPlan === plan._id ? 'primary.main' : 'divider',
+                    border: isSelected ? '2px solid' : '1px solid',
+                    borderColor: isSelected ? 'primary.main' : 'divider',
                     borderRadius: 2,
                     cursor: 'pointer',
+                    position: 'relative',
+                    bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.06) : 'background.paper',
                     transition: 'all 0.2s ease',
-                    '&:hover': { boxShadow: 2 }
+                    '&:hover': { boxShadow: 4, borderColor: 'primary.main' }
                   }}
                   onClick={() => setSelectedPlan(plan._id)}
                 >
+                  {isSelected && (
+                    <Chip
+                      icon={<CheckCircle sx={{ fontSize: '1rem !important' }} />}
+                      label="Selected"
+                      color="primary"
+                      size="small"
+                      sx={{ position: 'absolute', top: -12, right: { xs: 12, sm: 16 }, fontWeight: 700 }}
+                    />
+                  )}
                   <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, mb: 1, flexWrap: 'wrap' }}>
-                          <Radio checked={selectedPlan === plan._id} value={plan._id} sx={{ p: { xs: 0.5, sm: 1 } }} />
+                          <Radio checked={isSelected} value={plan._id} sx={{ p: { xs: 0.5, sm: 1 } }} />
                           <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">{plan.name}</Typography>
                           <Chip
                             label={planScope === 'exam' ? 'Single Exam' : (plan.subLevel ? plan.subLevel : 'Entire Level')}
@@ -815,18 +945,34 @@ const SubscriptionPurchase = () => {
                         )}
                       </Box>
                     </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                      <Button
+                        variant={isSelected ? 'contained' : 'outlined'}
+                        color="primary"
+                        size="small"
+                        startIcon={isSelected ? <CheckCircle /> : null}
+                        onClick={(e) => { e.stopPropagation(); setSelectedPlan(plan._id); }}
+                        sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+                      >
+                        {isSelected ? 'Selected' : 'Select this plan'}
+                      </Button>
+                    </Box>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </RadioGroup>
           </Grid>
 
           {/* Order summary + payment method */}
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: { xs: 2, sm: 3 }, position: { xs: 'static', md: 'sticky' }, top: 100, borderRadius: 2 }}>
-              <Typography variant="h6" fontWeight="bold" gutterBottom>
-                Order Summary
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Avatar sx={{ width: 26, height: 26, bgcolor: 'primary.main', fontSize: '0.8rem', fontWeight: 700 }}>2</Avatar>
+                <Typography variant="h6" fontWeight="bold">
+                  Order Summary
+                </Typography>
+              </Box>
               <Divider sx={{ my: 2 }} />
 
               {selectedPlan ? (
@@ -864,15 +1010,41 @@ const SubscriptionPurchase = () => {
                   </Box>
                 </>
               ) : (
-                <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 2 }}>
-                  Select a plan to see order summary
-                </Typography>
+                <Box
+                  sx={{
+                    textAlign: 'center',
+                    py: 2,
+                    mb: 2,
+                    px: 1.5,
+                    borderRadius: 2,
+                    border: '1px dashed',
+                    borderColor: 'divider',
+                    bgcolor: 'action.hover'
+                  }}
+                >
+                  <ArrowForward
+                    sx={{
+                      transform: { xs: 'rotate(90deg)', md: 'rotate(180deg)' },
+                      color: 'text.disabled',
+                      mb: 0.5
+                    }}
+                  />
+                  <Typography variant="body2" color="text.secondary">
+                    {isMobile
+                      ? 'Pick a plan above — it will show up here.'
+                      : 'Pick a plan on the left — it will show up here.'}
+                  </Typography>
+                </Box>
               )}
 
               {/* Payment Method Selection */}
-              <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1.5 }}>
-                Payment Method
-              </Typography>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+                <Avatar sx={{ width: 24, height: 24, bgcolor: 'primary.main', fontSize: '0.75rem', fontWeight: 700 }}>3</Avatar>
+                <Typography variant="subtitle2" fontWeight="bold">
+                  Choose how to pay
+                </Typography>
+              </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>
                 {PAYMENT_METHODS.map((method) => (
                   <Box

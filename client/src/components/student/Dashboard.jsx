@@ -91,6 +91,7 @@ const Dashboard = () => {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [pendingPayment, setPendingPayment] = useState(null);
   const [pendingPaymentLoading, setPendingPaymentLoading] = useState(true);
+  const [subscriptionTimeLeft, setSubscriptionTimeLeft] = useState(null);
 
 
   const fetchData = async (isRefresh = false) => {
@@ -246,6 +247,22 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, [inProgressExams]);
 
+  // Live countdown to the student's exam subscription expiry, so they can
+  // track exactly how much time is left instead of a static "X days" label.
+  useEffect(() => {
+    if (!subscription?.expiresAt) {
+      setSubscriptionTimeLeft(null);
+      return;
+    }
+
+    const expiresAt = new Date(subscription.expiresAt).getTime();
+    const tick = () => setSubscriptionTimeLeft(Math.max(0, expiresAt - Date.now()));
+    tick();
+    const interval = setInterval(tick, 1000);
+
+    return () => clearInterval(interval);
+  }, [subscription?.expiresAt]);
+
   const handleExamClick = (exam) => {
     setSelectedExam(exam);
     setShowInstructions(true);
@@ -390,6 +407,19 @@ const Dashboard = () => {
     }
   };
 
+  const formatSubscriptionCountdown = (milliseconds) => {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  };
+
   if (loading) {
     return (
       <StudentLayout>
@@ -453,9 +483,6 @@ const Dashboard = () => {
 
   const hasAvailableExams = regularAvailableExams.length > 0 || approvedRetakeRequests.length > 0 || subscriptionRetakeExams.length > 0;
 
-  const subscriptionDaysRemaining = subscription?.expiresAt
-    ? Math.max(0, Math.ceil((new Date(subscription.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)))
-    : null;
   const unlockedExamCount = availableExams.filter(e => e.accessUnlocked !== false).length;
 
   return (
@@ -627,16 +654,42 @@ const Dashboard = () => {
                     </Typography>
                     <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
                       Expires: {new Date(subscription.expiresAt).toLocaleDateString()}
-                      {subscriptionDaysRemaining !== null && ` (${subscriptionDaysRemaining} day${subscriptionDaysRemaining === 1 ? '' : 's'} remaining)`}
                     </Typography>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      sx={{ mt: 1, bgcolor: 'white', color: '#0D406C', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
-                      onClick={() => navigate('/student/subscriptions')}
-                    >
-                      Renew Subscription
-                    </Button>
+                    {subscriptionTimeLeft !== null && (
+                      <Box
+                        sx={{
+                          mt: 1,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.75,
+                          px: 1.25,
+                          py: 0.5,
+                          borderRadius: 1.5,
+                          bgcolor: subscriptionTimeLeft <= 0
+                            ? 'rgba(239,68,68,0.3)'
+                            : subscriptionTimeLeft < 24 * 60 * 60 * 1000
+                              ? 'rgba(239,68,68,0.25)'
+                              : subscriptionTimeLeft < 3 * 24 * 60 * 60 * 1000
+                                ? 'rgba(245,158,11,0.25)'
+                                : 'rgba(255,255,255,0.15)'
+                        }}
+                      >
+                        <Timer fontSize="small" />
+                        <Typography variant="body2" fontWeight={800} sx={{ fontFamily: 'monospace', letterSpacing: 0.3 }}>
+                          {subscriptionTimeLeft <= 0 ? 'Expired' : `${formatSubscriptionCountdown(subscriptionTimeLeft)} left`}
+                        </Typography>
+                      </Box>
+                    )}
+                    <Box>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        sx={{ mt: 1, bgcolor: 'white', color: '#0D406C', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
+                        onClick={() => navigate('/student/subscriptions')}
+                      >
+                        Renew Subscription
+                      </Button>
+                    </Box>
                   </Box>
                 ) : (
                   <Box>

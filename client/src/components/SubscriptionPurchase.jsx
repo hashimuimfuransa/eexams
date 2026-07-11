@@ -138,7 +138,7 @@ const getFriendlyErrorMessage = (rawMessage, paymentMethod) => {
 
 const SubscriptionPurchase = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [planScope, setPlanScope] = useState('level'); // 'level' | 'exam'
@@ -358,6 +358,26 @@ const SubscriptionPurchase = () => {
       setActiveSubscription(response.data || null);
     } catch (err) {
       console.error('Error fetching new subscription:', err);
+    }
+
+    // A level plan just activated server-side already moved user.level/
+    // subLevel onto it (see activatePendingPayment) — pull the fresh user
+    // record into AuthContext too, so the exam bank shows the right exams
+    // immediately without the student having to reload or re-login.
+    try {
+      const verify = await api.get('/auth/verify');
+      const refreshed = {
+        ...user,
+        level: verify.data.level ?? user?.level,
+        subLevel: verify.data.subLevel ?? null,
+        freeExamUsed: verify.data.freeExamUsed,
+        freeExamLevel: verify.data.freeExamLevel,
+        requiresLevelSelection: verify.data.requiresLevelSelection
+      };
+      localStorage.setItem('user', JSON.stringify(refreshed));
+      if (setUser) setUser(refreshed);
+    } catch {
+      // non-fatal — dashboard will pick up the fresh level on next load
     }
   };
 

@@ -465,9 +465,12 @@ const activatePendingPayment = async (pendingPaymentId, { amount, currency, tran
   }
 
   // Exam-scoped purchases grant access to that one exam only — unlike a
-  // level plan, they must not change the student's selected level.
+  // level plan, they must not change the student's selected level. A level
+  // plan, though, should always pull the student's selected level (and
+  // sub-level) onto whatever they just paid for, so their exam bank shows
+  // the right exams immediately without a manual "Change Level" trip.
   if (!isExamPlan) {
-    await User.findByIdAndUpdate(pendingPayment.user, { level: plan.level._id });
+    await User.findByIdAndUpdate(pendingPayment.user, { level: plan.level._id, subLevel: subscription.subLevel });
   }
 
   pendingPayment.status = 'completed';
@@ -653,9 +656,11 @@ const createSubscription = async (req, res) => {
     }
 
     // Exam-scoped grants don't change the student's selected level (same as
-    // a real exam-plan purchase in activatePendingPayment).
+    // a real exam-plan purchase in activatePendingPayment). Level grants sync
+    // both level and sub-level so the student's exam bank matches what was
+    // just granted, without a manual "Change Level" trip.
     if (!isExamPlan) {
-      await User.findByIdAndUpdate(userId, { level: plan.level._id });
+      await User.findByIdAndUpdate(userId, { level: plan.level._id, subLevel: subscription.subLevel });
     }
 
     const populatedSubscription = await Subscription.findById(subscription._id)

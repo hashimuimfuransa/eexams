@@ -263,6 +263,26 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, [subscription?.expiresAt]);
 
+  // Keep "Your Learning Level" in sync with the plan actually paid for.
+  // A level-wide subscription is authoritative over whatever level the
+  // student has locally selected — without this, a stale/mismatched
+  // selection (e.g. from switching levels after paying) makes the dashboard
+  // show a level that doesn't match the "Subscription Status" card.
+  useEffect(() => {
+    if (!subscription || subscription.planType === 'exam' || !subscription.level) return;
+
+    const levelMismatch = subscription.level._id !== user?.level?._id;
+    // A null subscription.subLevel means "covers every sub-level" — don't
+    // clobber an already-valid, more specific sub-level selection with it.
+    const subLevelMismatch = subscription.subLevel && subscription.subLevel !== user?.subLevel;
+
+    if (levelMismatch) {
+      updateUserLevel(subscription.level, subscription.subLevel || null);
+    } else if (subLevelMismatch) {
+      updateUserLevel(user.level, subscription.subLevel);
+    }
+  }, [subscription]);
+
   const handleExamClick = (exam) => {
     setSelectedExam(exam);
     setShowInstructions(true);

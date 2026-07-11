@@ -1,5 +1,18 @@
 const mongoose = require('mongoose');
 
+// Canonical set of question types the rest of the app knows how to render/grade.
+// AI document extraction sometimes hallucinates a topic/subject (e.g. "algebra",
+// "numerical") into this field instead of a real question type. normalizeQuestionType()
+// catches anything outside this list before Mongoose's enum validator would otherwise
+// reject the whole save.
+const VALID_QUESTION_TYPES = ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'extended-response', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured', 'financial-spreadsheet', 'table-completion', 'numerical'];
+
+function normalizeQuestionType(value) {
+  if (VALID_QUESTION_TYPES.includes(value)) return value;
+  console.warn(`Unrecognized question type "${value}" - defaulting to "open-ended"`);
+  return 'open-ended';
+}
+
 const QuestionSchema = new mongoose.Schema({
   text: {
     type: String,
@@ -10,7 +23,8 @@ const QuestionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'extended-response', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured', 'financial-spreadsheet', 'table-completion', 'numerical'],
+    enum: VALID_QUESTION_TYPES,
+    set: normalizeQuestionType,
     required: true
   },
   imageUrl: {
@@ -113,7 +127,8 @@ const QuestionSchema = new mongoose.Schema({
     text: String,
     type: {
       type: String,
-      enum: ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'extended-response', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured', 'financial-spreadsheet', 'table-completion', 'numerical']
+      enum: VALID_QUESTION_TYPES,
+      set: normalizeQuestionType
     },
     options: [{
       text: String,

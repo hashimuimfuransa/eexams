@@ -561,7 +561,12 @@ const getDetailedResult = async (req, res) => {
     // it on the Result document so later views are instant and don't re-call
     // the AI. Failures here must never block the result from loading — the
     // frontend has its own heuristic fallback if this stays null.
-    if (!result.overallRecommendation && result.answers.length > 0) {
+    // NOTE: check `.headline` rather than the whole object's truthiness —
+    // Mongoose auto-populates empty-array defaults (focusAreas/topConcepts/tips)
+    // for this nested schema path on ANY Result.save() (e.g. during grading),
+    // long before this recommendation is ever generated, so the object is
+    // never actually null/undefined in practice.
+    if (!result.overallRecommendation?.headline && result.answers.length > 0) {
       const recommendation = await generateOverallRecommendation(result);
       if (recommendation) {
         result.overallRecommendation = recommendation;

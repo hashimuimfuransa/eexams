@@ -26,6 +26,7 @@ const {
   getExamUsageDetails,
   updateExamMarketplaceSettings,
   updateExamDetails,
+  updateMarketplaceExamQuestions,
   getStudentPerformanceAnalytics,
   getTeacherPerformanceAnalytics,
   getOrganizationPerformanceAnalytics,
@@ -109,6 +110,7 @@ router.get('/marketplace-exams', getMarketplaceExamsWithStats);
 router.get('/marketplace-exams/:id/usage', getExamUsageDetails);
 router.get('/marketplace-exams/:id/review', getExamForReview);
 router.put('/marketplace-exams/:id/settings', updateExamMarketplaceSettings);
+router.put('/marketplace-exams/:id/questions', updateMarketplaceExamQuestions);
 router.put('/marketplace-exams/:id', updateExamDetails);
 
 // Subscription management routes

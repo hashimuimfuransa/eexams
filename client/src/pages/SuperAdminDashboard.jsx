@@ -23,6 +23,7 @@ import SubscriptionPlanManagement from '../components/admin/SubscriptionPlanMana
 import OrganizationPlanManagement from '../components/admin/OrganizationPlanManagement';
 import IndividualPlanManagement from '../components/admin/IndividualPlanManagement';
 import SubscriptionReports from '../components/admin/SubscriptionReports';
+import { QuestionEditor } from '../components/shared/QuestionEditor';
 
 const nav = [
   { id: 'home',          label: 'Overview',                icon: <DashIcon sx={{ fontSize: 20 }} /> },
@@ -2363,6 +2364,8 @@ function ExamBankMarketplaceSection({ searchQuery }) {
   const [reviewDialog, setReviewDialog] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewData, setReviewData] = useState(null);
+  const [savingQuestions, setSavingQuestions] = useState(false);
+  const isXs = useMediaQuery('(max-width:600px)');
 
   // Filter states
   const [localSearch, setLocalSearch] = useState(searchQuery || '');
@@ -2420,13 +2423,6 @@ function ExamBankMarketplaceSection({ searchQuery }) {
       exam.publicDescription?.toLowerCase().includes(q)
     );
   });
-
-  // Helper to get option display text (handles both string and object formats)
-  const getOptionText = (opt) => {
-    if (typeof opt === 'string') return opt;
-    if (opt && typeof opt === 'object') return opt.text || opt.label || opt.value || '';
-    return '';
-  };
 
   // Handle filter changes with reset
   const handleStatusFilterChange = (value) => {
@@ -2568,6 +2564,79 @@ function ExamBankMarketplaceSection({ searchQuery }) {
       setSnack({ open: true, msg: 'Failed to load exam details', severity: 'error' });
     } finally {
       setReviewLoading(false);
+    }
+  };
+
+  const handleUpdateReviewQuestion = (sectionIndex, qIndex, updatedQuestion) => {
+    setReviewData(prev => {
+      if (!prev) return prev;
+      const sections = prev.sections.map((s, si) => si !== sectionIndex ? s : {
+        ...s,
+        questions: s.questions.map((q, qi) => qi === qIndex ? updatedQuestion : q)
+      });
+      return { ...prev, sections };
+    });
+  };
+
+  const handleDeleteReviewQuestion = (sectionIndex, qIndex) => {
+    if (!window.confirm('Are you sure you want to delete this question?')) return;
+    setReviewData(prev => {
+      if (!prev) return prev;
+      const sections = prev.sections.map((s, si) => si !== sectionIndex ? s : {
+        ...s,
+        questions: s.questions.filter((_, qi) => qi !== qIndex)
+      });
+      return { ...prev, sections };
+    });
+  };
+
+  const handleAddReviewQuestion = (sectionIndex) => {
+    setReviewData(prev => {
+      if (!prev) return prev;
+      const newQuestion = {
+        text: '',
+        type: 'multiple-choice',
+        marks: 1,
+        points: 1,
+        difficulty: 'medium',
+        options: [
+          { text: '', isCorrect: false, letter: 'A' },
+          { text: '', isCorrect: false, letter: 'B' },
+          { text: '', isCorrect: false, letter: 'C' },
+          { text: '', isCorrect: false, letter: 'D' }
+        ],
+        correctAnswer: ''
+      };
+      const sections = prev.sections.map((s, si) => si !== sectionIndex ? s : {
+        ...s,
+        questions: [...(s.questions || []), newQuestion]
+      });
+      return { ...prev, sections };
+    });
+  };
+
+  const handleSaveReviewQuestions = async () => {
+    if (!reviewDialog || !reviewData) return;
+    setSavingQuestions(true);
+    try {
+      const sections = (reviewData.sections || []).map(s => ({
+        name: s.name,
+        description: s.description,
+        title: s.title,
+        passage: s.passage,
+        instructions: s.instructions,
+        wordBank: s.wordBank,
+        subsections: s.subsections,
+        questions: s.questions || []
+      }));
+      const res = await api.put(`/superadmin/marketplace-exams/${reviewDialog._id}/questions`, { sections });
+      setReviewData(res.data.exam);
+      setSnack({ open: true, msg: 'Questions updated successfully', severity: 'success' });
+      fetchExams();
+    } catch (err) {
+      setSnack({ open: true, msg: err.response?.data?.message || 'Failed to update questions', severity: 'error' });
+    } finally {
+      setSavingQuestions(false);
     }
   };
 
@@ -3106,78 +3175,36 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                 </Grid>
               </Paper>
 
-              {/* Questions */}
+              {/* Questions - fully editable, same functionality as the teacher exam builder */}
               <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Questions ({reviewData.sections?.reduce((acc, s) => acc + (s.questions?.length || 0), 0) || 0})</Typography>
               {reviewData.sections?.map((section, sectionIndex) => (
-                <Box key={section._id} sx={{ mb: 3 }}>
-                  <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, color: tokens.primary }}>
-                    Section {sectionIndex + 1}: {section.title || 'Untitled Section'}
-                  </Typography>
-                  {section.questions?.map((question, qIndex) => (
-                    <Paper key={question._id} elevation={0} sx={{ p: 3, mb: 2, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}` }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                        <Typography variant="body1" fontWeight={600} sx={{ flex: 1 }}>
-                          Q{qIndex + 1}. {question.text}
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 1, ml: 2 }}>
-                          <Chip label={question.type} size="small" sx={{ fontWeight: 600, bgcolor: 'rgba(99,102,241,0.1)', color: '#6366F1' }} />
-                          <Chip label={`${question.marks} marks`} size="small" sx={{ fontWeight: 600, bgcolor: 'rgba(245,158,11,0.1)', color: tokens.warning }} />
-                        </Box>
-                      </Box>
-
-                      {question.type === 'multiple-choice' && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Options:</Typography>
-                          {question.options?.map((option, optIndex) => {
-                            const optionText = getOptionText(option);
-                            const isCorrect = optionText === getOptionText(question.correctAnswer);
-                            return (
-                              <Box
-                                key={optIndex}
-                                sx={{
-                                  p: 1.5,
-                                  mb: 1,
-                                  borderRadius: 1,
-                                  bgcolor: isCorrect ? 'rgba(12,189,115,0.1)' : '#F8FAFC',
-                                  border: isCorrect ? `1px solid ${tokens.accent}` : '1px solid transparent',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 1
-                                }}
-                              >
-                                {isCorrect && <CheckCircle fontSize="small" sx={{ color: tokens.accent }} />}
-                                <Typography variant="body2">{optionText}</Typography>
-                              </Box>
-                            );
-                          })}
-                        </Box>
-                      )}
-
-                      {question.type === 'true-false' && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Correct Answer:</Typography>
-                          <Chip
-                            label={question.correctAnswer}
-                            size="small"
-                            sx={{
-                              bgcolor: 'rgba(12,189,115,0.1)',
-                              color: tokens.accent,
-                              fontWeight: 600
-                            }}
-                          />
-                        </Box>
-                      )}
-
-                      {question.type === 'short-answer' && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Correct Answer:</Typography>
-                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 1, border: `1px solid ${tokens.accent}33` }}>
-                            <Typography variant="body2" sx={{ color: tokens.accent }}>{question.correctAnswer}</Typography>
-                          </Paper>
-                        </Box>
-                      )}
-                    </Paper>
-                  ))}
+                <Box key={section._id || sectionIndex} sx={{ mb: 3 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="subtitle1" fontWeight={700} sx={{ color: tokens.primary }}>
+                      Section {sectionIndex + 1}: {section.title || section.name || 'Untitled Section'}
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<Add />}
+                      onClick={() => handleAddReviewQuestion(sectionIndex)}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                    >
+                      Add Question
+                    </Button>
+                  </Box>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {(section.questions || []).map((question, qIndex) => (
+                      <QuestionEditor
+                        key={question._id || `new-${sectionIndex}-${qIndex}`}
+                        question={question}
+                        index={qIndex}
+                        isMobile={isXs}
+                        onUpdate={(updated) => handleUpdateReviewQuestion(sectionIndex, qIndex, updated)}
+                        onDelete={() => handleDeleteReviewQuestion(sectionIndex, qIndex)}
+                      />
+                    ))}
+                  </Box>
                 </Box>
               ))}
             </Box>
@@ -3187,6 +3214,19 @@ function ExamBankMarketplaceSection({ searchQuery }) {
             </Typography>
           )}
         </DialogContent>
+        {reviewData && (
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setReviewDialog(null)} disabled={savingQuestions} sx={{ textTransform: 'none' }}>Close</Button>
+            <Button
+              variant="contained"
+              onClick={handleSaveReviewQuestions}
+              disabled={savingQuestions}
+              sx={{ bgcolor: tokens.accent, '&:hover': { bgcolor: tokens.accent }, textTransform: 'none', borderRadius: 2, fontWeight: 600 }}
+            >
+              {savingQuestions ? 'Saving…' : 'Save Changes'}
+            </Button>
+          </DialogActions>
+        )}
       </Dialog>
 
       <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>

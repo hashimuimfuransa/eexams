@@ -2613,6 +2613,117 @@ const getExamForReview = async (req, res) => {
   }
 };
 
+// @desc    Add/update/delete questions for any marketplace exam (super admin can fully
+//          edit questions and answers, same capability as the teacher exam builder)
+// @route   PUT /api/superadmin/marketplace-exams/:id/questions
+// @access  Private/SuperAdmin
+const updateMarketplaceExamQuestions = async (req, res) => {
+  try {
+    const Question = require('../models/Question');
+    const exam = await Exam.findById(req.params.id);
+    if (!exam) return res.status(404).json({ message: 'Exam not found' });
+
+    const { sections } = req.body;
+    if (!sections || !Array.isArray(sections)) {
+      return res.status(400).json({ message: 'sections array is required' });
+    }
+
+    const updatedSectionQuestions = [];
+    const updateOps = [];
+    const createOps = [];
+
+    for (const sec of sections) {
+      const sectionQuestionIds = [];
+      for (const q of sec.questions || []) {
+        if (q._id) {
+          const questionId = typeof q._id === 'object' ? q._id.toString() : q._id;
+          updateOps.push({
+            updateOne: {
+              filter: { _id: questionId },
+              update: {
+                text: q.text,
+                type: q.type,
+                points: q.points || q.marks || 1,
+                marks: q.marks || q.points || 1,
+                difficulty: q.difficulty,
+                correctAnswer: q.correctAnswer,
+                options: q.options,
+                explanation: q.explanation,
+                answerKey: q.answerKey,
+                gradingCriteria: q.gradingCriteria,
+                keyPoints: q.keyPoints,
+                acceptableAnswers: q.acceptableAnswers,
+                section: sec.name,
+                matchingPairs: q.matchingPairs,
+                leftItems: q.leftItems,
+                rightItems: q.rightItems,
+                itemsToOrder: q.itemsToOrder,
+                dragDropData: q.dragDropData,
+                imageUrl: q.imageUrl || q.image || '',
+                subQuestions: q.subQuestions,
+                subQuestionConfig: q.subQuestionConfig,
+                passage: q.passage,
+                instructions: q.instructions,
+                wordBank: q.wordBank,
+                spreadsheetTemplate: q.spreadsheetTemplate,
+                spreadsheetModelAnswer: q.spreadsheetModelAnswer
+              }
+            }
+          });
+          sectionQuestionIds.push(questionId);
+        } else {
+          createOps.push({
+            ...q,
+            exam: exam._id,
+            section: sec.name,
+            createdBy: req.user._id
+          });
+          sectionQuestionIds.push(null);
+        }
+      }
+      updatedSectionQuestions.push({
+        name: sec.name,
+        description: sec.description,
+        title: sec.title,
+        passage: sec.passage,
+        instructions: sec.instructions,
+        wordBank: sec.wordBank,
+        subsections: sec.subsections,
+        questions: sectionQuestionIds
+      });
+    }
+
+    const [, createResult] = await Promise.all([
+      updateOps.length > 0 ? Question.bulkWrite(updateOps) : Promise.resolve(null),
+      createOps.length > 0 ? Question.insertMany(createOps) : Promise.resolve([])
+    ]);
+
+    let createIndex = 0;
+    for (const sec of updatedSectionQuestions) {
+      for (let i = 0; i < sec.questions.length; i++) {
+        if (sec.questions[i] === null && createResult[createIndex]) {
+          sec.questions[i] = createResult[createIndex]._id;
+          createIndex++;
+        }
+      }
+    }
+
+    await Exam.updateOne({ _id: exam._id }, { sections: updatedSectionQuestions });
+
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'update_marketplace_exam_questions',
+      details: { examId: exam._id, examTitle: exam.title }
+    });
+
+    const updated = await Exam.findById(exam._id).populate({ path: 'sections.questions', model: 'Question' });
+    res.json({ message: 'Questions updated successfully', exam: updated });
+  } catch (error) {
+    console.error('Update marketplace exam questions error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get all pending exam requests system-wide
 // @route   GET /api/superadmin/exam-requests
 // @access  Private/SuperAdmin
@@ -3466,6 +3577,7 @@ module.exports = {
   updateExamMarketplaceSettings,
   updateExamDetails,
   getExamForReview,
+  updateMarketplaceExamQuestions,
   getStudentPerformanceAnalytics,
   getTeacherPerformanceAnalytics,
   getOrganizationPerformanceAnalytics,

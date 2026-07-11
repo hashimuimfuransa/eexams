@@ -12,7 +12,7 @@ import {
   SupervisorAccount, School, TrendingUp,
   CheckCircle, Block, Edit, Add, ArrowForward, Delete, InfoOutlined, Close,
   Visibility, VisibilityOff, Assessment, Person, Email, Phone, EmojiEvents, ReportProblem,
-  CardMembership
+  CardMembership, Lock, LockOpen
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -2706,6 +2706,18 @@ function ExamBankMarketplaceSection({ searchQuery }) {
     }
   };
 
+  const handleToggleLock = async (exam) => {
+    const nextLocked = !exam.isLocked;
+    setExams(prev => prev.map(e => e._id === exam._id ? { ...e, isLocked: nextLocked } : e));
+    try {
+      await api.put(`/superadmin/marketplace-exams/${exam._id}`, { isLocked: nextLocked });
+      setSnack({ open: true, msg: `Exam ${nextLocked ? 'locked' : 'unlocked'} successfully`, severity: 'success' });
+    } catch (err) {
+      setExams(prev => prev.map(e => e._id === exam._id ? { ...e, isLocked: exam.isLocked } : e));
+      setSnack({ open: true, msg: err.response?.data?.message || 'Failed to update lock status', severity: 'error' });
+    }
+  };
+
   const handleReviewExam = async (exam) => {
     setReviewDialog(exam);
     setReviewLoading(true);
@@ -2967,6 +2979,13 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                         color: exam.accessType === 'free' ? tokens.accent : '#6366F1'
                       }}
                     />
+                    {exam.isLocked && (
+                      <Chip
+                        label="Locked"
+                        size="small"
+                        sx={{ height: 22, fontSize: '11px', fontWeight: 600, bgcolor: 'rgba(239,68,68,0.1)', color: '#EF4444' }}
+                      />
+                    )}
                   </Box>
                 </Box>
 
@@ -3003,6 +3022,11 @@ function ExamBankMarketplaceSection({ searchQuery }) {
                     <Tooltip title="Review Questions">
                       <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleReviewExam(exam); }} sx={{ color: tokens.accent, bgcolor: 'rgba(12,189,115,0.1)', '&:hover': { bgcolor: 'rgba(12,189,115,0.2)' }, width: 32, height: 32 }}>
                         <Visibility fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={exam.isLocked ? 'Unlock Exam' : 'Lock Exam'}>
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleToggleLock(exam); }} sx={{ color: exam.isLocked ? '#EF4444' : tokens.accent, bgcolor: exam.isLocked ? 'rgba(239,68,68,0.1)' : 'rgba(12,189,115,0.1)', '&:hover': { bgcolor: exam.isLocked ? 'rgba(239,68,68,0.2)' : 'rgba(12,189,115,0.2)' }, width: 32, height: 32 }}>
+                        {exam.isLocked ? <Lock fontSize="small" /> : <LockOpen fontSize="small" />}
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Edit Settings">

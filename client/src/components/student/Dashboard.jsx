@@ -728,8 +728,41 @@ const Dashboard = () => {
                     </Typography>
                     <Button
                       variant="contained"
-                      size="small"
-                      sx={{ mt: 1, bgcolor: 'white', color: '#0D406C', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
+                      size={isMobile ? 'medium' : 'large'}
+                      endIcon={
+                        <ArrowForward sx={{
+                          '@keyframes nudge': {
+                            '0%, 100%': { transform: 'translateX(0)' },
+                            '50%': { transform: 'translateX(4px)' }
+                          },
+                          animation: 'nudge 1.2s ease-in-out infinite'
+                        }} />
+                      }
+                      sx={{
+                        mt: 1.5,
+                        bgcolor: '#F59E0B',
+                        color: '#fff',
+                        fontWeight: 800,
+                        textTransform: 'none',
+                        borderRadius: 3,
+                        px: 3,
+                        py: 1,
+                        fontSize: { xs: '0.9rem', sm: '1rem' },
+                        boxShadow: '0 0 0 0 rgba(245,158,11,0.7)',
+                        '@keyframes pulseGlow': {
+                          '0%': { boxShadow: '0 0 0 0 rgba(245,158,11,0.7)', transform: 'scale(1)' },
+                          '70%': { boxShadow: '0 0 0 14px rgba(245,158,11,0)', transform: 'scale(1.04)' },
+                          '100%': { boxShadow: '0 0 0 0 rgba(245,158,11,0)', transform: 'scale(1)' }
+                        },
+                        animation: 'pulseGlow 1.8s ease-out infinite',
+                        '&:hover': {
+                          bgcolor: '#D97706',
+                          animation: 'none',
+                          transform: 'scale(1.06)',
+                          boxShadow: '0 6px 20px rgba(245,158,11,0.5)'
+                        },
+                        transition: 'transform 0.2s, box-shadow 0.2s'
+                      }}
                       onClick={() => navigate('/student/subscriptions')}
                     >
                       Subscribe Now
@@ -1563,8 +1596,8 @@ const Dashboard = () => {
           </Box>
         )}
 
-        {/* Leaderboard Section — always show if student has completed exams */}
-        {results.length > 0 && (
+        {/* Leaderboard Section — only for subscribed students with completed exams */}
+        {subscription && results.length > 0 && (
           <Box sx={{ mt: 4 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
@@ -1798,8 +1831,8 @@ const Dashboard = () => {
           </Box>
         )}
 
-        {/* Completed Exams Section - Only show when no available exams */}
-        {!hasAvailableExams && (
+        {/* Completed Exams Section - Only show when subscribed and no available exams */}
+        {subscription && !hasAvailableExams && (
           <>
             <Divider sx={{ my: { xs: 3, sm: 4 } }} />
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>

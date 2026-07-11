@@ -520,7 +520,7 @@ const LevelSelectionModal = ({ open, onClose, onSelectLevel }) => {
             ) : step === 0 && hasSubLevels ? (
               'Next'
             ) : (
-              'Browse Exams'
+              'Start Exams'
             )}
           </Button>
         </Box>

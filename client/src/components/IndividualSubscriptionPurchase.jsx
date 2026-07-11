@@ -384,9 +384,9 @@ const IndividualSubscriptionPurchase = () => {
             </Button>
           }
         >
-          <Typography fontWeight="bold">Payment cancelled</Typography>
+          <Typography fontWeight="bold">Payment failed</Typography>
           <Typography variant="body2">
-            You cancelled the USSD payment prompt. You can request again whenever you&apos;re ready.
+            We couldn&apos;t confirm your payment — it may have been cancelled or timed out. Please try again; if money left your account, do not pay again until you&apos;ve confirmed with support.
           </Typography>
         </Alert>
       )}

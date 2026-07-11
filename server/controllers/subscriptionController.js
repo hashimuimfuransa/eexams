@@ -11,6 +11,12 @@ const { streamSubscriptionInvoice } = require('../utils/invoiceGenerator');
 const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, getEffectiveLevelSubscriptionStatus } = require('../utils/subscriptionStatus');
 const { syncUserLevelFromSubscription } = require('../utils/subLevelAccess');
 
+// A mobile money PendingPayment that iTechPay still won't confirm after this
+// long is treated as failed rather than left "pending" indefinitely — an
+// indefinite pending state confuses users into thinking a retry means paying
+// twice, when the first attempt actually died.
+const PENDING_PAYMENT_TIMEOUT_MS = 5 * 60 * 1000;
+
 // @desc    Get all subscriptions
 // @route   GET /api/subscriptions
 // @access  Private/SuperAdmin
@@ -1215,7 +1221,7 @@ const getMyPendingPayment = async (req, res) => {
         return res.json(null);
       }
       const cancelledStatuses = ['cancelled', 'canceled', 'rejected', 'failed', 'error', 'declined'];
-      if (cancelledStatuses.includes(verify.status)) {
+      if (cancelledStatuses.includes(verify.status) || Date.now() - pending.createdAt.getTime() > PENDING_PAYMENT_TIMEOUT_MS) {
         pending.status = 'failed';
         await pending.save();
         return res.json(null);
@@ -1275,6 +1281,15 @@ const checkPaymentStatus = async (req, res) => {
       pendingPayment.status = 'failed';
       await pendingPayment.save();
       return res.json({ status: 'cancelled', success: false, cancelled: true });
+    }
+
+    // Still no confirmation from iTechPay after 5 minutes — stop showing this
+    // as "pending" indefinitely (that just invites the user to pay again,
+    // risking a double charge). Treat it as failed and say so plainly.
+    if (Date.now() - pendingPayment.createdAt.getTime() > PENDING_PAYMENT_TIMEOUT_MS) {
+      pendingPayment.status = 'failed';
+      await pendingPayment.save();
+      return res.json({ status: 'failed', success: false, cancelled: true, message: 'Payment failed. Please try again.' });
     }
 
     // Still waiting (pending / processing / unknown)

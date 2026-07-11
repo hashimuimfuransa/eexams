@@ -529,46 +529,48 @@ const Dashboard = () => {
           Welcome, {user?.firstName || 'Student'}! Here are your available exams and results.
         </Typography>
 
-        {/* Quick Actions */}
-        <Paper elevation={0} sx={{
-          mb: { xs: 3, sm: 4 }, p: { xs: 1.75, sm: 2.5 }, borderRadius: 3,
-          border: '1px solid', borderColor: 'divider'
-        }}>
-          <Typography fontWeight={700} sx={{ fontSize: { xs: 13, sm: 15 }, color: 'text.primary', mb: { xs: 1.25, sm: 2 } }}>
-            Quick Actions
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 1.5 } }}>
-            {[
-              { label: 'Browse Exams', icon: <School sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0D406C', bg: 'rgba(13,64,108,0.08)', to: '/student/exams' },
-              { label: 'My Results', icon: <Assessment sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0CBD73', bg: 'rgba(12,189,115,0.09)', to: '/student/results' },
-              { label: 'Exam History', icon: <HistoryIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#6366F1', bg: 'rgba(99,102,241,0.09)', to: '/student/history' },
-              { label: 'Leaderboard', icon: <LeaderboardIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', to: '/student/leaderboard' },
-              { label: 'My Profile', icon: <Person sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0D406C', bg: 'rgba(13,64,108,0.08)', to: '/student/profile' },
-              { label: 'Subscriptions', icon: <WorkspacePremium sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#D97706', bg: 'rgba(217,119,6,0.1)', to: '/student/subscriptions' },
-            ].map((a) => (
-              <Box
-                key={a.label}
-                component={RouterLink}
-                to={a.to}
-                sx={{
-                  display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25 },
-                  px: { xs: 1.25, sm: 2.5 }, py: { xs: 1, sm: 1.5 },
-                  borderRadius: 2.5, bgcolor: a.bg, textDecoration: 'none',
-                  flex: { xs: '1 1 calc(50% - 8px)', sm: '1 1 150px' },
-                  minWidth: { xs: 0, sm: 150 },
-                  border: `1px solid ${a.color}25`,
-                  transition: 'opacity 0.15s, transform 0.15s',
-                  '&:hover': { opacity: 0.85, transform: 'translateY(-1px)' }
-                }}
-              >
-                <Box sx={{ color: a.color, display: 'flex', flexShrink: 0 }}>{a.icon}</Box>
-                <Typography fontWeight={700} noWrap sx={{ color: a.color, fontSize: { xs: 12, sm: 13.5 } }}>
-                  {a.label}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </Paper>
+        {/* Quick Actions - hidden until subscribed to keep the dashboard simple */}
+        {subscription && (
+          <Paper elevation={0} sx={{
+            mb: { xs: 3, sm: 4 }, p: { xs: 1.75, sm: 2.5 }, borderRadius: 3,
+            border: '1px solid', borderColor: 'divider'
+          }}>
+            <Typography fontWeight={700} sx={{ fontSize: { xs: 13, sm: 15 }, color: 'text.primary', mb: { xs: 1.25, sm: 2 } }}>
+              Quick Actions
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 1.5 } }}>
+              {[
+                { label: 'Browse Exams', icon: <School sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0D406C', bg: 'rgba(13,64,108,0.08)', to: '/student/exams' },
+                { label: 'My Results', icon: <Assessment sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0CBD73', bg: 'rgba(12,189,115,0.09)', to: '/student/results' },
+                { label: 'Exam History', icon: <HistoryIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#6366F1', bg: 'rgba(99,102,241,0.09)', to: '/student/history' },
+                { label: 'Leaderboard', icon: <LeaderboardIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', to: '/student/leaderboard' },
+                { label: 'My Profile', icon: <Person sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#0D406C', bg: 'rgba(13,64,108,0.08)', to: '/student/profile' },
+                { label: 'Subscriptions', icon: <WorkspacePremium sx={{ fontSize: { xs: 16, sm: 18 } }} />, color: '#D97706', bg: 'rgba(217,119,6,0.1)', to: '/student/subscriptions' },
+              ].map((a) => (
+                <Box
+                  key={a.label}
+                  component={RouterLink}
+                  to={a.to}
+                  sx={{
+                    display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25 },
+                    px: { xs: 1.25, sm: 2.5 }, py: { xs: 1, sm: 1.5 },
+                    borderRadius: 2.5, bgcolor: a.bg, textDecoration: 'none',
+                    flex: { xs: '1 1 calc(50% - 8px)', sm: '1 1 150px' },
+                    minWidth: { xs: 0, sm: 150 },
+                    border: `1px solid ${a.color}25`,
+                    transition: 'opacity 0.15s, transform 0.15s',
+                    '&:hover': { opacity: 0.85, transform: 'translateY(-1px)' }
+                  }}
+                >
+                  <Box sx={{ color: a.color, display: 'flex', flexShrink: 0 }}>{a.icon}</Box>
+                  <Typography fontWeight={700} noWrap sx={{ color: a.color, fontSize: { xs: 12, sm: 13.5 } }}>
+                    {a.label}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Paper>
+        )}
 
         {/* Pending Payment Banner */}
         {pendingPayment && !pendingPaymentLoading && (

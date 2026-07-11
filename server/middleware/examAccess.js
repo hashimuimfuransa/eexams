@@ -5,7 +5,7 @@ const Level = require('../models/Level');
 const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
 const Result = require('../models/Result');
-const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
+const { freeExamMatchesUserSubLevel, subscriptionCoversExam, syncUserLevelFromSubscription } = require('../utils/subLevelAccess');
 
 /**
  * Middleware to validate exam access based on level, subscription status, and free exam usage
@@ -25,6 +25,15 @@ const validateExamAccess = async (req, res, next) => {
     const user = await User.findById(userId).populate('level');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Keep the student's level in sync with an active subscription before
+    // gating on it below — see syncUserLevelFromSubscription for why this
+    // can drift (e.g. a legacy admin grant predating the auto-sync).
+    const synced = await syncUserLevelFromSubscription(userId, user.level?._id, user.subLevel);
+    if (synced) {
+      user.level = synced.level;
+      user.subLevel = synced.subLevel;
     }
 
     // A direct assignment (teacher/marketplace grant) or an approved exam

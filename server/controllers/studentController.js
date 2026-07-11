@@ -5,7 +5,7 @@ const SharedExam = require('../models/SharedExam');
 const ExamRequest = require('../models/ExamRequest');
 const Subscription = require('../models/Subscription');
 const emailService = require('../utils/emailService');
-const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
+const { freeExamMatchesUserSubLevel, subscriptionCoversExam, syncUserLevelFromSubscription } = require('../utils/subLevelAccess');
 const { generateOverallRecommendation } = require('../utils/resultRecommendation');
 
 // @desc    Get available exams for student (level-scoped exam bank)
@@ -14,6 +14,15 @@ const { generateOverallRecommendation } = require('../utils/resultRecommendation
 const getAvailableExams = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate('level');
+
+    // Runs independently of getMyActiveSubscription's own sync since the
+    // dashboard fetches both endpoints in parallel — this can't assume the
+    // other one already fixed the drift first.
+    const synced = await syncUserLevelFromSubscription(req.user._id, user.level?._id, user.subLevel);
+    if (synced) {
+      user.level = synced.level;
+      user.subLevel = synced.subLevel;
+    }
 
     // Get all approved exam requests for this student (retake and initial) —
     // these are explicit teacher/marketplace grants, kept as a supplementary
@@ -237,6 +246,14 @@ const getExamById = async (req, res) => {
     let hasLegacyGrant = false;
     if (!exam) {
       const user = await User.findById(req.user._id).populate('level');
+
+      // See syncUserLevelFromSubscription — keeps the level query below
+      // consistent with the exam bank listing and live access checks.
+      const synced = await syncUserLevelFromSubscription(req.user._id, user?.level?._id, user?.subLevel);
+      if (synced && user) {
+        user.level = synced.level;
+        user.subLevel = synced.subLevel;
+      }
 
       // Check if student has an approved request for this exam
       const approvedRequest = await ExamRequest.findOne({

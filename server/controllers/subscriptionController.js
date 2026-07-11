@@ -9,6 +9,7 @@ const PendingPayment = require('../models/PendingPayment');
 const itecPayment = require('../services/itecPayment');
 const { streamSubscriptionInvoice } = require('../utils/invoiceGenerator');
 const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, getEffectiveLevelSubscriptionStatus } = require('../utils/subscriptionStatus');
+const { syncUserLevelFromSubscription } = require('../utils/subLevelAccess');
 
 // @desc    Get all subscriptions
 // @route   GET /api/subscriptions
@@ -121,6 +122,10 @@ const downloadSubscriptionInvoice = async (req, res) => {
 const getMyActiveSubscription = async (req, res) => {
   try {
     const subscription = await Subscription.getActiveSubscription(req.user._id);
+
+    // Keep the student's selected level in sync with it — see
+    // syncUserLevelFromSubscription for why this can drift.
+    await syncUserLevelFromSubscription(req.user._id, req.user.level, req.user.subLevel);
 
     res.json(subscription);
   } catch (error) {

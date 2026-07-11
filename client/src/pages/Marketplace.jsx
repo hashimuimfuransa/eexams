@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails, Collapse } from '@mui/material';
-import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp, ArrowBack, WorkspacePremium, Lock } from '@mui/icons-material';
+import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp, ArrowBack, WorkspacePremium, Lock, ArrowForward } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
@@ -424,54 +424,69 @@ const Marketplace = () => {
               and to students without an active subscription */}
           {subscriptionChecked && (!isAuthenticated || (isStudent && !hasActiveSubscription)) && (
             <Box
+              onClick={() => navigate(isAuthenticated ? '/student/subscriptions' : '/student-register')}
               sx={{
                 maxWidth: 900,
                 mx: 'auto',
                 mb: 3,
-                borderRadius: 2.5,
-                p: { xs: 2, sm: 2.5 },
+                borderRadius: 999,
+                px: { xs: 2, sm: 3 },
+                py: { xs: 1.25, sm: 1.5 },
                 display: 'flex',
                 alignItems: 'center',
-                gap: 2,
-                flexWrap: 'wrap',
+                gap: { xs: 1.5, sm: 2 },
                 justifyContent: 'space-between',
-                background: 'linear-gradient(135deg, #0D406C 0%, #1a5a8a 100%)',
-                boxShadow: '0 4px 16px rgba(13,64,108,0.25)'
+                cursor: 'pointer',
+                background: 'linear-gradient(135deg, #0D406C 0%, #1671C7 100%)',
+                boxShadow: '0 6px 20px rgba(13,64,108,0.3)',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                '&:hover': {
+                  transform: 'translateY(-1px)',
+                  boxShadow: '0 8px 24px rgba(13,64,108,0.4)'
+                }
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: { xs: 0, sm: 220 } }}>
-                <Lock sx={{ color: 'white', fontSize: 28, flexShrink: 0 }} />
-                <Box>
-                  <Typography sx={{ color: 'white', fontWeight: 700, fontSize: { xs: 13, sm: 15 } }}>
-                    {isAuthenticated
-                      ? "You're on the free tier — limited exams only"
-                      : 'Free exams are limited'}
-                  </Typography>
-                  <Typography sx={{ color: 'rgba(255,255,255,0.85)', fontSize: { xs: 11, sm: 13 }, mt: 0.25 }}>
-                    {isAuthenticated
-                      ? 'Every student gets just 1 free exam per learning level. Subscribe to unlock unlimited, complete exams for your level.'
-                      : 'Create a free account to try 1 exam per learning level at no cost. To unlock unlimited, complete exams, you\'ll need a subscription.'}
-                  </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+                <Box
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    bgcolor: 'rgba(255,255,255,0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <Lock sx={{ color: 'white', fontSize: 16 }} />
                 </Box>
+                <Typography
+                  noWrap
+                  sx={{ color: 'white', fontWeight: 600, fontSize: { xs: 12.5, sm: 14.5 }, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                >
+                  1 free exam per level — unlock the rest
+                </Typography>
               </Box>
               <Button
                 variant="contained"
-                startIcon={<WorkspacePremium />}
-                onClick={() => navigate(isAuthenticated ? '/student/subscriptions' : '/student-register')}
+                endIcon={<ArrowForward sx={{ fontSize: 16 }} />}
                 sx={{
-                  borderRadius: 2,
+                  borderRadius: 999,
                   textTransform: 'none',
                   fontWeight: 700,
                   whiteSpace: 'nowrap',
                   bgcolor: 'white',
                   color: '#0D406C',
-                  px: { xs: 2, sm: 3 },
-                  fontSize: { xs: 13, sm: 14 },
-                  alignSelf: { xs: 'stretch', sm: 'auto' },
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }
+                  px: { xs: 1.75, sm: 2.5 },
+                  py: 0.5,
+                  minWidth: 0,
+                  fontSize: { xs: 12, sm: 13.5 },
+                  boxShadow: 'none',
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.9)', boxShadow: 'none' }
                 }}
               >
-                {isAuthenticated ? 'Subscribe Now' : 'Sign Up Free'}
+                {isAuthenticated ? 'Subscribe' : 'Sign Up'}
               </Button>
             </Box>
           )}

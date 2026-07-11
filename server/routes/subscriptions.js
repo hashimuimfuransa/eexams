@@ -19,7 +19,8 @@ const {
   renewSubscription,
   getSubscriptionStats,
   getAccountPlanSubscribers,
-  cancelAccountPlanSubscription
+  cancelAccountPlanSubscription,
+  assignAccountPlan
 } = require('../controllers/subscriptionController');
 const auth = require('../middleware/auth');
 const { isSuperAdmin, isAdmin, isTeacher } = require('../middleware/role');
@@ -55,6 +56,7 @@ router.get('/stats/overview', isSuperAdmin, getSubscriptionStats);
 // Organisation/individual account-plan subscribers (User.subscriptionPlan) —
 // separate from the level-based Subscription records above.
 router.get('/account-plans/subscribers', isSuperAdmin, getAccountPlanSubscribers);
+router.post('/account-plans/assign', isSuperAdmin, assignAccountPlan);
 router.post('/account-plans/:userId/cancel', isSuperAdmin, cancelAccountPlanSubscription);
 router.post('/', isSuperAdmin, createSubscription);
 router.patch('/:id/renew', isSuperAdmin, renewSubscription);

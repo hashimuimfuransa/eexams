@@ -576,19 +576,31 @@ const processPaymentCallback = async (req, res) => {
   }
 };
 
-// @desc    Create new subscription directly, bypassing payment (e.g. comp/manual grants)
+// @desc    Manually grant a level/exam subscription to a user, bypassing
+//          payment entirely (e.g. comp/goodwill grants). If the user already
+//          has an active subscription for that level/exam, extends it
+//          (renewal) instead of rejecting the grant — mirrors the renewal
+//          behaviour of activatePendingPayment so a manual grant behaves the
+//          same way a real purchase would.
 // @route   POST /api/subscriptions
 // @access  Private/SuperAdmin
 const createSubscription = async (req, res) => {
   try {
-    const { userId, planId, paymentMethod, paymentReference, amountPaid } = req.body;
+    const { userId, planId, paymentReference, amountPaid } = req.body;
 
     if (!userId) {
       return res.status(400).json({ message: 'userId is required' });
     }
+    if (!planId) {
+      return res.status(400).json({ message: 'planId is required' });
+    }
 
-    // Get the plan
-    const plan = await SubscriptionPlan.findById(planId);
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const plan = await SubscriptionPlan.findById(planId).populate('level').populate('exam');
     if (!plan) {
       return res.status(404).json({ message: 'Subscription plan not found' });
     }
@@ -597,39 +609,54 @@ const createSubscription = async (req, res) => {
       return res.status(400).json({ message: 'This plan is not currently available' });
     }
 
-    // Check if user already has an active subscription for this level
-    const existingSubscription = await Subscription.getActiveSubscriptionForLevel(
-      userId,
-      plan.level
-    );
+    const isExamPlan = plan.planType === 'exam';
+    if (isExamPlan && !plan.exam) {
+      return res.status(400).json({ message: 'This plan is not associated with an exam' });
+    }
+    if (!isExamPlan && !plan.level) {
+      return res.status(400).json({ message: 'This plan is not associated with a level' });
+    }
 
+    const existingSubscription = isExamPlan
+      ? await Subscription.getActiveSubscriptionForExam(userId, plan.exam._id)
+      : await Subscription.getActiveSubscriptionForLevel(userId, plan.level._id);
+
+    let subscription;
     if (existingSubscription) {
-      return res.status(400).json({
-        message: 'This user already has an active subscription for this level'
+      const baseDate = existingSubscription.expiresAt > new Date() ? existingSubscription.expiresAt : new Date();
+      const newExpiry = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
+      await existingSubscription.renew(newExpiry);
+      existingSubscription.plan = plan._id;
+      if (!isExamPlan) existingSubscription.subLevel = plan.subLevel || null;
+      existingSubscription.paymentMethod = 'admin_grant';
+      existingSubscription.paymentReference = paymentReference || 'Manually assigned by super admin';
+      // Accumulate, don't overwrite — see activatePendingPayment for why.
+      existingSubscription.amountPaid = (existingSubscription.amountPaid || 0) + Number(amountPaid || 0);
+      await existingSubscription.save();
+      subscription = existingSubscription;
+    } else {
+      subscription = await Subscription.create({
+        user: userId,
+        level: isExamPlan ? (plan.exam.level || null) : plan.level._id,
+        subLevel: isExamPlan ? null : (plan.subLevel || null),
+        exam: isExamPlan ? plan.exam._id : null,
+        planType: isExamPlan ? 'exam' : 'level',
+        plan: plan._id,
+        startsAt: new Date(),
+        expiresAt: new Date(Date.now() + plan.durationDays * 24 * 60 * 60 * 1000),
+        status: 'active',
+        paymentMethod: 'admin_grant',
+        paymentReference: paymentReference || 'Manually assigned by super admin',
+        amountPaid: Number(amountPaid || 0),
+        currency: plan.currency
       });
     }
 
-    // Calculate expiry date
-    const startDate = new Date();
-    const expiresAt = new Date(startDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
-
-    // Create subscription
-    const subscription = await Subscription.create({
-      user: userId,
-      level: plan.level,
-      subLevel: plan.subLevel || null,
-      plan: planId,
-      startsAt: startDate,
-      expiresAt,
-      status: 'active',
-      paymentMethod: paymentMethod || 'itec',
-      paymentReference,
-      amountPaid: amountPaid || plan.price,
-      currency: plan.currency
-    });
-
-    // Update user's level
-    await User.findByIdAndUpdate(userId, { level: plan.level });
+    // Exam-scoped grants don't change the student's selected level (same as
+    // a real exam-plan purchase in activatePendingPayment).
+    if (!isExamPlan) {
+      await User.findByIdAndUpdate(userId, { level: plan.level._id });
+    }
 
     const populatedSubscription = await Subscription.findById(subscription._id)
       .populate('user', 'firstName lastName email')
@@ -639,6 +666,78 @@ const createSubscription = async (req, res) => {
     res.status(201).json(populatedSubscription);
   } catch (error) {
     console.error('Create subscription error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Manually assign an organisation/individual account plan to a
+//          user, bypassing payment entirely. Extends the current plan
+//          window if already active (renewal), otherwise starts a fresh
+//          one — same behaviour as activateAccountPlanPendingPayment, just
+//          without a PendingPayment/ITEC transaction behind it.
+// @route   POST /api/subscriptions/account-plans/assign
+// @access  Private/SuperAdmin
+const assignAccountPlan = async (req, res) => {
+  try {
+    const { userId, planId, kind } = req.body;
+
+    if (!userId || !planId || !kind) {
+      return res.status(400).json({ message: 'userId, planId and kind are required' });
+    }
+    const kindConfig = ACCOUNT_PLAN_KINDS[kind];
+    if (!kindConfig) {
+      return res.status(400).json({ message: "kind must be 'organization' or 'individual'" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (kind === 'organization' && user.role !== 'admin') {
+      return res.status(400).json({ message: 'This user is not an organisation admin' });
+    }
+    if (kind === 'individual' && user.role !== 'teacher') {
+      return res.status(400).json({ message: 'This user is not a teacher' });
+    }
+    if (user.parentAdmin) {
+      return res.status(400).json({ message: "Org-managed teachers inherit their plan from their organisation admin — assign the admin's plan instead" });
+    }
+
+    const plan = await kindConfig.Model.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ message: `${kindConfig.label} plan not found` });
+    }
+    if (plan.status !== 'active') {
+      return res.status(400).json({ message: 'This plan is not currently available' });
+    }
+
+    const now = new Date();
+    const baseDate = (user.subscriptionStatus === 'active' && user.subscriptionEndDate && user.subscriptionEndDate > now)
+      ? user.subscriptionEndDate
+      : now;
+    const newExpiry = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
+
+    user.subscriptionPlan = plan.tierKey;
+    user.subscriptionStatus = 'active';
+    if (!user.subscriptionStartDate) user.subscriptionStartDate = now;
+    user.subscriptionEndDate = newExpiry;
+    user.subscriptionExpiresAt = newExpiry;
+    user.lastPaymentDate = now;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: `${kindConfig.label} plan manually assigned`,
+      user: {
+        _id: user._id,
+        subscriptionPlan: user.subscriptionPlan,
+        subscriptionStatus: user.subscriptionStatus,
+        subscriptionStartDate: user.subscriptionStartDate,
+        subscriptionEndDate: user.subscriptionEndDate
+      }
+    });
+  } catch (error) {
+    console.error('assignAccountPlan error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -1286,5 +1385,6 @@ module.exports = {
   renewSubscription,
   getSubscriptionStats,
   getAccountPlanSubscribers,
-  cancelAccountPlanSubscription
+  cancelAccountPlanSubscription,
+  assignAccountPlan
 };

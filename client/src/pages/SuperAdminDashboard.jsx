@@ -11,7 +11,8 @@ import {
   Dashboard as DashIcon, Business, People, Settings, AttachMoney,
   SupervisorAccount, School, TrendingUp,
   CheckCircle, Block, Edit, Add, ArrowForward, Delete, InfoOutlined, Close,
-  Visibility, VisibilityOff, Assessment, Person, Email, Phone, EmojiEvents, ReportProblem
+  Visibility, VisibilityOff, Assessment, Person, Email, Phone, EmojiEvents, ReportProblem,
+  CardMembership
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -1016,6 +1017,78 @@ function AllUsersSection() {
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
+  // Manual "Assign Plan" (super admin grants a plan without payment)
+  const [assignPlanUser, setAssignPlanUser] = useState(null);
+  const [assignPlanLoading, setAssignPlanLoading] = useState(false);
+  const [assignPlanSubmitting, setAssignPlanSubmitting] = useState(false);
+  const [assignPlanScope, setAssignPlanScope] = useState('level'); // 'level' | 'exam' (students only)
+  const [assignPlanId, setAssignPlanId] = useState('');
+  const [levelPlans, setLevelPlans] = useState([]);
+  const [examPlans, setExamPlans] = useState([]);
+  const [accountPlans, setAccountPlans] = useState([]); // organization or individual plans
+
+  const canAssignPlan = (user) => {
+    if (user.role === 'student') return true;
+    if (user.role === 'admin') return true;
+    if (user.role === 'teacher') return !user.parentAdmin;
+    return false;
+  };
+
+  const openAssignPlan = async (user) => {
+    setAssignPlanUser(user);
+    setAssignPlanId('');
+    setAssignPlanScope('level');
+    setAssignPlanLoading(true);
+    try {
+      if (user.role === 'student') {
+        const [lvlRes, examRes] = await Promise.all([
+          api.get('/subscription-plans', { params: { planType: 'level', status: 'active' } }),
+          api.get('/subscription-plans', { params: { planType: 'exam', status: 'active' } })
+        ]);
+        setLevelPlans(lvlRes.data || []);
+        setExamPlans(examRes.data || []);
+      } else if (user.role === 'admin') {
+        const res = await api.get('/organization-plans/active');
+        setAccountPlans(res.data || []);
+      } else if (user.role === 'teacher') {
+        const res = await api.get('/individual-plans/active');
+        setAccountPlans(res.data || []);
+      }
+    } catch (err) {
+      setSnack({ open: true, msg: err.response?.data?.message || 'Failed to load plans', severity: 'error' });
+    } finally {
+      setAssignPlanLoading(false);
+    }
+  };
+
+  const closeAssignPlan = () => {
+    setAssignPlanUser(null);
+    setAssignPlanId('');
+    setLevelPlans([]);
+    setExamPlans([]);
+    setAccountPlans([]);
+  };
+
+  const handleAssignPlan = async () => {
+    if (!assignPlanUser || !assignPlanId) return;
+    setAssignPlanSubmitting(true);
+    try {
+      if (assignPlanUser.role === 'student') {
+        await api.post('/subscriptions', { userId: assignPlanUser._id, planId: assignPlanId });
+      } else {
+        const kind = assignPlanUser.role === 'admin' ? 'organization' : 'individual';
+        await api.post('/subscriptions/account-plans/assign', { userId: assignPlanUser._id, planId: assignPlanId, kind });
+      }
+      setSnack({ open: true, msg: 'Plan assigned successfully', severity: 'success' });
+      closeAssignPlan();
+      fetchUsers();
+    } catch (err) {
+      setSnack({ open: true, msg: err.response?.data?.message || 'Failed to assign plan', severity: 'error' });
+    } finally {
+      setAssignPlanSubmitting(false);
+    }
+  };
+
   const fetchUsers=()=>{
     setLoading(true);
     const params = roleFilter ? `?role=${roleFilter}` : '';
@@ -1219,6 +1292,13 @@ function AllUsersSection() {
                           <InfoOutlined fontSize="small"/>
                         </IconButton>
                       </Tooltip>
+                      {canAssignPlan(u) && (
+                        <Tooltip title="Assign Plan">
+                          <IconButton size="small" onClick={()=>openAssignPlan(u)} sx={{color:'#8B5CF6',bgcolor:'#8B5CF610','&:hover':{bgcolor:'#8B5CF620'}}}>
+                            <CardMembership fontSize="small"/>
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <Tooltip title={u.isBlocked?"Unblock User":"Block User"}>
                         <IconButton size="small" onClick={()=>openDialog(u,u.isBlocked?'unblock':'block')} sx={{color:u.isBlocked?tokens.accent:'#F59E0B'}}>
                           {u.isBlocked?<CheckCircle fontSize="small"/>:<Block fontSize="small"/>}
@@ -1323,6 +1403,80 @@ function AllUsersSection() {
             startIcon={processing?<CircularProgress size={16} sx={{color:'white'}}/>:actionDialog==='delete'?<Delete/>:actionDialog==='block'?<Block/>:<CheckCircle/>}
           >
             {processing?'Processing...':actionDialog==='delete'?'Delete Permanently':actionDialog==='block'?'Block User':'Unblock User'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign Plan Dialog (super admin manual grant, no payment) */}
+      <Dialog open={!!assignPlanUser} onClose={assignPlanSubmitting?undefined:closeAssignPlan} maxWidth="sm" fullWidth PaperProps={{sx:{borderRadius:3}}}>
+        <DialogTitle sx={{fontWeight:700,fontFamily:"'DM Sans',sans-serif",pb:1}}>
+          Assign Plan
+          <IconButton size="small" onClick={closeAssignPlan} disabled={assignPlanSubmitting} sx={{position:'absolute',right:16,top:16,color:tokens.textMuted}}><Close fontSize="small"/></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{pt:'8px !important'}}>
+          {assignPlanUser&&(
+            <Box sx={{display:'flex',alignItems:'center',gap:2,p:2,bgcolor:'#F8FAFC',borderRadius:2,mb:2}}>
+              <Avatar sx={{width:40,height:40,bgcolor:tokens.primary,color:'white'}}>{assignPlanUser.firstName?.charAt(0)}</Avatar>
+              <Box>
+                <Typography fontWeight={600}>{assignPlanUser.firstName} {assignPlanUser.lastName}</Typography>
+                <Typography variant="caption" sx={{color:tokens.textMuted}}>{assignPlanUser.email} • {assignPlanUser.role} • currently on <b>{assignPlanUser.subscriptionPlan||'free'}</b></Typography>
+              </Box>
+            </Box>
+          )}
+          {assignPlanLoading?(
+            <Box sx={{display:'flex',justifyContent:'center',py:4}}><CircularProgress sx={{color:tokens.accent}}/></Box>
+          ):assignPlanUser?.role==='student'?(
+            <>
+              <FormControl fullWidth size="small" sx={{mb:2}}>
+                <InputLabel>Plan Type</InputLabel>
+                <Select label="Plan Type" value={assignPlanScope} onChange={e=>{setAssignPlanScope(e.target.value);setAssignPlanId('');}}>
+                  <MuiMenuItem value="level">Level Plan</MuiMenuItem>
+                  <MuiMenuItem value="exam">Exam Plan</MuiMenuItem>
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small">
+                <InputLabel>Plan</InputLabel>
+                <Select label="Plan" value={assignPlanId} onChange={e=>setAssignPlanId(e.target.value)}>
+                  {(assignPlanScope==='level'?levelPlans:examPlans).map(p=>(
+                    <MuiMenuItem key={p._id} value={p._id}>
+                      {p.name} — {p.level?.name||p.exam?.title||''} ({p.durationDays}d, {p.currency} {p.price})
+                    </MuiMenuItem>
+                  ))}
+                  {(assignPlanScope==='level'?levelPlans:examPlans).length===0&&(
+                    <MuiMenuItem value="" disabled>No active {assignPlanScope} plans available</MuiMenuItem>
+                  )}
+                </Select>
+              </FormControl>
+            </>
+          ):assignPlanUser?(
+            <FormControl fullWidth size="small">
+              <InputLabel>Plan</InputLabel>
+              <Select label="Plan" value={assignPlanId} onChange={e=>setAssignPlanId(e.target.value)}>
+                {accountPlans.map(p=>(
+                  <MuiMenuItem key={p._id} value={p._id}>
+                    {p.name} ({p.tierKey}) — {p.durationDays}d, {p.currency} {p.price}
+                  </MuiMenuItem>
+                ))}
+                {accountPlans.length===0&&(
+                  <MuiMenuItem value="" disabled>No active plans available</MuiMenuItem>
+                )}
+              </Select>
+            </FormControl>
+          ):null}
+          <Box sx={{p:2,bgcolor:'#F5F3FF',borderRadius:2,border:'1px solid #DDD6FE',mt:2}}>
+            <Typography variant="body2" sx={{color:'#5B21B6'}}>This grants the plan immediately with no payment recorded. If the user already has an active subscription/plan, its expiry will be extended rather than replaced.</Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{px:3,pb:2.5}}>
+          <Button onClick={closeAssignPlan} disabled={assignPlanSubmitting} sx={{borderRadius:2,textTransform:'none',fontWeight:600}}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleAssignPlan}
+            disabled={assignPlanSubmitting||assignPlanLoading||!assignPlanId}
+            startIcon={assignPlanSubmitting?<CircularProgress size={16} sx={{color:'white'}}/>:<CardMembership/>}
+            sx={{borderRadius:2,fontWeight:700,textTransform:'none',bgcolor:'#8B5CF6','&:hover':{bgcolor:'#7C3AED'}}}
+          >
+            {assignPlanSubmitting?'Assigning...':'Assign Plan'}
           </Button>
         </DialogActions>
       </Dialog>

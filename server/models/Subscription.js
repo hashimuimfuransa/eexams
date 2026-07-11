@@ -52,7 +52,7 @@ const SubscriptionSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['itec', 'airtel_money', 'mobile_money', 'bank_transfer', 'card'],
+    enum: ['itec', 'airtel_money', 'mobile_money', 'bank_transfer', 'card', 'admin_grant'],
     default: 'mobile_money'
   },
   paymentReference: {

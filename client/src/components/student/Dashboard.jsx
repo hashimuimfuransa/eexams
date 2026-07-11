@@ -485,6 +485,14 @@ const Dashboard = () => {
 
   const unlockedExamCount = availableExams.filter(e => e.accessUnlocked !== false).length;
 
+  // Exam bank items the student's subscription (or a still-valid free
+  // attempt) already unlocks — computed server-side in getMarketplaceExams.
+  // Shown first and never hidden behind the 3-item cap below, so a paying
+  // subscriber always sees every exam they can start right now.
+  const dedupedMarketplaceExams = marketplaceExams.filter(exam => !availableExams.some(e => e._id === exam._id));
+  const readyToStartCount = dedupedMarketplaceExams.filter(exam => exam.accessUnlocked === true).length;
+  const examBankDisplayLimit = Math.min(6, Math.max(3, readyToStartCount));
+
   return (
     <StudentLayout>
       <Container maxWidth="xl" sx={{ mt: { xs: 2, sm: 3, md: 4 }, mb: { xs: 2, sm: 3, md: 4 } }}>
@@ -1421,7 +1429,31 @@ const Dashboard = () => {
               </Button>
             </Box>
 
-            {marketplaceExams.length === 0 ? (
+            {readyToStartCount > 0 && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  mb: 2,
+                  px: 1.5,
+                  py: 1,
+                  borderRadius: 1.5,
+                  bgcolor: alpha('#0CBD73', 0.1),
+                  border: '1px solid',
+                  borderColor: alpha('#0CBD73', 0.3)
+                }}
+              >
+                <CheckCircle sx={{ fontSize: 18, color: '#0CBD73' }} />
+                <Typography variant="body2" fontWeight={600} sx={{ color: '#0CBD73' }}>
+                  {readyToStartCount === 1
+                    ? '1 exam is unlocked by your subscription — start it below'
+                    : `${readyToStartCount} exams are unlocked by your subscription — start them below`}
+                </Typography>
+              </Box>
+            )}
+
+            {dedupedMarketplaceExams.length === 0 ? (
               <Paper elevation={1} sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', mb: 4, bgcolor: 'grey.50', borderRadius: 2 }}>
                 <School sx={{ fontSize: { xs: 48, sm: 64 }, color: 'text.secondary', mb: 2 }} />
                 <Typography variant="h6" color="text.secondary" fontWeight="bold">
@@ -1433,14 +1465,17 @@ const Dashboard = () => {
               </Paper>
             ) : (
               <Box sx={{ display: 'grid', gap: 2, mb: 4 }}>
-                {marketplaceExams
-                  .filter(exam => !availableExams.some(e => e._id === exam._id))
-                  .slice(0, 3)
+                {dedupedMarketplaceExams
+                  .slice(0, examBankDisplayLimit)
                   .map((exam) => {
                   const totalQuestions = exam.sections?.reduce((sum, section) => sum + (section.questions?.length || 0), 0) || 0;
                   const isRequested = pendingRequests.some(r => r.exam?._id === exam._id);
                   const isApproved = pendingRequests.some(r => r.exam?._id === exam._id && r.status === 'approved');
                   const isCompleted = results.some(r => r.exam?._id === exam._id || r.exam === exam._id);
+                  // Subscription (or a still-valid free attempt) already covers this
+                  // exam, computed server-side in getMarketplaceExams — skip the
+                  // request/approval flow entirely and let the student start now.
+                  const canStartNow = exam.accessUnlocked === true && !isCompleted;
 
                   return (
                     <Card
@@ -1502,7 +1537,24 @@ const Dashboard = () => {
                             </Box>
                           </Box>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: { xs: '100%', sm: 140 }, width: { xs: '100%', sm: 'auto' } }}>
-                            {isCompleted ? (
+                            {canStartNow ? (
+                              <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() => handleExamClick(exam)}
+                                startIcon={<PlayArrow />}
+                                fullWidth={isMobile}
+                                sx={{
+                                  fontWeight: 500,
+                                  textTransform: 'none',
+                                  background: '#0CBD73',
+                                  boxShadow: '0 2px 6px rgba(12,189,115,0.15)',
+                                  borderRadius: 1
+                                }}
+                              >
+                                Start Exam
+                              </Button>
+                            ) : isCompleted ? (
                               <Button
                                 variant="contained"
                                 size="small"

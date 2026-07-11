@@ -30,7 +30,7 @@ const {
 } = require('../controllers/marketplaceController');
 
 // Public routes (no authentication required)
-router.get('/exams', getMarketplaceExams);
+router.get('/exams', auth.optionalAuth, getMarketplaceExams);
 router.get('/exams/:id', getMarketplaceExamById);
 router.get('/levels', getAllLevels);
 router.post('/exams/:id/request', auth.optionalAuth, requestMarketplaceExam);

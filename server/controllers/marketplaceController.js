@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Result = require('../models/Result');
 const Subscription = require('../models/Subscription');
 const emailService = require('../utils/emailService');
-const { subscriptionCoversExam } = require('../utils/subLevelAccess');
+const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
 
 // Determine whether an authenticated student already has subscription-based
 // access to a given exam — either an exam-scoped subscription bought for
@@ -44,7 +44,7 @@ const getMarketplaceExams = async (req, res) => {
       .lean();
 
     // Compute totalQuestions from sections.questions array length (ObjectId refs, not populated)
-    const examsWithCounts = exams.map(exam => ({
+    let examsWithCounts = exams.map(exam => ({
       ...exam,
       totalQuestions: exam.sections?.reduce((sum, s) => sum + (s.questions?.length || s.questionCount || 0), 0) || 0,
       sections: exam.sections?.map(s => ({
@@ -52,6 +52,64 @@ const getMarketplaceExams = async (req, res) => {
         questionCount: s.questions?.length || s.questionCount || 0
       }))
     }));
+
+    // For an authenticated student, compute per-exam access the same way
+    // studentController.getAvailableExams does, so the exam bank can show
+    // "Start Exam" instead of "Request" once the student's subscription (or
+    // a still-available free attempt) already covers the exam, and can put
+    // exams matching their level first.
+    if (req.user && req.user.role === 'student') {
+      const user = await User.findById(req.user._id).select('level subLevel').lean();
+      const userLevelId = user?.level?.toString();
+
+      const completedResults = await Result.find({ student: req.user._id, isCompleted: true }).select('exam').lean();
+      const completedExamIds = new Set(completedResults.map(r => r.exam.toString()));
+
+      const examSubscriptions = await Subscription.find({
+        user: req.user._id,
+        exam: { $ne: null },
+        status: 'active',
+        expiresAt: { $gt: new Date() }
+      }).select('exam').lean();
+      const examSubscribedIds = new Set(examSubscriptions.map(s => s.exam.toString()));
+
+      // One active level-subscription lookup per distinct level, reused across exams.
+      const levelSubscriptionCache = new Map();
+      const getLevelSubscription = async (levelId) => {
+        if (!levelId) return null;
+        if (!levelSubscriptionCache.has(levelId)) {
+          levelSubscriptionCache.set(levelId, await Subscription.getActiveSubscriptionForLevel(req.user._id, levelId));
+        }
+        return levelSubscriptionCache.get(levelId);
+      };
+
+      examsWithCounts = await Promise.all(examsWithCounts.map(async (exam) => {
+        const examLevelId = exam.level?._id?.toString();
+        const isCompleted = completedExamIds.has(exam._id.toString());
+        const levelMatch = !!userLevelId && userLevelId === examLevelId;
+
+        let accessUnlocked;
+        if (examSubscribedIds.has(exam._id.toString())) {
+          accessUnlocked = true;
+        } else if (exam.accessType === 'free' && !isCompleted) {
+          accessUnlocked = freeExamMatchesUserSubLevel(exam, user || {});
+        } else {
+          const levelSub = await getLevelSubscription(examLevelId);
+          accessUnlocked = !!(levelSub && levelSub.isValid() && subscriptionCoversExam(levelSub, exam));
+        }
+
+        return { ...exam, accessUnlocked, levelMatch, isCompleted };
+      }));
+
+      // Exams the student can start right now come first, then exams matching
+      // their level (still locked), preserving the existing free-before-
+      // subscription / newest-first order within each tier.
+      examsWithCounts.sort((a, b) => {
+        if (a.accessUnlocked !== b.accessUnlocked) return a.accessUnlocked ? -1 : 1;
+        if (a.levelMatch !== b.levelMatch) return a.levelMatch ? -1 : 1;
+        return 0;
+      });
+    }
 
     res.json(examsWithCounts);
   } catch (error) {

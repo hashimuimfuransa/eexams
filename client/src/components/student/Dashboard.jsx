@@ -33,7 +33,6 @@ import {
   Replay,
   EmojiEvents,
   Leaderboard as LeaderboardIcon,
-  WorkspacePremium,
   ExpandMore,
   ExpandLess,
   Timer,
@@ -597,93 +596,72 @@ const Dashboard = () => {
         {/* Level and Subscription Info Card */}
         <Card elevation={1} sx={{ mb: 4, borderRadius: 2, background: 'linear-gradient(135deg, #0D406C 0%, #1a5a8a 100%)', color: 'white' }}>
 
-          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-              <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
-                <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <School fontSize={isMobile ? 'small' : 'medium'} />
-                  Your Learning Level
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 500 }}>
+          <CardContent sx={{ p: { xs: 1.75, sm: 3 } }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: { xs: 1.25, sm: 2 } }}>
+              <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 }, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5 }, flexWrap: 'wrap' }}>
+                <School fontSize="small" sx={{ opacity: 0.85 }} />
+                <Typography sx={{ fontSize: { xs: '0.95rem', sm: '1.1rem' }, fontWeight: 700 }}>
                   {user?.level?.name || 'Not selected'}{user?.subLevel ? ` — ${user.subLevel}` : ''}
                 </Typography>
-                <Box sx={{ mt: 1.25, display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5 }, ml: { xs: 0, sm: 1 } }}>
                   <Button
                     variant="contained"
                     size="small"
-                    startIcon={<Assessment fontSize="small" />}
-                    sx={{ bgcolor: 'white', color: '#0D406C', fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
+                    sx={{ bgcolor: 'white', color: '#0D406C', fontWeight: 700, textTransform: 'none', fontSize: { xs: '0.75rem', sm: '0.8125rem' }, py: { xs: 0.25, sm: 0.5 }, '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
                     onClick={() => navigate('/student/exams')}
                   >
                     View {unlockedExamCount} Exam{unlockedExamCount === 1 ? '' : 's'}
                   </Button>
                   <Button
                     size="small"
-                    sx={{ color: 'white', textTransform: 'none', textDecoration: 'underline', opacity: 0.85, '&:hover': { opacity: 1, bgcolor: 'transparent' } }}
+                    sx={{ minWidth: 0, color: 'white', textTransform: 'none', textDecoration: 'underline', opacity: 0.7, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '&:hover': { opacity: 1, bgcolor: 'transparent' } }}
                     onClick={() => navigate('/student/profile')}
                   >
-                    Change Level
+                    Change
                   </Button>
                 </Box>
               </Box>
               <Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', sm: 'block' }, borderColor: 'rgba(255,255,255,0.3)' }} />
+              <Divider sx={{ display: { xs: 'block', sm: 'none' }, width: '100%', borderColor: 'rgba(255,255,255,0.2)' }} />
               <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 250 } }}>
-                <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <WorkspacePremium fontSize={isMobile ? 'small' : 'medium'} />
-                  Subscription Status
-                </Typography>
                 {subscription ? (
-                  <Box>
-                    <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 500 }}>
-                      {subscription.plan?.name || 'Active'}
-                    </Typography>
-                    <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
-                      Expires: {new Date(subscription.expiresAt).toLocaleDateString()}
-                    </Typography>
-                    {subscriptionTimeLeft !== null && (
-                      <Box
-                        sx={{
-                          mt: 1,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 0.75,
-                          px: 1.25,
-                          py: 0.5,
-                          borderRadius: 1.5,
-                          bgcolor: subscriptionTimeLeft <= 0
-                            ? 'rgba(239,68,68,0.3)'
-                            : subscriptionTimeLeft < 24 * 60 * 60 * 1000
-                              ? 'rgba(239,68,68,0.25)'
-                              : subscriptionTimeLeft < 3 * 24 * 60 * 60 * 1000
-                                ? 'rgba(245,158,11,0.25)'
-                                : 'rgba(255,255,255,0.15)'
-                        }}
-                      >
-                        <Timer fontSize="small" />
-                        <Typography variant="body2" fontWeight={800} sx={{ fontFamily: 'monospace', letterSpacing: 0.3 }}>
-                          {subscriptionTimeLeft <= 0 ? 'Expired' : `${formatSubscriptionCountdown(subscriptionTimeLeft)} left`}
-                        </Typography>
-                      </Box>
-                    )}
-                    <Box>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        sx={{ mt: 1, bgcolor: 'white', color: '#0D406C', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
-                        onClick={() => navigate('/student/subscriptions')}
-                      >
-                        Renew Subscription
-                      </Button>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: { xs: 'space-between', sm: 'flex-start' }, gap: { xs: 1, sm: 1.5 }, flexWrap: 'wrap' }}>
+                    <Box
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.75,
+                        px: { xs: 1.25, sm: 1.5 },
+                        py: { xs: 0.5, sm: 0.75 },
+                        borderRadius: 1.5,
+                        bgcolor: subscriptionTimeLeft <= 0
+                          ? 'rgba(239,68,68,0.3)'
+                          : subscriptionTimeLeft < 24 * 60 * 60 * 1000
+                            ? 'rgba(239,68,68,0.25)'
+                            : subscriptionTimeLeft < 3 * 24 * 60 * 60 * 1000
+                              ? 'rgba(245,158,11,0.25)'
+                              : 'rgba(255,255,255,0.15)'
+                      }}
+                    >
+                      <Timer fontSize="small" />
+                      <Typography sx={{ fontFamily: 'monospace', letterSpacing: 0.3, fontWeight: 800, fontSize: { xs: '1rem', sm: '1.15rem' } }}>
+                        {subscriptionTimeLeft <= 0 ? 'Expired' : subscriptionTimeLeft === null ? '—' : formatSubscriptionCountdown(subscriptionTimeLeft)}
+                      </Typography>
                     </Box>
+                    <Button
+                      size="small"
+                      sx={{ minWidth: 0, color: 'white', textTransform: 'none', textDecoration: 'underline', opacity: 0.7, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '&:hover': { opacity: 1, bgcolor: 'transparent' } }}
+                      onClick={() => navigate('/student/subscriptions')}
+                    >
+                      Renew
+                    </Button>
                   </Box>
                 ) : (
-                  <Box>
-                    <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 500 }}>
-                      Not Active
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                    <Typography sx={{ fontSize: '0.875rem', opacity: 0.85 }}>No active plan</Typography>
                     <Button
                       variant="contained"
-                      size={isMobile ? 'medium' : 'large'}
+                      size="small"
                       endIcon={
                         <ArrowForward sx={{
                           '@keyframes nudge': {
@@ -694,15 +672,13 @@ const Dashboard = () => {
                         }} />
                       }
                       sx={{
-                        mt: 1.5,
                         bgcolor: '#F59E0B',
                         color: '#fff',
                         fontWeight: 800,
                         textTransform: 'none',
                         borderRadius: 3,
-                        px: 3,
-                        py: 1,
-                        fontSize: { xs: '0.9rem', sm: '1rem' },
+                        px: 2,
+                        fontSize: { xs: '0.8rem', sm: '0.9rem' },
                         boxShadow: '0 0 0 0 rgba(245,158,11,0.7)',
                         '@keyframes pulseGlow': {
                           '0%': { boxShadow: '0 0 0 0 rgba(245,158,11,0.7)', transform: 'scale(1)' },

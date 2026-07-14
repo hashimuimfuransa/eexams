@@ -4231,7 +4231,8 @@ const ExamInterface = () => {
                                 studentAnswer={answers[currentQuestion._id]?.textAnswer || null}
                                 readOnly={!!answers[currentQuestion._id]?.savedToServer}
                                 onAnswerChange={(json) => {
-                                  handleAnswerChange(currentQuestion._id, JSON.stringify(json), 'financial-spreadsheet');
+                                  // FinancialSpreadsheet already serialises {data, headers} to a JSON string
+                                  handleAnswerChange(currentQuestion._id, json, 'financial-spreadsheet');
                                 }}
                               />
                               {answers[currentQuestion._id]?.savedToServer && (

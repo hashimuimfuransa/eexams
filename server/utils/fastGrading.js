@@ -1,5 +1,6 @@
 const groqClient = require('./groqClient');
 const { verifyGradingWithAI } = require('./enhancedGrading');
+const { gradeFinancialSpreadsheet } = require('./spreadsheetGrading');
 
 /**
  * Normalize answer for flexible comparison
@@ -250,6 +251,9 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
 
       case 'drag-drop':
         return await gradeDragDropFast(question, answer, modelAnswer);
+
+      case 'financial-spreadsheet':
+        return gradeFinancialSpreadsheet(question, answer, modelAnswer);
 
       default:
         return {

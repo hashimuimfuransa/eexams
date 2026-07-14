@@ -86,6 +86,7 @@ import {
 import { styled } from '@mui/material/styles';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
+import FinancialSpreadsheet from '../FinancialSpreadsheet';
 
 // Google Play Icon SVG
 const GooglePlayIcon = () => (
@@ -717,6 +718,23 @@ const Results = () => {
             </Box>
           );
         })()}
+
+        {/* ── Financial Spreadsheet ── */}
+        {qType === 'financial-spreadsheet' && (
+          <Box sx={{ mb: 2 }}>
+            <FinancialSpreadsheet
+              mode="grading"
+              questionData={{
+                ...answer.question,
+                // spreadsheetModelAnswer can be missing on older/edited questions;
+                // correctAnswer is always kept as a mirror of it at save time.
+                spreadsheetModelAnswer: answer.question?.spreadsheetModelAnswer || answer.question?.correctAnswer,
+              }}
+              studentAnswerRaw={answer.textAnswer}
+              height={320}
+            />
+          </Box>
+        )}
 
         {/* ── Open-ended / Essay / Fill-in / Short answer ── */}
         {(qType === 'open-ended' || qType === 'essay' || qType === 'fill-in-blank' || qType === 'short-answer') && (

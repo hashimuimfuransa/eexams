@@ -525,7 +525,7 @@ const getDetailedResult = async (req, res) => {
     })
     .populate({
       path: 'answers.question',
-      select: 'text type options correctAnswer points section matchingPairs leftItems rightItems subQuestions subQuestionConfig imageUrl wordBank passage subsectionTitle subsection instructions sectionTitle itemsToOrder dragDropData explanation answerKey gradingCriteria keyPoints acceptableAnswers marks correctMatches',
+      select: 'text type options correctAnswer points section matchingPairs leftItems rightItems subQuestions subQuestionConfig imageUrl wordBank passage subsectionTitle subsection instructions sectionTitle itemsToOrder dragDropData explanation answerKey gradingCriteria keyPoints acceptableAnswers marks correctMatches spreadsheetTemplate spreadsheetModelAnswer',
       options: { lean: true } // Use lean for better performance
     })
     .populate({

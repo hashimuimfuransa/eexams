@@ -2481,7 +2481,8 @@ const completeExam = async (req, res) => {
         'ai_no_model_answer', 'default_fallback_insufficient',
         'incomplete_multipart', 'incomplete_multipart_fallback',
         'answer_validation_failed', 'letter_based', 'isCorrect_flag', 'modelAnswer_comparison',
-        'sub_question_grading', 'groq_ai', 'subquestion_all', 'subquestion_choose-n'
+        'sub_question_grading', 'groq_ai', 'subquestion_all', 'subquestion_choose-n',
+        'spreadsheet_grading', 'spreadsheet_manual_grading'
       ];
 
       // Ensure all grading methods are valid

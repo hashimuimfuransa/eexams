@@ -9,10 +9,13 @@
  *  - Formatting toolbar: Bold, Italic, Align, Currency format, % format
  *  - Add / Remove rows & columns; editable column headers
  *  - Right-click context menu with all structural options
+ *  - Multiple named tables per question (e.g. a question that asks for both an
+ *    Income Statement AND a Statement of Financial Position) — tables can be
+ *    added/removed independently, each with its own title and grid.
  *
  * Modes:
  *  teacher-setup  – editable: Student Template tab + Model Answer tab
- *  student        – editable: single grid pre-filled from template
+ *  student        – editable: one grid per table, pre-filled from template; can add more tables
  *  grading        – read-only: Student Answer + Model Answer tabs
  */
 
@@ -34,6 +37,7 @@ import Handsontable from 'handsontable';
 import { HyperFormula } from 'hyperformula';
 import { registerAllModules } from 'handsontable/registry';
 import 'handsontable/styles/handsontable.min.css';
+import 'handsontable/styles/ht-theme-main.min.css';
 
 registerAllModules();
 
@@ -46,21 +50,86 @@ function makeEmptyData(rows = DEFAULT_ROWS, cols = DEFAULT_COLS) {
   return Array.from({ length: rows }, () => Array(cols).fill(''));
 }
 
+let tableIdSeq = 0;
+function nextTableKey() {
+  tableIdSeq += 1;
+  return `tbl_${Date.now()}_${tableIdSeq}`;
+}
+
+function makeEmptyTable(title = '') {
+  return { _key: nextTableKey(), title, headers: [...DEFAULT_HEADERS], data: makeEmptyData() };
+}
+
+function cloneTables(tables) {
+  return tables.map(t => ({
+    _key: nextTableKey(),
+    title: t.title || '',
+    headers: [...t.headers],
+    data: t.data.map(row => [...row]),
+  }));
+}
+
+// A single table entry may come from the AI/legacy data in a few shapes:
+//  - { title?, headers: [...], data: [[...]] }               (canonical)
+//  - flat "label: value" object, e.g. {"Revenue":800000}      (AI drift, no headers/data keys)
+// Coerce either into the canonical shape. Returns null if nothing usable is found.
+function coerceTable(t) {
+  if (!t || typeof t !== 'object') return null;
+  if (Array.isArray(t.data) && t.data.length) {
+    return {
+      title: typeof t.title === 'string' ? t.title : '',
+      headers: Array.isArray(t.headers) && t.headers.length ? t.headers : [...DEFAULT_HEADERS],
+      data: t.data,
+    };
+  }
+  const entries = Object.entries(t).filter(([key]) => !['headers', 'data', 'title'].includes(key));
+  if (entries.length === 0) return null;
+  return {
+    title: typeof t.title === 'string' ? t.title : '',
+    headers: ['Item', 'Amount'],
+    data: entries.map(([key, value]) => [key, value === null || value === undefined ? '' : String(value)]),
+  };
+}
+
+// Normalizes any of the shapes the AI/legacy data may produce into a plain array of tables:
+//  - { tables: [ {title, headers, data}, ... ] }   (canonical, multi-table)
+//  - [ {title, headers, data}, ... ]               (bare array of tables)
+//  - { headers: [...], data: [[...]] }             (legacy single-table shape)
+//  - flat "label: value" object                    (AI drift)
+function coerceToTables(parsed) {
+  if (!parsed || typeof parsed !== 'object') return null;
+  if (Array.isArray(parsed)) {
+    const tables = parsed.map(coerceTable).filter(Boolean);
+    return tables.length ? tables : null;
+  }
+  if (Array.isArray(parsed.tables)) {
+    const tables = parsed.tables.map(coerceTable).filter(Boolean);
+    return tables.length ? tables : null;
+  }
+  const single = coerceTable(parsed);
+  return single ? [single] : null;
+}
+
 function parseSheet(raw) {
-  if (!raw) return { data: makeEmptyData(), headers: [...DEFAULT_HEADERS] };
+  if (!raw) return [makeEmptyTable()];
   try {
     const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    return {
-      data:    p.data    && p.data.length    ? p.data    : makeEmptyData(),
-      headers: p.headers && p.headers.length ? p.headers : [...DEFAULT_HEADERS],
-    };
+    const tables = coerceToTables(p);
+    if (!tables || !tables.length) return [makeEmptyTable()];
+    return tables.map(t => ({ _key: nextTableKey(), ...t }));
   } catch {
-    return { data: makeEmptyData(), headers: [...DEFAULT_HEADERS] };
+    return [makeEmptyTable()];
   }
 }
 
-function serialise(data, headers) {
-  return JSON.stringify({ data, headers });
+// Answer is "meaningfully filled" if at least one cell across all tables is non-blank.
+// Used to decide whether a resumed student answer should win over the blank template.
+function hasAnyContent(tables) {
+  return tables.some(t => t.data.some(row => row.some(cell => String(cell ?? '').trim() !== '')));
+}
+
+function serialise(tables) {
+  return JSON.stringify({ tables: tables.map(({ _key, ...t }) => t) });
 }
 
 // ── CSS injection for custom cell classes ─────────────────────────────────────
@@ -157,6 +226,7 @@ function EditableGrid({ data, headers: initialHeaders, hotRef, height, accentCol
       height,
       width: '100%',
       licenseKey: 'non-commercial-and-evaluation',
+      className: 'ht-theme-main',
 
       // ── Formula engine ──────────────────────────────────────────────────
       formulas: {
@@ -435,7 +505,7 @@ function EditableGrid({ data, headers: initialHeaders, hotRef, height, accentCol
       </Stack>
 
       {/* ── Grid ── */}
-      <Box sx={{ overflowX: 'auto' }}>
+      <Box sx={{ overflowX: 'auto', colorScheme: 'light' }}>
         <div ref={containerRef} />
       </Box>
     </Box>
@@ -456,6 +526,7 @@ function ReadOnlyGrid({ data, headers, height }) {
       height,
       width: '100%',
       licenseKey: 'non-commercial-and-evaluation',
+      className: 'ht-theme-main',
       readOnly: true,
       stretchH: 'all',
       wordWrap: true,
@@ -471,10 +542,114 @@ function ReadOnlyGrid({ data, headers, height }) {
   }, []);
 
   return (
-    <Box sx={{ overflowX: 'auto' }}>
+    <Box sx={{ overflowX: 'auto', colorScheme: 'light' }}>
       <div ref={containerRef} />
     </Box>
   );
+}
+
+// ── StatementTableEditor: title field + remove button + one EditableGrid ──────
+function StatementTableEditor({ table, index, count, onTableChange, onTitleChange, onRemove, canRemove, height, accentColor }) {
+  const hotRef = useRef(null);
+  const tableHeight = count > 1 ? Math.min(height, 320) : height;
+
+  return (
+    <Box sx={{ mb: count > 1 ? 2 : 0, border: count > 1 ? '1px solid #E5E7EB' : 'none', borderRadius: 1.5, overflow: 'hidden' }}>
+      {count > 1 && (
+        <Stack direction="row" alignItems="center" spacing={1}
+          sx={{ px: 1, py: 0.5, bgcolor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+          <TableChart sx={{ fontSize: 15, color: accentColor }} />
+          <TextField
+            size="small"
+            placeholder={`Statement ${index + 1} title (e.g. Income Statement)`}
+            value={table.title}
+            onChange={(e) => onTitleChange(index, e.target.value)}
+            sx={{
+              flexGrow: 1,
+              '& .MuiInputBase-input': { fontSize: 12, fontWeight: 700, py: 0.5, color: '#1F2937' },
+            }}
+          />
+          {canRemove && (
+            <Tooltip title="Remove this table">
+              <IconButton size="small" onClick={() => onRemove(index)} sx={{ color: '#EF4444' }}>
+                <RemoveCircleOutline sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Stack>
+      )}
+      <EditableGrid
+        data={table.data}
+        headers={table.headers}
+        hotRef={hotRef}
+        height={tableHeight}
+        accentColor={accentColor}
+        onChange={(data, headers) => onTableChange(index, data, headers)}
+      />
+    </Box>
+  );
+}
+
+// ── StatementTableReadOnly ─────────────────────────────────────────────────────
+function StatementTableReadOnly({ table, index, count, height }) {
+  const tableHeight = count > 1 ? Math.min(height, 320) : height;
+  return (
+    <Box sx={{ mb: count > 1 ? 2 : 0, border: count > 1 ? '1px solid #E5E7EB' : 'none', borderRadius: 1.5, overflow: 'hidden' }}>
+      {count > 1 && (
+        <Box sx={{ px: 1, py: 0.5, bgcolor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>
+            {table.title || `Table ${index + 1}`}
+          </Typography>
+        </Box>
+      )}
+      <ReadOnlyGrid data={table.data} headers={table.headers} height={tableHeight} />
+    </Box>
+  );
+}
+
+// ── useTableSet: manages an array of tables + add/remove/update handlers ──────
+function useTableSet(initialTables, onChangeCb) {
+  const [tables, setTables] = useState(initialTables);
+
+  const updateTable = useCallback((idx, data, headers) => {
+    setTables(prev => {
+      const next = prev.map((t, i) => (i === idx ? { ...t, data, headers } : t));
+      onChangeCb?.(serialise(next));
+      return next;
+    });
+  }, [onChangeCb]);
+
+  const updateTitle = useCallback((idx, title) => {
+    setTables(prev => {
+      const next = prev.map((t, i) => (i === idx ? { ...t, title } : t));
+      onChangeCb?.(serialise(next));
+      return next;
+    });
+  }, [onChangeCb]);
+
+  const addTable = useCallback(() => {
+    setTables(prev => {
+      const next = [...prev, makeEmptyTable('')];
+      onChangeCb?.(serialise(next));
+      return next;
+    });
+  }, [onChangeCb]);
+
+  const removeTable = useCallback((idx) => {
+    setTables(prev => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, i) => i !== idx);
+      onChangeCb?.(serialise(next));
+      return next;
+    });
+  }, [onChangeCb]);
+
+  const replaceAll = useCallback((newTables) => {
+    setTables(newTables);
+    onChangeCb?.(serialise(newTables));
+  }, [onChangeCb]);
+
+  return { tables, setTables, updateTable, updateTitle, addTable, removeTable, replaceAll };
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -490,63 +665,36 @@ export default function FinancialSpreadsheet({
 }) {
   const isTeacherSetup = mode === 'teacher-setup';
   const isGrading      = mode === 'grading';
-  const isStudent      = mode === 'student';
+  const isStudent       = mode === 'student';
 
   const [activeTab, setActiveTab] = useState(0);
 
-  // Parse stored sheets
-  const templateSheet = parseSheet(questionData?.spreadsheetTemplate);
-  const modelSheet    = parseSheet(questionData?.spreadsheetModelAnswer);
-  const studentSheet  = parseSheet(studentAnswerRaw);
+  // Parse stored sheets (each is an array of { title, headers, data } tables)
+  const templateTablesInit = parseSheet(questionData?.spreadsheetTemplate);
+  const modelTablesInit    = parseSheet(questionData?.spreadsheetModelAnswer);
 
-  // Editable state for teacher-setup
-  const [templateData,    setTemplateData]    = useState(templateSheet.data);
-  const [templateHeaders, setTemplateHeaders] = useState(templateSheet.headers);
-  const [modelData,       setModelData]       = useState(modelSheet.data);
-  const [modelHeaders,    setModelHeaders]    = useState(modelSheet.headers);
+  const answerTablesInit = (() => {
+    if (!isStudent) return parseSheet(studentAnswerRaw);
+    // Prefer a resumed answer that actually has content; otherwise start from the template
+    // (a still-blank parsed answer would otherwise always lose progress on re-mount).
+    if (studentAnswerRaw) {
+      const parsedAnswer = parseSheet(studentAnswerRaw);
+      if (hasAnyContent(parsedAnswer)) return parsedAnswer;
+    }
+    if (questionData?.spreadsheetTemplate) return cloneTables(templateTablesInit);
+    return parseSheet(studentAnswerRaw);
+  })();
 
-  // Editable state for student
-  const [answerData,    setAnswerData]    = useState(() => {
-    if (isStudent && templateSheet.data?.length) return templateSheet.data.map(r => [...r]);
-    if (isStudent && studentSheet.data?.length)  return studentSheet.data;
-    return makeEmptyData();
-  });
-  const [answerHeaders, setAnswerHeaders] = useState(templateSheet.headers);
-
-  const templateRef = useRef(null);
-  const modelRef    = useRef(null);
-  const answerRef   = useRef(null);
-
-  const handleTemplateChange = useCallback((data, headers) => {
-    setTemplateData(data);
-    setTemplateHeaders(headers);
-    onTemplateChange?.(serialise(data, headers));
-  }, [onTemplateChange]);
-
-  const handleModelChange = useCallback((data, headers) => {
-    setModelData(data);
-    setModelHeaders(headers);
-    onModelChange?.(serialise(data, headers));
-  }, [onModelChange]);
-
-  const handleAnswerChange = useCallback((data, headers) => {
-    setAnswerData(data);
-    setAnswerHeaders(headers);
-    onAnswerChange?.(serialise(data, headers));
-  }, [onAnswerChange]);
+  const template = useTableSet(templateTablesInit, (json) => onTemplateChange?.(json));
+  const model    = useTableSet(modelTablesInit, (json) => onModelChange?.(json));
+  const answer   = useTableSet(answerTablesInit, (json) => onAnswerChange?.(json));
 
   const handleCopyToModel = () => {
-    const dataCopy    = templateData.map(r => [...r]);
-    const headersCopy = [...templateHeaders];
-    setModelData(dataCopy);
-    setModelHeaders(headersCopy);
-    onModelChange?.(serialise(dataCopy, headersCopy));
+    model.replaceAll(cloneTables(template.tables));
   };
 
   const handleReset = () => {
-    const fresh = templateSheet.data.map(r => [...r]);
-    setAnswerData(fresh);
-    onAnswerChange?.(serialise(fresh, answerHeaders));
+    answer.replaceAll(cloneTables(template.tables));
   };
 
   // ── TEACHER SETUP ──────────────────────────────────────────────────────────
@@ -577,15 +725,30 @@ export default function FinancialSpreadsheet({
               sx={{ mx: 1, mt: 1, py: 0.5, fontSize: 11, '& .MuiAlert-message': { fontSize: 11 } }}>
               Design what the student will see and fill in. Use the toolbar to add/remove rows and columns.
               Rename columns by editing the blue fields above the grid. Leave answer cells blank.
+              If this question asks for more than one financial statement (e.g. both an Income
+              Statement and a Balance Sheet), use "Add another table" to create one table per statement.
             </Alert>
-            <EditableGrid
-              data={templateData}
-              headers={templateHeaders}
-              hotRef={templateRef}
-              height={height}
-              accentColor="#059669"
-              onChange={handleTemplateChange}
-            />
+            <Box sx={{ p: 1 }}>
+              {template.tables.map((t, i) => (
+                <StatementTableEditor
+                  key={t._key}
+                  table={t}
+                  index={i}
+                  count={template.tables.length}
+                  onTableChange={template.updateTable}
+                  onTitleChange={template.updateTitle}
+                  onRemove={template.removeTable}
+                  canRemove={template.tables.length > 1}
+                  height={height}
+                  accentColor="#059669"
+                />
+              ))}
+              <Button size="small" variant="outlined" startIcon={<AddCircleOutline sx={{ fontSize: 14 }} />}
+                onClick={template.addTable}
+                sx={{ textTransform: 'none', fontSize: 11, borderRadius: 1.5, borderColor: '#059669', color: '#059669' }}>
+                Add another statement table
+              </Button>
+            </Box>
           </Box>
         )}
 
@@ -602,14 +765,27 @@ export default function FinancialSpreadsheet({
                 Copy layout from Student Template
               </Button>
             </Box>
-            <EditableGrid
-              data={modelData}
-              headers={modelHeaders}
-              hotRef={modelRef}
-              height={height}
-              accentColor="#059669"
-              onChange={handleModelChange}
-            />
+            <Box sx={{ p: 1 }}>
+              {model.tables.map((t, i) => (
+                <StatementTableEditor
+                  key={t._key}
+                  table={t}
+                  index={i}
+                  count={model.tables.length}
+                  onTableChange={model.updateTable}
+                  onTitleChange={model.updateTitle}
+                  onRemove={model.removeTable}
+                  canRemove={model.tables.length > 1}
+                  height={height}
+                  accentColor="#059669"
+                />
+              ))}
+              <Button size="small" variant="outlined" startIcon={<AddCircleOutline sx={{ fontSize: 14 }} />}
+                onClick={model.addTable}
+                sx={{ textTransform: 'none', fontSize: 11, borderRadius: 1.5, borderColor: '#059669', color: '#059669' }}>
+                Add another statement table
+              </Button>
+            </Box>
           </Box>
         )}
       </Box>
@@ -634,7 +810,9 @@ export default function FinancialSpreadsheet({
         </Tabs>
         {activeTab === 0 && (
           <Box sx={{ p: 1 }}>
-            <ReadOnlyGrid data={studentSheet.data} headers={studentSheet.headers} height={height} />
+            {answer.tables.map((t, i) => (
+              <StatementTableReadOnly key={t._key} table={t} index={i} count={answer.tables.length} height={height} />
+            ))}
           </Box>
         )}
         {activeTab === 1 && (
@@ -643,7 +821,9 @@ export default function FinancialSpreadsheet({
               sx={{ mb: 1, py: 0.5, '& .MuiAlert-message': { fontSize: 11 } }}>
               Model answer for reference. Use Manual Regrade to assign a score.
             </Alert>
-            <ReadOnlyGrid data={modelSheet.data} headers={modelSheet.headers} height={height} />
+            {model.tables.map((t, i) => (
+              <StatementTableReadOnly key={t._key} table={t} index={i} count={model.tables.length} height={height} />
+            ))}
           </Box>
         )}
       </Box>
@@ -669,23 +849,38 @@ export default function FinancialSpreadsheet({
 
       {readOnly ? (
         <Box sx={{ p: 1 }}>
-          <ReadOnlyGrid data={answerData} headers={answerHeaders} height={height} />
+          {answer.tables.map((t, i) => (
+            <StatementTableReadOnly key={t._key} table={t} index={i} count={answer.tables.length} height={height} />
+          ))}
         </Box>
       ) : (
-        <EditableGrid
-          data={answerData}
-          headers={answerHeaders}
-          hotRef={answerRef}
-          height={height}
-          accentColor="#3B82F6"
-          onChange={handleAnswerChange}
-        />
+        <Box sx={{ p: 1 }}>
+          {answer.tables.map((t, i) => (
+            <StatementTableEditor
+              key={t._key}
+              table={t}
+              index={i}
+              count={answer.tables.length}
+              onTableChange={answer.updateTable}
+              onTitleChange={answer.updateTitle}
+              onRemove={answer.removeTable}
+              canRemove={answer.tables.length > 1}
+              height={height}
+              accentColor="#3B82F6"
+            />
+          ))}
+          <Button size="small" variant="outlined" startIcon={<AddCircleOutline sx={{ fontSize: 14 }} />}
+            onClick={answer.addTable}
+            sx={{ textTransform: 'none', fontSize: 11, borderRadius: 1.5, borderColor: '#3B82F6', color: '#3B82F6' }}>
+            Add another statement table
+          </Button>
+        </Box>
       )}
 
       {!readOnly && (
         <Box sx={{ px: 2, py: 0.5, bgcolor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
           <Typography sx={{ fontSize: 10, color: '#9CA3AF' }}>
-            💡 Click any cell to edit • Right-click for insert/remove options • Your answer saves automatically when you proceed
+            💡 Click any cell to edit • Right-click for insert/remove options • Add a table if the question asks for another statement • Your answer saves automatically when you proceed
           </Typography>
         </Box>
       )}

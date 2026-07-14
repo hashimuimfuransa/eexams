@@ -134,6 +134,14 @@ const registerStudent = async (req, res) => {
       return res.status(400).json({ message: 'Please provide first name, last name and email' });
     }
 
+    const { normalizePhone } = require('../utils/phoneUtils');
+    let normalizedPhone;
+    try {
+      normalizedPhone = normalizePhone(phone);
+    } catch (phoneError) {
+      return res.status(400).json({ message: phoneError.message });
+    }
+
     // Check if student already exists
     const studentExists = await User.findOne({ email });
     if (studentExists) {
@@ -153,7 +161,7 @@ const registerStudent = async (req, res) => {
       role: 'student',
       class: studentClass || '',
       organization: organization || req.user.organization || '',
-      phone: phone || '',
+      phone: normalizedPhone || undefined,
       gender: gender || '',
       subscriptionPlan: 'free',
       subscriptionStatus: 'active',
@@ -369,6 +377,16 @@ const updateStudent = async (req, res) => {
   try {
     const { firstName, lastName, email, class: studentClass, organization, isBlocked, phone, gender, password } = req.body;
 
+    const { normalizePhone } = require('../utils/phoneUtils');
+    let normalizedPhone;
+    if (phone !== undefined) {
+      try {
+        normalizedPhone = normalizePhone(phone);
+      } catch (phoneError) {
+        return res.status(400).json({ message: phoneError.message });
+      }
+    }
+
     const student = await User.findById(req.params.id);
 
     // Check if student exists and is a student
@@ -406,7 +424,7 @@ const updateStudent = async (req, res) => {
       if (email && email !== student.email) changes.email = `${student.email} → ${email}`;
       if (studentClass !== undefined && studentClass !== student.class) changes.class = studentClass || 'none';
       if (isBlocked !== undefined && isBlocked !== student.isBlocked) changes.status = isBlocked ? 'Blocked' : 'Active';
-      if (phone !== undefined && phone !== student.phone) changes.phone = phone || 'none';
+      if (phone !== undefined && normalizedPhone !== student.phone) changes.phone = normalizedPhone || 'none';
       if (gender !== undefined && gender !== student.gender) changes.gender = gender || 'none';
       if (password && password.trim() !== '') changes.password = 'Password updated';
 
@@ -417,7 +435,7 @@ const updateStudent = async (req, res) => {
       if (studentClass !== undefined) student.class = studentClass;
       if (organization) student.organization = organization;
       if (isBlocked !== undefined) student.isBlocked = isBlocked;
-      if (phone !== undefined) student.phone = phone;
+      if (phone !== undefined) student.phone = normalizedPhone || undefined;
       if (gender !== undefined) student.gender = gender;
       if (password && password.trim() !== '') student.password = password;
 
@@ -460,6 +478,10 @@ const updateStudent = async (req, res) => {
     }
   } catch (error) {
     console.error('Update student error:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(val => val.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -1192,7 +1214,7 @@ const getDetailedResult = async (req, res) => {
       .populate('exam', 'title description totalPoints timeLimit createdBy')
       .populate({
         path: 'answers.question',
-        select: 'text type options correctAnswer points section'
+        select: 'text type options correctAnswer points section spreadsheetTemplate spreadsheetModelAnswer'
       });
 
     if (!result) {
@@ -2274,7 +2296,20 @@ const createExam = async (req, res) => {
             subQuestions: q.subQuestions || [],
             subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' }
           };
-          
+
+          if ((q.type || 'multiple-choice') === 'financial-spreadsheet') {
+            if (q.spreadsheetTemplate) {
+              questionData.spreadsheetTemplate = typeof q.spreadsheetTemplate === 'string'
+                ? q.spreadsheetTemplate
+                : JSON.stringify(q.spreadsheetTemplate);
+            }
+            if (q.spreadsheetModelAnswer) {
+              questionData.spreadsheetModelAnswer = typeof q.spreadsheetModelAnswer === 'string'
+                ? q.spreadsheetModelAnswer
+                : JSON.stringify(q.spreadsheetModelAnswer);
+            }
+          }
+
           const question = await Question.create(questionData);
           createdQuestionIds.push(question._id);
         }
@@ -2513,6 +2548,20 @@ const createExam = async (req, res) => {
                     if (questionData.dragDropData) questionDataToSave.dragDropData = questionData.dragDropData;
                   }
 
+                  // Preserve financial-spreadsheet question structure if already provided
+                  if (questionType === 'financial-spreadsheet') {
+                    if (questionData.spreadsheetTemplate) {
+                      questionDataToSave.spreadsheetTemplate = typeof questionData.spreadsheetTemplate === 'string'
+                        ? questionData.spreadsheetTemplate
+                        : JSON.stringify(questionData.spreadsheetTemplate);
+                    }
+                    if (questionData.spreadsheetModelAnswer) {
+                      questionDataToSave.spreadsheetModelAnswer = typeof questionData.spreadsheetModelAnswer === 'string'
+                        ? questionData.spreadsheetModelAnswer
+                        : JSON.stringify(questionData.spreadsheetModelAnswer);
+                    }
+                  }
+
                   const question = await Question.create(questionDataToSave);
 
                   // Add question to the appropriate section
@@ -2545,8 +2594,15 @@ const createExam = async (req, res) => {
       }
     }
 
-    // Handle manually-provided sections with inline questions (manual exam creation, no file)
-    if (!examFilePath && req.body.sections && Array.isArray(req.body.sections)) {
+    // Handle manually-provided sections with inline questions (manual exam creation, no file).
+    // Guarded on the flat `questions` array being absent/empty: AI-generated exam payloads
+    // (TeacherDashboard's handlePublish/handleSaveDraft) spread `...generated` - which carries
+    // the AI's original nested `sections[].questions` - AND set a separately flattened
+    // top-level `questions` array from the same data. Without this guard, both blocks would
+    // run and every question would be created twice (once per array), doubling the exam's
+    // questions and total marks.
+    const questionsAlreadyHandled = questions && Array.isArray(questions) && questions.length > 0;
+    if (!examFilePath && !questionsAlreadyHandled && req.body.sections && Array.isArray(req.body.sections)) {
       console.log('Handling manual exam with sections:', req.body.sections.length);
       const TYPE_MAP = {
         'fill-blank': 'fill-in-blank',
@@ -4055,6 +4111,14 @@ const registerTeacher = async (req, res) => {
       return res.status(400).json({ message: 'Please provide all required fields' });
     }
 
+    const { normalizePhone } = require('../utils/phoneUtils');
+    let normalizedPhone;
+    try {
+      normalizedPhone = normalizePhone(phone);
+    } catch (phoneError) {
+      return res.status(400).json({ message: phoneError.message });
+    }
+
     // Check if teacher already exists
     const teacherExists = await User.findOne({ email });
 
@@ -4085,7 +4149,7 @@ const registerTeacher = async (req, res) => {
       password,
       role: 'teacher',
       userType: 'organization',   // org teacher, NOT individual
-      phone,
+      phone: normalizedPhone || undefined,
       class: teacherClass || '',
       gender: gender || '',
       subjects: Array.isArray(subjects) ? subjects : [],
@@ -4200,6 +4264,16 @@ const updateTeacher = async (req, res) => {
 
     const { firstName, lastName, email, phone, class: teacherClass, isBlocked, gender, subjects, classes } = req.body;
 
+    const { normalizePhone } = require('../utils/phoneUtils');
+    let normalizedPhone;
+    if (phone !== undefined) {
+      try {
+        normalizedPhone = normalizePhone(phone);
+      } catch (phoneError) {
+        return res.status(400).json({ message: phoneError.message });
+      }
+    }
+
     const teacher = await User.findById(req.params.id);
 
     // Check if teacher exists, is a teacher, and was created by this admin
@@ -4210,7 +4284,7 @@ const updateTeacher = async (req, res) => {
       if (firstName && firstName !== teacher.firstName) changes.firstName = `${teacher.firstName} → ${firstName}`;
       if (lastName && lastName !== teacher.lastName) changes.lastName = `${teacher.lastName} → ${lastName}`;
       if (email && email !== teacher.email) changes.email = `${teacher.email} → ${email}`;
-      if (phone !== undefined && phone !== teacher.phone) changes.phone = teacher.phone || 'none';
+      if (phone !== undefined && normalizedPhone !== teacher.phone) changes.phone = normalizedPhone || 'none';
       if (teacherClass !== undefined && teacherClass !== teacher.class) changes.class = teacherClass || 'none';
       if (isBlocked !== undefined && isBlocked !== teacher.isBlocked) changes.status = isBlocked ? 'Blocked' : 'Active';
       if (gender !== undefined && gender !== teacher.gender) changes.gender = gender || 'none';
@@ -4225,7 +4299,7 @@ const updateTeacher = async (req, res) => {
       if (firstName) teacher.firstName = firstName;
       if (lastName) teacher.lastName = lastName;
       if (email) teacher.email = email;
-      if (phone !== undefined) teacher.phone = phone;
+      if (phone !== undefined) teacher.phone = normalizedPhone || undefined;
       if (teacherClass !== undefined) teacher.class = teacherClass;
       if (isBlocked !== undefined) teacher.isBlocked = isBlocked;
       if (gender !== undefined) teacher.gender = gender;
@@ -4271,6 +4345,10 @@ const updateTeacher = async (req, res) => {
     }
   } catch (error) {
     console.error('Update teacher error:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(val => val.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -4396,7 +4474,7 @@ const updateQuestion = async (req, res) => {
     if (!q) return res.status(404).json({ message: 'Question not found' });
     if (q.exam.createdBy.toString() !== req.orgAdminId.toString())
       return res.status(403).json({ message: 'Not authorized' });
-    const { text, type, points, difficulty, correctAnswer, options, subQuestions, subQuestionConfig, subQuestionMode, explanation, answerKey, passage, instructions, wordBank } = req.body;
+    const { text, type, points, difficulty, correctAnswer, options, subQuestions, subQuestionConfig, subQuestionMode, explanation, answerKey, passage, instructions, wordBank, spreadsheetTemplate, spreadsheetModelAnswer } = req.body;
     if (text !== undefined) q.text = text;
     if (type !== undefined) q.type = type;
     if (points !== undefined) q.points = points;
@@ -4411,6 +4489,12 @@ const updateQuestion = async (req, res) => {
     if (passage !== undefined) q.passage = passage;
     if (instructions !== undefined) q.instructions = instructions;
     if (wordBank !== undefined) q.wordBank = wordBank;
+    if (spreadsheetTemplate !== undefined) {
+      q.spreadsheetTemplate = typeof spreadsheetTemplate === 'string' ? spreadsheetTemplate : JSON.stringify(spreadsheetTemplate);
+    }
+    if (spreadsheetModelAnswer !== undefined) {
+      q.spreadsheetModelAnswer = typeof spreadsheetModelAnswer === 'string' ? spreadsheetModelAnswer : JSON.stringify(spreadsheetModelAnswer);
+    }
     await q.save();
     res.json(q);
   } catch (err) {
@@ -5265,6 +5349,8 @@ const updateExam = async (req, res) => {
                   matchingPairs: q.matchingPairs,
                   itemsToOrder: q.itemsToOrder,
                   dragDropData: q.dragDropData,
+                  spreadsheetTemplate: q.spreadsheetTemplate,
+                  spreadsheetModelAnswer: q.spreadsheetModelAnswer,
                   imageUrl: q.imageUrl || q.image || '',
                   subQuestions: q.subQuestions,
                   subQuestionConfig: q.subQuestionConfig,

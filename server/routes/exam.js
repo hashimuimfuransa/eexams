@@ -40,6 +40,26 @@ const { authLimiter, submissionLimiter, aiGradingLimiter, examCreationLimiter } 
 const { cacheExam, cacheExamList, invalidateExamCache } = require('../middleware/cacheMiddleware');
 const { validateExamAccess, markFreeExamUsed } = require('../middleware/examAccess');
 const groqClient = require('../utils/groqClient');
+const { coerceToGrid } = require('../utils/spreadsheetGrading');
+
+// Normalize a single spreadsheetTemplate/spreadsheetModelAnswer field returned by the AI.
+// Two independent problems to fix:
+// 1) The AI (in JSON mode) frequently returns these fields as nested JSON objects rather than
+//    the JSON *strings* the Question schema (and FinancialSpreadsheet.jsx) expect. Left as
+//    objects, Mongoose silently casts them to an empty string when saving, wiping the table.
+// 2) Even once stringified, the AI often ignores the { tables: [{title,headers,data}] } contract
+//    and ignores multi-table questions entirely, or returns a flat "label: value" object instead
+//    (e.g. {"Revenue":800000,"COGS":300000}) - the more natural JSON shape for a set of line
+//    items. That doesn't match what the Handsontable grid (and the grading comparison) expect,
+//    so it renders as a blank generic spreadsheet. coerceToGrid() converts any of: a bare
+//    { headers, data } grid (legacy single-table), a bare array of tables, or a flat label/value
+//    object into the canonical { tables: [{ title, headers, data }, ...] } shape before storing.
+const normalizeSpreadsheetField = (value) => {
+  if (!value) return value;
+  const parsed = typeof value === 'string' ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+  const grid = coerceToGrid(parsed);
+  return grid ? JSON.stringify(grid) : (typeof value === 'string' ? value : JSON.stringify(value));
+};
 
 // Configure multer for reference file uploads using Cloudinary
 const referenceUpload = multer({
@@ -1352,7 +1372,7 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
   - **Fill-in-blank**: Identify by blanks (_____, ....) or "fill in". Set type to "fill-in-blank".
   - **Short-answer**: Brief factual questions requiring 1-2 sentence answers. Set type to "short-answer".
   - **Open-ended/Essay**: Questions requiring detailed explanations or longer answers. Set type to "open-ended".
-  - **Financial-spreadsheet**: Questions where students must complete an income statement, balance sheet, cash flow statement, or other financial spreadsheet. Set type to "financial-spreadsheet". Include spreadsheetTemplate (pre-filled headers and partial data as JSON) and spreadsheetModelAnswer (completed answer as JSON) fields.
+  - **Financial-spreadsheet**: Questions where students must complete an income statement, balance sheet, cash flow statement, statement of changes in equity, or other financial spreadsheet. Set type to "financial-spreadsheet". Include spreadsheetTemplate and spreadsheetModelAnswer as JSON strings of shape {"tables":[{"title":"Income Statement","headers":[...],"data":[[...]]}]} - one entry in "tables" per statement the question asks the student to prepare. If a single question asks for MULTIPLE statements (e.g. "Prepare Both an Income Statement and a Balance Sheet"), put ONE table per statement in the same tables array rather than splitting into separate questions.
 - **MULTI-PART QUESTIONS (CRITICAL)**:
   - Questions with parts a), b), c), i), ii), iii) MUST be ONE question with subQuestions array
   - Each subquestion gets: label (e.g., "a)", "b)", "i)"), text, type, points, correctAnswer
@@ -1396,7 +1416,7 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
 - For short-answer questions: extract the exact answer from the marking guide
 - For open-ended questions: extract the model answer or key points from the marking guide
 - Supported types: multiple-choice, true-false, short-answer, open-ended, fill-in-blank, matching, ordering, financial-spreadsheet
-- If a question requires students to complete a financial table (income statement, balance sheet, cash flow, ledger), set type to "financial-spreadsheet" and include spreadsheetTemplate and spreadsheetModelAnswer fields as JSON strings
+- If a question requires students to complete a financial table (income statement, balance sheet, cash flow, statement of changes in equity, ledger), set type to "financial-spreadsheet" and include spreadsheetTemplate and spreadsheetModelAnswer fields as JSON strings of shape {"tables":[{"title":"Income Statement","headers":["Item","Amount (RWF)"],"data":[["Sales Revenue","25000000"],["Net Profit","5800000"]]}]} - one table per statement required. If one question asks for MULTIPLE statements (e.g. "Prepare both the Income Statement and the Statement of Financial Position"), add one entry per statement to the SAME tables array instead of creating separate questions
 - If a section has subsections (A, B, C), use the "subsections" array
 - If a section has no subsections, put questions directly in "questions" array
 - Keep the hierarchical structure intact - this is a professional exam format
@@ -1491,7 +1511,22 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
         }
         
         console.log('Extracted question types:', qtConfig);
-        
+
+        // Keep correctAnswer in sync with the model answer, matching the convention used by the
+        // manual question editor and the "describe" AI flow. normalizeSpreadsheetField (module
+        // scope, above) handles the object->string and shape coercion.
+        const normalizeSpreadsheetQuestion = (q) => {
+          if (!q || q.type !== 'financial-spreadsheet') return q;
+          if (q.spreadsheetTemplate) {
+            q.spreadsheetTemplate = normalizeSpreadsheetField(q.spreadsheetTemplate);
+          }
+          if (q.spreadsheetModelAnswer) {
+            q.spreadsheetModelAnswer = normalizeSpreadsheetField(q.spreadsheetModelAnswer);
+            q.correctAnswer = q.spreadsheetModelAnswer;
+          }
+          return q;
+        };
+
         // Flatten questions from sections and subsections into top-level questions array for frontend compatibility
         const flattenedQuestions = [];
         if (parsed.sections) {
@@ -1500,7 +1535,7 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
             if (section.questions) {
               section.questions.forEach(q => {
                 flattenedQuestions.push({
-                  ...q,
+                  ...normalizeSpreadsheetQuestion(q),
                   section: section.name || 'A',
                   sectionTitle: section.title || '',
                   passage: section.passage || null
@@ -1513,7 +1548,7 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
                 if (subsection.questions) {
                   subsection.questions.forEach(q => {
                     flattenedQuestions.push({
-                      ...q,
+                      ...normalizeSpreadsheetQuestion(q),
                       section: section.name || 'A',
                       subsection: subsection.name || '',
                       subsectionTitle: subsection.title || '',
@@ -1527,7 +1562,7 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
             }
           });
         }
-        
+
         console.log('Flattened questions count:', flattenedQuestions.length);
         
         // Return the parsed exam with flattened questions and full structure preserved
@@ -1768,22 +1803,47 @@ CRITICAL FOR ORDERING QUESTIONS:
 }
 
 CRITICAL FOR FINANCIAL-SPREADSHEET QUESTIONS:
+Every spreadsheetTemplate / spreadsheetModelAnswer is a JSON string of shape
+{"tables":[{"title":string,"headers":[...],"data":[[...]]}, ...]} — a list of ONE OR MORE
+named statement tables. Use exactly one entry in "tables" per financial statement the question
+asks the student to prepare. Most questions need only one table.
+
+Single-statement example (question asks for ONE statement):
 {
   "type": "financial-spreadsheet",
-  "text": "Complete the Income Statement for Company X for the year ended 31 December 2024.",
+  "text": "Prepare the Income Statement for ABC Traders for the year ended 31 December 2025.",
   "marks": 20,
-  "spreadsheetTemplate": "{\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Revenue\",\"\"],[\"Cost of Goods Sold\",\"\"],[\"Gross Profit\",\"=B2-B3\"],[\"Operating Expenses\",\"\"],[\"Net Profit\",\"=B4-B5\"]]}",
-  "spreadsheetModelAnswer": "{\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Revenue\",\"5000000\"],[\"Cost of Goods Sold\",\"3000000\"],[\"Gross Profit\",\"2000000\"],[\"Operating Expenses\",\"800000\"],[\"Net Profit\",\"1200000\"]]}",
+  "spreadsheetTemplate": "{\"tables\":[{\"title\":\"Income Statement\",\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Sales Revenue\",\"\"],[\"Less: Cost of Goods Sold\",\"\"],[\"Gross Profit\",\"=B2-B3\"],[\"Salaries Expense\",\"\"],[\"Rent Expense\",\"\"],[\"Net Profit\",\"\"]]}]}",
+  "spreadsheetModelAnswer": "{\"tables\":[{\"title\":\"Income Statement\",\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Sales Revenue\",\"25000000\"],[\"Less: Cost of Goods Sold\",\"(15000000)\"],[\"Gross Profit\",\"10000000\"],[\"Salaries Expense\",\"(2500000)\"],[\"Rent Expense\",\"(1200000)\"],[\"Net Profit\",\"5800000\"]]}]}",
   "correctAnswer": "See spreadsheetModelAnswer for completed financial statement.",
   "gradingCriteria": [
-    {"criteria": "Correct Revenue figure", "points": 2},
+    {"criteria": "Correct Sales Revenue figure", "points": 2},
     {"criteria": "Correct Gross Profit calculation", "points": 4},
     {"criteria": "Correct Net Profit calculation", "points": 4}
   ]
 }
-- spreadsheetTemplate: JSON string with {headers:[], data:[][]} — pre-fill labels and any given figures; leave cells blank ("") for students to complete; formulas like =SUM(B2:B5) are allowed
-- spreadsheetModelAnswer: JSON string with same structure but ALL cells filled in with correct values
-- Use financial-spreadsheet for: income statements, balance sheets, cash flow statements, ledgers, trial balances, ratio analysis tables, budgets
+
+Multi-statement example (question explicitly asks for MORE THAN ONE statement in the SAME
+question, e.g. "Prepare Both an Income Statement and a Balance Sheet" — put one table per
+statement in the SAME tables array, do NOT split this into separate questions):
+{
+  "type": "financial-spreadsheet",
+  "text": "Prepare the Income Statement and the Statement of Financial Position for Delta Enterprises for the year ended 31 December 2025.",
+  "marks": 20,
+  "spreadsheetTemplate": "{\"tables\":[{\"title\":\"Income Statement\",\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Sales Revenue\",\"\"],[\"Less: Cost of Goods Sold\",\"\"],[\"Gross Profit\",\"\"],[\"Net Profit\",\"\"]]},{\"title\":\"Statement of Financial Position\",\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Cash\",\"\"],[\"Inventory\",\"\"],[\"Equipment\",\"\"],[\"Total Assets\",\"\"],[\"Accounts Payable\",\"\"],[\"Owner's Capital\",\"\"],[\"Total Liabilities & Equity\",\"\"]]}]}",
+  "spreadsheetModelAnswer": "{\"tables\":[{\"title\":\"Income Statement\",\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Sales Revenue\",\"40000000\"],[\"Less: Cost of Goods Sold\",\"(24000000)\"],[\"Gross Profit\",\"16000000\"],[\"Net Profit\",\"9000000\"]]},{\"title\":\"Statement of Financial Position\",\"headers\":[\"Item\",\"Amount (RWF)\"],\"data\":[[\"Cash\",\"3500000\"],[\"Inventory\",\"5000000\"],[\"Equipment\",\"10000000\"],[\"Total Assets\",\"18500000\"],[\"Accounts Payable\",\"4000000\"],[\"Owner's Capital\",\"14500000\"],[\"Total Liabilities & Equity\",\"18500000\"]]}]}",
+  "correctAnswer": "See spreadsheetModelAnswer for completed financial statements.",
+  "gradingCriteria": [
+    {"criteria": "Correct Income Statement figures", "points": 10},
+    {"criteria": "Correct Statement of Financial Position figures", "points": 10}
+  ]
+}
+
+- spreadsheetTemplate: JSON string with {"tables":[{title, headers:[], data:[][]}, ...]} — pre-fill row labels and any given figures; leave cells blank ("") for students to complete; formulas like =SUM(B2:B5) are allowed
+- spreadsheetModelAnswer: JSON string with the same tables structure but ALL cells filled in with correct values
+- Give every table a clear "title" naming the statement (e.g. "Income Statement", "Statement of Financial Position", "Cash Flow Statement", "Statement of Changes in Equity") so it renders as a separate labeled table
+- Only add more than one entry to "tables" when the question text explicitly asks for more than one statement — do not split a single-statement question into extra empty tables
+- Use financial-spreadsheet for: income statements, balance sheets / statements of financial position, cash flow statements, statements of changes in equity, ledgers, trial balances, ratio analysis tables, budgets
 
 IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer must ALWAYS be a string for all question types.`;
 
@@ -2224,15 +2284,11 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
             if (questionType === 'financial-spreadsheet') {
               // spreadsheetTemplate: partial data the student sees
               if (q.spreadsheetTemplate) {
-                baseQuestion.spreadsheetTemplate = typeof q.spreadsheetTemplate === 'string'
-                  ? q.spreadsheetTemplate
-                  : JSON.stringify(q.spreadsheetTemplate);
+                baseQuestion.spreadsheetTemplate = normalizeSpreadsheetField(q.spreadsheetTemplate);
               }
               // spreadsheetModelAnswer: completed answer sheet
               if (q.spreadsheetModelAnswer) {
-                baseQuestion.spreadsheetModelAnswer = typeof q.spreadsheetModelAnswer === 'string'
-                  ? q.spreadsheetModelAnswer
-                  : JSON.stringify(q.spreadsheetModelAnswer);
+                baseQuestion.spreadsheetModelAnswer = normalizeSpreadsheetField(q.spreadsheetModelAnswer);
                 baseQuestion.correctAnswer = baseQuestion.spreadsheetModelAnswer;
               }
             }
@@ -2245,15 +2301,28 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
 
     // If no questions found in sections, try direct questions array
     if (flattenedQuestions.length === 0 && examData.questions && Array.isArray(examData.questions)) {
-      flattenedQuestions = examData.questions.map((q, idx) => ({
-        text: q.text || q.question || 'Untitled Question',
-        type: mapQuestionType(q.type),
-        marks: q.points || q.marks || 1,
-        difficulty: q.difficulty || 'medium',
-        correctAnswer: q.correctAnswer || q.answer || '',
-        options: q.options || q.choices || [],
-        explanation: q.explanation || ''
-      }));
+      flattenedQuestions = examData.questions.map((q, idx) => {
+        const mappedType = mapQuestionType(q.type);
+        const fallbackQuestion = {
+          text: q.text || q.question || 'Untitled Question',
+          type: mappedType,
+          marks: q.points || q.marks || 1,
+          difficulty: q.difficulty || 'medium',
+          correctAnswer: q.correctAnswer || q.answer || '',
+          options: q.options || q.choices || [],
+          explanation: q.explanation || ''
+        };
+        if (mappedType === 'financial-spreadsheet') {
+          if (q.spreadsheetTemplate) {
+            fallbackQuestion.spreadsheetTemplate = normalizeSpreadsheetField(q.spreadsheetTemplate);
+          }
+          if (q.spreadsheetModelAnswer) {
+            fallbackQuestion.spreadsheetModelAnswer = normalizeSpreadsheetField(q.spreadsheetModelAnswer);
+            fallbackQuestion.correctAnswer = fallbackQuestion.spreadsheetModelAnswer;
+          }
+        }
+        return fallbackQuestion;
+      });
     }
 
     examData.questions = flattenedQuestions;

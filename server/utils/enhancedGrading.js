@@ -1,6 +1,7 @@
 // Enhanced grading functions for different question types
 const { gradeOpenEndedAnswer } = require('./aiGrading');
 const groqClient = require('./groqClient');
+const { gradeFinancialSpreadsheet } = require('./spreadsheetGrading');
 
 /**
  * Normalize answer for flexible comparison
@@ -546,6 +547,9 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
 
       case 'drag-drop':
         return gradeDragDrop(question, answer);
+
+      case 'financial-spreadsheet':
+        return gradeFinancialSpreadsheet(question, answer, modelAnswer);
 
       case 'open-ended':
       case 'short-answer':
@@ -1855,6 +1859,7 @@ module.exports = {
   gradeMatching,
   gradeOrdering,
   gradeDragDrop,
+  gradeFinancialSpreadsheet,
   checkAnswerWithAI,
   areSemanticallySimilar,
   SEMANTIC_MAPPINGS,

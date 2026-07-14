@@ -180,6 +180,7 @@ const ResultSchema = new mongoose.Schema({
         'isCorrect_flag',
         'modelAnswer_comparison',
         'spreadsheet_manual_grading',
+        'spreadsheet_grading',
         'flexible_normalization'
       ],
       default: 'enhanced_grading'

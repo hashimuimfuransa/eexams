@@ -219,6 +219,10 @@ const createGroqClient = () => {
 
           console.log(`Groq response received (${responseText.length} chars)`);
 
+          if (chatCompletion.choices[0].finish_reason === 'length') {
+            console.warn(`Groq response was TRUNCATED (hit maxTokens=${maxTokens}) - output is likely incomplete/invalid JSON. Increase options.maxTokens or shorten the prompt/input.`);
+          }
+
           // Parse JSON if in JSON mode
           let parsedContent = null;
           if (useJsonMode) {

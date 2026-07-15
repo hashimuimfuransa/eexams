@@ -1552,9 +1552,12 @@ async function fastChunkedGrading(result, exam) {
     }
   }
 
-  // Calculate scores
-  const totalScore = result.answers.reduce((sum, answer) => sum + (answer.score || 0), 0);
-  const maxPossibleScore = result.answers.reduce((sum, answer) =>
+  // Calculate scores - questions the student deselected under selective answering
+  // (isSelected === false) must not count toward either side of the fraction, otherwise
+  // the denominator is inflated by marks the student was never required to attempt.
+  const scoredAnswers = result.answers.filter(answer => answer.isSelected !== false);
+  const totalScore = scoredAnswers.reduce((sum, answer) => sum + (answer.score || 0), 0);
+  const maxPossibleScore = scoredAnswers.reduce((sum, answer) =>
     sum + (answer.question?.points || 1), 0) || 1;
 
   const totalTime = Date.now() - startTime;

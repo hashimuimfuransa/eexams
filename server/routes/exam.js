@@ -1059,8 +1059,16 @@ router.post('/upload-reference', auth, isAdminOrTeacher, referenceUpload.single(
       return res.status(500).json({ message: 'Failed to process uploaded file from storage' });
     }
 
-    // Clean up the content more efficiently
-    content = content.replace(/\s+/g, ' ').trim();
+    // Clean up the content, but preserve line breaks - collapsing everything (including
+    // newlines) to single spaces destroys the row/column layout of tables such as trial
+    // balances, ledgers, and financial statements, making them impossible for the AI (or a
+    // human) to reconstruct from the flattened text.
+    content = content
+      .replace(/[ \t]+/g, ' ')       // collapse runs of spaces/tabs within a line
+      .replace(/\r\n/g, '\n')         // normalize line endings
+      .replace(/[ \t]+\n/g, '\n')     // trim trailing spaces before newlines
+      .replace(/\n{3,}/g, '\n\n')     // collapse excessive blank lines
+      .trim();
 
     // Limit content size to avoid overwhelming the AI (increased to 100k for larger files)
     const maxContentLength = 100000; // 100k characters
@@ -1094,8 +1102,12 @@ router.post('/upload-reference', auth, isAdminOrTeacher, referenceUpload.single(
 // AI exam generation route - requires Basic plan or higher
 router.post('/ai-generate', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
   try {
-    const { prompt, pastedExam, referenceContent } = req.body;
-    if (!prompt || !prompt.trim()) return res.status(400).json({ message: 'Prompt is required' });
+    const { prompt = '', pastedExam, referenceContent } = req.body;
+    const hasPastedExam = pastedExam && pastedExam.trim();
+    const hasReferenceContent = referenceContent && referenceContent.trim();
+    if (!prompt.trim() && !hasPastedExam && !hasReferenceContent) {
+      return res.status(400).json({ message: 'Prompt is required' });
+    }
 
     // Resolve the user's effective plan
     const { plan } = await resolveEffectivePlan(req.user);
@@ -1351,11 +1363,27 @@ Return ONLY a JSON object with this structure:
             }
           ],
           "correctAnswer": "Student answers any 2 of the 4 questions, earns 5 marks for each correct answer"
+        },
+        {
+          "questionNumber": 1,
+          "text": "Prepare: (i) Income statement for the year ended 30 September 2012 (17 marks); (ii) Balance sheet as at 30 September 2012 (13 marks)",
+          "type": "financial-spreadsheet",
+          "passage": "Trial balance as at 30 September 2012:\\n| Account | Frw (Dr) | Frw (Cr) |\\n|---|---|---|\\n| Sales | | 5,400,000 |\\n| Purchases | 2,826,000 | |\\n| Capital | | 3,060,000 |\\n\\nAdditional notes:\\n1. The closing inventory cost and net realizable amount was Frw 910,000 and Frw 890,000 respectively.\\n2. Bank interest income accrued Frw 80,000 was only shown in the bank statement.",
+          "points": 30,
+          "spreadsheetTemplate": "{\"tables\":[{\"title\":\"Income Statement\",\"headers\":[\"Item\",\"Frw\"],\"data\":[[\"Sales\",\"\"],[\"Cost of Sales\",\"\"],[\"Gross Profit\",\"\"],[\"Net Profit\",\"\"]]},{\"title\":\"Balance Sheet\",\"headers\":[\"Item\",\"Frw\"],\"data\":[[\"Total Assets\",\"\"],[\"Total Liabilities and Capital\",\"\"]]}]}",
+          "spreadsheetModelAnswer": "{\"tables\":[{\"title\":\"Income Statement\",\"headers\":[\"Item\",\"Frw\"],\"data\":[[\"Sales\",\"5,400,000\"],[\"Cost of Sales\",\"2,762,000\"],[\"Gross Profit\",\"2,638,000\"],[\"Net Profit\",\"1,222,000\"]]},{\"title\":\"Balance Sheet\",\"headers\":[\"Item\",\"Frw\"],\"data\":[[\"Total Assets\",\"3,480,000\"],[\"Total Liabilities and Capital\",\"3,480,000\"]]}]}",
+          "correctAnswer": "See spreadsheetModelAnswer for the completed Income Statement and Balance Sheet."
         }
       ]
     }
   ]
 }
+
+CRITICAL - TABLES AND FINANCIAL DATA IN PASTED EXAMS (trial balances, ledgers, account balance lists):
+- The pasted text may include a trial balance or list of account balances, often laid out as two right-aligned columns of Dr/Cr figures. Reproduce this GIVEN data faithfully as a Markdown table in the question's "passage" field (with "|" column separators and a header separator row) - there is no separate "context" field, "passage" is what is actually saved and shown to the student - preserving every account name and figure exactly, including the totals row - never drop, merge, paraphrase, or reorder rows.
+- Numbered adjustment/additional-information notes that follow a trial balance (e.g. "1. The closing inventory...", "2. Bank interest income accrued...") belong in that same question's "passage" field, in full and in order, immediately after the table.
+- When a question instructs the student to PREPARE, DRAFT, or PRODUCE a financial statement or schedule (income statement, balance sheet/statement of financial position, cash flow statement, statement of changes in equity, ledger, bank reconciliation statement, adjusted cash book, trial balance, ratio analysis, budget), set "type": "financial-spreadsheet" per the CRITICAL FOR FINANCIAL-SPREADSHEET QUESTIONS rules below - this applies even when it is phrased as multiple lettered/numbered required outputs each with their own mark allocation (e.g. "(i) Income statement (17 marks) (ii) Balance sheet (13 marks)"); put ONE table per required statement in the SAME tables array of the SAME question rather than splitting into separate questions, and set the question's total points to the sum (or the printed "Total" marks if shown).
+- Compute spreadsheetModelAnswer by actually working through the trial balance and adjustment notes using standard accounting rules (accruals, prepayments, depreciation, allowance for doubtful debts, closing inventory at the lower of cost and net realizable value, etc.) - do not leave it blank or copy the template.
 
 CRITICAL RULES - PRESERVE EXACT STRUCTURE:
 - PRESERVE the full exam structure EXACTLY as it appears - DO NOT CORRECT OR MODIFY ANYTHING

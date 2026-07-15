@@ -2297,6 +2297,11 @@ const createExam = async (req, res) => {
             subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' }
           };
 
+          if (q.passage) questionData.passage = q.passage;
+          if (q.imageUrl) questionData.imageUrl = q.imageUrl;
+          if (q.wordBank && q.wordBank.length > 0) questionData.wordBank = q.wordBank;
+          if (q.instructions) questionData.instructions = q.instructions;
+
           if ((q.type || 'multiple-choice') === 'financial-spreadsheet') {
             if (q.spreadsheetTemplate) {
               questionData.spreadsheetTemplate = typeof q.spreadsheetTemplate === 'string'
@@ -2378,6 +2383,15 @@ const createExam = async (req, res) => {
         const parsedExam = await parseFile(examFilePath, answerData, examFileOriginalName);
         console.log('Exam file parsed successfully');
 
+        // Carry over "answer N of M questions" selective-answering settings the extractor
+        // detected (e.g. "Attempt THREE of the FOUR questions in Section B") onto the exam.
+        if (parsedExam && parsedExam.allowSelectiveAnswering) {
+          exam.allowSelectiveAnswering = true;
+          if (parsedExam.sectionBRequiredQuestions) exam.sectionBRequiredQuestions = parsedExam.sectionBRequiredQuestions;
+          if (parsedExam.sectionCRequiredQuestions) exam.sectionCRequiredQuestions = parsedExam.sectionCRequiredQuestions;
+          console.log(`Applied selective answering to exam: B=${exam.sectionBRequiredQuestions}, C=${exam.sectionCRequiredQuestions}`);
+        }
+
         // Create questions for each section
         if (parsedExam && parsedExam.sections) {
           const Question = require('../models/Question');
@@ -2403,11 +2417,14 @@ const createExam = async (req, res) => {
                   // Validate question data before creating
                   let questionType = questionData.type || 'multiple-choice';
 
-                  // Ensure type is valid - support all question types
-                  const validTypes = ['multiple-choice', 'true-false', 'fill-in-blank', 'open-ended', 'short-answer', 'matching', 'ordering', 'image-based'];
+                  // Ensure type is valid - support all question types. This MUST stay in sync
+                  // with VALID_QUESTION_TYPES in models/Question.js - a stale/narrower list here
+                  // silently downgrades legitimate types (e.g. financial-spreadsheet) to
+                  // multiple-choice at save time, destroying the extracted question.
+                  const validTypes = ['multiple-choice', 'open-ended', 'true-false', 'fill-blank', 'fill-in-blank', 'short-answer', 'essay', 'extended-response', 'matching', 'ordering', 'drag-drop', 'image-based', 'image', 'structured', 'financial-spreadsheet', 'table-completion', 'numerical'];
                   if (!validTypes.includes(questionType)) {
-                    console.warn(`Invalid question type: ${questionType}, defaulting to multiple-choice`);
-                    questionType = 'multiple-choice';
+                    console.warn(`Invalid question type: ${questionType}, defaulting to open-ended`);
+                    questionType = 'open-ended';
                   }
 
                   // Get question number from data (if available), otherwise use global counter
@@ -2526,6 +2543,16 @@ const createExam = async (req, res) => {
                     keyPoints: questionData.keyPoints || [],
                     subQuestions: subQuestions.length > 0 ? subQuestions : (questionData.subQuestions || [])
                   };
+
+                  // These were previously dropped here even though the extractor populated
+                  // them: the given data/trial balance/diagram context (passage), an
+                  // auto-attached diagram image (imageUrl), fill-in-blank word banks, and the
+                  // "choose N of M sub-questions" config for multi-part questions.
+                  if (questionData.passage) questionDataToSave.passage = questionData.passage;
+                  if (questionData.imageUrl) questionDataToSave.imageUrl = questionData.imageUrl;
+                  if (questionData.wordBank && questionData.wordBank.length > 0) questionDataToSave.wordBank = questionData.wordBank;
+                  if (questionData.instructions) questionDataToSave.instructions = questionData.instructions;
+                  if (questionData.subQuestionConfig) questionDataToSave.subQuestionConfig = questionData.subQuestionConfig;
 
                   // Preserve matching question structure if already provided
                   if (questionType === 'matching') {

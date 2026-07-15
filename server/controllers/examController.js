@@ -172,7 +172,8 @@ const createExam = async (req, res) => {
 
         if (fileExtension === '.pdf') {
           const { parsePdf } = require('../utils/fileParser');
-          examText = await parsePdf(examFilePath);
+          const pdfResult = await parsePdf(examFilePath);
+          examText = pdfResult.text;
         } else if (fileExtension === '.docx' || fileExtension === '.doc') {
           const { parseWord } = require('../utils/fileParser');
           examText = await parseWord(examFilePath);

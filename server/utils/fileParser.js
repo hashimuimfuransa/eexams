@@ -7,8 +7,19 @@ const axios = require('axios');
 const { cloudinary } = require('../config/cloudinary');
 // Import the centralized Groq client for AI-assisted categorization
 const groqClient = require('./groqClient');
+const { coerceToGrid } = require('./spreadsheetGrading');
 
 const execAsync = promisify(exec);
+
+// Normalize a spreadsheetTemplate/spreadsheetModelAnswer field returned by the AI into the
+// canonical { tables: [{ title, headers, data }, ...] } JSON-string shape expected by the
+// financial-spreadsheet question renderer/grader (mirrors normalizeSpreadsheetField in routes/exam.js).
+const normalizeSpreadsheetField = (value) => {
+  if (!value) return value;
+  const parsed = typeof value === 'string' ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+  const grid = coerceToGrid(parsed);
+  return grid ? JSON.stringify(grid) : (typeof value === 'string' ? value : JSON.stringify(value));
+};
 
 /**
  * Parse a PDF file using Python script
@@ -82,6 +93,9 @@ const parsePdf = async (filePath) => {
 
     console.log(`Successfully parsed PDF, extracted ${result.text.length} characters`);
     console.log(`PDF content preview: ${result.text.substring(0, 200)}...`);
+    if (result.images && result.images.length > 0) {
+      console.log(`Extracted ${result.images.length} diagram image(s) from pages: ${result.images.map(i => i.page).join(', ')}`);
+    }
 
     // Clean up temp file if it was downloaded
     if (localFilePath !== filePath && fs.existsSync(localFilePath)) {
@@ -89,7 +103,7 @@ const parsePdf = async (filePath) => {
       console.log('Cleaned up temp file:', localFilePath);
     }
 
-    return result.text;
+    return { text: result.text, images: result.images || [] };
   } catch (error) {
     console.error('Error parsing PDF:', error);
     
@@ -228,7 +242,7 @@ const addOptionToQuestion = (question, letter, text) => {
  * @param {Object} answerData - Pre-loaded answer data
  * @returns {Promise<Object>} - Structured exam with questions
  */
-const extractQuestionsWithEnhancedAI = async (text, answerData = { answers: {} }) => {
+const extractQuestionsWithEnhancedAI = async (text, answerData = { answers: {} }, images = []) => {
   try {
     console.log('Starting enhanced AI question extraction...');
 
@@ -246,9 +260,9 @@ CRITICAL INSTRUCTIONS:
 4. Identify and mark the correct answer for each multiple choice question
 5. Extract question numbers if they exist
 6. Preserve the section structure (Section A, B, C, etc.)
-7. Extract all question types: multiple-choice, true-false, fill-in-blank, short answer, essay, matching, ordering
+7. Extract all question types: multiple-choice, true-false, fill-in-blank, short answer, essay, matching, ordering, financial-spreadsheet (income statements, balance sheets, bank reconciliations, cash books, trial balances, ledgers the student must prepare)
 8. EXTRACT ANSWER KEYS: If the document contains an answer key at the end (often labeled "ANSWER KEY", "MARKING SCHEME", "SOLUTIONS", or similar), extract all answers and match them to their question numbers
-9. EXTRACT PASSAGES AND TEXTS: Extract ALL reading passages, comprehension texts, diagrams, and any text blocks that serve as context for questions. These should be stored in the "passage" field of the question or as a separate "context" field.
+9. EXTRACT PASSAGES AND TEXTS: Extract ALL reading passages, comprehension texts, diagrams, tables (trial balances, ledgers, lists of account balances shown inside [TABLE]...[/TABLE] markers or as aligned text), and any text blocks that serve as supporting context for questions. Store ALL of this in the question's "passage" field (there is no separate "context" field - "passage" is the only field that is saved and shown to the student), preserving every row/figure exactly.
 10. EXTRACT INSTRUCTIONS: Extract any instructions, directions, or guidelines that accompany questions or sections
 
 CRITICAL - MODEL ANSWER GENERATION FOR OPEN-ENDED QUESTIONS:
@@ -412,6 +426,55 @@ EXAMPLE - MULTI-PART WITH MULTIPLE-CHOICE SUBQUESTIONS:
   "correctAnswer": "a) i) No matter; b) v) consequently; c) ii) whether; d) i) why"
 }
 
+CRITICAL - EXTRACT MARKS ALLOCATIONS EXACTLY:
+- Exam papers show marks in parentheses after each question or part, e.g. "(2 marks)", "(17 marks)", "(Total: 40 marks)"
+- Extract the marks shown for EACH part/sub-part into that part's "points" field exactly as printed - do not invent or round numbers
+- When a question has sub-parts with their own marks (e.g. "(i) Income statement (17 marks)", "(ii) Balance sheet (13 marks)"), set each subQuestion's "points" to its own printed value, and set the parent question's "points" to the "(Total: X marks)" value if printed, otherwise to the sum of the sub-parts
+- Do NOT split a single required output (e.g. "Income statement" worth 17 marks) into multiple sub-questions unless the document itself labels separate lettered/numbered parts
+- Preserve "Section A", "Section B" headers and any instructions like "This section has one compulsory question" or "Attempt three of the four questions in this section" - put this instruction text VERBATIM into that section's "description" field.
+
+CRITICAL - SELECTIVE ANSWERING (a section lets the student choose N of its M whole questions):
+- Many national exams have a section (almost always named/lettered "B") where the student answers only SOME of the whole questions offered - e.g. "Attempt THREE of the FOUR questions in this section", "Answer any THREE questions", "Answer THREE questions from this section". This is DIFFERENT from a single question's own subQuestionConfig (which selects among PARTS of one question) - this selects among several WHOLE separate questions.
+- When you detect this pattern for the section named/lettered "B" (or whichever section plays that role - REB/exam boards almost always use B for this), set the TOP-LEVEL "allowSelectiveAnswering" to true and "sectionBRequiredQuestions" to N (the required count, e.g. 3 for "attempt three of the four").
+- If a DIFFERENT section (typically named/lettered "C") ALSO offers a choice among several whole questions (e.g. "Answer ONE of the following TWO questions"), set "sectionCRequiredQuestions" to that N. If section C is instead a SINGLE compulsory question (only one question offered, e.g. "SECTION C: THIS SECTION IS COMPULSORY" with just one question), leave "sectionCRequiredQuestions" at the default 1 - it is a no-op when there is only one question anyway.
+- If NO section offers a choice among whole questions (every section is "answer all"), leave "allowSelectiveAnswering" as false and do not set the required-count fields.
+- Still ALSO put the instruction text verbatim into that section's "description" field per the rule above - "allowSelectiveAnswering"/"sectionBRequiredQuestions"/"sectionCRequiredQuestions" are in ADDITION to, not instead of, preserving the instruction text.
+
+CRITICAL - HANDLING TABLES AND FINANCIAL DATA (e.g. trial balances, ledger balances, account lists):
+- The document text may contain blocks wrapped as [TABLE] ... [/TABLE] where each line is a row with cells separated by " | ". These represent tables (such as a trial balance, list of account balances, or ledger) detected in the original PDF. Tabular data may also appear as plain aligned text (two columns of account names and Frw/amount figures) without explicit [TABLE] markers - treat that the same way.
+- Reproduce this GIVEN data (data the student is handed, not data the student must produce) faithfully as a readable table in the question's "passage" field (NOT "context" - "passage" is the field that actually gets saved and shown to the student; there is no separate "context" field), using Markdown table syntax (with "|" column separators and a header separator row) so every account name and figure survives exactly as printed - including both the debit/credit columns and the total row. NEVER drop, merge, or paraphrase rows of a trial balance or ledger.
+- Do not put this given data into "options" or "correctAnswer" - it is reference data for the student, not an answer.
+- NEVER copy the literal characters "[TABLE]", "[/TABLE]", or an ellipsis ("...") into your output as a stand-in for a table - those markers only exist in the SOURCE text to show you where a table starts/ends; you must read every row between them and reproduce the real row data. The document may contain SEVERAL separate [TABLE]...[/TABLE] blocks (one per question) - expand EVERY one of them in full, not just the first. A question whose "passage" still contains the literal text "[TABLE]" is an incomplete, incorrect extraction.
+- Numbered adjustment notes that follow a trial balance (e.g. "1. The closing inventory...", "2. Bank interest income accrued...") belong in that same question's "passage" field, listed in full and in order, immediately after the table - these are essential to solving the question and must never be summarized or omitted.
+
+CRITICAL - NEVER DROP A LETTERED OR NUMBERED SUB-PART:
+- If a printed question has parts a), b), c)... and any of those parts has its own i), ii), iii)... sub-parts, EVERY single one of those sub-parts MUST appear in the output - even if one sub-part is a different kind of task than its siblings (e.g. part b) is mostly short definitions but b)v) asks for a journal entry, or a diagram-reading question). Do not silently skip a sub-part just because it looks different or harder to classify.
+- Before finalizing your answer, re-count the lettered/numbered sub-parts you found for each question against how many appear in the source text (look for the highest letter/numeral used, e.g. if you see "a), b), c), d), e)" there must be 5 sub-parts) and add back any that are missing.
+
+CRITICAL - QUESTIONS THAT MIX THEORY PARTS WITH A REQUIRED FINANCIAL STATEMENT PART:
+- A single printed question (e.g. "QUESTION ONE") sometimes has several lettered parts a), b), c) where most parts are ordinary theory/short-answer/journal-entry sub-parts, but one part (often the last, largest part) requires preparing a full financial statement (a financial-spreadsheet). Because a sub-question CANNOT itself contain a spreadsheet grid, split this into: (1) ONE question combining all the ordinary parts into a single flat subQuestions array using compound labels ("a) i)", "a) ii)", "b) i)"..."b) v)", etc, as shown above) and (2) a SEPARATE financial-spreadsheet question for the part requiring the financial statement, with its trial balance/given data in "passage" per the rules below.
+- When you must split ONE printed question this way, give each resulting system question a UNIQUE, sequential questionNumber within the section (do not reuse the same printed number for more than one question object) and start the financial-spreadsheet question's "text" by naming which printed question/part it continues, e.g. "(Question One, part (c)) Prepare: (i) Income statement... (ii) Balance sheet..." so a reader can see they belong together.
+- NEVER set a subQuestion's "type" to "financial-spreadsheet" - a subQuestion object has no spreadsheetTemplate/spreadsheetModelAnswer fields, so any spreadsheet data placed there is silently lost. "financial-spreadsheet" is ONLY a valid value for a top-level question's "type".
+
+CRITICAL - FINANCIAL-SPREADSHEET QUESTIONS (accounting/finance exams: income statements, balance sheets/statements of financial position, cash flow statements, statements of changes in equity, ledgers, trial balances the student must draft, bank reconciliation statements, cash books, ratio analysis, budgets):
+- When a question instructs the student to PREPARE, DRAFT, or PRODUCE one of these financial statements/schedules, set "type": "financial-spreadsheet" (this applies even if the question is phrased as one of several lettered required outputs, e.g. "(i) Income statement ... (ii) Balance sheet ...")
+- Include "spreadsheetTemplate" and "spreadsheetModelAnswer" as JSON strings of shape {"tables":[{"title":"...","headers":[...],"data":[[...]]}]} - one entry in "tables" per statement/schedule the question asks the student to prepare. If ONE question asks for multiple statements (e.g. "(i) Income statement (17 marks) (ii) Balance sheet (13 marks)"), put ONE table per statement in the SAME tables array rather than creating separate questions - the combined points equal the sum of both parts' marks
+- "spreadsheetTemplate": pre-fill row labels (account/line-item names) with blank ("") value cells for the student to complete; formulas like "=SUM(B2:B5)" are allowed for subtotal rows
+- "spreadsheetModelAnswer": the same table structure with every cell computed and filled in - work through the trial balance, the adjustments/notes, and standard accounting rules (accruals, prepayments, depreciation, allowance for doubtful debts, closing inventory at lower of cost and net realizable value, etc.) to compute the correct figures, exactly as a real marking scheme would. Show the final figures only (not the workings) in the model answer table.
+- Example - trial balance style question:
+{
+  "questionNumber": 1,
+  "text": "Prepare: (i) Income statement for the year ended 30 September 2012 (17 marks); (ii) Balance sheet as at 30 September 2012 (13 marks)",
+  "type": "financial-spreadsheet",
+  "passage": "Trial balance as at 30 September 2012:\\n| Account | Frw (Dr) | Frw (Cr) |\\n|---|---|---|\\n| Sales | | 5,400,000 |\\n| Purchases | 2,826,000 | |\\n| Capital | | 3,060,000 |\\n\\nAdditional notes:\\n1. The closing inventory cost and net realizable amount was Frw 910,000 and Frw 890,000 respectively.\\n2. Bank interest income accrued Frw 80,000 was only shown in the bank statement.",
+  "points": 30,
+  "spreadsheetTemplate": "{\\"tables\\":[{\\"title\\":\\"Income Statement\\",\\"headers\\":[\\"Item\\",\\"Frw\\"],\\"data\\":[[\\"Sales\\",\\"\\"],[\\"Cost of Sales\\",\\"\\"],[\\"Gross Profit\\",\\"\\"],[\\"Net Profit\\",\\"\\"]]},{\\"title\\":\\"Balance Sheet\\",\\"headers\\":[\\"Item\\",\\"Frw\\"],\\"data\\":[[\\"Total Assets\\",\\"\\"],[\\"Total Liabilities and Capital\\",\\"\\"]]}]}",
+  "spreadsheetModelAnswer": "{\\"tables\\":[{\\"title\\":\\"Income Statement\\",\\"headers\\":[\\"Item\\",\\"Frw\\"],\\"data\\":[[\\"Sales\\",\\"5,400,000\\"],[\\"Cost of Sales\\",\\"2,762,000\\"],[\\"Gross Profit\\",\\"2,638,000\\"],[\\"Net Profit\\",\\"1,222,000\\"]]},{\\"title\\":\\"Balance Sheet\\",\\"headers\\":[\\"Item\\",\\"Frw\\"],\\"data\\":[[\\"Total Assets\\",\\"3,480,000\\"],[\\"Total Liabilities and Capital\\",\\"3,480,000\\"]]}]}",
+  "correctAnswer": "See spreadsheetModelAnswer for the completed Income Statement and Balance Sheet."
+}
+- Give every table a clear "title" naming the statement (e.g. "Income Statement", "Statement of Financial Position", "Bank Reconciliation Statement", "Adjusted Cash Book")
+- Only add more than one entry to "tables" when the question text explicitly asks for more than one statement in that same question
+
 SUBQUESTION EXTRACTION RULES:
 1. ALWAYS extract multi-part questions as ONE question with subQuestions array
 2. Include the "label" field for each subquestion (a, b, c, i, ii, iii)
@@ -455,6 +518,9 @@ Return valid JSON with this exact structure:
     "1": "Answer for question 1",
     "2": "Answer for question 2"
   },
+  "allowSelectiveAnswering": false,
+  "sectionBRequiredQuestions": 3,
+  "sectionCRequiredQuestions": 1,
   "sections": [
     {
       "name": "A",
@@ -464,8 +530,7 @@ Return valid JSON with this exact structure:
           "questionNumber": 1,
           "text": "Exact question text from document",
           "type": "multiple-choice",
-          "passage": "Extract reading passage or comprehension text if this question is based on a passage",
-          "context": "Extract any additional context, diagram descriptions, or setup text for this question",
+          "passage": "Extract reading passage, comprehension text, diagram description, given data table, or any other supporting context this question is based on - this is the ONLY field for such content, there is no separate 'context' field",
           "options": [
             {"letter": "A", "text": "Option text as in document", "isCorrect": false},
             {"letter": "B", "text": "Option text as in document", "isCorrect": true},
@@ -485,8 +550,7 @@ Return valid JSON with this exact structure:
           "questionNumber": 1,
           "text": "Exact question text from document",
           "type": "open-ended",
-          "passage": "Extract reading passage or comprehension text if this question is based on a passage",
-          "context": "Extract any additional context, diagram descriptions, or setup text for this question",
+          "passage": "Extract reading passage, comprehension text, diagram description, given data table, or any other supporting context this question is based on - this is the ONLY field for such content, there is no separate 'context' field",
           "correctAnswer": "Extract from document OR generate comprehensive model answer if not provided",
           "points": 5
         },
@@ -531,8 +595,7 @@ Return valid JSON with this exact structure:
           "questionNumber": 1,
           "text": "Exact question text from document",
           "type": "open-ended",
-          "passage": "Extract reading passage or comprehension text if this question is based on a passage",
-          "context": "Extract any additional context, diagram descriptions, or setup text for this question",
+          "passage": "Extract reading passage, comprehension text, diagram description, given data table, or any other supporting context this question is based on - this is the ONLY field for such content, there is no separate 'context' field",
           "correctAnswer": "Extract from document OR generate comprehensive model answer if not provided",
           "points": 15
         }
@@ -541,7 +604,7 @@ Return valid JSON with this exact structure:
   ]
 }
 
-Question types: multiple-choice, true-false, fill-in-blank, open-ended, matching, ordering.
+Question types: multiple-choice, true-false, fill-in-blank, open-ended, matching, ordering, financial-spreadsheet.
 
 IMPORTANT INSTRUCTIONS:
 - For fill-in-blank questions: Look for word banks in the document (usually shown as a box of words at the top of the question or section). Extract ALL words from the word bank into the "wordBank" array.
@@ -560,7 +623,7 @@ ${fullText}`;
       model: 'smart',
       jsonMode: true,
       temperature: 0.1, // Lower temperature for more accurate extraction
-      maxTokens: 16384, // Increased to handle larger documents with many questions
+      maxTokens: 16384, // NOTE: pushing this to 32768 was tested and caused Groq to truncate EARLIER (likely exceeding the model's real per-request completion cap on this account/tier) - 16384 is the empirically safe ceiling. groqClient logs a "TRUNCATED" warning if a response still hits this limit.
       systemPrompt: 'You are an expert AI system specialized in extracting exam questions from academic documents. Extract ALL questions exactly as they appear. Always return valid JSON.'
     });
 
@@ -604,6 +667,12 @@ ${fullText}`;
       });
     }
 
+    // Attach any diagram images pdf_extractor.py rendered (e.g. "the diagram below shows...")
+    // to whichever question actually references that diagram, uploading to Cloudinary.
+    if (images && images.length > 0) {
+      await attachDiagramImages(enhancedData.sections, images);
+    }
+
     return enhancedData;
 
   } catch (error) {
@@ -636,6 +705,19 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
       if (answerData && answerData.answers) {
         Object.assign(answerData.answers, extractedData.answerKey);
       }
+    }
+
+    // Sanitize selective-answering fields (student chooses N of M whole questions in a section)
+    extractedData.allowSelectiveAnswering = extractedData.allowSelectiveAnswering === true;
+    if (extractedData.allowSelectiveAnswering) {
+      const sectionBCount = parseInt(extractedData.sectionBRequiredQuestions, 10);
+      const sectionCCount = parseInt(extractedData.sectionCRequiredQuestions, 10);
+      extractedData.sectionBRequiredQuestions = Number.isFinite(sectionBCount) && sectionBCount > 0 ? sectionBCount : 3;
+      extractedData.sectionCRequiredQuestions = Number.isFinite(sectionCCount) && sectionCCount > 0 ? sectionCCount : 1;
+      console.log(`Selective answering detected: Section B requires ${extractedData.sectionBRequiredQuestions}, Section C requires ${extractedData.sectionCRequiredQuestions}`);
+    } else {
+      delete extractedData.sectionBRequiredQuestions;
+      delete extractedData.sectionCRequiredQuestions;
     }
 
     // Ensure sections exist
@@ -675,6 +757,84 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
     // If no questions were extracted, this is likely an error
     if (totalQuestions === 0) {
       console.warn('No questions extracted - this may indicate an extraction failure');
+    }
+
+    // SAFEGUARD: the Question schema only supports spreadsheetTemplate/spreadsheetModelAnswer
+    // at the top-level question, not inside a subQuestion - so if the AI (despite the prompt
+    // instructions) nested a "financial-spreadsheet" typed part inside a multi-part question's
+    // subQuestions array, that data would be structurally unrenderable and silently lost. Hoist
+    // any such subQuestion out into its own proper top-level financial-spreadsheet question.
+    for (const section of extractedData.sections) {
+      if (!Array.isArray(section.questions)) continue;
+      const hoisted = [];
+      // If the AI ALSO produced a clean standalone financial-spreadsheet question for the same
+      // original question number (a common alternate way it satisfies the "never nest a
+      // spreadsheet in a subQuestion" rule), hoisting the subQuestion too would create a
+      // duplicate covering the same statement twice - skip hoisting in that case.
+      const questionNumbersWithOwnSpreadsheet = new Set(
+        section.questions.filter(q => q.type === 'financial-spreadsheet').map(q => q.questionNumber)
+      );
+      for (const question of section.questions) {
+        if (!Array.isArray(question.subQuestions) || question.subQuestions.length === 0) continue;
+        const spreadsheetSubs = question.subQuestions.filter(sq => sq && sq.type === 'financial-spreadsheet');
+        if (spreadsheetSubs.length === 0) continue;
+
+        question.subQuestions = question.subQuestions.filter(sq => !(sq && sq.type === 'financial-spreadsheet'));
+
+        if (questionNumbersWithOwnSpreadsheet.has(question.questionNumber)) {
+          console.log(`Dropped ${spreadsheetSubs.length} redundant financial-spreadsheet subquestion(s) from question ${question.questionNumber} - a standalone financial-spreadsheet question for the same question number already covers it`);
+        } else {
+          for (const sq of spreadsheetSubs) {
+            hoisted.push({
+              questionNumber: question.questionNumber,
+              text: `(continued from Question ${question.questionNumber}${sq.label ? ', part ' + sq.label : ''}) ${sq.text || question.text}`,
+              type: 'financial-spreadsheet',
+              passage: question.passage || question.context || '',
+              points: sq.points || 10,
+              spreadsheetTemplate: sq.spreadsheetTemplate || null,
+              spreadsheetModelAnswer: sq.spreadsheetModelAnswer || null,
+              correctAnswer: sq.correctAnswer || 'See spreadsheetModelAnswer for the completed statement.'
+            });
+          }
+          console.log(`Hoisted ${spreadsheetSubs.length} financial-spreadsheet subquestion(s) out of question ${question.questionNumber} into standalone questions`);
+        }
+
+        // Recompute the parent question's points from its remaining subQuestions so the
+        // original per-part marks (e.g. the theory parts) are preserved without the hoisted/
+        // dropped financial-spreadsheet marks double-counted.
+        if (question.subQuestions.length > 0) {
+          question.points = question.subQuestions.reduce((sum, sq) => sum + (sq.points || 1), 0);
+        }
+      }
+      if (hoisted.length > 0) {
+        section.questions.push(...hoisted);
+      }
+    }
+
+    // Any hoisted (or AI-produced) financial-spreadsheet question missing its grid needs one
+    // generated so it doesn't render as an empty/blank spreadsheet for the student.
+    for (const section of extractedData.sections) {
+      if (!Array.isArray(section.questions)) continue;
+      for (const question of section.questions) {
+        if (question.type === 'financial-spreadsheet' && (!question.spreadsheetTemplate || !question.spreadsheetModelAnswer)) {
+          await ensureSpreadsheetGrid(question);
+        }
+      }
+    }
+
+    // Despite the prompt instructing otherwise, the AI sometimes leaves the literal source
+    // "[TABLE]"/"[/TABLE]" marker text in place around an otherwise fully and correctly
+    // reproduced table (the row data itself is intact - only the marker tags leak through).
+    // Strip them deterministically rather than relying purely on prompt-following.
+    for (const section of extractedData.sections) {
+      if (!Array.isArray(section.questions)) continue;
+      for (const question of section.questions) {
+        for (const field of ['passage', 'text']) {
+          if (typeof question[field] === 'string' && question[field].includes('[TABLE]')) {
+            question[field] = question[field].replace(/\[\/?TABLE\]\s*/g, '').trim();
+          }
+        }
+      }
     }
 
     // Process each section
@@ -925,6 +1085,29 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
       }
     }
 
+    // Safety correction: structural restructuring earlier in this pipeline (e.g. splitting one
+    // printed question into two top-level questions because it contained two separate diagrams,
+    // or because it mixed theory parts with a financial-spreadgsheet part) can change how many
+    // top-level questions end up in section B/C versus how many the original document printed.
+    // If that section's own instructions say it is COMPULSORY (not a genuine choice), the
+    // required-count must never end up less than however many questions actually landed there -
+    // otherwise a student could be wrongly allowed to skip one of them via selective answering.
+    if (extractedData.allowSelectiveAnswering) {
+      const sectionB = extractedData.sections.find(s => s.name === 'B');
+      const sectionC = extractedData.sections.find(s => s.name === 'C');
+      if (sectionB && /compulsory/i.test(sectionB.description || '')) {
+        extractedData.sectionBRequiredQuestions = sectionB.questions.length;
+      } else if (sectionB && sectionB.questions.length > 0) {
+        // Can't require answering more questions than actually exist in the section
+        extractedData.sectionBRequiredQuestions = Math.min(extractedData.sectionBRequiredQuestions, sectionB.questions.length);
+      }
+      if (sectionC && /compulsory/i.test(sectionC.description || '')) {
+        extractedData.sectionCRequiredQuestions = sectionC.questions.length;
+      } else if (sectionC && sectionC.questions.length > 0) {
+        extractedData.sectionCRequiredQuestions = Math.min(extractedData.sectionCRequiredQuestions, sectionC.questions.length);
+      }
+    }
+
     // Log final question count
     const finalTotal = extractedData.sections.reduce((total, section) => total + section.questions.length, 0);
     console.log(`Final validated question count: ${finalTotal}`);
@@ -1134,6 +1317,7 @@ const enhanceQuestionByType = async (question, answerData) => {
           letter: opt.letter || String.fromCharCode(65 + index),
           isCorrect: opt.isCorrect || false
         }));
+        await ensureMCQCorrectOption(question);
         break;
 
       case 'true-false':
@@ -1167,6 +1351,7 @@ const enhanceQuestionByType = async (question, answerData) => {
             }
           }
         }
+        await ensureMatchingPairs(question);
         break;
 
       case 'ordering':
@@ -1175,9 +1360,236 @@ const enhanceQuestionByType = async (question, answerData) => {
           question.itemsToOrder = await extractOrderingItems(question.text);
         }
         break;
+
+      case 'financial-spreadsheet':
+        // The AI often returns spreadsheetTemplate/spreadsheetModelAnswer as nested objects,
+        // a bare {headers,data} grid, or a flat label:value object instead of the canonical
+        // {tables:[{title,headers,data}]} JSON string - normalize both fields so the grid
+        // renders correctly and grading can compare cell-by-cell.
+        if (question.spreadsheetTemplate) {
+          question.spreadsheetTemplate = normalizeSpreadsheetField(question.spreadsheetTemplate);
+        }
+        if (question.spreadsheetModelAnswer) {
+          question.spreadsheetModelAnswer = normalizeSpreadsheetField(question.spreadsheetModelAnswer);
+        }
+        break;
     }
   } catch (error) {
     console.error(`Error enhancing question type ${question.type}:`, error);
+  }
+};
+
+/**
+ * Generate a spreadsheetTemplate/spreadsheetModelAnswer for a financial-spreadsheet question
+ * that doesn't already have one (e.g. hoisted out of a subQuestion where the AI didn't produce
+ * the grid fields). Uses the question's own text/context (trial balance, adjustment notes) so
+ * the generated table reflects the actual data the student was given.
+ * @param {Object} question - financial-spreadsheet question, mutated in place
+ */
+const ensureSpreadsheetGrid = async (question) => {
+  try {
+    const prompt = `You are an accounting exam assistant. Build the spreadsheet grid for this exam question.
+
+Question: "${question.text}"
+Given data (trial balance, adjustments, etc.): "${(question.passage || question.context || '').substring(0, 6000)}"
+
+Return ONLY JSON of this shape:
+{
+  "spreadsheetTemplate": {"tables":[{"title":"...","headers":["Item","Frw"],"data":[["Row label",""], ...]}]},
+  "spreadsheetModelAnswer": {"tables":[{"title":"...","headers":["Item","Frw"],"data":[["Row label","computed value"], ...]}]}
+}
+- One table per financial statement/schedule the question asks for.
+- spreadsheetTemplate: row labels filled in, value cells left as "".
+- spreadsheetModelAnswer: same structure with every value cell computed from the given data using standard accounting rules.`;
+
+    const result = await groqClient.generateContent(prompt, {
+      model: 'smart',
+      jsonMode: true,
+      temperature: 0.1,
+      maxTokens: 4096
+    });
+
+    const parsed = result.parsedContent || (result.text ? JSON.parse(result.text.match(/\{[\s\S]*\}/)?.[0] || '{}') : {});
+    if (parsed.spreadsheetTemplate) {
+      question.spreadsheetTemplate = normalizeSpreadsheetField(parsed.spreadsheetTemplate);
+    }
+    if (parsed.spreadsheetModelAnswer) {
+      question.spreadsheetModelAnswer = normalizeSpreadsheetField(parsed.spreadsheetModelAnswer);
+    }
+  } catch (error) {
+    console.error('Error generating spreadsheet grid for question:', error);
+  }
+
+  // Guarantee both fields are at least a valid, non-empty grid so the UI never renders blank
+  if (!question.spreadsheetTemplate) {
+    question.spreadsheetTemplate = JSON.stringify({ tables: [{ title: question.text?.substring(0, 60) || 'Statement', headers: ['Item', 'Frw'], data: [['', '']] }] });
+  }
+  if (!question.spreadsheetModelAnswer) {
+    question.spreadsheetModelAnswer = question.spreadsheetTemplate;
+  }
+};
+
+/**
+ * Guarantee a multiple-choice question has exactly one option marked isCorrect, so grading
+ * never has to guess at grade time. Tries matching question.correctAnswer (a letter, or the
+ * option's own text) against the options first; only calls the AI if that fails outright.
+ * @param {Object} question - multiple-choice question, mutated in place
+ */
+const ensureMCQCorrectOption = async (question) => {
+  if (!Array.isArray(question.options) || question.options.length === 0) return;
+  if (question.options.some(opt => opt.isCorrect)) return; // already has one
+
+  const answer = (question.correctAnswer || '').toString().trim();
+  const byLetter = question.options.find(opt => opt.letter && opt.letter.toUpperCase() === answer.toUpperCase());
+  const byText = !byLetter && question.options.find(opt => opt.text && opt.text.toLowerCase() === answer.toLowerCase());
+  const match = byLetter || byText;
+  if (match) {
+    match.isCorrect = true;
+    return;
+  }
+
+  // No usable correctAnswer to match against - ask the AI to pick the correct option so the
+  // question isn't silently left with no correct answer at all.
+  try {
+    const prompt = `For this multiple-choice question, identify the single correct option.
+Question: "${question.text}"
+Options: ${question.options.map(o => `${o.letter}) ${o.text}`).join(', ')}
+Return ONLY JSON: {"correctLetter": "A"}`;
+    const result = await groqClient.generateContent(prompt, { model: 'smart', jsonMode: true, temperature: 0.1, maxTokens: 256 });
+    const letter = (result.parsedContent?.correctLetter || '').toString().trim().toUpperCase();
+    const picked = question.options.find(opt => opt.letter && opt.letter.toUpperCase() === letter);
+    if (picked) {
+      picked.isCorrect = true;
+      question.correctAnswer = picked.letter;
+      return;
+    }
+  } catch (error) {
+    console.error('Error determining correct MCQ option:', error);
+  }
+
+  // Last resort: mark the first option so the field is never left completely empty.
+  question.options[0].isCorrect = true;
+  question.correctAnswer = question.correctAnswer || question.options[0].letter;
+};
+
+/**
+ * Guarantee a matching question has real matchingPairs to grade against. Only called after
+ * the regex-based extractMatchingPairs/parseMatchingPairsFromAnswer attempts have both failed.
+ * @param {Object} question - matching question, mutated in place
+ */
+const ensureMatchingPairs = async (question) => {
+  if (question.matchingPairs || question.leftItems || question.rightItems) return;
+  try {
+    const prompt = `Extract the left/right matching pairs for this matching question.
+Question: "${question.text}"
+Answer/key (if present): "${question.correctAnswer || ''}"
+Return ONLY JSON: {"leftColumn": ["...", "..."], "rightColumn": ["...", "..."], "correctPairs": [{"left": "...", "right": "..."}]}`;
+    const result = await groqClient.generateContent(prompt, { model: 'smart', jsonMode: true, temperature: 0.1, maxTokens: 1024 });
+    const parsed = result.parsedContent;
+    if (parsed && Array.isArray(parsed.leftColumn) && Array.isArray(parsed.rightColumn) && parsed.leftColumn.length > 0) {
+      question.matchingPairs = {
+        leftColumn: parsed.leftColumn,
+        rightColumn: parsed.rightColumn,
+        correctPairs: Array.isArray(parsed.correctPairs) ? parsed.correctPairs : []
+      };
+    }
+  } catch (error) {
+    console.error('Error generating matching pairs:', error);
+  }
+};
+
+// Same phrase set pdf_extractor.py uses to flag a page as diagram-bearing - reused here so a
+// question whose OWN wording explicitly introduces the diagram is always preferred over one
+// that merely happens to share vocabulary with the page (e.g. a short sub-question fully
+// contained in that page's text, which would otherwise score a misleadingly "perfect" match).
+const DIAGRAM_REFERENCE_PATTERN = /(diagram|figure\s*\d*|graph|chart|illustration)\s+(below|above|shown)|(shown|represented)\s+(below|above|in\s+the\s+diagram)|label\s+the\s+(parts?|structures?)|study\s+the\s+(diagram|figure)|the\s+following\s+(diagram|figure)/i;
+
+/**
+ * Score how much two texts overlap, using shared significant (4+ letter) words as a proxy
+ * for "this diagram image came from the same page as this question". Normalized by the
+ * LONGER side (not the shorter) so a short snippet fully contained in a long page of text
+ * can't claim a misleading 1.0 "perfect" match against unrelated short questions.
+ */
+const scoreTextOverlap = (a, b) => {
+  const tokenize = (s) => new Set((s || '').toLowerCase().match(/[a-z]{4,}/g) || []);
+  const setA = tokenize(a);
+  const setB = tokenize(b);
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let shared = 0;
+  for (const tok of setA) if (setB.has(tok)) shared++;
+  return shared / Math.max(setA.size, setB.size);
+};
+
+/**
+ * Attach diagram images extracted by pdf_extractor.py (one rendered page image per page that
+ * referenced "the diagram below"/"figure N"/etc) to whichever question actually needs it.
+ * Matching is by text overlap between the question's own wording and the source page's text
+ * (the image's "snippet"), since the correct question's text is always a near-verbatim
+ * substring of the page it came from. Scored as a bipartite matching (best pairs assigned
+ * first) so two questions on the same page competing for one image don't starve each other.
+ * Runs in two passes: top-level questions first (diagrams are introduced by the main question
+ * stem, not a sub-part), falling back to subQuestions only for any image still unassigned.
+ * @param {Array} sections - extractedData.sections, mutated in place
+ * @param {Array} images - [{ page, snippet, dataUrl }] from pdf_extractor.py
+ */
+const attachDiagramImages = async (sections, images) => {
+  try {
+    const topLevel = [];
+    const subLevel = [];
+    for (const section of sections || []) {
+      for (const question of section.questions || []) {
+        if (!question.imageUrl) topLevel.push(question);
+        if (Array.isArray(question.subQuestions)) {
+          for (const sq of question.subQuestions) {
+            if (!sq.imageUrl) subLevel.push(sq);
+          }
+        }
+      }
+    }
+
+    const assignedImages = new Set();
+
+    const runPass = async (candidates) => {
+      if (candidates.length === 0) return;
+      const pairs = [];
+      candidates.forEach((question, qIdx) => {
+        const questionText = `${question.text || ''} ${question.passage || ''}`;
+        const referencesDigram = DIAGRAM_REFERENCE_PATTERN.test(questionText);
+        images.forEach((img, iIdx) => {
+          if (assignedImages.has(iIdx)) return;
+          let score = scoreTextOverlap(questionText, img.snippet);
+          if (referencesDigram) score += 0.5; // strong preference for the question that actually names the diagram
+          if (score > 0.2) pairs.push({ qIdx, iIdx, score });
+        });
+      });
+      pairs.sort((a, b) => b.score - a.score);
+
+      const assignedQuestions = new Set();
+      for (const pair of pairs) {
+        if (assignedQuestions.has(pair.qIdx) || assignedImages.has(pair.iIdx)) continue;
+        const question = candidates[pair.qIdx];
+        const image = images[pair.iIdx];
+        try {
+          const uploadResult = await cloudinary.uploader.upload(image.dataUrl, {
+            folder: 'eexams/question-diagrams',
+            resource_type: 'image'
+          });
+          question.imageUrl = uploadResult.secure_url;
+          assignedQuestions.add(pair.qIdx);
+          assignedImages.add(pair.iIdx);
+          console.log(`Attached diagram image (page ${image.page}, match score ${pair.score.toFixed(2)}) to question: "${(question.text || '').substring(0, 60)}..."`);
+        } catch (uploadError) {
+          console.error(`Failed to upload diagram image (page ${image.page}) to Cloudinary:`, uploadError.message || uploadError);
+        }
+      }
+    };
+
+    await runPass(topLevel);
+    if (assignedImages.size < images.length) {
+      await runPass(subLevel);
+    }
+  } catch (error) {
+    console.error('Error attaching diagram images:', error);
   }
 };
 
@@ -1407,8 +1819,11 @@ const parseSubquestionsFromString = (correctAnswer, questionText = '') => {
       const trimmed = part.trim();
       if (!trimmed) continue;
 
-      // Match pattern: a) Answer or a. Answer or a Answer
-      const match = trimmed.match(/^([a-z])[\)\.]?\s*(.*)$/i);
+      // Match pattern: a) Answer or a. Answer
+      // The delimiter after the label is REQUIRED (not optional) - without this, plain prose
+      // beginning with any letter (e.g. "The four causes..." or "and 4) Errors...") would
+      // falsely match as a labeled subquestion ("t) he four causes...", "a) nd 4) Errors...").
+      const match = trimmed.match(/^([a-z])[\)\.]\s*(.*)$/i);
       if (match) {
         const label = match[1].toLowerCase();
         const answer = match[2] ? match[2].trim() : '';
@@ -1774,7 +2189,7 @@ Only respond with valid JSON containing the options for each question. Do not in
   }
 };
 
-const extractQuestionsDirectly = async (text, answerData = { answers: {} }) => {
+const extractQuestionsDirectly = async (text, answerData = { answers: {} }, images = []) => {
   console.log('Extracting questions directly from text...');
   console.log(`Pre-loaded answer data has ${Object.keys(answerData.answers).length} answers`);
 
@@ -1786,7 +2201,7 @@ const extractQuestionsDirectly = async (text, answerData = { answers: {} }) => {
   // Try enhanced AI extraction first
   try {
     console.log('Attempting enhanced AI extraction...');
-    const enhancedResult = await extractQuestionsWithEnhancedAI(text, answerData);
+    const enhancedResult = await extractQuestionsWithEnhancedAI(text, answerData, images);
     if (enhancedResult && enhancedResult.sections && enhancedResult.sections.length > 0) {
       const totalQuestions = enhancedResult.sections.reduce((total, section) => total + section.questions.length, 0);
       if (totalQuestions > 0) {
@@ -2771,26 +3186,28 @@ const categorizeQuestionsWithAI = async (examStructure) => {
         `;
 
         try {
-          console.log('Sending request to Gemini API for question categorization...');
+          console.log('Sending request to Groq AI for question categorization...');
 
           // Add timeout to avoid hanging if API is unresponsive
           const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Gemini API request timed out')), 10000);
+            setTimeout(() => reject(new Error('Groq API request timed out')), 10000);
           });
 
           // Race the API call against the timeout
           const result = await Promise.race([
-            model.generateContent({
-              contents: [{ role: "user", parts: [{ text: prompt }] }],
-              generationConfig,
+            groqClient.generateContent(prompt, {
+              model: 'fast',
+              jsonMode: true,
+              temperature: generationConfig.temperature,
+              maxTokens: generationConfig.maxOutputTokens
             }),
             timeoutPromise
           ]);
 
-          console.log(`Received response from Gemini API for batch ${batchIndex + 1}`);
+          console.log(`Received response from Groq AI for batch ${batchIndex + 1}`);
 
           // Get the text directly from the result
-          const text = result.response.text();
+          const text = result.parsedContent ? JSON.stringify(result.parsedContent) : (result.text || '');
 
           // Extract JSON object from response
           const jsonStart = text.indexOf('{');
@@ -2987,10 +3404,13 @@ const parseFile = async (filePath, answerData = { answers: {} }, originalFilenam
       : path.extname(filePath).toLowerCase();
     console.log(`Detected file extension: ${fileExtension}`);
     let text = '';
+    let images = [];
 
     // Parse the file based on its extension
     if (fileExtension === '.pdf') {
-      text = await parsePdf(filePath);
+      const pdfResult = await parsePdf(filePath);
+      text = pdfResult.text;
+      images = pdfResult.images;
     } else if (fileExtension === '.docx' || fileExtension === '.doc') {
       text = await parseWord(filePath);
     } else if (fileExtension === '.txt') {
@@ -3000,7 +3420,7 @@ const parseFile = async (filePath, answerData = { answers: {} }, originalFilenam
     }
 
     // Extract questions directly from the text
-    const questions = await extractQuestionsDirectly(text, answerData);
+    const questions = await extractQuestionsDirectly(text, answerData, images);
     return questions;
   } catch (error) {
     console.error('Error parsing file:', error);
@@ -3026,7 +3446,8 @@ const parseAnswerFile = async (filePath) => {
 
     // Parse the file based on its extension
     if (fileExtension === '.pdf') {
-      text = await parsePdf(filePath);
+      const pdfResult = await parsePdf(filePath);
+      text = pdfResult.text;
     } else if (fileExtension === '.docx' || fileExtension === '.doc') {
       text = await parseWord(filePath);
     } else if (fileExtension === '.txt') {

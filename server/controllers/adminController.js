@@ -2121,9 +2121,6 @@ const createExam = async (req, res) => {
     if (!title || !timeLimit) {
       return res.status(400).json({ message: 'Please provide title and time limit' });
     }
-    if (!level) {
-      return res.status(400).json({ message: 'Please select a learning level for this exam' });
-    }
 
     // Initialize file variables
     let examFilePath = null;
@@ -2216,7 +2213,7 @@ const createExam = async (req, res) => {
       status: 'draft',
       sections: sectionsArray,
       totalPoint: totalMarks,
-      level,
+      level: level || null,
       subLevel: subLevel || null,
       accessType: await resolveExamAccessType(req.user, accessType)
     });

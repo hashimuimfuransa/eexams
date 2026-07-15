@@ -272,14 +272,15 @@ function ExamLevelAccessFields({ levels, level, subLevel, accessType, onChange, 
   return (
     <Grid container spacing={isXs ? 1.5 : 2} sx={{ mb: isXs ? 1.5 : 2 }}>
       <Grid item xs={12} sm={hasSubLevels ? 6 : 12} md={hasSubLevels ? 4 : (isEnterprise ? 6 : 12)}>
-        <FormControl fullWidth size="small" required>
-          <InputLabel>Level *</InputLabel>
+        <FormControl fullWidth size="small">
+          <InputLabel>Level (optional)</InputLabel>
           <Select
             value={level || ''}
-            label="Level *"
+            label="Level (optional)"
             onChange={e => onChange({ level: e.target.value, subLevel: '' })}
             sx={{ borderRadius: 2 }}
           >
+            <MenuItem value=""><em>None</em></MenuItem>
             {levels.map(lvl => (
               <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>
             ))}
@@ -379,7 +380,7 @@ function ExamLevelAccessPanel({ exam, levels, saving, onSave, isEnterprise }) {
         <Button
           size="small"
           variant="contained"
-          disabled={saving || !level}
+          disabled={saving}
           onClick={() => onSave({ level, subLevel, accessType })}
           sx={{ mt: 1.5, borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}
         >
@@ -716,10 +717,6 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       setAiError('Please provide title and time limit');
       return;
     }
-    if (!examLevel) {
-      setAiError('Please select a learning level');
-      return;
-    }
     setAiLoading(true); setAiError('');
     console.log('=== UPLOAD DEBUG START ===');
     console.log('uploadFile:', uploadFile ? { name: uploadFile.name, size: uploadFile.size, type: uploadFile.type } : null);
@@ -768,10 +765,6 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const [savingDraft, setSavingDraft] = useState(false);
 
   const handlePublish = async () => {
-    if (!examLevel) {
-      alert('Please select a learning level before publishing.');
-      return;
-    }
     try {
       // Ensure all questions have proper grading fields for accurate AI grading
       const examToPublish = {
@@ -811,10 +804,6 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const handleSaveDraft = async () => {
     if (!generated?.title || !generated?.questions?.length) {
       alert('Please add a title and at least one question before saving.');
-      return;
-    }
-    if (!examLevel) {
-      alert('Please select a learning level before saving.');
       return;
     }
 
@@ -928,7 +917,6 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
   const handleManualPublish = async () => {
     if (!manualExam.title.trim()) { setManualError('Please enter an exam title.'); return; }
-    if (!manualExam.level) { setManualError('Please select a learning level for this exam.'); return; }
     const total = manualExam.sections.reduce((s, sec) => s + (sec.questions?.length || 0), 0);
     if (total === 0) { setManualError('Add at least one question before publishing.'); return; }
     setManualPublishing(true); setManualError('');
@@ -1600,7 +1588,7 @@ SECTION B: Short Answer (10 marks)
               />
 
               {aiError && <Box sx={{ mb: 2, p: isXs ? 1 : 1.5, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.07)', color: '#EF4444', fontSize: isXs ? 12 : 13 }}>{aiError}</Box>}
-              <Button variant="contained" startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <CloudUpload />} onClick={handleUpload} disabled={aiLoading || !uploadFile || !examLevel}
+              <Button variant="contained" startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <CloudUpload />} onClick={handleUpload} disabled={aiLoading || !uploadFile}
                 sx={{ borderRadius: 2.5, fontWeight: 700, px: isXs ? 2.5 : 3, py: isXs ? 1.25 : 1.5, textTransform: 'none', background: gradients.brand, boxShadow: 'none', fontFamily: "DM Sans,sans-serif", fontSize: isXs ? 13 : 14, width: isXs ? '100%' : 'auto' }}>
                 {aiLoading ? 'Processing…' : 'Process & Generate'}
               </Button>
@@ -4563,14 +4551,15 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         </Grid>
         <Grid item xs={12} sm={6}>
-          <FormControl fullWidth size="small" required>
-            <InputLabel>Level *</InputLabel>
+          <FormControl fullWidth size="small">
+            <InputLabel>Level (optional)</InputLabel>
             <Select
               value={exam.level || ''}
-              label="Level *"
+              label="Level (optional)"
               onChange={e => setExam(p => ({ ...p, level: e.target.value, subLevel: '' }))}
               sx={{ borderRadius: 2 }}
             >
+              <MenuItem value=""><em>None</em></MenuItem>
               {levels.map(lvl => (
                 <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>
               ))}

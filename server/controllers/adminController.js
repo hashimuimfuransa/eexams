@@ -5309,6 +5309,14 @@ const updateExam = async (req, res) => {
           updateData.dragDropData = q.dragDropData;
         }
 
+        // Update financial-spreadsheet question specific fields
+        if (q.spreadsheetTemplate !== undefined) {
+          updateData.spreadsheetTemplate = q.spreadsheetTemplate;
+        }
+        if (q.spreadsheetModelAnswer !== undefined) {
+          updateData.spreadsheetModelAnswer = q.spreadsheetModelAnswer;
+        }
+
         // Update options for multiple choice
         if (q.options !== undefined) {
           updateData.options = q.options;

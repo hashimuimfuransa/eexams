@@ -8,7 +8,7 @@ import {
   CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, useMediaQuery, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, LinearProgress,
-  IconButton, Tooltip, Avatar, Select, MenuItem, FormControl, InputLabel, FormHelperText,
+  IconButton, Tooltip, Avatar, Select, MenuItem, FormControl, InputLabel, FormHelperText, Badge,
   Tabs, Tab, Alert, Snackbar, Accordion, AccordionSummary, AccordionDetails,
   Divider, Checkbox, ListItemText, Radio, FormControlLabel, RadioGroup, Switch, FormLabel
 } from '@mui/material';
@@ -1929,6 +1929,7 @@ function ExamPreviewPanel({ exam }) {
   const isOrdering = q && q.type === 'ordering';
   const isDragDrop = q && q.type === 'drag-drop';
   const isImage = q && (q.type === 'image' || q.type === 'image-based');
+  const isFinancial = q && q.type === 'financial-spreadsheet';
   const hasSubQuestions = q && q.subQuestions && Array.isArray(q.subQuestions) && q.subQuestions.length > 0;
 
   return (
@@ -2214,6 +2215,16 @@ function ExamPreviewPanel({ exam }) {
                       </Grid>
                     </Grid>
                   </Box>
+                )}
+
+                {/* Financial Spreadsheet */}
+                {isFinancial && !hasSubQuestions && (
+                  <FinancialSpreadsheetQuestion
+                    question={q}
+                    mode="student"
+                    onAnswerChange={(json) => setAnswer(q._id, json)}
+                    height={420}
+                  />
                 )}
 
                 {/* Sub-Questions */}
@@ -5560,9 +5571,17 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                             <IconButton size="small" onClick={() => handleActivateExam(e._id)} sx={{ color: '#10B981' }}><CheckCircle sx={{ fontSize: 16 }} /></IconButton>
                           </Tooltip>
                         )}
-                        <Tooltip title={e.status === 'draft' ? 'Publish' : 'Edit'}>
-                          <IconButton size="small" onClick={() => setPublishExamId(e._id)} sx={{ color: tokens.accent }}>
-                            {e.status === 'draft' ? <Publish sx={{ fontSize: 16 }} /> : <Edit sx={{ fontSize: 16 }} />}
+                        <Tooltip title={e.status === 'draft' ? 'Edit & Publish' : 'Edit & Share'}>
+                          <IconButton size="small" onClick={() => setPublishExamId(e._id)} sx={{ color: tokens.primary }}>
+                            <Badge
+                              overlap="circular"
+                              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                              badgeContent={
+                                <Publish sx={{ fontSize: 10, color: 'white', bgcolor: tokens.accent, borderRadius: '50%', p: 0.2 }} />
+                              }
+                            >
+                              <Edit sx={{ fontSize: 16 }} />
+                            </Badge>
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Delete"><IconButton size="small" onClick={() => setDeleteId(e._id)} sx={{ color: '#EF4444' }}><Delete sx={{ fontSize: 16 }} /></IconButton></Tooltip>

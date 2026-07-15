@@ -391,6 +391,68 @@ function ExamLevelAccessPanel({ exam, levels, saving, onSave, isEnterprise }) {
   );
 }
 
+/* Title / description / time limit / passing score / calculator settings panel
+   with its own Save action — used inside PublishDialog's Edit Questions tab so
+   these basic exam details stay editable without a separate Edit dialog. */
+function ExamDetailsPanel({ exam, saving, onSave }) {
+  const [title, setTitle] = useState(exam.title || '');
+  const [description, setDescription] = useState(exam.description || '');
+  const [timeLimit, setTimeLimit] = useState(exam.timeLimit || 60);
+  const [passingScore, setPassingScore] = useState(exam.passingScore || 70);
+  const [calculatorEnabled, setCalculatorEnabled] = useState(exam.calculatorEnabled !== false);
+
+  useEffect(() => {
+    setTitle(exam.title || '');
+    setDescription(exam.description || '');
+    setTimeLimit(exam.timeLimit || 60);
+    setPassingScore(exam.passingScore || 70);
+    setCalculatorEnabled(exam.calculatorEnabled !== false);
+  }, [exam._id]);
+
+  const dirty = title !== (exam.title || '') ||
+    description !== (exam.description || '') ||
+    timeLimit !== (exam.timeLimit || 60) ||
+    passingScore !== (exam.passingScore || 70) ||
+    calculatorEnabled !== (exam.calculatorEnabled !== false);
+
+  return (
+    <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC', mb: 2.5 }}>
+      <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Exam Details</Typography>
+      <Grid container spacing={2} alignItems="center">
+        <Grid item xs={12} sm={6}>
+          <TextField fullWidth size="small" label="Title" value={title} onChange={e => setTitle(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <TextField fullWidth size="small" label="Description" value={description} onChange={e => setDescription(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <TextField fullWidth size="small" type="number" label="Time Limit (min)" value={timeLimit} onChange={e => setTimeLimit(+e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <TextField fullWidth size="small" type="number" label="Passing Score (%)" value={passingScore} onChange={e => setPassingScore(+e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <FormControlLabel
+            control={<Checkbox checked={calculatorEnabled} onChange={e => setCalculatorEnabled(e.target.checked)} />}
+            label="Allow calculator during exam"
+          />
+        </Grid>
+      </Grid>
+      {dirty && (
+        <Button
+          size="small"
+          variant="contained"
+          disabled={saving}
+          onClick={() => onSave({ title, description, timeLimit, passingScore, calculatorEnabled })}
+          sx={{ mt: 1.5, borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}
+        >
+          {saving ? 'Saving…' : 'Save Exam Details'}
+        </Button>
+      )}
+    </Paper>
+  );
+}
+
 /* ── HOME ── */
 function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
@@ -2346,6 +2408,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   const [addingToBank, setAddingToBank] = useState(false);
   const [levels, setLevels] = useState([]);
   const [savingLevelAccess, setSavingLevelAccess] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
 
   useEffect(() => {
     api.get(`/admin/exams/${examId}/preview`).then(r => {
@@ -2367,6 +2430,19 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
       setSnack(err.response?.data?.message || 'Failed to update level & access settings');
     } finally {
       setSavingLevelAccess(false);
+    }
+  };
+
+  const handleSaveExamDetails = async ({ title, description, timeLimit, passingScore, calculatorEnabled }) => {
+    setSavingDetails(true);
+    try {
+      const res = await api.put(`/admin/exams/${examId}`, { title, description, timeLimit, passingScore, calculatorEnabled });
+      setPreview(p => ({ ...p, exam: { ...p.exam, ...res.data } }));
+      setSnack('Exam details updated');
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to update exam details');
+    } finally {
+      setSavingDetails(false);
     }
   };
 
@@ -2914,6 +2990,13 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
         {/* TAB 1 — EDIT QUESTIONS */}
         {tab === 1 && (
           <Box sx={{ p: 3, maxHeight: '70vh', overflowY: 'auto' }}>
+            {exam && (
+              <ExamDetailsPanel
+                exam={exam}
+                saving={savingDetails}
+                onSave={handleSaveExamDetails}
+              />
+            )}
             {exam && (
               <ExamLevelAccessPanel
                 exam={exam}
@@ -5311,7 +5394,6 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
 function ExamsSection({ exams, setExams, setActiveSection, user }) {
   const { hasMarketplaceAccess, isEnterprise } = usePlan();
   const [publishExamId, setPublishExamId] = useState(null);
-  const [editExam, setEditExam] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState({});
@@ -5370,39 +5452,6 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
       setSnack('Exam activated successfully!');
     } catch {
       setSnack('Error activating exam.');
-    }
-  };
-
-  const handleEditClick = async (exam) => {
-    try {
-      const res = await api.get(`/admin/exams/${exam._id}`);
-      const data = res.data;
-      setEditExam({
-        ...data,
-        calculatorEnabled: data.calculatorEnabled !== false
-      });
-    } catch { }
-  };
-
-  const handleSaveEdit = async (updated) => {
-    try {
-      const payload = {
-        title: updated.title,
-        description: updated.description,
-        timeLimit: updated.timeLimit,
-        passingScore: updated.passingScore,
-        sections: updated.sections,
-        calculatorEnabled: updated.calculatorEnabled === true,
-        level: updated.level?._id || updated.level || null,
-        subLevel: updated.subLevel || null,
-        accessType: updated.accessType || 'subscription'
-      };
-      const res = await api.put(`/admin/exams/${updated._id}`, payload);
-      setExams(p => p.map(e => e._id === updated._id ? { ...e, ...res.data } : e));
-      setEditExam(null);
-      setSnack('Exam updated successfully');
-    } catch (err) {
-      setSnack(err.response?.data?.message || 'Failed to update exam');
     }
   };
 
@@ -5511,8 +5560,11 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
                             <IconButton size="small" onClick={() => handleActivateExam(e._id)} sx={{ color: '#10B981' }}><CheckCircle sx={{ fontSize: 16 }} /></IconButton>
                           </Tooltip>
                         )}
-                        <Tooltip title="Publish / Share"><IconButton size="small" onClick={() => setPublishExamId(e._id)} sx={{ color: tokens.accent }}><Publish sx={{ fontSize: 16 }} /></IconButton></Tooltip>
-                        <Tooltip title="Edit"><IconButton size="small" onClick={() => handleEditClick(e)} sx={{ color: tokens.primary }}><Edit sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+                        <Tooltip title={e.status === 'draft' ? 'Publish' : 'Edit'}>
+                          <IconButton size="small" onClick={() => setPublishExamId(e._id)} sx={{ color: tokens.accent }}>
+                            {e.status === 'draft' ? <Publish sx={{ fontSize: 16 }} /> : <Edit sx={{ fontSize: 16 }} />}
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Delete"><IconButton size="small" onClick={() => setDeleteId(e._id)} sx={{ color: '#EF4444' }}><Delete sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                       </Box>
                     </TableCell>
@@ -5520,135 +5572,6 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
             </TableBody>
           </Table></TableContainer>
       </Paper>
-
-      {/* Edit Dialog */}
-      {editExam && (
-        <Dialog open onClose={() => setEditExam(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-          <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif", pb: 1 }}>Edit Exam</DialogTitle>
-          <DialogContent sx={{ pt: 2, maxHeight: '70vh', overflowY: 'auto' }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-              {/* Basic Info */}
-              <Box>
-                <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Basic Information</Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  <TextField fullWidth label="Title" value={editExam.title} onChange={e => setEditExam(p => ({ ...p, title: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                  <TextField fullWidth label="Description" value={editExam.description || ''} onChange={e => setEditExam(p => ({ ...p, description: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                  <Box sx={{ display: 'flex', gap: 2 }}>
-                    <TextField fullWidth label="Time Limit (min)" type="number" value={editExam.timeLimit} onChange={e => setEditExam(p => ({ ...p, timeLimit: +e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                    <TextField fullWidth label="Passing Score (%)" type="number" value={editExam.passingScore} onChange={e => setEditExam(p => ({ ...p, passingScore: +e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                  </Box>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={editExam.calculatorEnabled === true}
-                        onChange={e => setEditExam(p => ({ ...p, calculatorEnabled: e.target.checked }))}
-                        color="primary"
-                      />
-                    }
-                    label="Enable Calculator for Students"
-                  />
-                </Box>
-              </Box>
-
-              {/* Level & Access */}
-              <Box>
-                <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Level & Access</Typography>
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  <FormControl fullWidth size="small" sx={{ minWidth: 180, flex: 1 }}>
-                    <InputLabel>Level</InputLabel>
-                    <Select
-                      value={editExam.level?._id || editExam.level || ''}
-                      label="Level"
-                      onChange={e => setEditExam(p => ({ ...p, level: e.target.value, subLevel: '' }))}
-                      sx={{ borderRadius: 2 }}
-                    >
-                      {levels.map(lvl => (
-                        <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  {(levels.find(l => l._id === (editExam.level?._id || editExam.level))?.subLevels || []).filter(s => s.isActive).length > 0 && (
-                    <FormControl fullWidth size="small" sx={{ minWidth: 180, flex: 1 }}>
-                      <InputLabel>Sub-Level</InputLabel>
-                      <Select
-                        value={editExam.subLevel || ''}
-                        label="Sub-Level"
-                        onChange={e => setEditExam(p => ({ ...p, subLevel: e.target.value }))}
-                        sx={{ borderRadius: 2 }}
-                      >
-                        <MenuItem value=""><em>None (entire level)</em></MenuItem>
-                        {(levels.find(l => l._id === (editExam.level?._id || editExam.level))?.subLevels || []).filter(s => s.isActive).map(sub => (
-                          <MenuItem key={sub._id} value={sub.name}>{sub.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                </Box>
-                {isEnterprise && (
-                  <FormControl sx={{ mt: 1.5 }}>
-                    <FormLabel sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Access Type</FormLabel>
-                    <RadioGroup row value={editExam.accessType || 'subscription'}
-                      onChange={e => setEditExam(p => ({ ...p, accessType: e.target.value }))}>
-                      <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
-                      <FormControlLabel value="subscription" control={<Radio size="small" />} label="Subscription Only" />
-                    </RadioGroup>
-                  </FormControl>
-                )}
-              </Box>
-
-              {/* Sections & Questions Summary */}
-              <Box>
-                <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Sections & Questions</Typography>
-                {editExam.sections && editExam.sections.length > 0 ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    {editExam.sections.map((sec, si) => (
-                      <Paper key={si} elevation={0} sx={{ p: 1.5, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                          <Box>
-                            <Typography fontWeight={700} sx={{ fontSize: 13, fontFamily: "DM Sans,sans-serif" }}>Section {sec.name}</Typography>
-                            <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>{sec.description}</Typography>
-                          </Box>
-                          <Chip label={`${sec.questions?.length || 0} Q`} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent, fontWeight: 700 }} />
-                        </Box>
-                        <Box sx={{ mt: 1 }}>
-                          <TextField
-                            fullWidth
-                            label="Question Count"
-                            type="number"
-                            size="small"
-                            value={sec.questionCount || sec.questions?.length || 0}
-                            onChange={e => {
-                              const updatedSections = [...editExam.sections];
-                              updatedSections[si] = { ...sec, questionCount: parseInt(e.target.value) || 0 };
-                              setEditExam(p => ({ ...p, sections: updatedSections }));
-                            }}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                          />
-                        </Box>
-                        {sec.questions && sec.questions.length > 0 && (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
-                            {sec.questions.slice(0, 5).map((q, qi) => (
-                              <Chip key={q._id || qi} label={`Q${qi + 1}`} size="small" sx={{ fontSize: 10, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }} />
-                            ))}
-                            {sec.questions.length > 5 && <Chip label={`+${sec.questions.length - 5}`} size="small" sx={{ fontSize: 10, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}` }} />}
-                          </Box>
-                        )}
-                      </Paper>
-                    ))}
-                  </Box>
-                ) : (
-                  <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontStyle: 'italic' }}>No sections or questions yet.</Typography>
-                )}
-                <Typography sx={{ fontSize: 11, color: tokens.textMuted, mt: 1.5, fontStyle: 'italic' }}>To edit questions and sections, use the exam preview or create a new exam.</Typography>
-              </Box>
-            </Box>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-            <Button onClick={() => setEditExam(null)} sx={{ borderRadius: 2, textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
-            <Button variant="contained" onClick={() => handleSaveEdit(editExam)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Save Changes</Button>
-          </DialogActions>
-        </Dialog>
-      )}
 
       {/* Delete Confirm Dialog */}
       <Dialog open={!!deleteId} onClose={() => setDeleteId(null)} PaperProps={{ sx: { borderRadius: 3 } }}>

@@ -17,7 +17,7 @@ import {
   CheckCircleOutline,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { getImageUrl } from '../../utils/getImageUrl';
+import { getImageUrl, getQuestionImages } from '../../utils/getImageUrl';
 
 const TOKEN = {
   radius: '6px',
@@ -114,36 +114,40 @@ const ImageAnswer = ({ question, answer, onAnswerChange, disabled }) => {
     }
   };
 
-  const questionImageUrl = question.imageUrl || question.image;
-  const hasContent = textValue.trim() || uploadedImage || questionImageUrl;
+  const questionImages = getQuestionImages(question);
+  const hasContent = textValue.trim() || uploadedImage || questionImages.length > 0;
 
   return (
     <Box sx={{ mt: 2 }}>
       <Shell elevation={0}>
-        {/* Question Image (if provided by exam creator) */}
-        {questionImageUrl && (
+        {/* Question Image(s) (if provided by exam creator) — stacked when there are several */}
+        {questionImages.length > 0 && (
           <Box sx={{ p: 2, borderBottom: `1px solid` }}>
             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-              Question Image:
+              {questionImages.length > 1 ? 'Question Images:' : 'Question Image:'}
             </Typography>
-            <img
-              src={getImageUrl(questionImageUrl)}
-              alt="Question"
-              style={{
-                width: '100%',
-                maxWidth: '500px',
-                maxHeight: '300px',
-                objectFit: 'contain',
-                borderRadius: TOKEN.radius,
-              }}
-            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {questionImages.map((src, i) => (
+                <img
+                  key={i}
+                  src={getImageUrl(src)}
+                  alt={`Question ${i + 1}`}
+                  style={{
+                    width: '100%',
+                    maxWidth: '500px',
+                    objectFit: 'contain',
+                    borderRadius: TOKEN.radius,
+                  }}
+                />
+              ))}
+            </Box>
           </Box>
         )}
 
         {/* Student Image Upload Section */}
         <Box sx={{ p: 2 }}>
           <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-            {questionImageUrl ? 'Upload your answer image (optional):' : 'Upload an image to answer this question:'}
+            {questionImages.length > 0 ? 'Upload your answer image (optional):' : 'Upload an image to answer this question:'}
           </Typography>
 
           <input

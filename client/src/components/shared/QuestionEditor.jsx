@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { getImageUrl } from '../../utils/getImageUrl';
+import { toImageEntries } from '../../utils/getImageUrl';
+import MultiImageUploader from './MultiImageUploader';
 import {
   Box, Typography, Chip, Button, Paper, Grid, TextField,
   IconButton, Tooltip, Select, MenuItem, FormControl, InputLabel,
@@ -378,78 +379,10 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
 
             {/* Image Upload - Available for all question types */}
             <Grid item xs={12}>
-              <Typography sx={{ fontSize: 11, fontWeight: 700, color: tokens.textSecondary, mb: 0.75, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Question Image (Optional)
-              </Typography>
-              {localQ.imageUrl || localQ.image ? (
-                <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
-                  <Box
-                    component="img"
-                    src={getImageUrl(localQ.imageUrl || localQ.image)}
-                    alt="Question image"
-                    sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
-                  />
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="error"
-                    onClick={() => { setLocalQ({ ...localQ, image: null, imageUrl: '' }); setEdited(true); }}
-                    sx={{
-                      position: 'absolute',
-                      top: 8,
-                      right: 8,
-                      borderRadius: 2,
-                      minWidth: 'auto',
-                      px: 1
-                    }}
-                  >
-                    <Delete fontSize="small" />
-                  </Button>
-                </Box>
-              ) : (
-                <Box
-                  sx={{
-                    border: `1px dashed ${tokens.surfaceBorder}`,
-                    borderRadius: 2,
-                    p: 3,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    '&:hover': {
-                      borderColor: tokens.primary,
-                      backgroundColor: 'rgba(12,189,115,0.02)'
-                    }
-                  }}
-                  component="label"
-                >
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setLocalQ({
-                            ...localQ,
-                            image: file,
-                            imageUrl: reader.result
-                          });
-                          setEdited(true);
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                    style={{ display: 'none' }}
-                  />
-                  <Add sx={{ fontSize: 32, color: tokens.textMuted, mb: 1 }} />
-                  <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>
-                    Click to upload image
-                  </Typography>
-                  <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
-                    PNG, JPG, GIF up to 10MB
-                  </Typography>
-                </Box>
-              )}
+              <MultiImageUploader
+                images={localQ.images || toImageEntries(localQ)}
+                onChange={(images) => { setLocalQ({ ...localQ, images, image: null, imageUrl: '' }); setEdited(true); }}
+              />
             </Grid>
 
             {/* Settings Row - Responsive: 2 cols on mobile, 4 cols on desktop */}
@@ -806,8 +739,8 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                     💹 Financial Spreadsheet Setup
                   </Typography>
                   <Typography sx={{ fontSize: isMobile ? 11 : 12, color: '#0369A1', mb: 1.5, fontStyle: 'italic' }}>
-                    Use the <strong>Student Template</strong> tab to design what students fill in.
-                    Use the <strong>Model Answer</strong> tab for correct answers (hidden from students).
+                    Fill in the <strong>Model Answer</strong> below. Students automatically get a blank
+                    version of the same grid to fill in themselves — no separate template needed.
                   </Typography>
                   <FinancialSpreadsheetQuestion
                     key={`gen-${localQ._id || localQ.text?.slice(0,20) || index}`}

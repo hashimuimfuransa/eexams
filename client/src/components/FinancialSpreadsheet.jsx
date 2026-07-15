@@ -26,7 +26,7 @@ import {
 } from '@mui/material';
 import {
   Lock, LockOpen, TableChart,
-  ContentCopy, RestartAlt, CheckCircle, Info,
+  RestartAlt, CheckCircle, Info,
   AddCircleOutline, RemoveCircleOutline,
   FormatBold, FormatItalic,
   FormatAlignLeft, FormatAlignCenter, FormatAlignRight,
@@ -130,6 +130,25 @@ function hasAnyContent(tables) {
 
 function serialise(tables) {
   return JSON.stringify({ tables: tables.map(({ _key, ...t }) => t) });
+}
+
+// Derives the blank grid students see from the teacher's model answer: same tables, titles and
+// headers (so the grading position-by-position comparison in spreadsheetGrading.js still lines
+// up), but every column after the first (the row-label column, e.g. "Account / Item") is cleared.
+// This removes the need for teachers to hand-author a second, separately-maintained template —
+// a source of drift where a template that didn't structurally match the model broke grading.
+function blankTemplateFromModelJSON(modelJson) {
+  try {
+    const parsed = JSON.parse(modelJson);
+    const tables = (parsed.tables || []).map(t => ({
+      title: t.title || '',
+      headers: [...(t.headers || [])],
+      data: (t.data || []).map(row => row.map((cell, ci) => (ci === 0 ? cell : ''))),
+    }));
+    return JSON.stringify({ tables });
+  } catch {
+    return modelJson;
+  }
 }
 
 // ── CSS injection for custom cell classes ─────────────────────────────────────
@@ -686,12 +705,23 @@ export default function FinancialSpreadsheet({
   })();
 
   const template = useTableSet(templateTablesInit, (json) => onTemplateChange?.(json));
-  const model    = useTableSet(modelTablesInit, (json) => onModelChange?.(json));
+  const model    = useTableSet(modelTablesInit, (json) => {
+    onModelChange?.(json);
+    // Keep the student-facing blank grid in lockstep with the model answer automatically —
+    // teachers only maintain one grid now (see blankTemplateFromModelJSON above).
+    onTemplateChange?.(blankTemplateFromModelJSON(json));
+  });
   const answer   = useTableSet(answerTablesInit, (json) => onAnswerChange?.(json));
 
-  const handleCopyToModel = () => {
-    model.replaceAll(cloneTables(template.tables));
-  };
+  // On first mount of the teacher-setup editor, push the derived template once so a legacy
+  // question (with a stale, separately-authored template) gets reconciled to the model answer
+  // as soon as a teacher opens it, even before they make any edit.
+  useEffect(() => {
+    if (isTeacherSetup && modelTablesInit.length) {
+      onTemplateChange?.(blankTemplateFromModelJSON(serialise(modelTablesInit)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleReset = () => {
     answer.replaceAll(cloneTables(template.tables));
@@ -705,89 +735,42 @@ export default function FinancialSpreadsheet({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, bgcolor: '#ECFDF5', borderBottom: '1px solid #A7F3D0' }}>
           <TableChart sx={{ fontSize: 18, color: '#059669' }} />
           <Typography sx={{ fontWeight: 700, fontSize: 13, color: '#065F46', flexGrow: 1 }}>
-            Financial Spreadsheet Editor
+            Financial Spreadsheet — Model Answer
           </Typography>
-          <Chip icon={<Lock sx={{ fontSize: 12 }} />} label="Model Answer hidden from students"
+          <Chip icon={<Lock sx={{ fontSize: 12 }} />} label="Hidden from students"
             size="small" sx={{ bgcolor: '#D1FAE5', color: '#065F46', fontSize: 10, fontWeight: 600 }} />
         </Box>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}
-          sx={{ bgcolor: '#F9FAFB', borderBottom: '1px solid #E5E7EB', minHeight: 36,
-            '& .MuiTab-root': { minHeight: 36, fontSize: 12, fontWeight: 600, textTransform: 'none', py: 0 } }}>
-          <Tab label="📋 Student Template" />
-          <Tab label="🔒 Model Answer (hidden from students)" />
-        </Tabs>
+        <Alert severity="info" icon={<Info sx={{ fontSize: 15 }} />}
+          sx={{ mx: 1, mt: 1, py: 0.5, fontSize: 11, '& .MuiAlert-message': { fontSize: 11 } }}>
+          Fill in the complete, correct financial statement(s) below — row labels and final values.
+          Students will see a blank version of this grid (row labels visible, values cleared) and must
+          work out the figures themselves from the transaction image(s) attached to this question.
+          If the question covers more than one statement (e.g. Income Statement + Balance Sheet),
+          use "Add another table" for each one.
+        </Alert>
 
-        {activeTab === 0 && (
-          <Box>
-            <Alert severity="info" icon={<Info sx={{ fontSize: 15 }} />}
-              sx={{ mx: 1, mt: 1, py: 0.5, fontSize: 11, '& .MuiAlert-message': { fontSize: 11 } }}>
-              Design what the student will see and fill in. Use the toolbar to add/remove rows and columns.
-              Rename columns by editing the blue fields above the grid. Leave answer cells blank.
-              If this question asks for more than one financial statement (e.g. both an Income
-              Statement and a Balance Sheet), use "Add another table" to create one table per statement.
-            </Alert>
-            <Box sx={{ p: 1 }}>
-              {template.tables.map((t, i) => (
-                <StatementTableEditor
-                  key={t._key}
-                  table={t}
-                  index={i}
-                  count={template.tables.length}
-                  onTableChange={template.updateTable}
-                  onTitleChange={template.updateTitle}
-                  onRemove={template.removeTable}
-                  canRemove={template.tables.length > 1}
-                  height={height}
-                  accentColor="#059669"
-                />
-              ))}
-              <Button size="small" variant="outlined" startIcon={<AddCircleOutline sx={{ fontSize: 14 }} />}
-                onClick={template.addTable}
-                sx={{ textTransform: 'none', fontSize: 11, borderRadius: 1.5, borderColor: '#059669', color: '#059669' }}>
-                Add another statement table
-              </Button>
-            </Box>
-          </Box>
-        )}
-
-        {activeTab === 1 && (
-          <Box>
-            <Alert severity="success" icon={<Lock sx={{ fontSize: 15 }} />}
-              sx={{ mx: 1, mt: 1, py: 0.5, fontSize: 11, '& .MuiAlert-message': { fontSize: 11 } }}>
-              Fill in the correct answers. This is used for grading only — students never see this.
-            </Alert>
-            <Box sx={{ px: 1, pt: 0.5 }}>
-              <Button size="small" variant="outlined" startIcon={<ContentCopy sx={{ fontSize: 13 }} />}
-                onClick={handleCopyToModel}
-                sx={{ textTransform: 'none', fontSize: 11, borderRadius: 1.5, borderColor: '#059669', color: '#059669' }}>
-                Copy layout from Student Template
-              </Button>
-            </Box>
-            <Box sx={{ p: 1 }}>
-              {model.tables.map((t, i) => (
-                <StatementTableEditor
-                  key={t._key}
-                  table={t}
-                  index={i}
-                  count={model.tables.length}
-                  onTableChange={model.updateTable}
-                  onTitleChange={model.updateTitle}
-                  onRemove={model.removeTable}
-                  canRemove={model.tables.length > 1}
-                  height={height}
-                  accentColor="#059669"
-                />
-              ))}
-              <Button size="small" variant="outlined" startIcon={<AddCircleOutline sx={{ fontSize: 14 }} />}
-                onClick={model.addTable}
-                sx={{ textTransform: 'none', fontSize: 11, borderRadius: 1.5, borderColor: '#059669', color: '#059669' }}>
-                Add another statement table
-              </Button>
-            </Box>
-          </Box>
-        )}
+        <Box sx={{ p: 1 }}>
+          {model.tables.map((t, i) => (
+            <StatementTableEditor
+              key={t._key}
+              table={t}
+              index={i}
+              count={model.tables.length}
+              onTableChange={model.updateTable}
+              onTitleChange={model.updateTitle}
+              onRemove={model.removeTable}
+              canRemove={model.tables.length > 1}
+              height={height}
+              accentColor="#059669"
+            />
+          ))}
+          <Button size="small" variant="outlined" startIcon={<AddCircleOutline sx={{ fontSize: 14 }} />}
+            onClick={model.addTable}
+            sx={{ textTransform: 'none', fontSize: 11, borderRadius: 1.5, borderColor: '#059669', color: '#059669' }}>
+            Add another statement table
+          </Button>
+        </Box>
       </Box>
     );
   }

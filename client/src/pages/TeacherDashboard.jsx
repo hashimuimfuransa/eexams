@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
-import { getImageUrl } from '../utils/getImageUrl';
+import { getImageUrl, getQuestionImages, toImageEntries } from '../utils/getImageUrl';
+import MultiImageUploader from '../components/shared/MultiImageUploader';
 import { useNavigate } from 'react-router-dom';
 import useUpload from '../hooks/useUpload';
 import UploadProgress from '../components/UploadProgress';
@@ -828,13 +829,29 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
   const handlePublish = async () => {
     try {
-      // Ensure all questions have proper grading fields for accurate AI grading
-      const examToPublish = {
-        ...generated,
-        level: examLevel,
-        subLevel: examSubLevel || undefined,
-        accessType: examAccessType,
-        questions: (generated.questions || []).map(q => ({
+      // Ensure all questions have proper grading fields for accurate AI grading,
+      // and upload any images attached during review (File objects can't be JSON-posted directly)
+      const questionsToPublish = await Promise.all((generated.questions || []).map(async (q) => {
+        const entries = (q.images && q.images.length) ? q.images : toImageEntries(q);
+        const finalImageUrls = (await Promise.all(entries.map(async (img) => {
+          if (img.file instanceof File) {
+            const formData = new FormData();
+            formData.append('image', img.file);
+            try {
+              const uploadRes = await api.post('/admin/upload-image', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 30000
+              });
+              return uploadRes.data.url;
+            } catch (uploadError) {
+              console.error('Failed to upload image for question:', uploadError);
+              return null;
+            }
+          }
+          return img.url && !img.url.startsWith('data:') ? img.url : null;
+        }))).filter(Boolean);
+
+        return {
           text: q.text,
           type: q.type || 'multiple-choice',
           marks: q.marks || q.points || 1,
@@ -844,16 +861,28 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           // Comprehensive grading fields
           explanation: q.explanation || q.answerKey || '',
           answerKey: q.answerKey || q.explanation || '',
-          gradingCriteria: Array.isArray(q.gradingCriteria) ? q.gradingCriteria : 
+          gradingCriteria: Array.isArray(q.gradingCriteria) ? q.gradingCriteria :
                           Array.isArray(q.keyPoints) ? q.keyPoints : [],
-          keyPoints: Array.isArray(q.keyPoints) ? q.keyPoints : 
+          keyPoints: Array.isArray(q.keyPoints) ? q.keyPoints :
                      Array.isArray(q.gradingCriteria) ? q.gradingCriteria : [],
           acceptableAnswers: q.acceptableAnswers || [],
           // Include any additional fields from the AI
-          ...q
-        }))
+          ...q,
+          image: undefined,
+          images: undefined,
+          imageUrl: finalImageUrls[0] || '',
+          imageUrls: finalImageUrls
+        };
+      }));
+
+      const examToPublish = {
+        ...generated,
+        level: examLevel,
+        subLevel: examSubLevel || undefined,
+        accessType: examAccessType,
+        questions: questionsToPublish
       };
-      
+
       const res = await api.post('/admin/exams', examToPublish);
       setPublishExamId(res.data._id);
       setGenerated(null);
@@ -873,31 +902,31 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     try {
       // Upload images for questions that have them
       const questionsWithImages = await Promise.all(generated.questions.map(async (q) => {
-        let finalImageUrl = q.imageUrl || '';
-
-        // If a new File was selected (not yet uploaded), upload it to Cloudinary first
-        if (q.image instanceof File) {
-          const formData = new FormData();
-          formData.append('image', q.image);
-          try {
-            const uploadRes = await api.post('/admin/upload-image', formData, {
-              headers: { 'Content-Type': 'multipart/form-data' },
-              timeout: 30000
-            });
-            finalImageUrl = uploadRes.data.url;
-          } catch (uploadError) {
-            console.error('Failed to upload image for question:', uploadError);
-            // Continue without image if upload fails
+        const entries = (q.images && q.images.length) ? q.images : toImageEntries(q);
+        const finalImageUrls = (await Promise.all(entries.map(async (img) => {
+          if (img.file instanceof File) {
+            const formData = new FormData();
+            formData.append('image', img.file);
+            try {
+              const uploadRes = await api.post('/admin/upload-image', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 30000
+              });
+              return uploadRes.data.url;
+            } catch (uploadError) {
+              console.error('Failed to upload image for question:', uploadError);
+              return null; // Continue without this image if upload fails
+            }
           }
-        } else if (finalImageUrl.startsWith('data:')) {
-          // base64 preview without a File — shouldn't be stored; clear it
-          finalImageUrl = '';
-        }
+          return img.url && !img.url.startsWith('data:') ? img.url : null;
+        }))).filter(Boolean);
 
         return {
           ...q,
-          imageUrl: finalImageUrl,
-          image: undefined // Remove the File object
+          imageUrl: finalImageUrls[0] || '',
+          imageUrls: finalImageUrls,
+          image: undefined, // Remove the File object
+          images: undefined
         };
       }));
 
@@ -937,7 +966,10 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           wordBank: q.wordBank,
           subQuestions: q.subQuestions || [],
           subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' },
-          imageUrl: q.imageUrl || ''
+          imageUrl: q.imageUrl || '',
+          imageUrls: q.imageUrls || [],
+          spreadsheetTemplate: q.spreadsheetTemplate,
+          spreadsheetModelAnswer: q.spreadsheetModelAnswer
         }))
       };
 
@@ -983,7 +1015,33 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     if (total === 0) { setManualError('Add at least one question before publishing.'); return; }
     setManualPublishing(true); setManualError('');
     try {
-      const res = await api.post('/admin/exams', manualExam);
+      // Upload any newly-attached images (File objects can't be JSON-posted directly)
+      const sectionsWithImages = await Promise.all(manualExam.sections.map(async (sec) => ({
+        ...sec,
+        questions: await Promise.all((sec.questions || []).map(async (q) => {
+          const entries = (q.images && q.images.length) ? q.images : toImageEntries(q);
+          const finalImageUrls = (await Promise.all(entries.map(async (img) => {
+            if (img.file instanceof File) {
+              const formData = new FormData();
+              formData.append('image', img.file);
+              try {
+                const uploadRes = await api.post('/admin/upload-image', formData, {
+                  headers: { 'Content-Type': 'multipart/form-data' },
+                  timeout: 30000
+                });
+                return uploadRes.data.url;
+              } catch (uploadError) {
+                console.error('Failed to upload image for question:', uploadError);
+                return null;
+              }
+            }
+            return img.url && !img.url.startsWith('data:') ? img.url : null;
+          }))).filter(Boolean);
+          return { ...q, image: undefined, images: undefined, imageUrl: finalImageUrls[0] || '', imageUrls: finalImageUrls };
+        }))
+      })));
+
+      const res = await api.post('/admin/exams', { ...manualExam, sections: sectionsWithImages });
       setPublishExamId(res.data._id);
       setManualExam({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, level: '', subLevel: '', accessType: 'subscription', sections: [{ name: 'A', description: 'Section A', questions: [] }] });
       setManualSection(0);
@@ -1002,31 +1060,31 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       // Upload images for questions that have them
       const allQuestions = manualExam.sections.flatMap(sec => sec.questions || []);
       const questionsWithImages = await Promise.all(allQuestions.map(async (q) => {
-        let finalImageUrl = q.imageUrl || '';
-
-        // If a new File was selected (not yet uploaded), upload it to Cloudinary first
-        if (q.image instanceof File) {
-          const formData = new FormData();
-          formData.append('image', q.image);
-          try {
-            const uploadRes = await api.post('/admin/upload-image', formData, {
-              headers: { 'Content-Type': 'multipart/form-data' },
-              timeout: 30000
-            });
-            finalImageUrl = uploadRes.data.url;
-          } catch (uploadError) {
-            console.error('Failed to upload image for question:', uploadError);
-            // Continue without image if upload fails
+        const entries = (q.images && q.images.length) ? q.images : toImageEntries(q);
+        const finalImageUrls = (await Promise.all(entries.map(async (img) => {
+          if (img.file instanceof File) {
+            const formData = new FormData();
+            formData.append('image', img.file);
+            try {
+              const uploadRes = await api.post('/admin/upload-image', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 30000
+              });
+              return uploadRes.data.url;
+            } catch (uploadError) {
+              console.error('Failed to upload image for question:', uploadError);
+              return null; // Continue without this image if upload fails
+            }
           }
-        } else if (finalImageUrl.startsWith('data:')) {
-          // base64 preview without a File — shouldn't be stored; clear it
-          finalImageUrl = '';
-        }
+          return img.url && !img.url.startsWith('data:') ? img.url : null;
+        }))).filter(Boolean);
 
         return {
           ...q,
-          imageUrl: finalImageUrl,
-          image: undefined // Remove the File object
+          imageUrl: finalImageUrls[0] || '',
+          imageUrls: finalImageUrls,
+          image: undefined, // Remove the File object
+          images: undefined
         };
       }));
 
@@ -1057,7 +1115,10 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           wordBank: q.wordBank,
           subQuestions: q.subQuestions || [],
           subQuestionConfig: q.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' },
-          imageUrl: q.imageUrl || ''
+          imageUrl: q.imageUrl || '',
+          imageUrls: q.imageUrls || [],
+          spreadsheetTemplate: q.spreadsheetTemplate,
+          spreadsheetModelAnswer: q.spreadsheetModelAnswer
         }))
       };
 
@@ -1931,6 +1992,7 @@ function ExamPreviewPanel({ exam }) {
   const isImage = q && (q.type === 'image' || q.type === 'image-based');
   const isFinancial = q && q.type === 'financial-spreadsheet';
   const hasSubQuestions = q && q.subQuestions && Array.isArray(q.subQuestions) && q.subQuestions.length > 0;
+  const qImages = q ? getQuestionImages(q) : [];
 
   return (
     <Box sx={{ bgcolor: '#F1F5F9', minHeight: 480 }}>
@@ -2024,17 +2086,22 @@ function ExamPreviewPanel({ exam }) {
 
                 <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
                   {q.text && (
-                    <Typography sx={{ fontSize: 15, fontWeight: 600, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6, mb: (q.imageUrl || q.image) ? 2 : 0 }}>{q.text}</Typography>
+                    <Typography sx={{ fontSize: 15, fontWeight: 600, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.6, mb: qImages.length ? 2 : 0 }}>{q.text}</Typography>
                   )}
-                  {(q.imageUrl || q.image) && (
-                    <Box
-                      component="img"
-                      src={getImageUrl(q.imageUrl || q.image)}
-                      alt="Question image"
-                      sx={{ display: 'block', maxWidth: '100%', maxHeight: isImage ? 480 : 320, borderRadius: 2, objectFit: 'contain', mx: isImage ? 'auto' : 0 }}
-                    />
+                  {qImages.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      {qImages.map((src, i) => (
+                        <Box
+                          key={i}
+                          component="img"
+                          src={getImageUrl(src)}
+                          alt={`Question image ${i + 1}`}
+                          sx={{ display: 'block', width: isImage ? 'auto' : '100%', maxWidth: '100%', maxHeight: isImage ? 480 : 400, borderRadius: 2, objectFit: 'contain', mx: isImage ? 'auto' : 0 }}
+                        />
+                      ))}
+                    </Box>
                   )}
-                  {isImage && !(q.imageUrl || q.image) && (
+                  {isImage && qImages.length === 0 && (
                     <Box sx={{ p: 4, textAlign: 'center', border: `2px dashed ${tokens.surfaceBorder}`, borderRadius: 2, bgcolor: '#F8FAFC' }}>
                       <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>No image attached to this question.</Typography>
                     </Box>
@@ -2217,8 +2284,10 @@ function ExamPreviewPanel({ exam }) {
                   </Box>
                 )}
 
-                {/* Financial Spreadsheet */}
-                {isFinancial && !hasSubQuestions && (
+                {/* Financial Spreadsheet — one grid answers the whole question even when it's
+                    broken into labelled sub-parts (a/b/c), so this renders regardless of
+                    hasSubQuestions; the sub-question list below still shows the part breakdown. */}
+                {isFinancial && (
                   <FinancialSpreadsheetQuestion
                     question={q}
                     mode="student"
@@ -2397,9 +2466,10 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
     matchingPairs: { leftColumn: ['', ''], rightColumn: ['', ''] },
     itemsToOrder: { items: ['', '', ''] },
     image: null,
-    imageUrl: ''
+    imageUrl: '',
+    images: []
   });
-  
+
   const [studentSelectionMode, setStudentSelectionMode] = useState('select'); // 'manual' or 'select'
   const [existingStudents, setExistingStudents] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
@@ -2657,7 +2727,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   };
 
   const handleEditQuestion = (question, sectionIndex, questionIndex) => {
-    setEditingQuestion({ ...question });
+    setEditingQuestion({ ...question, images: toImageEntries(question) });
     setEditingSectionIndex(sectionIndex);
     setEditingQuestionIndex(questionIndex);
   };
@@ -2665,28 +2735,26 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   const handleSaveQuestionEdit = async () => {
     if (!editingQuestion || !exam) return;
     try {
-      let finalImageUrl = editingQuestion.imageUrl || '';
-
-      // If a new File was selected (not yet uploaded), upload it to Cloudinary first
-      if (editingQuestion.image instanceof File) {
-        const formData = new FormData();
-        formData.append('image', editingQuestion.image);
-        const uploadRes = await api.post('/admin/upload-image', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          timeout: 30000
-        });
-        finalImageUrl = uploadRes.data.url;
-      } else if (finalImageUrl.startsWith('data:')) {
-        // base64 preview without a File — shouldn't be stored; clear it
-        finalImageUrl = '';
-      }
+      // Upload any newly-attached images (File objects) to Cloudinary; keep already-hosted URLs as-is
+      const finalImageUrls = await Promise.all((editingQuestion.images || []).map(async (img) => {
+        if (img.file instanceof File) {
+          const formData = new FormData();
+          formData.append('image', img.file);
+          const uploadRes = await api.post('/admin/upload-image', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 30000
+          });
+          return uploadRes.data.url;
+        }
+        return img.url;
+      }));
 
       // Update the question via the exam update endpoint using questions array
       const cleanedWordBank = editingQuestion.wordBank
         ? editingQuestion.wordBank.map(w => w.trim()).filter(Boolean)
         : editingQuestion.wordBank;
       await api.put(`/admin/exams/${exam._id}`, {
-        questions: [{ ...editingQuestion, wordBank: cleanedWordBank, image: undefined, imageUrl: finalImageUrl, _id: editingQuestion._id }]
+        questions: [{ ...editingQuestion, wordBank: cleanedWordBank, images: undefined, image: undefined, imageUrl: finalImageUrls[0] || '', imageUrls: finalImageUrls, _id: editingQuestion._id }]
       }, { timeout: 30000 });
 
       // Refresh the preview
@@ -2750,7 +2818,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
       matchingPairs: { leftColumn: ['', ''], rightColumn: ['', ''] },
       itemsToOrder: { items: ['', '', ''] },
       image: null,
-      imageUrl: ''
+      imageUrl: '',
+      images: []
     });
     setAddQuestionDialogOpen(true);
   };
@@ -2759,31 +2828,6 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   const handleCloseAddQuestion = () => {
     setAddQuestionDialogOpen(false);
     setAddingSectionIndex(null);
-  };
-
-  // Handle image upload
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewQuestion({
-          ...newQuestion,
-          image: file,
-          imageUrl: reader.result
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Handle image removal
-  const handleRemoveImage = () => {
-    setNewQuestion({
-      ...newQuestion,
-      image: null,
-      imageUrl: ''
-    });
   };
 
   // Handle question type change for new question
@@ -2880,7 +2924,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
 
   // Add question to section
   const handleAddQuestion = async () => {
-    if (!newQuestion.text.trim() && !newQuestion.image) {
+    if (!newQuestion.text.trim() && !(newQuestion.images || []).length) {
       setSnack('Question text or image is required');
       return;
     }
@@ -2895,22 +2939,40 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
     }
 
     try {
+      // Upload any newly-attached images (File objects) to Cloudinary; keep already-hosted URLs as-is
+      const finalImageUrls = await Promise.all((newQuestion.images || []).map(async (img) => {
+        if (img.file instanceof File) {
+          const formData = new FormData();
+          formData.append('image', img.file);
+          const uploadRes = await api.post('/admin/upload-image', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 30000
+          });
+          return uploadRes.data.url;
+        }
+        return img.url;
+      }));
+
       const updatedSections = [...exam.sections];
-      
+
       // Prepare question data - don't send empty options for non-option-based question types
       const questionToAdd = {
         ...newQuestion,
         wordBank: newQuestion.wordBank ? newQuestion.wordBank.map(w => w.trim()).filter(Boolean) : newQuestion.wordBank,
         id: Date.now().toString(),
-        section: exam.sections[addingSectionIndex].name
+        section: exam.sections[addingSectionIndex].name,
+        images: undefined,
+        image: undefined,
+        imageUrl: finalImageUrls[0] || '',
+        imageUrls: finalImageUrls
       };
 
       // Remove options array for question types that don't use it
-      if (newQuestion.type === 'image' || newQuestion.type === 'open-ended' || 
+      if (newQuestion.type === 'image' || newQuestion.type === 'open-ended' ||
           newQuestion.type === 'short-answer' || newQuestion.type === 'fill-blank') {
         delete questionToAdd.options;
       }
-      
+
       updatedSections[addingSectionIndex].questions = [
         ...(updatedSections[addingSectionIndex].questions || []),
         questionToAdd
@@ -3051,13 +3113,21 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                                 )}
                               </Box>
                               <Typography sx={{ fontSize: 13, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.5 }}>{q.text}</Typography>
-                              {(q.imageUrl || q.image) && (
-                                <Box
-                                  component="img"
-                                  src={getImageUrl(q.imageUrl || q.image)}
-                                  alt="Question image"
-                                  sx={{ maxWidth: 200, maxHeight: 150, borderRadius: 1, mt: 1, objectFit: 'contain' }}
-                                />
+                              {getQuestionImages(q).length > 0 && (
+                                <Box sx={{ display: 'flex', gap: 0.5, mt: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                                  {getQuestionImages(q).slice(0, 3).map((src, i) => (
+                                    <Box
+                                      key={i}
+                                      component="img"
+                                      src={getImageUrl(src)}
+                                      alt={`Question image ${i + 1}`}
+                                      sx={{ maxWidth: 200, maxHeight: 150, borderRadius: 1, objectFit: 'contain' }}
+                                    />
+                                  ))}
+                                  {getQuestionImages(q).length > 3 && (
+                                    <Chip label={`+${getQuestionImages(q).length - 3} more`} size="small" sx={{ fontSize: 10, bgcolor: '#F1F5F9', color: tokens.textSecondary }} />
+                                  )}
+                                </Box>
                               )}
                               {q.type === 'multiple-choice' && q.options && q.options.length > 0 && (
                                 <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
@@ -3543,77 +3613,10 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
           />
           
           {/* Image Upload for Edit Question */}
-          <Box>
-            <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Question Image (Optional)</Typography>
-            {editingQuestion?.imageUrl || editingQuestion?.image ? (
-              <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
-                <Box
-                  component="img"
-                  src={getImageUrl(editingQuestion?.imageUrl || editingQuestion?.image)}
-                  alt="Question image"
-                  sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
-                />
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="error"
-                  onClick={() => setEditingQuestion({ ...editingQuestion, image: null, imageUrl: '' })}
-                  sx={{
-                    position: 'absolute',
-                    top: 8,
-                    right: 8,
-                    borderRadius: 2,
-                    minWidth: 'auto',
-                    px: 1
-                  }}
-                >
-                  <Delete fontSize="small" />
-                </Button>
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  border: `1px dashed ${tokens.surfaceBorder}`,
-                  borderRadius: 2,
-                  p: 3,
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    borderColor: tokens.primary,
-                    backgroundColor: 'rgba(12,189,115,0.02)'
-                  }
-                }}
-                component="label"
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setEditingQuestion({
-                          ...editingQuestion,
-                          image: file,
-                          imageUrl: reader.result
-                        });
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                  style={{ display: 'none' }}
-                />
-                <Add sx={{ fontSize: 32, color: tokens.textMuted, mb: 1 }} />
-                <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>
-                  Click to upload image
-                </Typography>
-                <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
-                  PNG, JPG, GIF up to 10MB
-                </Typography>
-              </Box>
-            )}
-          </Box>
+          <MultiImageUploader
+            images={editingQuestion?.images || []}
+            onChange={(images) => setEditingQuestion({ ...editingQuestion, images, image: null, imageUrl: '' })}
+          />
 
           <Box sx={{ display: 'flex', gap: 2 }}>
             <FormControl fullWidth size="small">
@@ -3951,8 +3954,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 💹 Spreadsheet Setup
               </Typography>
               <Typography sx={{ fontSize: 11, color: '#0369A1', mb: 1.5 }}>
-                Use the <strong>Student Template</strong> tab to design what students fill in.
-                Use the <strong>Model Answer</strong> tab for correct answers (hidden from students).
+                Fill in the <strong>Model Answer</strong> below. Students automatically get a blank
+                version of the same grid to fill in themselves — no separate template needed.
               </Typography>
               <FinancialSpreadsheetQuestion
                 key={`edit-${editingQuestion?._id || editingQuestion?.text?.slice(0,20)}`}
@@ -4265,64 +4268,10 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
           />
           
           {/* Image Upload */}
-          <Box>
-            <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Question Image (Optional)</Typography>
-            {newQuestion.imageUrl ? (
-              <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
-                <Box
-                  component="img"
-                  src={newQuestion.imageUrl}
-                  alt="Question image"
-                  sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
-                />
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="error"
-                  onClick={handleRemoveImage}
-                  sx={{
-                    position: 'absolute',
-                    top: 8,
-                    right: 8,
-                    borderRadius: 2,
-                    minWidth: 'auto',
-                    px: 1
-                  }}
-                >
-                  <Delete fontSize="small" />
-                </Button>
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  border: `1px dashed ${tokens.surfaceBorder}`,
-                  borderRadius: 2,
-                  p: 3,
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    borderColor: tokens.primary,
-                    backgroundColor: 'rgba(12,189,115,0.02)'
-                  }
-                }}
-                component="label"
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  style={{ display: 'none' }}
-                />
-                <Add sx={{ fontSize: 32, color: tokens.textMuted, mb: 1 }} />
-                <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>
-                  Click to upload image
-                </Typography>
-                <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
-                  PNG, JPG, GIF up to 10MB
-                </Typography>
-              </Box>
-            )}
-          </Box>
+          <MultiImageUploader
+            images={newQuestion.images || []}
+            onChange={(images) => setNewQuestion({ ...newQuestion, images, image: null, imageUrl: '' })}
+          />
 
           <Box sx={{ display: 'flex', gap: 2 }}>
             <FormControl fullWidth size="small">
@@ -4545,8 +4494,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 💹 Spreadsheet Setup
               </Typography>
               <Typography sx={{ fontSize: 11, color: '#0369A1', mb: 1.5 }}>
-                Use the <strong>Student Template</strong> tab to design what students fill in.
-                Use the <strong>Model Answer</strong> tab for correct answers (hidden from students).
+                Fill in the <strong>Model Answer</strong> below. Students automatically get a blank
+                version of the same grid to fill in themselves — no separate template needed.
               </Typography>
               <FinancialSpreadsheetQuestion
                 key={`new-${newQuestion.type}`}
@@ -4852,77 +4801,10 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
 
         {/* Image Upload */}
         <Box sx={{ mb: 1.5 }}>
-          <Typography sx={{ fontSize: 11, fontWeight: 700, color: tokens.textSecondary, mb: 0.75, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Question Image (Optional)
-          </Typography>
-          {question.imageUrl || question.image ? (
-            <Box sx={{ position: 'relative', width: '100%', maxWidth: 400 }}>
-              <Box
-                component="img"
-                src={question.imageUrl || (question.image instanceof File ? URL.createObjectURL(question.image) : question.image)}
-                alt="Question image"
-                sx={{ width: '100%', borderRadius: 2, maxHeight: 300, objectFit: 'contain' }}
-              />
-              <Button
-                size="small"
-                variant="contained"
-                color="error"
-                onClick={() => setQuestion(p => ({ ...p, image: null, imageUrl: '' }))}
-                sx={{
-                  position: 'absolute',
-                  top: 8,
-                  right: 8,
-                  borderRadius: 2,
-                  minWidth: 'auto',
-                  px: 1
-                }}
-              >
-                <Delete fontSize="small" />
-              </Button>
-            </Box>
-          ) : (
-            <Box
-              sx={{
-                border: `1px dashed ${tokens.surfaceBorder}`,
-                borderRadius: 2,
-                p: 3,
-                textAlign: 'center',
-                cursor: 'pointer',
-                '&:hover': {
-                  borderColor: tokens.primary,
-                  backgroundColor: 'rgba(12,189,115,0.02)'
-                }
-              }}
-              component="label"
-            >
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setQuestion({
-                        ...question,
-                        image: file,
-                        imageUrl: reader.result
-                      });
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
-                style={{ display: 'none' }}
-              />
-              <Add sx={{ fontSize: 32, color: tokens.textMuted, mb: 1 }} />
-              <Typography sx={{ fontSize: 13, color: tokens.textMuted }}>
-                Click to upload image
-              </Typography>
-              <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>
-                PNG, JPG, GIF up to 10MB
-              </Typography>
-            </Box>
-          )}
+          <MultiImageUploader
+            images={question.images || []}
+            onChange={(images) => setQuestion(p => ({ ...p, images, image: null, imageUrl: '' }))}
+          />
         </Box>
 
         {/* Multiple choice options - hide when sub-questions exist */}
@@ -5215,8 +5097,8 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
               💹 Spreadsheet Setup
             </Typography>
             <Typography sx={{ fontSize: 11, color: tokens.textMuted, mb: 1.5 }}>
-              Use the <strong>Student Template</strong> tab to design what students will fill in.
-              Use the <strong>Model Answer</strong> tab to fill in the correct answers (hidden from students, used for grading).
+              Fill in the <strong>Model Answer</strong> below (used for grading). Students automatically
+              get a blank version of the same grid to fill in themselves — no separate template needed.
             </Typography>
             <FinancialSpreadsheetQuestion
               question={question}

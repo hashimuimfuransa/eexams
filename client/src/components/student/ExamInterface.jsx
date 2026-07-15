@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getImageUrl } from '../../utils/getImageUrl';
+import { getImageUrl, getQuestionImages } from '../../utils/getImageUrl';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -3940,22 +3940,28 @@ const ExamInterface = () => {
                         </Box>
                       )}
 
-                      {/* Question image display */}
-                      {(currentQuestion.imageUrl || currentQuestion.image) && (
+                      {/* Question image display — multiple images (e.g. several transaction
+                          pages or a long document split into parts) stack together */}
+                      {getQuestionImages(currentQuestion).length > 0 && (
                         <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                          <Box
-                            component="img"
-                            src={getImageUrl(currentQuestion.imageUrl || currentQuestion.image)}
-                            alt="Question image"
-                            sx={{
-                              maxWidth: '100%',
-                              maxHeight: '400px',
-                              objectFit: 'contain',
-                              borderRadius: 1,
-                              display: 'block',
-                              margin: '0 auto'
-                            }}
-                          />
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            {getQuestionImages(currentQuestion).map((src, i) => (
+                              <Box
+                                key={i}
+                                component="img"
+                                src={getImageUrl(src)}
+                                alt={`Question image ${i + 1}`}
+                                sx={{
+                                  maxWidth: '100%',
+                                  width: '100%',
+                                  objectFit: 'contain',
+                                  borderRadius: 1,
+                                  display: 'block',
+                                  margin: '0 auto'
+                                }}
+                              />
+                            ))}
+                          </Box>
                         </Box>
                       )}
 
@@ -4032,8 +4038,11 @@ const ExamInterface = () => {
                         const questionType = currentQuestion.type;
                         const hasSubQuestions = currentQuestion.subQuestions && currentQuestion.subQuestions.length > 0;
 
-                        // If question has sub-questions, don't show main answer input for any type
-                        if (hasSubQuestions) {
+                        // If question has sub-questions, don't show main answer input for any type —
+                        // except financial-spreadsheet, where the one grid IS the answer to every
+                        // sub-part (a/b/c are just labelled sections of the same statement), not
+                        // separate free-text answers.
+                        if (hasSubQuestions && questionType !== 'financial-spreadsheet') {
                           return null;
                         }
 
@@ -4722,15 +4731,22 @@ const ExamInterface = () => {
                                   {subQ.text}
                                 </Typography>
 
-                                {/* Sub-question answer interface */}
-                                <Box sx={{ 
-                                  pl: { xs: 1, sm: 2 }, 
-                                  borderLeft: '3px solid', 
+                                {/* Sub-question answer interface — for financial-spreadsheet questions
+                                    the single grid above is the answer to every part, so skip the
+                                    generic free-text box here to avoid a second, ungraded answer field */}
+                                {currentQuestion.type === 'financial-spreadsheet' ? (
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                    Answer this part in the spreadsheet above.
+                                  </Typography>
+                                ) : (
+                                <Box sx={{
+                                  pl: { xs: 1, sm: 2 },
+                                  borderLeft: '3px solid',
                                   borderColor: 'primary.light',
                                   py: 1
                                 }}>
                                   {renderSubQuestionInput()}
-                                  
+
                                   {/* Saved indicator */}
                                   {subAnswer?.savedToServer && (
                                     <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, color: 'success.main' }}>
@@ -4741,6 +4757,7 @@ const ExamInterface = () => {
                                     </Box>
                                   )}
                                 </Box>
+                                )}
                               </Paper>
                             );
                           })}

@@ -31,6 +31,12 @@ const QuestionSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Multiple reference images (e.g. several transaction screenshots or a long document split
+  // into parts). imageUrl above is kept for backward compatibility with existing questions;
+  // when imageUrls has entries it takes precedence for display.
+  imageUrls: [{
+    type: String
+  }],
   options: [{
     text: {
       type: String,

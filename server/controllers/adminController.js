@@ -2296,6 +2296,7 @@ const createExam = async (req, res) => {
 
           if (q.passage) questionData.passage = q.passage;
           if (q.imageUrl) questionData.imageUrl = q.imageUrl;
+          if (Array.isArray(q.imageUrls) && q.imageUrls.length) questionData.imageUrls = q.imageUrls;
           if (q.wordBank && q.wordBank.length > 0) questionData.wordBank = q.wordBank;
           if (q.instructions) questionData.instructions = q.instructions;
 
@@ -2547,6 +2548,7 @@ const createExam = async (req, res) => {
                   // "choose N of M sub-questions" config for multi-part questions.
                   if (questionData.passage) questionDataToSave.passage = questionData.passage;
                   if (questionData.imageUrl) questionDataToSave.imageUrl = questionData.imageUrl;
+                  if (Array.isArray(questionData.imageUrls) && questionData.imageUrls.length) questionDataToSave.imageUrls = questionData.imageUrls;
                   if (questionData.wordBank && questionData.wordBank.length > 0) questionDataToSave.wordBank = questionData.wordBank;
                   if (questionData.instructions) questionDataToSave.instructions = questionData.instructions;
                   if (questionData.subQuestionConfig) questionDataToSave.subQuestionConfig = questionData.subQuestionConfig;
@@ -5337,10 +5339,11 @@ const updateExam = async (req, res) => {
         if (q.acceptableAnswers !== undefined) updateData.acceptableAnswers = q.acceptableAnswers;
         if (q.gradingCriteria !== undefined) updateData.gradingCriteria = q.gradingCriteria;
         if (q.imageUrl !== undefined) updateData.imageUrl = q.imageUrl;
+        if (q.imageUrls !== undefined) updateData.imageUrls = q.imageUrls;
         if (q.passage !== undefined) updateData.passage = q.passage;
         if (q.instructions !== undefined) updateData.instructions = q.instructions;
         if (q.wordBank !== undefined) updateData.wordBank = q.wordBank;
-        
+
         if (Object.keys(updateData).length > 0) {
           await Question.findByIdAndUpdate(q._id, updateData);
           console.log(`Updated question ${q._id}`);
@@ -5384,6 +5387,7 @@ const updateExam = async (req, res) => {
                   spreadsheetTemplate: q.spreadsheetTemplate,
                   spreadsheetModelAnswer: q.spreadsheetModelAnswer,
                   imageUrl: q.imageUrl || q.image || '',
+                  imageUrls: q.imageUrls || [],
                   subQuestions: q.subQuestions,
                   subQuestionConfig: q.subQuestionConfig,
                   passage: q.passage,

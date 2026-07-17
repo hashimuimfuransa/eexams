@@ -22,7 +22,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Box, Tabs, Tab, Chip, Typography, Alert, Button,
-  IconButton, Tooltip, TextField, Stack, Divider
+  IconButton, Tooltip, TextField, Stack, Divider, CircularProgress, Collapse
 } from '@mui/material';
 import {
   Lock, LockOpen, TableChart,
@@ -30,8 +30,9 @@ import {
   AddCircleOutline, RemoveCircleOutline,
   FormatBold, FormatItalic,
   FormatAlignLeft, FormatAlignCenter, FormatAlignRight,
-  Undo, Redo, Functions
+  Undo, Redo, Functions, AutoAwesome, ExpandMore, ExpandLess
 } from '@mui/icons-material';
+import api from '../services/api';
 
 import Handsontable from 'handsontable';
 import { HyperFormula } from 'hyperformula';
@@ -671,6 +672,99 @@ function useTableSet(initialTables, onChangeCb) {
   return { tables, setTables, updateTable, updateTitle, addTable, removeTable, replaceAll };
 }
 
+// ── AI paste-and-fill box (teacher-setup only) ─────────────────────────────────
+// Lets a teacher paste a table copied from Excel/Word (e.g. a trial balance) and have AI turn
+// it into the spreadsheet grid, instead of re-typing every row/value by hand. Only touches the
+// model-answer table set via onFill — the student-facing template is re-derived automatically
+// by the caller's onModelChange handler, same as any other manual edit to the grid.
+function AiFillSpreadsheetBox({ questionText, passage, modelTables, onFill }) {
+  const [open, setOpen] = useState(true);
+  const [pasted, setPasted] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [applied, setApplied] = useState(false);
+
+  const filled = hasAnyContent(modelTables || []);
+
+  const handleFill = async () => {
+    if (!pasted.trim() || loading) return;
+    setLoading(true);
+    setError('');
+    setApplied(false);
+    try {
+      const { data } = await api.post('/exam/ai-fill-spreadsheet', {
+        questionText: questionText || '',
+        passage: passage || '',
+        pastedTable: pasted,
+        currentSpreadsheet: filled ? serialise(modelTables) : '',
+      });
+      const tables = coerceToTables(JSON.parse(data.spreadsheetModelAnswer));
+      if (!tables || !tables.length) {
+        setError('AI could not read a table from that data. Try pasting it again.');
+        return;
+      }
+      onFill(cloneTables(tables));
+      setPasted('');
+      setApplied(true);
+    } catch (err) {
+      setError(err.response?.data?.message || 'AI could not build the spreadsheet. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box sx={{ mx: 1, mt: 1, mb: 0.5, border: '1px dashed #059669', borderRadius: 1.5, bgcolor: '#F0FDF4' }}>
+      <Box
+        onClick={() => setOpen(o => !o)}
+        sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 0.75, cursor: 'pointer' }}
+      >
+        <AutoAwesome sx={{ fontSize: 15, color: '#059669' }} />
+        <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#065F46', flexGrow: 1 }}>
+          {filled ? 'AI Assist — request a change to this spreadsheet' : 'AI Fill from a pasted table'}
+        </Typography>
+        {open ? <ExpandLess sx={{ fontSize: 16, color: '#059669' }} /> : <ExpandMore sx={{ fontSize: 16, color: '#059669' }} />}
+      </Box>
+      <Collapse in={open}>
+        <Box sx={{ px: 1.5, pb: 1.5 }}>
+          <Typography sx={{ fontSize: 11, color: '#047857', mb: 1 }}>
+            {filled
+              ? 'Already have a grid? Ask AI to change it — e.g. "change salary expense to 500,000", "add a row for depreciation", or paste corrected/extra data — and it will update the existing table(s) instead of starting over.'
+              : 'Paste a table from Excel or Word (trial balance, adjustments, or a full statement) and AI will build the grid and compute the values for you.'}
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={filled ? 2 : 4}
+            maxRows={10}
+            placeholder={filled ? 'Describe a change, or paste new/corrected data…' : 'Paste your table here…'}
+            value={pasted}
+            onChange={(e) => { setPasted(e.target.value); setApplied(false); }}
+            disabled={loading}
+            sx={{ bgcolor: 'white', mb: 1, '& .MuiOutlinedInput-root': { fontSize: 12 } }}
+          />
+          {error && <Alert severity="error" sx={{ mb: 1, py: 0, fontSize: 11 }}>{error}</Alert>}
+          {applied && !error && (
+            <Alert severity="success" sx={{ mb: 1, py: 0, fontSize: 11 }}>
+              Applied — review the grid below. You can ask for another change any time.
+            </Alert>
+          )}
+          <Button
+            size="small"
+            variant="contained"
+            disabled={!pasted.trim() || loading}
+            onClick={handleFill}
+            startIcon={loading ? <CircularProgress size={14} color="inherit" /> : <AutoAwesome sx={{ fontSize: 14 }} />}
+            sx={{ textTransform: 'none', fontSize: 11.5, bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+          >
+            {loading ? (filled ? 'Updating…' : 'Filling…') : (filled ? 'AI Update Spreadsheet' : 'AI Fill Spreadsheet')}
+          </Button>
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function FinancialSpreadsheet({
   mode = 'student',
@@ -740,6 +834,13 @@ export default function FinancialSpreadsheet({
           <Chip icon={<Lock sx={{ fontSize: 12 }} />} label="Hidden from students"
             size="small" sx={{ bgcolor: '#D1FAE5', color: '#065F46', fontSize: 10, fontWeight: 600 }} />
         </Box>
+
+        <AiFillSpreadsheetBox
+          questionText={questionData?.text}
+          passage={questionData?.passage || questionData?.context}
+          modelTables={model.tables}
+          onFill={(tables) => model.replaceAll(tables)}
+        />
 
         <Alert severity="info" icon={<Info sx={{ fontSize: 15 }} />}
           sx={{ mx: 1, mt: 1, py: 0.5, fontSize: 11, '& .MuiAlert-message': { fontSize: 11 } }}>

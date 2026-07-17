@@ -31,6 +31,7 @@ import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } from './DashboardShell';
 import StudentManagement from '../components/teacher/StudentManagement';
 import { FinancialSpreadsheetQuestion } from '../components/FinancialSpreadsheet';
+import AIQuestionAssist from '../components/shared/AIQuestionAssist';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
 import usePlan from '../hooks/usePlan';
 import SubscriptionWarning from '../components/SubscriptionWarning';
@@ -3641,6 +3642,12 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             />
           </Box>
+
+          <AIQuestionAssist
+            question={editingQuestion || {}}
+            onApply={(patch) => setEditingQuestion(q => ({ ...q, ...patch }))}
+          />
+
           <FormControl fullWidth size="small">
             <InputLabel>Section</InputLabel>
             <Select
@@ -4297,6 +4304,11 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
             />
           </Box>
 
+          <AIQuestionAssist
+            question={newQuestion}
+            onApply={(patch) => setNewQuestion(q => ({ ...q, ...patch }))}
+          />
+
           {/* Passage - Editable */}
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
@@ -4726,6 +4738,13 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
         <TextField fullWidth size="small" label="Question Text *" multiline minRows={2}
           value={question.text} onChange={e => setQuestion(p => ({ ...p, text: e.target.value }))}
           sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} />
+
+        <Box sx={{ mb: 1.5 }}>
+          <AIQuestionAssist
+            question={question}
+            onApply={(patch) => setQuestion(p => ({ ...p, ...patch }))}
+          />
+        </Box>
 
         {/* Passage */}
         <Box sx={{ mb: 1.5 }}>

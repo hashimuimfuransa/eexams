@@ -2377,6 +2377,177 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
   }
 });
 
+// Per-user cooldowns for the two "AI assist while authoring a question" endpoints below.
+const spreadsheetAssistCooldowns = new Map();
+const SPREADSHEET_ASSIST_COOLDOWN_MS = 10000;
+const questionAssistCooldowns = new Map();
+const QUESTION_ASSIST_COOLDOWN_MS = 8000;
+
+const checkCooldown = (map, userId, cooldownMs) => {
+  const now = Date.now();
+  const lastCall = map.get(userId) || 0;
+  if (now - lastCall < cooldownMs) return false;
+  map.set(userId, now);
+  return true;
+};
+
+// Teacher pastes a table (from Excel/Word) while authoring a financial-spreadsheet question;
+// AI turns it into the canonical { tables: [{title, headers, data}] } grid — both the fully
+// computed model answer and (via normalizeSpreadsheetField on the client) the blank student
+// template derived from it. Mirrors ensureSpreadsheetGrid's prompt (fileParser.js) but treats
+// the pasted table as the authoritative source of data instead of the question's own passage.
+router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
+  try {
+    const { questionText = '', passage = '', pastedTable = '', currentSpreadsheet = '' } = req.body;
+    if (!pastedTable || !pastedTable.trim()) {
+      return res.status(400).json({ message: 'Paste a table, or describe the change you want, first.' });
+    }
+
+    const userId = String(req.user._id);
+    if (!checkCooldown(spreadsheetAssistCooldowns, userId, SPREADSHEET_ASSIST_COOLDOWN_MS)) {
+      return res.status(429).json({ message: 'Please wait a moment before trying again.' });
+    }
+
+    const hasExisting = currentSpreadsheet && currentSpreadsheet.trim() && currentSpreadsheet !== '{"tables":[]}';
+    const existingBlock = hasExisting
+      ? `\nCurrent spreadsheet already built for this question (JSON): ${currentSpreadsheet.slice(0, 6000)}
+This is a SECOND request, editing what's already there. The teacher's input below could be either (a) a fresh table to merge in / replace a specific table with, or (b) a plain-English change request about the current spreadsheet above (e.g. "change salary expense to 500000", "add a row for depreciation", "swap the Dr/Cr on the loan line"). Apply ONLY the requested change and carry over every other row/table from the current spreadsheet UNCHANGED — do not regenerate or rewrite rows the teacher didn't ask to change.\n`
+      : '';
+
+    const prompt = `You are an accounting exam assistant. Build (or update) the spreadsheet grid for this exam question from data/instructions the teacher provides.
+
+Question: "${questionText.slice(0, 2000)}"
+${existingBlock}Teacher's input (treat as authoritative — this is the real data or change request to use): "${pastedTable.slice(0, 8000)}"
+Additional context (if any): "${passage.slice(0, 2000)}"
+
+Return ONLY JSON of this shape:
+{
+  "spreadsheetTemplate": {"tables":[{"title":"...","headers":["Item","Frw"],"data":[["Row label",""], ...]}]},
+  "spreadsheetModelAnswer": {"tables":[{"title":"...","headers":["Item","Frw"],"data":[["Row label","computed value"], ...]}]}
+}
+- Always return the FULL, complete table set (every table, every row) — never a partial diff — even when you were only asked to change one value.
+- One table per financial statement/schedule the question asks for.
+- spreadsheetTemplate: row labels filled in, value cells left as "".
+- spreadsheetModelAnswer: same structure with every value cell computed using standard accounting rules.
+- COMPLETE EVERYTHING THAT WAS PASTED: every account/line item present in the teacher's input must appear as its own row, using the exact same label/wording the teacher used (do not rename, merge, skip, summarize away, or invent line items that weren't given). Only ADD extra rows beyond what was given if the question explicitly needs derived/computed lines (e.g. subtotals, totals, or lines of a statement built FROM a pasted trial balance) — never REPLACE a given line with something else.
+- DOUBLE-ENTRY / DEBIT & CREDIT: if the data is a trial balance, ledger, or journal with Debit (Dr) and Credit (Cr) columns/sides, you MUST preserve that structure — use separate "Debit" and "Credit" columns in the output table (not one merged "Amount" column), and put each account's figure on the SAME side (Dr or Cr) it appears on in the source. Never move a debit balance into the credit column or vice versa. If you are building a trial balance table yourself, the Debit column total must equal the Credit column total (double-entry must balance) — recheck your figures if they don't.`;
+
+    const result = await groqClient.generateContent(prompt, {
+      model: 'smart',
+      jsonMode: true,
+      temperature: 0.1,
+      maxTokens: 4096
+    });
+
+    const parsed = result.parsedContent || (result.text ? JSON.parse(result.text.match(/\{[\s\S]*\}/)?.[0] || '{}') : {});
+    if (!parsed.spreadsheetModelAnswer) {
+      return res.status(422).json({ message: 'AI could not build a spreadsheet from that data. Try pasting a clearer table.' });
+    }
+
+    res.json({
+      spreadsheetTemplate: normalizeSpreadsheetField(parsed.spreadsheetTemplate || parsed.spreadsheetModelAnswer),
+      spreadsheetModelAnswer: normalizeSpreadsheetField(parsed.spreadsheetModelAnswer),
+    });
+  } catch (err) {
+    console.error('ai-fill-spreadsheet error:', err);
+    const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota');
+    res.status(is429 ? 429 : 500).json({
+      message: is429
+        ? 'AI quota exceeded. Please wait a moment and try again.'
+        : err.message || 'AI could not build the spreadsheet. Please try again.',
+    });
+  }
+});
+
+// Generic "AI assist" for any question type while authoring — fills in the fields that are
+// tedious/difficult to write by hand (MCQ options + correct answer, matching pairs, ordering
+// items, grading criteria, acceptable answers, ...) either from pasted material (an answer key,
+// a list copied from Word, etc.) or, if nothing is pasted, purely from the question's own text.
+// Prompt style/pattern mirrors ensureMCQCorrectOption/ensureMatchingPairs in fileParser.js.
+const buildQuestionAssistPrompt = (type, text, passage, pasted, existing) => {
+  const sourceBlock = pasted && pasted.trim()
+    ? `Teacher's input (treat as the authoritative source of truth — this may be fresh material, OR a plain-English change request like "make option B the correct one" or "add a third matching pair" if fields already exist below): "${pasted.slice(0, 6000)}"`
+    : `No extra material was pasted — work this out from the question text and context alone.`;
+  const hasExisting = existing && Object.keys(existing).some(k => {
+    const v = existing[k];
+    return Array.isArray(v) ? v.length > 0 : !!v;
+  });
+  const existingBlock = hasExisting
+    ? `\nFields already filled in for this question (this is a follow-up/edit request, not the first fill): ${JSON.stringify(existing).slice(0, 3000)}
+If the teacher's input above is a targeted change request, apply ONLY that change and keep every other existing value as-is. If it's a fresh full replacement (e.g. a new pasted answer key), you may replace the relevant fields entirely.\n`
+    : '';
+  const header = `You are an exam-authoring assistant helping a teacher fill in the parts of a question that are tedious to write by hand.
+Question: "${(text || '').slice(0, 2000)}"
+Context/passage (if any): "${(passage || '').slice(0, 2000)}"
+${existingBlock}${sourceBlock}
+`;
+
+  switch (type) {
+    case 'multiple-choice':
+      return header + `Produce 4 answer options for this question (or use the pasted material's options if present) and mark exactly one correct.
+Return ONLY JSON: {"options":[{"letter":"A","text":"...","isCorrect":true},{"letter":"B","text":"...","isCorrect":false},{"letter":"C","text":"...","isCorrect":false},{"letter":"D","text":"...","isCorrect":false}],"correctAnswer":"A"}`;
+    case 'true-false':
+      return header + `Determine whether the correct answer is True or False, and give a one-sentence explanation.
+Return ONLY JSON: {"correctAnswer":"True","explanation":"..."}`;
+    case 'fill-blank':
+    case 'fill-in-blank':
+      return header + `Give the correct answer for the blank, plus a short list of other acceptable phrasings/synonyms a student might reasonably write.
+Return ONLY JSON: {"correctAnswer":"...","acceptableAnswers":["...","..."]}`;
+    case 'short-answer':
+    case 'essay':
+    case 'open-ended':
+    case 'extended-response':
+      return header + `Write a model answer and a grading-criteria checklist (one line per gradable point, with marks), e.g. "1. Defines X (2 marks)".
+Return ONLY JSON: {"correctAnswer":"model answer text...","gradingCriteria":["1. ... (2 marks)","2. ... (1 mark)"],"explanation":"..."}`;
+    case 'matching':
+      return header + `Extract or invent the left-column items and their matching right-column items, in the SAME ORDER so item i on the left matches item i on the right.
+Return ONLY JSON: {"leftItems":[{"text":"..."}],"rightItems":[{"text":"..."}]}`;
+    case 'ordering':
+      return header + `Produce the list of items in their CORRECT final order (the order students must arrange them into).
+Return ONLY JSON: {"items":[{"text":"..."}]}`;
+    default:
+      return header + `Provide a correct answer and a short explanation for this question.
+Return ONLY JSON: {"correctAnswer":"...","explanation":"..."}`;
+  }
+};
+
+router.post('/ai-assist-question', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
+  try {
+    const { type = 'open-ended', text = '', passage = '', pasted = '', existing = {} } = req.body;
+    if (!text.trim() && !pasted.trim()) {
+      return res.status(400).json({ message: 'Enter a question or paste some material first.' });
+    }
+
+    const userId = String(req.user._id);
+    if (!checkCooldown(questionAssistCooldowns, userId, QUESTION_ASSIST_COOLDOWN_MS)) {
+      return res.status(429).json({ message: 'Please wait a moment before trying again.' });
+    }
+
+    const prompt = buildQuestionAssistPrompt(type, text, passage, pasted, existing);
+    const result = await groqClient.generateContent(prompt, {
+      model: 'smart',
+      jsonMode: true,
+      temperature: 0.2,
+      maxTokens: 2048
+    });
+
+    const parsed = result.parsedContent || (result.text ? JSON.parse(result.text.match(/\{[\s\S]*\}/)?.[0] || '{}') : {});
+    if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
+      return res.status(422).json({ message: 'AI could not fill in this question. Try adding more detail.' });
+    }
+
+    res.json({ patch: parsed });
+  } catch (err) {
+    console.error('ai-assist-question error:', err);
+    const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota');
+    res.status(is429 ? 429 : 500).json({
+      message: is429
+        ? 'AI quota exceeded. Please wait a moment and try again.'
+        : err.message || 'AI assist failed. Please try again.',
+    });
+  }
+});
+
 // Per-user chat cooldown: max 1 request per 8 seconds
 const chatCooldowns = new Map();
 const CHAT_COOLDOWN_MS = 8000;

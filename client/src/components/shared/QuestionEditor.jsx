@@ -13,6 +13,7 @@ import {
 } from '@mui/icons-material';
 import { tokens } from '../../pages/dashboardTokens';
 import { FinancialSpreadsheetQuestion } from '../FinancialSpreadsheet';
+import AIQuestionAssist from './AIQuestionAssist';
 
 // Full-featured question editor supporting every question type (multiple-choice,
 // true-false, fill-blank, open-ended/short-answer/essay, matching, ordering,
@@ -453,6 +454,14 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                 value={localQ.correctAnswer || ''}
                 onChange={(e) => { setLocalQ({ ...localQ, correctAnswer: e.target.value }); setEdited(true); }}
                 sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white', fontSize: isMobile ? 12 : 13 } }}
+              />
+            </Grid>
+
+            {/* AI Assist - available for every question type except financial-spreadsheet */}
+            <Grid item xs={12}>
+              <AIQuestionAssist
+                question={localQ}
+                onApply={(patch) => { setLocalQ(q => ({ ...q, ...patch })); setEdited(true); }}
               />
             </Grid>
 

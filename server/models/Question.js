@@ -143,7 +143,10 @@ const QuestionSchema = new mongoose.Schema({
     }],
     correctAnswer: String,
     points: Number,
-    imageUrl: String // For image-based sub-questions
+    imageUrl: String, // For image-based sub-questions (legacy single-image field)
+    imageUrls: [String], // Multiple reference images for a sub-question; takes precedence over imageUrl when present
+    spreadsheetTemplate: String, // For financial-spreadsheet sub-questions - same JSON-string shape as the top-level field
+    spreadsheetModelAnswer: String
   }],
   // Sub-question configuration
   subQuestionConfig: {

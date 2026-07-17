@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
-import { getImageUrl, getQuestionImages, toImageEntries } from '../utils/getImageUrl';
+import { getImageUrl, getQuestionImages, toImageEntries, resolveQuestionImages } from '../utils/getImageUrl';
 import MultiImageUploader from '../components/shared/MultiImageUploader';
 import { useNavigate } from 'react-router-dom';
 import useUpload from '../hooks/useUpload';
@@ -833,46 +833,26 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
       // Ensure all questions have proper grading fields for accurate AI grading,
       // and upload any images attached during review (File objects can't be JSON-posted directly)
       const questionsToPublish = await Promise.all((generated.questions || []).map(async (q) => {
-        const entries = (q.images && q.images.length) ? q.images : toImageEntries(q);
-        const finalImageUrls = (await Promise.all(entries.map(async (img) => {
-          if (img.file instanceof File) {
-            const formData = new FormData();
-            formData.append('image', img.file);
-            try {
-              const uploadRes = await api.post('/admin/upload-image', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                timeout: 30000
-              });
-              return uploadRes.data.url;
-            } catch (uploadError) {
-              console.error('Failed to upload image for question:', uploadError);
-              return null;
-            }
-          }
-          return img.url && !img.url.startsWith('data:') ? img.url : null;
-        }))).filter(Boolean);
+        // Uploads this question's own images AND (recursively) each sub-question's images.
+        const resolved = await resolveQuestionImages(q);
 
         return {
-          text: q.text,
-          type: q.type || 'multiple-choice',
-          marks: q.marks || q.points || 1,
-          difficulty: q.difficulty || 'medium',
-          correctAnswer: q.correctAnswer || '',
-          options: q.options || [],
+          text: resolved.text,
+          type: resolved.type || 'multiple-choice',
+          marks: resolved.marks || resolved.points || 1,
+          difficulty: resolved.difficulty || 'medium',
+          correctAnswer: resolved.correctAnswer || '',
+          options: resolved.options || [],
           // Comprehensive grading fields
-          explanation: q.explanation || q.answerKey || '',
-          answerKey: q.answerKey || q.explanation || '',
-          gradingCriteria: Array.isArray(q.gradingCriteria) ? q.gradingCriteria :
-                          Array.isArray(q.keyPoints) ? q.keyPoints : [],
-          keyPoints: Array.isArray(q.keyPoints) ? q.keyPoints :
-                     Array.isArray(q.gradingCriteria) ? q.gradingCriteria : [],
-          acceptableAnswers: q.acceptableAnswers || [],
+          explanation: resolved.explanation || resolved.answerKey || '',
+          answerKey: resolved.answerKey || resolved.explanation || '',
+          gradingCriteria: Array.isArray(resolved.gradingCriteria) ? resolved.gradingCriteria :
+                          Array.isArray(resolved.keyPoints) ? resolved.keyPoints : [],
+          keyPoints: Array.isArray(resolved.keyPoints) ? resolved.keyPoints :
+                     Array.isArray(resolved.gradingCriteria) ? resolved.gradingCriteria : [],
+          acceptableAnswers: resolved.acceptableAnswers || [],
           // Include any additional fields from the AI
-          ...q,
-          image: undefined,
-          images: undefined,
-          imageUrl: finalImageUrls[0] || '',
-          imageUrls: finalImageUrls
+          ...resolved,
         };
       }));
 
@@ -901,35 +881,8 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
     setSavingDraft(true);
     try {
-      // Upload images for questions that have them
-      const questionsWithImages = await Promise.all(generated.questions.map(async (q) => {
-        const entries = (q.images && q.images.length) ? q.images : toImageEntries(q);
-        const finalImageUrls = (await Promise.all(entries.map(async (img) => {
-          if (img.file instanceof File) {
-            const formData = new FormData();
-            formData.append('image', img.file);
-            try {
-              const uploadRes = await api.post('/admin/upload-image', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                timeout: 30000
-              });
-              return uploadRes.data.url;
-            } catch (uploadError) {
-              console.error('Failed to upload image for question:', uploadError);
-              return null; // Continue without this image if upload fails
-            }
-          }
-          return img.url && !img.url.startsWith('data:') ? img.url : null;
-        }))).filter(Boolean);
-
-        return {
-          ...q,
-          imageUrl: finalImageUrls[0] || '',
-          imageUrls: finalImageUrls,
-          image: undefined, // Remove the File object
-          images: undefined
-        };
-      }));
+      // Upload images for questions (and sub-questions) that have them
+      const questionsWithImages = await Promise.all(generated.questions.map(resolveQuestionImages));
 
       // Build sections array from generated data
       const sectionsArray = generated.sections || [];
@@ -1016,30 +969,11 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     if (total === 0) { setManualError('Add at least one question before publishing.'); return; }
     setManualPublishing(true); setManualError('');
     try {
-      // Upload any newly-attached images (File objects can't be JSON-posted directly)
+      // Upload any newly-attached images (File objects can't be JSON-posted directly), including
+      // sub-question images
       const sectionsWithImages = await Promise.all(manualExam.sections.map(async (sec) => ({
         ...sec,
-        questions: await Promise.all((sec.questions || []).map(async (q) => {
-          const entries = (q.images && q.images.length) ? q.images : toImageEntries(q);
-          const finalImageUrls = (await Promise.all(entries.map(async (img) => {
-            if (img.file instanceof File) {
-              const formData = new FormData();
-              formData.append('image', img.file);
-              try {
-                const uploadRes = await api.post('/admin/upload-image', formData, {
-                  headers: { 'Content-Type': 'multipart/form-data' },
-                  timeout: 30000
-                });
-                return uploadRes.data.url;
-              } catch (uploadError) {
-                console.error('Failed to upload image for question:', uploadError);
-                return null;
-              }
-            }
-            return img.url && !img.url.startsWith('data:') ? img.url : null;
-          }))).filter(Boolean);
-          return { ...q, image: undefined, images: undefined, imageUrl: finalImageUrls[0] || '', imageUrls: finalImageUrls };
-        }))
+        questions: await Promise.all((sec.questions || []).map(resolveQuestionImages))
       })));
 
       const res = await api.post('/admin/exams', { ...manualExam, sections: sectionsWithImages });
@@ -1058,36 +992,9 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
 
     setSavingDraft(true);
     try {
-      // Upload images for questions that have them
+      // Upload images for questions (and sub-questions) that have them
       const allQuestions = manualExam.sections.flatMap(sec => sec.questions || []);
-      const questionsWithImages = await Promise.all(allQuestions.map(async (q) => {
-        const entries = (q.images && q.images.length) ? q.images : toImageEntries(q);
-        const finalImageUrls = (await Promise.all(entries.map(async (img) => {
-          if (img.file instanceof File) {
-            const formData = new FormData();
-            formData.append('image', img.file);
-            try {
-              const uploadRes = await api.post('/admin/upload-image', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                timeout: 30000
-              });
-              return uploadRes.data.url;
-            } catch (uploadError) {
-              console.error('Failed to upload image for question:', uploadError);
-              return null; // Continue without this image if upload fails
-            }
-          }
-          return img.url && !img.url.startsWith('data:') ? img.url : null;
-        }))).filter(Boolean);
-
-        return {
-          ...q,
-          imageUrl: finalImageUrls[0] || '',
-          imageUrls: finalImageUrls,
-          image: undefined, // Remove the File object
-          images: undefined
-        };
-      }));
+      const questionsWithImages = await Promise.all(allQuestions.map(resolveQuestionImages));
 
       const draftData = {
         title: manualExam.title,
@@ -2736,26 +2643,16 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   const handleSaveQuestionEdit = async () => {
     if (!editingQuestion || !exam) return;
     try {
-      // Upload any newly-attached images (File objects) to Cloudinary; keep already-hosted URLs as-is
-      const finalImageUrls = await Promise.all((editingQuestion.images || []).map(async (img) => {
-        if (img.file instanceof File) {
-          const formData = new FormData();
-          formData.append('image', img.file);
-          const uploadRes = await api.post('/admin/upload-image', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 30000
-          });
-          return uploadRes.data.url;
-        }
-        return img.url;
-      }));
+      // Upload any newly-attached images (File objects) to Cloudinary, including sub-question
+      // images; keep already-hosted URLs as-is
+      const resolved = await resolveQuestionImages(editingQuestion);
 
       // Update the question via the exam update endpoint using questions array
-      const cleanedWordBank = editingQuestion.wordBank
-        ? editingQuestion.wordBank.map(w => w.trim()).filter(Boolean)
-        : editingQuestion.wordBank;
+      const cleanedWordBank = resolved.wordBank
+        ? resolved.wordBank.map(w => w.trim()).filter(Boolean)
+        : resolved.wordBank;
       await api.put(`/admin/exams/${exam._id}`, {
-        questions: [{ ...editingQuestion, wordBank: cleanedWordBank, images: undefined, image: undefined, imageUrl: finalImageUrls[0] || '', imageUrls: finalImageUrls, _id: editingQuestion._id }]
+        questions: [{ ...resolved, wordBank: cleanedWordBank, _id: editingQuestion._id }]
       }, { timeout: 30000 });
 
       // Refresh the preview
@@ -4086,28 +3983,26 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
 
               {/* Sub-questions list */}
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                {editingQuestion.subQuestions.map((subQ, idx) => (
+                {editingQuestion.subQuestions.map((subQ, idx) => {
+                  const updateSubQ = (patch) => {
+                    const updated = [...editingQuestion.subQuestions];
+                    updated[idx] = { ...updated[idx], ...patch };
+                    setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                  };
+                  return (
                   <Box key={idx} sx={{ p: 1.5, bgcolor: 'white', borderRadius: 1.5, border: '1px solid #BAE6FD' }}>
                     <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
                       <TextField
                         size="small"
                         placeholder="Label"
                         value={subQ.label || ''}
-                        onChange={(e) => {
-                          const updated = [...editingQuestion.subQuestions];
-                          updated[idx] = { ...subQ, label: e.target.value };
-                          setEditingQuestion({ ...editingQuestion, subQuestions: updated });
-                        }}
+                        onChange={(e) => updateSubQ({ label: e.target.value })}
                         sx={{ width: 60 }}
                       />
                       <FormControl size="small" sx={{ minWidth: 100 }}>
                         <Select
                           value={subQ.type || 'open-ended'}
-                          onChange={(e) => {
-                            const updated = [...editingQuestion.subQuestions];
-                            updated[idx] = { ...subQ, type: e.target.value, options: e.target.value === 'multiple-choice' ? [{ letter: 'i', text: '', isCorrect: false }] : [] };
-                            setEditingQuestion({ ...editingQuestion, subQuestions: updated });
-                          }}
+                          onChange={(e) => updateSubQ({ type: e.target.value, options: e.target.value === 'multiple-choice' ? [{ letter: 'i', text: '', isCorrect: false }] : [] })}
                         >
                           <MenuItem value="open-ended">Open-ended</MenuItem>
                           <MenuItem value="short-answer">Short Answer</MenuItem>
@@ -4120,6 +4015,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                           <MenuItem value="drag-drop">Drag & Drop</MenuItem>
                           <MenuItem value="image-based">Image Based</MenuItem>
                           <MenuItem value="structured">Structured</MenuItem>
+                          <MenuItem value="financial-spreadsheet">💹 Financial Spreadsheet</MenuItem>
                         </Select>
                       </FormControl>
                       <TextField
@@ -4213,21 +4109,43 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                         </Button>
                       </Box>
                     )}
-                    {subQ.type !== 'multiple-choice' && (
+                    {subQ.type !== 'multiple-choice' && subQ.type !== 'financial-spreadsheet' && (
                       <TextField
                         fullWidth
                         size="small"
                         placeholder="Correct answer..."
                         value={subQ.correctAnswer || ''}
-                        onChange={(e) => {
-                          const updated = [...editingQuestion.subQuestions];
-                          updated[idx] = { ...subQ, correctAnswer: e.target.value };
-                          setEditingQuestion({ ...editingQuestion, subQuestions: updated });
-                        }}
+                        onChange={(e) => updateSubQ({ correctAnswer: e.target.value })}
                       />
                     )}
+
+                    {subQ.type === 'financial-spreadsheet' && (
+                      <Box sx={{ mt: 1 }}>
+                        <FinancialSpreadsheetQuestion
+                          key={`editq-subq-${idx}-${subQ.label || idx}`}
+                          question={subQ}
+                          mode="teacher-setup"
+                          onTemplateChange={(json) => updateSubQ({ spreadsheetTemplate: json })}
+                          onModelChange={(json) => updateSubQ({ spreadsheetModelAnswer: json, correctAnswer: json })}
+                          height={320}
+                        />
+                      </Box>
+                    )}
+
+                    <Box sx={{ mt: 1 }}>
+                      <MultiImageUploader
+                        images={subQ.images || toImageEntries(subQ)}
+                        onChange={(images) => updateSubQ({ images, imageUrl: '' })}
+                        label="Sub-Question Images (Optional)"
+                      />
+                    </Box>
+
+                    <Box sx={{ mt: 1 }}>
+                      <AIQuestionAssist question={subQ} onApply={(patch) => updateSubQ(patch)} />
+                    </Box>
                   </Box>
-                ))}
+                  );
+                })}
                 <Button
                   size="small"
                   variant="text"
@@ -5141,7 +5059,13 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           <Typography sx={{ fontSize: 11, color: tokens.textMuted, mb: 1 }}>
             Add subquestions for structured questions. When subquestions exist, the main question options are hidden.
           </Typography>
-          {(question.subQuestions || []).map((subQ, idx) => (
+          {(question.subQuestions || []).map((subQ, idx) => {
+            const updateSubQ = (patch) => {
+              const newSubQs = [...(question.subQuestions || [])];
+              newSubQs[idx] = { ...newSubQs[idx], ...patch };
+              setQuestion(p => ({ ...p, subQuestions: newSubQs }));
+            };
+            return (
             <Paper key={idx} elevation={0} sx={{ p: 1.5, mb: 1, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.textSecondary }}>Subquestion {idx + 1}</Typography>
@@ -5160,11 +5084,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
                 multiline
                 minRows={1}
                 value={subQ.text || ''}
-                onChange={e => {
-                  const newSubQs = [...(question.subQuestions || [])];
-                  newSubQs[idx] = { ...newSubQs[idx], text: e.target.value };
-                  setQuestion(p => ({ ...p, subQuestions: newSubQs }));
-                }}
+                onChange={e => updateSubQ({ text: e.target.value })}
                 sx={{ mb: 1, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
               />
               <Grid container spacing={1}>
@@ -5175,11 +5095,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
                     label="Points"
                     type="number"
                     value={subQ.points || 1}
-                    onChange={e => {
-                      const newSubQs = [...(question.subQuestions || [])];
-                      newSubQs[idx] = { ...newSubQs[idx], points: +e.target.value };
-                      setQuestion(p => ({ ...p, subQuestions: newSubQs }));
-                    }}
+                    onChange={e => updateSubQ({ points: +e.target.value })}
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
                   />
                 </Grid>
@@ -5189,34 +5105,54 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
                     <Select
                       label="Type"
                       value={subQ.type || 'short-answer'}
-                      onChange={e => {
-                        const newSubQs = [...(question.subQuestions || [])];
-                        newSubQs[idx] = { ...newSubQs[idx], type: e.target.value };
-                        setQuestion(p => ({ ...p, subQuestions: newSubQs }));
-                      }}
+                      onChange={e => updateSubQ({ type: e.target.value })}
                       sx={{ borderRadius: 2, bgcolor: 'white' }}
                     >
                       {Q_TYPES.map(t => <MenuItem key={t.value} value={t.value} sx={{ textTransform: 'capitalize' }}>{t.label}</MenuItem>)}
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Correct Answer"
-                    value={subQ.correctAnswer || ''}
-                    onChange={e => {
-                      const newSubQs = [...(question.subQuestions || [])];
-                      newSubQs[idx] = { ...newSubQs[idx], correctAnswer: e.target.value };
-                      setQuestion(p => ({ ...p, subQuestions: newSubQs }));
-                    }}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
-                  />
-                </Grid>
+                {subQ.type !== 'financial-spreadsheet' && (
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Correct Answer"
+                      value={subQ.correctAnswer || ''}
+                      onChange={e => updateSubQ({ correctAnswer: e.target.value })}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+                    />
+                  </Grid>
+                )}
               </Grid>
+
+              {subQ.type === 'financial-spreadsheet' && (
+                <Box sx={{ mt: 1 }}>
+                  <FinancialSpreadsheetQuestion
+                    key={`manual-subq-${idx}-${subQ.label || idx}`}
+                    question={subQ}
+                    mode="teacher-setup"
+                    onTemplateChange={(json) => updateSubQ({ spreadsheetTemplate: json })}
+                    onModelChange={(json) => updateSubQ({ spreadsheetModelAnswer: json, correctAnswer: json })}
+                    height={320}
+                  />
+                </Box>
+              )}
+
+              <Box sx={{ mt: 1 }}>
+                <MultiImageUploader
+                  images={subQ.images || toImageEntries(subQ)}
+                  onChange={(images) => updateSubQ({ images, imageUrl: '' })}
+                  label="Sub-Question Images (Optional)"
+                />
+              </Box>
+
+              <Box sx={{ mt: 1 }}>
+                <AIQuestionAssist question={subQ} onApply={(patch) => updateSubQ(patch)} />
+              </Box>
             </Paper>
-          ))}
+            );
+          })}
           <Button
             variant="outlined"
             size="small"

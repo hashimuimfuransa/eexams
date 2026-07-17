@@ -961,7 +961,14 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                       + Add Subquestion
                     </Button>
                   </Box>
-                  {localQ.subQuestions.map((subQ, idx) => (
+                  {localQ.subQuestions.map((subQ, idx) => {
+                    const updateSubQ = (patch) => {
+                      const updated = [...localQ.subQuestions];
+                      updated[idx] = { ...updated[idx], ...patch };
+                      setLocalQ({ ...localQ, subQuestions: updated });
+                      setEdited(true);
+                    };
+                    return (
                     <Paper key={idx} elevation={0} sx={{ p: 1.5, mb: 1.5, bgcolor: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 2 }}>
                       {/* Subquestion header with label and type */}
                       <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
@@ -980,12 +987,7 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                         <FormControl size="small" sx={{ minWidth: 120 }}>
                           <Select
                             value={subQ.type || 'open-ended'}
-                            onChange={(e) => {
-                              const updated = [...localQ.subQuestions];
-                              updated[idx] = { ...subQ, type: e.target.value, options: e.target.value === 'multiple-choice' ? [{ letter: 'i', text: '', isCorrect: false }] : [] };
-                              setLocalQ({ ...localQ, subQuestions: updated });
-                              setEdited(true);
-                            }}
+                            onChange={(e) => updateSubQ({ type: e.target.value, options: e.target.value === 'multiple-choice' ? [{ letter: 'i', text: '', isCorrect: false }] : [] })}
                             sx={{ fontSize: 11, height: 28 }}
                           >
                             <MenuItem value="open-ended">Open-ended</MenuItem>
@@ -999,6 +1001,7 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                             <MenuItem value="drag-drop">Drag & Drop</MenuItem>
                             <MenuItem value="image-based">Image Based</MenuItem>
                             <MenuItem value="structured">Structured</MenuItem>
+                            <MenuItem value="financial-spreadsheet">💹 Financial Spreadsheet</MenuItem>
                           </Select>
                         </FormControl>
                         <TextField
@@ -1126,18 +1129,13 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                       )}
 
                       {/* Correct Answer */}
-                      {subQ.type !== 'multiple-choice' && (
+                      {subQ.type !== 'multiple-choice' && subQ.type !== 'financial-spreadsheet' && (
                         <TextField
                           fullWidth
                           size="small"
                           placeholder="Correct answer..."
                           value={subQ.correctAnswer || ''}
-                          onChange={(e) => {
-                            const updated = [...localQ.subQuestions];
-                            updated[idx] = { ...subQ, correctAnswer: e.target.value };
-                            setLocalQ({ ...localQ, subQuestions: updated });
-                            setEdited(true);
-                          }}
+                          onChange={(e) => updateSubQ({ correctAnswer: e.target.value })}
                           sx={{ '& .MuiInputBase-root': { fontSize: 11, minHeight: 32 } }}
                         />
                       )}
@@ -1146,8 +1144,37 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                           Correct Answer Letter: <strong>{subQ.correctAnswer || 'Not set'}</strong>
                         </Typography>
                       )}
+
+                      {/* Financial Spreadsheet - sub-question */}
+                      {subQ.type === 'financial-spreadsheet' && (
+                        <Box sx={{ mt: 1 }}>
+                          <FinancialSpreadsheetQuestion
+                            key={`subq-${idx}-${subQ.label || idx}`}
+                            question={subQ}
+                            mode="teacher-setup"
+                            onTemplateChange={(json) => updateSubQ({ spreadsheetTemplate: json })}
+                            onModelChange={(json) => updateSubQ({ spreadsheetModelAnswer: json, correctAnswer: json })}
+                            height={320}
+                          />
+                        </Box>
+                      )}
+
+                      {/* Sub-question images */}
+                      <Box sx={{ mt: 1 }}>
+                        <MultiImageUploader
+                          images={subQ.images || toImageEntries(subQ)}
+                          onChange={(images) => updateSubQ({ images, imageUrl: '' })}
+                          label="Sub-Question Images (Optional)"
+                        />
+                      </Box>
+
+                      {/* AI Assist for this sub-question */}
+                      <Box sx={{ mt: 1 }}>
+                        <AIQuestionAssist question={subQ} onApply={(patch) => updateSubQ(patch)} />
+                      </Box>
                     </Paper>
-                  ))}
+                    );
+                  })}
                 </Box>
               ) : (
                 <TextField

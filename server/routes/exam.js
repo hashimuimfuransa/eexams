@@ -2420,17 +2420,22 @@ Question: "${questionText.slice(0, 2000)}"
 ${existingBlock}Teacher's input (treat as authoritative — this is the real data or change request to use): "${pastedTable.slice(0, 8000)}"
 Additional context (if any): "${passage.slice(0, 2000)}"
 
-Return ONLY JSON of this shape:
+Return ONLY JSON of this shape (headers/column count vary by statement type — see rules below, do not always use the same 2 columns):
 {
-  "spreadsheetTemplate": {"tables":[{"title":"...","headers":["Item","Frw"],"data":[["Row label",""], ...]}]},
-  "spreadsheetModelAnswer": {"tables":[{"title":"...","headers":["Item","Frw"],"data":[["Row label","computed value"], ...]}]}
+  "spreadsheetTemplate": {"tables":[{"title":"...","headers":["Item","...","..."],"data":[["Row label","",""], ...]}]},
+  "spreadsheetModelAnswer": {"tables":[{"title":"...","headers":["Item","...","..."],"data":[["Row label","computed value",""], ...]}]}
 }
 - Always return the FULL, complete table set (every table, every row) — never a partial diff — even when you were only asked to change one value.
 - One table per financial statement/schedule the question asks for.
-- spreadsheetTemplate: row labels filled in, value cells left as "".
+- spreadsheetTemplate: row labels (and, for a Statement of Financial Position/Income Statement, section headings) filled in, value cells left as "".
 - spreadsheetModelAnswer: same structure with every value cell computed using standard accounting rules.
 - COMPLETE EVERYTHING THAT WAS PASTED: every account/line item present in the teacher's input must appear as its own row, using the exact same label/wording the teacher used (do not rename, merge, skip, summarize away, or invent line items that weren't given). Only ADD extra rows beyond what was given if the question explicitly needs derived/computed lines (e.g. subtotals, totals, or lines of a statement built FROM a pasted trial balance) — never REPLACE a given line with something else.
-- DOUBLE-ENTRY / DEBIT & CREDIT: if the data is a trial balance, ledger, or journal with Debit (Dr) and Credit (Cr) columns/sides, you MUST preserve that structure — use separate "Debit" and "Credit" columns in the output table (not one merged "Amount" column), and put each account's figure on the SAME side (Dr or Cr) it appears on in the source. Never move a debit balance into the credit column or vice versa. If you are building a trial balance table yourself, the Debit column total must equal the Credit column total (double-entry must balance) — recheck your figures if they don't.`;
+- MATCH THE PROFESSIONAL FORMAT TO THE STATEMENT TYPE — not everything is Debit/Credit:
+  * Statement of Financial Position (Balance Sheet), Statement of Profit or Loss (Income Statement), Statement of Changes in Equity, Statement of Cash Flows: use the standard published-statement layout with headers like ["Item","FRW '000'","FRW '000'"] (match whatever currency/unit the source uses) — column 1 is the item/section heading (bold section headers such as "Non-Current Assets", "Current Assets", "Equity", "Current Liabilities" get their own row with no figures), column 2 holds the sub-amounts/workings for a line that needs several components added together (leave "" on rows that don't need one), column 3 holds the figure that carries into the statement's running total — section subtotals (e.g. "Total Current Assets") and the final total go in column 3. Do NOT use "Debit"/"Credit" headers for these statements.
+  * Trial Balance: exactly headers ["Item","Debit","Credit"], one figure per row on the correct side only (never both), and the Debit column total must equal the Credit column total — recheck if they don't.
+  * Ledger accounts / T-accounts: one table per account, headers ["Date","Particulars","Debit","Credit"], preserving which entries are on the debit side vs the credit side exactly as given (or as the transactions require), plus a closing balance row.
+  * Journal entries: headers ["Date","Particulars","Debit","Credit"], one row per account touched by each entry — the debited account's amount goes in Debit with Credit left "", the credited account's amount goes in Credit with Debit left "" (conventionally indent/prefix the credited account's particulars with "To ..."). Never put a Dr and Cr figure in the same row's single cell.
+  * Anything else (a schedule, workings, a computation the question asks for): use whichever column layout is standard for that specific output — only use Debit/Credit columns when double-entry actually applies to what you're producing.`;
 
     const result = await groqClient.generateContent(prompt, {
       model: 'smart',

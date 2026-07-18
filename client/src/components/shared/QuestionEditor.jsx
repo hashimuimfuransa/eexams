@@ -68,6 +68,27 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
     setEdited(false);
   };
 
+  // AI-fill/AI-assist results and image uploads are one-shot actions the teacher has already
+  // explicitly confirmed (clicking "AI Fill", picking a file) — commit them to the parent
+  // immediately instead of leaving them stuck in this card's local draft until the teacher
+  // separately remembers to click the Save checkmark before Save Draft/Publish. Typed fields
+  // (text, options, correctAnswer, ...) keep the normal buffered Save/Cancel behavior.
+  const commit = (updater) => {
+    const next = updater(localQ);
+    setLocalQ(next);
+    setEdited(false);
+    onUpdate(next);
+  };
+
+  const commitSubQ = (idx, patch) => {
+    const updated = [...localQ.subQuestions];
+    updated[idx] = { ...updated[idx], ...patch };
+    const next = { ...localQ, subQuestions: updated };
+    setLocalQ(next);
+    setEdited(false);
+    onUpdate(next);
+  };
+
   // Helper to get option display text (handles both string and object formats)
   const getOptionText = (opt) => {
     if (typeof opt === 'string') return opt;
@@ -382,7 +403,7 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
             <Grid item xs={12}>
               <MultiImageUploader
                 images={localQ.images || toImageEntries(localQ)}
-                onChange={(images) => { setLocalQ({ ...localQ, images, image: null, imageUrl: '' }); setEdited(true); }}
+                onChange={(images) => commit(q => ({ ...q, images, image: null, imageUrl: '' }))}
               />
             </Grid>
 
@@ -461,7 +482,7 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
             <Grid item xs={12}>
               <AIQuestionAssist
                 question={localQ}
-                onApply={(patch) => { setLocalQ(q => ({ ...q, ...patch })); setEdited(true); }}
+                onApply={(patch) => commit(q => ({ ...q, ...patch }))}
               />
             </Grid>
 
@@ -755,8 +776,9 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                     key={`gen-${localQ._id || localQ.text?.slice(0,20) || index}`}
                     question={localQ}
                     mode="teacher-setup"
-                    onTemplateChange={(json) => { setLocalQ(q => ({ ...q, spreadsheetTemplate: json })); setEdited(true); }}
-                    onModelChange={(json) => { setLocalQ(q => ({ ...q, spreadsheetModelAnswer: json, correctAnswer: json })); setEdited(true); }}
+                    onTemplateChange={(json) => commit(q => ({ ...q, spreadsheetTemplate: json }))}
+                    onModelChange={(json) => commit(q => ({ ...q, spreadsheetModelAnswer: json, correctAnswer: json }))}
+                    onConfigChange={(patch) => commit(q => ({ ...q, ...patch }))}
                   />
                 </Box>
               </Grid>
@@ -1152,8 +1174,9 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                             key={`subq-${idx}-${subQ.label || idx}`}
                             question={subQ}
                             mode="teacher-setup"
-                            onTemplateChange={(json) => updateSubQ({ spreadsheetTemplate: json })}
-                            onModelChange={(json) => updateSubQ({ spreadsheetModelAnswer: json, correctAnswer: json })}
+                            onTemplateChange={(json) => commitSubQ(idx, { spreadsheetTemplate: json })}
+                            onModelChange={(json) => commitSubQ(idx, { spreadsheetModelAnswer: json, correctAnswer: json })}
+                            onConfigChange={(patch) => commitSubQ(idx, patch)}
                             height={320}
                           />
                         </Box>
@@ -1163,14 +1186,14 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                       <Box sx={{ mt: 1 }}>
                         <MultiImageUploader
                           images={subQ.images || toImageEntries(subQ)}
-                          onChange={(images) => updateSubQ({ images, imageUrl: '' })}
+                          onChange={(images) => commitSubQ(idx, { images, imageUrl: '' })}
                           label="Sub-Question Images (Optional)"
                         />
                       </Box>
 
                       {/* AI Assist for this sub-question */}
                       <Box sx={{ mt: 1 }}>
-                        <AIQuestionAssist question={subQ} onApply={(patch) => updateSubQ(patch)} />
+                        <AIQuestionAssist question={subQ} onApply={(patch) => commitSubQ(idx, patch)} />
                       </Box>
                     </Paper>
                     );

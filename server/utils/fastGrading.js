@@ -1,6 +1,6 @@
 const groqClient = require('./groqClient');
 const { verifyGradingWithAI } = require('./enhancedGrading');
-const { gradeFinancialSpreadsheet } = require('./spreadsheetGrading');
+const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading');
 
 /**
  * Normalize answer for flexible comparison
@@ -82,7 +82,8 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
         selectedOption: subAnswer.selectedOption,
         textAnswer: subAnswer.textAnswer,
         matchingAnswers: subAnswer.matchingAnswers,
-        orderingAnswer: subAnswer.orderingAnswer
+        orderingAnswer: subAnswer.orderingAnswer,
+        writtenAnswer: subAnswer.writtenAnswer
       };
       const subModelAnswer = subQ.correctAnswer || modelAnswer || '';
       const subGrading = await gradeQuestionFast(subQ, tempAnswer, subModelAnswer);
@@ -253,7 +254,7 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
         return await gradeDragDropFast(question, answer, modelAnswer);
 
       case 'financial-spreadsheet':
-        return gradeFinancialSpreadsheet(question, answer, modelAnswer);
+        return await gradeFinancialSpreadsheetWithWritten(question, answer, modelAnswer);
 
       default:
         return {
@@ -1527,6 +1528,13 @@ async function fastChunkedGrading(result, exam) {
         result.answers[index].isCorrect = grading.isCorrect !== undefined ? grading.isCorrect : (cappedScore >= maxPoints);
         result.answers[index].correctedAnswer = grading.correctedAnswer || result.answers[index].question.correctAnswer;
         result.answers[index].gradingMethod = grading.gradingMethod || 'enhanced_grading';
+
+        // Store the written-answer portion's own score/feedback when a financial-spreadsheet
+        // question required one alongside the grid (see gradeFinancialSpreadsheetWithWritten)
+        if (grading.writtenAnswerScore !== undefined) {
+          result.answers[index].writtenAnswerScore = grading.writtenAnswerScore;
+          result.answers[index].writtenAnswerFeedback = grading.writtenAnswerFeedback;
+        }
 
         // Store sub-question results if present
         if (grading.subQuestionResults) {

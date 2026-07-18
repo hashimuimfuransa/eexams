@@ -215,4 +215,72 @@ function gradeFinancialSpreadsheet(question, answer, modelAnswer) {
   };
 }
 
-module.exports = { gradeFinancialSpreadsheet, parseSheets, parseSheet: parseSheets, coerceToTables, coerceToGrid, cellsEqual };
+/**
+ * Grades a financial-spreadsheet question that may ALSO require an optional written/explanatory
+ * answer alongside the grid (e.g. "prepare the income statement AND comment on why gross profit
+ * changed"). The two parts are graded independently — the spreadsheet cell-by-cell as usual, the
+ * written part via AI open-ended grading against the teacher's writtenAnswerModelAnswer — and
+ * combined into a single score/feedback so every existing caller of gradeFinancialSpreadsheet can
+ * be swapped for this without changing how it consumes the result.
+ *
+ * When question.requiresWrittenAnswer is falsy (the common case today), this is exactly
+ * equivalent to calling gradeFinancialSpreadsheet directly — the written half is skipped.
+ *
+ * @param {Object} question - question (or sub-question) object with points/spreadsheetModelAnswer
+ *   and optionally requiresWrittenAnswer/writtenAnswerModelAnswer/writtenAnswerPoints
+ * @param {Object} answer - student's answer: { textAnswer (spreadsheet JSON), writtenAnswer }
+ * @param {string} modelAnswer - fallback spreadsheet model answer if question.spreadsheetModelAnswer is unset
+ * @returns {Promise<Object>} - same shape as gradeFinancialSpreadsheet, plus a `details.written` block when graded
+ */
+async function gradeFinancialSpreadsheetWithWritten(question, answer, modelAnswer) {
+  const totalPoints = question.points || 1;
+  const requiresWritten = !!question.requiresWrittenAnswer;
+  const writtenPoints = requiresWritten ? Math.max(0, Math.min(question.writtenAnswerPoints || 0, totalPoints)) : 0;
+  const spreadsheetPoints = Math.max(0, totalPoints - writtenPoints);
+
+  const spreadsheetResult = gradeFinancialSpreadsheet({ ...question, points: spreadsheetPoints }, answer, modelAnswer);
+
+  if (!requiresWritten || writtenPoints <= 0) {
+    return spreadsheetResult;
+  }
+
+  const writtenAnswer = (answer?.writtenAnswer || '').trim();
+  let writtenResult;
+  if (!writtenAnswer) {
+    writtenResult = {
+      score: 0,
+      feedback: 'No written answer was submitted for the part that requires one.',
+      correctedAnswer: question.writtenAnswerModelAnswer || ''
+    };
+  } else {
+    // Lazily required to avoid a require cycle at module load if aiGrading.js ever imports
+    // something from this file in the future.
+    const { gradeOpenEndedAnswer } = require('./aiGrading');
+    const graded = await gradeOpenEndedAnswer(
+      writtenAnswer,
+      question.writtenAnswerModelAnswer || '',
+      writtenPoints,
+      question.writtenAnswerPrompt || question.text || ''
+    );
+    writtenResult = { score: graded.score, feedback: graded.feedback, correctedAnswer: graded.correctedAnswer };
+  }
+
+  const combinedScore = (spreadsheetResult.score || 0) + (writtenResult.score || 0);
+
+  return {
+    score: combinedScore,
+    isCorrect: combinedScore >= totalPoints,
+    feedback: `Spreadsheet: ${spreadsheetResult.feedback}\n\nWritten answer: ${writtenResult.feedback}`,
+    correctedAnswer: spreadsheetResult.correctedAnswer,
+    gradingMethod: 'spreadsheet_and_written_grading',
+    writtenAnswerScore: writtenResult.score,
+    writtenAnswerFeedback: writtenResult.feedback,
+    details: {
+      answerType: 'financial-spreadsheet',
+      spreadsheet: spreadsheetResult.details,
+      written: { points: writtenPoints, ...writtenResult }
+    }
+  };
+}
+
+module.exports = { gradeFinancialSpreadsheet, gradeFinancialSpreadsheetWithWritten, parseSheets, parseSheet: parseSheets, coerceToTables, coerceToGrid, cellsEqual };

@@ -146,7 +146,12 @@ const QuestionSchema = new mongoose.Schema({
     imageUrl: String, // For image-based sub-questions (legacy single-image field)
     imageUrls: [String], // Multiple reference images for a sub-question; takes precedence over imageUrl when present
     spreadsheetTemplate: String, // For financial-spreadsheet sub-questions - same JSON-string shape as the top-level field
-    spreadsheetModelAnswer: String
+    spreadsheetModelAnswer: String,
+    // Same optional written-answer-alongside-the-spreadsheet support as the top-level fields above
+    requiresWrittenAnswer: Boolean,
+    writtenAnswerPrompt: String,
+    writtenAnswerModelAnswer: String,
+    writtenAnswerPoints: Number
   }],
   // Sub-question configuration
   subQuestionConfig: {
@@ -211,6 +216,26 @@ const QuestionSchema = new mongoose.Schema({
   spreadsheetModelAnswer: {
     type: String,
     default: ''
+  },
+  // Optional written/explanatory answer alongside a financial-spreadsheet question (e.g. "also
+  // comment on why gross profit changed") — graded separately from the spreadsheet cells and
+  // combined into one score. writtenAnswerPoints is taken out of the question's own `points`;
+  // the remainder goes to the spreadsheet portion.
+  requiresWrittenAnswer: {
+    type: Boolean,
+    default: false
+  },
+  writtenAnswerPrompt: {
+    type: String,
+    default: ''
+  },
+  writtenAnswerModelAnswer: {
+    type: String,
+    default: ''
+  },
+  writtenAnswerPoints: {
+    type: Number,
+    default: 0
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

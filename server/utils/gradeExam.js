@@ -2,6 +2,7 @@
 const { gradeOpenEndedAnswer: standardGradeEssay } = require('./aiGrading');
 const { gradeOpenEndedAnswer: chunkedGradeEssay } = require('./chunkedAiGrading');
 const { gradeQuestionByType } = require('./enhancedGrading');
+const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading');
 const { parseAnswerFile } = require('./fileParser');
 const fs = require('fs');
 const path = require('path');
@@ -167,7 +168,7 @@ const ensureOptionLetters = (options) => {
  * @param {Object} answer - The student's answer object
  * @returns {Object} - Grading result with score and feedback
  */
-const gradeSubQuestions = (question, answer) => {
+const gradeSubQuestions = async (question, answer) => {
   const subQuestions = question.subQuestions || [];
   const subQuestionAnswers = answer.subQuestionAnswers || [];
   const config = question.subQuestionConfig || { mode: 'all', requiredCount: 1, scoringType: 'partial' };
@@ -256,6 +257,12 @@ const gradeSubQuestions = (question, answer) => {
 
         // Award points for this sub-question if correct
         subQScore = isSubCorrect ? subQPoints : 0;
+      } else if (subQType === 'financial-spreadsheet') {
+        // Points must match subQPoints (which may fall back to a share of the parent's points),
+        // not subQ.points directly, so the score returned here stays in scale with maxPossibleScore.
+        const spreadsheetGrading = await gradeFinancialSpreadsheetWithWritten({ ...subQ, points: subQPoints }, subQAnswer, subQ.spreadsheetModelAnswer);
+        subQScore = spreadsheetGrading.score;
+        isSubCorrect = spreadsheetGrading.isCorrect;
       } else {
         // For open-ended, check if there's an answer (AI will grade later)
         const hasAnswer = subQAnswer.textAnswer && subQAnswer.textAnswer.trim().length > 0;
@@ -343,6 +350,11 @@ const gradeSubQuestions = (question, answer) => {
 
       subQScore = isSubCorrect ? subQPoints : 0;
       feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${isSubCorrect ? '✅' : '❌'} (${subQScore}/${subQPoints})`);
+    } else if (subQType === 'financial-spreadsheet') {
+      // subQPoints already defaults to subQ.points || 1 above, so this stays in scale.
+      const spreadsheetGrading = await gradeFinancialSpreadsheetWithWritten({ ...subQ, points: subQPoints }, subQAnswer, subQ.spreadsheetModelAnswer);
+      subQScore = spreadsheetGrading.score;
+      feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${spreadsheetGrading.feedback} (${subQScore}/${subQPoints})`);
     } else {
       // Open-ended - check if answered, AI will grade later
       const hasAnswer = subQAnswer.textAnswer && subQAnswer.textAnswer.trim().length > 0;
@@ -423,7 +435,7 @@ const gradeExamWithAI = async (resultId) => {
       .populate({
         path: 'answers.question',
         model: 'Question',
-        select: 'text type options points correctAnswer explanation answerKey'
+        select: 'text type options points correctAnswer explanation answerKey subQuestions'
       });
 
     if (!result) {
@@ -571,7 +583,7 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
       if (question.subQuestions && question.subQuestions.length > 0) {
         console.log(`Question ${i} has ${question.subQuestions.length} subQuestions - using sub-question grading`);
 
-        const subQGrading = gradeSubQuestions(question, answer);
+        const subQGrading = await gradeSubQuestions(question, answer);
 
         // Update the answer with sub-question grading results
         result.answers[i].score = subQGrading.score;
@@ -1541,7 +1553,7 @@ const regradeExamResult = async (resultId, forceRegrade = false) => {
       .populate({
         path: 'answers.question',
         model: 'Question',
-        select: 'text type options points correctAnswer explanation answerKey'
+        select: 'text type options points correctAnswer explanation answerKey subQuestions'
       });
 
     if (!result) {
@@ -2192,5 +2204,6 @@ Only respond with the letter of the correct option (A, B, C, or D).`;
 module.exports = {
   gradeExamWithAI,
   findAndGradeUngradedResults,
-  regradeExamResult
+  regradeExamResult,
+  gradeSubQuestions
 };

@@ -3867,6 +3867,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 mode="teacher-setup"
                 onTemplateChange={(json) => setEditingQuestion(q => ({ ...q, spreadsheetTemplate: json }))}
                 onModelChange={(json) => setEditingQuestion(q => ({ ...q, spreadsheetModelAnswer: json, correctAnswer: json }))}
+                onConfigChange={(patch) => setEditingQuestion(q => ({ ...q, ...patch }))}
               />
             </Box>
           )}
@@ -4127,6 +4128,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                           mode="teacher-setup"
                           onTemplateChange={(json) => updateSubQ({ spreadsheetTemplate: json })}
                           onModelChange={(json) => updateSubQ({ spreadsheetModelAnswer: json, correctAnswer: json })}
+                          onConfigChange={(patch) => updateSubQ(patch)}
                           height={320}
                         />
                       </Box>
@@ -4433,6 +4435,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 mode="teacher-setup"
                 onTemplateChange={(json) => setNewQuestion(q => ({ ...q, spreadsheetTemplate: json }))}
                 onModelChange={(json) => setNewQuestion(q => ({ ...q, spreadsheetModelAnswer: json, correctAnswer: json }))}
+                onConfigChange={(patch) => setNewQuestion(q => ({ ...q, ...patch }))}
               />
             </Box>
           )}
@@ -5042,6 +5045,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
               mode="teacher-setup"
               onTemplateChange={(json) => setQuestion(p => ({ ...p, spreadsheetTemplate: json }))}
               onModelChange={(json) => setQuestion(p => ({ ...p, spreadsheetModelAnswer: json, correctAnswer: json }))}
+              onConfigChange={(patch) => setQuestion(p => ({ ...p, ...patch }))}
             />
           </Box>
         )}
@@ -5134,6 +5138,7 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
                     mode="teacher-setup"
                     onTemplateChange={(json) => updateSubQ({ spreadsheetTemplate: json })}
                     onModelChange={(json) => updateSubQ({ spreadsheetModelAnswer: json, correctAnswer: json })}
+                    onConfigChange={(patch) => updateSubQ(patch)}
                     height={320}
                   />
                 </Box>

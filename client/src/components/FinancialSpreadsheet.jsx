@@ -22,7 +22,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Box, Tabs, Tab, Chip, Typography, Alert, Button,
-  IconButton, Tooltip, TextField, Stack, Divider, CircularProgress, Collapse
+  IconButton, Tooltip, TextField, Stack, Divider, CircularProgress, Collapse,
+  Checkbox, FormControlLabel
 } from '@mui/material';
 import {
   Lock, LockOpen, TableChart,
@@ -30,7 +31,8 @@ import {
   AddCircleOutline, RemoveCircleOutline,
   FormatBold, FormatItalic,
   FormatAlignLeft, FormatAlignCenter, FormatAlignRight,
-  Undo, Redo, Functions, AutoAwesome, ExpandMore, ExpandLess
+  Undo, Redo, Functions, AutoAwesome, ExpandMore, ExpandLess,
+  AddPhotoAlternate, Close, Article
 } from '@mui/icons-material';
 import api from '../services/api';
 
@@ -672,6 +674,82 @@ function useTableSet(initialTables, onChangeCb) {
   return { tables, setTables, updateTable, updateTitle, addTable, removeTable, replaceAll };
 }
 
+// ── Written-answer config (teacher-setup only) ─────────────────────────────────
+// Some financial questions need more than the spreadsheet — e.g. "prepare the income statement
+// AND comment on why gross profit changed". Lets a teacher optionally require a written answer
+// alongside the grid, with its own prompt/model-answer/points so it can be graded separately
+// (via AI open-ended grading) and combined into one score.
+function WrittenAnswerConfigBox({ questionData, onConfigChange }) {
+  const [open, setOpen] = useState(!!questionData?.requiresWrittenAnswer);
+  const required = !!questionData?.requiresWrittenAnswer;
+
+  return (
+    <Box sx={{ mx: 1, mt: 1, border: '1px dashed #7C3AED', borderRadius: 1.5, bgcolor: '#F5F3FF' }}>
+      <Box
+        onClick={() => setOpen(o => !o)}
+        sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 0.75, cursor: 'pointer' }}
+      >
+        <Article sx={{ fontSize: 15, color: '#7C3AED' }} />
+        <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#5B21B6', flexGrow: 1 }}>
+          {required ? 'Written answer required alongside the spreadsheet' : 'Also require a written answer? (optional)'}
+        </Typography>
+        {open ? <ExpandLess sx={{ fontSize: 16, color: '#7C3AED' }} /> : <ExpandMore sx={{ fontSize: 16, color: '#7C3AED' }} />}
+      </Box>
+      <Collapse in={open}>
+        <Box sx={{ px: 1.5, pb: 1.5 }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                size="small"
+                checked={required}
+                onChange={(e) => onConfigChange({ requiresWrittenAnswer: e.target.checked })}
+              />
+            }
+            label={<Typography sx={{ fontSize: 11.5, color: '#5B21B6' }}>Students must also write a text answer for this question (e.g. an explanation/comment), not just fill the grid</Typography>}
+            sx={{ mb: required ? 1 : 0 }}
+          />
+          {required && (
+            <>
+              <TextField
+                fullWidth
+                size="small"
+                multiline
+                minRows={2}
+                label="What should the written answer cover?"
+                placeholder='e.g. "Comment on why gross profit margin changed compared to last year."'
+                value={questionData?.writtenAnswerPrompt || ''}
+                onChange={(e) => onConfigChange({ writtenAnswerPrompt: e.target.value })}
+                sx={{ bgcolor: 'white', mb: 1, '& .MuiOutlinedInput-root': { fontSize: 12 } }}
+              />
+              <TextField
+                fullWidth
+                size="small"
+                multiline
+                minRows={2}
+                label="Model answer / grading notes (used for AI grading)"
+                placeholder="What should a full-marks written answer say?"
+                value={questionData?.writtenAnswerModelAnswer || ''}
+                onChange={(e) => onConfigChange({ writtenAnswerModelAnswer: e.target.value })}
+                sx={{ bgcolor: 'white', mb: 1, '& .MuiOutlinedInput-root': { fontSize: 12 } }}
+              />
+              <TextField
+                size="small"
+                type="number"
+                label="Marks for the written part"
+                inputProps={{ min: 0, max: questionData?.points || questionData?.marks || 1 }}
+                value={questionData?.writtenAnswerPoints || 0}
+                onChange={(e) => onConfigChange({ writtenAnswerPoints: Math.max(0, parseInt(e.target.value) || 0) })}
+                helperText={`Out of ${questionData?.points || questionData?.marks || 1} total — the rest goes to the spreadsheet`}
+                sx={{ bgcolor: 'white', width: 220, '& .MuiOutlinedInput-root': { fontSize: 12 } }}
+              />
+            </>
+          )}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
 // ── AI paste-and-fill box (teacher-setup only) ─────────────────────────────────
 // Lets a teacher paste a table copied from Excel/Word (e.g. a trial balance) and have AI turn
 // it into the spreadsheet grid, instead of re-typing every row/value by hand. Only touches the
@@ -680,14 +758,28 @@ function useTableSet(initialTables, onChangeCb) {
 function AiFillSpreadsheetBox({ questionText, passage, modelTables, onFill }) {
   const [open, setOpen] = useState(true);
   const [pasted, setPasted] = useState('');
+  const [images, setImages] = useState([]); // [{ url: dataUri, name }]
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [applied, setApplied] = useState(false);
 
   const filled = hasAnyContent(modelTables || []);
+  const canSubmit = (pasted.trim() || images.length > 0) && !loading;
+
+  const handleImagePick = (fileList) => {
+    const files = Array.from(fileList || []).slice(0, 3 - images.length);
+    if (!files.length) return;
+    Promise.all(files.map(file => new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve({ url: reader.result, name: file.name });
+      reader.readAsDataURL(file);
+    }))).then(newEntries => setImages(prev => [...prev, ...newEntries].slice(0, 3)));
+  };
+
+  const removeImage = (i) => setImages(prev => prev.filter((_, idx) => idx !== i));
 
   const handleFill = async () => {
-    if (!pasted.trim() || loading) return;
+    if (!canSubmit) return;
     setLoading(true);
     setError('');
     setApplied(false);
@@ -696,15 +788,17 @@ function AiFillSpreadsheetBox({ questionText, passage, modelTables, onFill }) {
         questionText: questionText || '',
         passage: passage || '',
         pastedTable: pasted,
+        imageDataUris: images.map(img => img.url),
         currentSpreadsheet: filled ? serialise(modelTables) : '',
-      });
+      }, { timeout: 90000 });
       const tables = coerceToTables(JSON.parse(data.spreadsheetModelAnswer));
       if (!tables || !tables.length) {
-        setError('AI could not read a table from that data. Try pasting it again.');
+        setError('AI could not read a table from that. Try again with clearer data or a clearer photo.');
         return;
       }
       onFill(cloneTables(tables));
       setPasted('');
+      setImages([]);
       setApplied(true);
     } catch (err) {
       setError(err.response?.data?.message || 'AI could not build the spreadsheet. Please try again.');
@@ -721,7 +815,7 @@ function AiFillSpreadsheetBox({ questionText, passage, modelTables, onFill }) {
       >
         <AutoAwesome sx={{ fontSize: 15, color: '#059669' }} />
         <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#065F46', flexGrow: 1 }}>
-          {filled ? 'AI Assist — request a change to this spreadsheet' : 'AI Fill from a pasted table'}
+          {filled ? 'AI Assist — request a change to this spreadsheet' : 'AI Fill from a pasted table or photo'}
         </Typography>
         {open ? <ExpandLess sx={{ fontSize: 16, color: '#059669' }} /> : <ExpandMore sx={{ fontSize: 16, color: '#059669' }} />}
       </Box>
@@ -729,20 +823,62 @@ function AiFillSpreadsheetBox({ questionText, passage, modelTables, onFill }) {
         <Box sx={{ px: 1.5, pb: 1.5 }}>
           <Typography sx={{ fontSize: 11, color: '#047857', mb: 1 }}>
             {filled
-              ? 'Already have a grid? Ask AI to change it — e.g. "change salary expense to 500,000", "add a row for depreciation", or paste corrected/extra data — and it will update the existing table(s) instead of starting over.'
-              : 'Paste a table from Excel or Word (trial balance, adjustments, or a full statement) and AI will build the grid and compute the values for you.'}
+              ? 'Already have a grid? Ask AI to change it — e.g. "change salary expense to 500,000", "add a row for depreciation" — paste corrected/extra data, or upload a photo, and it will update the existing table(s) instead of starting over.'
+              : 'Paste a table from Excel or Word, and/or upload a photo or screenshot of it (a trial balance, ledger, journal, or a finished statement) — AI will read the data and build the grid with the values computed for you.'}
           </Typography>
           <TextField
             fullWidth
             multiline
             minRows={filled ? 2 : 4}
             maxRows={10}
-            placeholder={filled ? 'Describe a change, or paste new/corrected data…' : 'Paste your table here…'}
+            placeholder={filled ? 'Describe a change, or paste new/corrected data…' : 'Paste your table here (optional if you upload a photo below)…'}
             value={pasted}
             onChange={(e) => { setPasted(e.target.value); setApplied(false); }}
             disabled={loading}
             sx={{ bgcolor: 'white', mb: 1, '& .MuiOutlinedInput-root': { fontSize: 12 } }}
           />
+
+          {images.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+              {images.map((img, i) => (
+                <Box key={i} sx={{ position: 'relative', width: 72, height: 72 }}>
+                  <Box
+                    component="img"
+                    src={img.url}
+                    alt={img.name || `Upload ${i + 1}`}
+                    sx={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 1, border: '1px solid #A7F3D0' }}
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => removeImage(i)}
+                    disabled={loading}
+                    sx={{ position: 'absolute', top: -8, right: -8, bgcolor: 'rgba(239,68,68,0.92)', color: 'white', p: 0.25, '&:hover': { bgcolor: '#EF4444' } }}
+                  >
+                    <Close sx={{ fontSize: 12 }} />
+                  </IconButton>
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          <Button
+            component="label"
+            size="small"
+            variant="outlined"
+            disabled={loading || images.length >= 3}
+            startIcon={<AddPhotoAlternate sx={{ fontSize: 15 }} />}
+            sx={{ textTransform: 'none', fontSize: 11, borderRadius: 1.5, borderColor: '#059669', color: '#059669', mb: 1 }}
+          >
+            {images.length > 0 ? `Add another photo (${images.length}/3)` : 'Upload a photo or screenshot'}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => { handleImagePick(e.target.files); e.target.value = ''; }}
+            />
+          </Button>
+
           {error && <Alert severity="error" sx={{ mb: 1, py: 0, fontSize: 11 }}>{error}</Alert>}
           {applied && !error && (
             <Alert severity="success" sx={{ mb: 1, py: 0, fontSize: 11 }}>
@@ -752,7 +888,7 @@ function AiFillSpreadsheetBox({ questionText, passage, modelTables, onFill }) {
           <Button
             size="small"
             variant="contained"
-            disabled={!pasted.trim() || loading}
+            disabled={!canSubmit}
             onClick={handleFill}
             startIcon={loading ? <CircularProgress size={14} color="inherit" /> : <AutoAwesome sx={{ fontSize: 14 }} />}
             sx={{ textTransform: 'none', fontSize: 11.5, bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
@@ -773,6 +909,9 @@ export default function FinancialSpreadsheet({
   onTemplateChange,
   onModelChange,
   onAnswerChange,
+  onConfigChange,
+  writtenAnswer = '',
+  onWrittenAnswerChange,
   readOnly = false,
   height = 400,
 }) {
@@ -842,6 +981,11 @@ export default function FinancialSpreadsheet({
           onFill={(tables) => model.replaceAll(tables)}
         />
 
+        <WrittenAnswerConfigBox
+          questionData={questionData}
+          onConfigChange={(patch) => onConfigChange?.(patch)}
+        />
+
         <Alert severity="info" icon={<Info sx={{ fontSize: 15 }} />}
           sx={{ mx: 1, mt: 1, py: 0.5, fontSize: 11, '& .MuiAlert-message': { fontSize: 11 } }}>
           Fill in the complete, correct financial statement(s) below — row labels and final values.
@@ -897,6 +1041,14 @@ export default function FinancialSpreadsheet({
             {answer.tables.map((t, i) => (
               <StatementTableReadOnly key={t._key} table={t} index={i} count={answer.tables.length} height={height} />
             ))}
+            {questionData?.requiresWrittenAnswer && (
+              <Box sx={{ mt: 1.5, p: 1.5, border: '1px solid #E2E8F0', borderRadius: 1.5, bgcolor: 'white' }}>
+                <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#1E40AF', mb: 0.5 }}>✍️ Written Answer</Typography>
+                <Typography sx={{ fontSize: 12, whiteSpace: 'pre-wrap', color: writtenAnswer ? '#1E293B' : '#94A3B8' }}>
+                  {writtenAnswer || 'No written answer submitted.'}
+                </Typography>
+              </Box>
+            )}
           </Box>
         )}
         {activeTab === 1 && (
@@ -908,6 +1060,17 @@ export default function FinancialSpreadsheet({
             {model.tables.map((t, i) => (
               <StatementTableReadOnly key={t._key} table={t} index={i} count={model.tables.length} height={height} />
             ))}
+            {questionData?.requiresWrittenAnswer && (
+              <Box sx={{ mt: 1.5, p: 1.5, border: '1px solid #A7F3D0', borderRadius: 1.5, bgcolor: '#ECFDF5' }}>
+                <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#065F46', mb: 0.5 }}>✍️ Written Answer — Model / Grading Notes</Typography>
+                {questionData?.writtenAnswerPrompt && (
+                  <Typography sx={{ fontSize: 11.5, color: '#065F46', mb: 0.5, fontStyle: 'italic' }}>{questionData.writtenAnswerPrompt}</Typography>
+                )}
+                <Typography sx={{ fontSize: 12, whiteSpace: 'pre-wrap', color: '#065F46' }}>
+                  {questionData?.writtenAnswerModelAnswer || 'No model answer provided.'}
+                </Typography>
+              </Box>
+            )}
           </Box>
         )}
       </Box>
@@ -961,6 +1124,29 @@ export default function FinancialSpreadsheet({
         </Box>
       )}
 
+      {questionData?.requiresWrittenAnswer && (
+        <Box sx={{ p: 1.5, borderTop: '1px solid #E2E8F0', bgcolor: '#F8FAFC' }}>
+          <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#1E40AF', mb: 0.5 }}>
+            ✍️ Written Answer Required
+          </Typography>
+          {questionData?.writtenAnswerPrompt && (
+            <Typography sx={{ fontSize: 11.5, color: '#334155', mb: 1, fontStyle: 'italic' }}>
+              {questionData.writtenAnswerPrompt}
+            </Typography>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            minRows={3}
+            placeholder="Type your written answer here…"
+            value={writtenAnswer || ''}
+            onChange={(e) => onWrittenAnswerChange?.(e.target.value)}
+            disabled={readOnly}
+            sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { fontSize: 13 } }}
+          />
+        </Box>
+      )}
+
       {!readOnly && (
         <Box sx={{ px: 2, py: 0.5, bgcolor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
           <Typography sx={{ fontSize: 10, color: '#9CA3AF' }}>
@@ -981,6 +1167,9 @@ export function FinancialSpreadsheetQuestion({
   onTemplateChange,
   onModelChange,
   onAnswerChange,
+  onConfigChange,
+  writtenAnswer = '',
+  onWrittenAnswerChange,
   readOnly = false,
   height = 500,
 }) {
@@ -992,6 +1181,9 @@ export function FinancialSpreadsheetQuestion({
       onTemplateChange={onTemplateChange}
       onModelChange={onModelChange}
       onAnswerChange={onAnswerChange}
+      onConfigChange={onConfigChange}
+      writtenAnswer={writtenAnswer}
+      onWrittenAnswerChange={onWrittenAnswerChange}
       readOnly={readOnly}
       height={height}
     />

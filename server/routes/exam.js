@@ -722,7 +722,11 @@ router.post('/save-draft', auth, isAdminOrTeacher, attachOrgAdminId, async (req,
           type: sq.type || 'open-ended',
           points: sq.points || 1,
           correctAnswer: sq.correctAnswer || '',
-          options: sq.options || []
+          options: sq.options || [],
+          imageUrl: sq.imageUrl || '',
+          imageUrls: Array.isArray(sq.imageUrls) ? sq.imageUrls : [],
+          spreadsheetTemplate: sq.spreadsheetTemplate ? normalizeSpreadsheetField(sq.spreadsheetTemplate) : undefined,
+          spreadsheetModelAnswer: sq.spreadsheetModelAnswer ? normalizeSpreadsheetField(sq.spreadsheetModelAnswer) : undefined
         })) : [],
         // Sub-question configuration: mode ('all' or 'choose-n'), requiredCount, scoringType
         subQuestionConfig: q.subQuestionConfig || {
@@ -2399,8 +2403,15 @@ const checkCooldown = (map, userId, cooldownMs) => {
 router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
   try {
     const { questionText = '', passage = '', pastedTable = '', currentSpreadsheet = '' } = req.body;
-    if (!pastedTable || !pastedTable.trim()) {
-      return res.status(400).json({ message: 'Paste a table, or describe the change you want, first.' });
+    // Accept one or more uploaded images (data: URIs) of a photo/screenshot of the table —
+    // e.g. a trial balance photographed from a textbook or a screenshot of a spreadsheet.
+    // Groq's vision model reads the data directly from the image; no OCR step needed here.
+    const images = Array.isArray(req.body.imageDataUris)
+      ? req.body.imageDataUris.filter(u => typeof u === 'string' && u.startsWith('data:image/'))
+      : (typeof req.body.imageDataUri === 'string' && req.body.imageDataUri.startsWith('data:image/') ? [req.body.imageDataUri] : []);
+
+    if ((!pastedTable || !pastedTable.trim()) && images.length === 0) {
+      return res.status(400).json({ message: 'Paste a table, upload an image of it, or describe the change you want, first.' });
     }
 
     const userId = String(req.user._id);
@@ -2414,11 +2425,16 @@ router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, a
 This is a SECOND request, editing what's already there. The teacher's input below could be either (a) a fresh table to merge in / replace a specific table with, or (b) a plain-English change request about the current spreadsheet above (e.g. "change salary expense to 500000", "add a row for depreciation", "swap the Dr/Cr on the loan line"). Apply ONLY the requested change and carry over every other row/table from the current spreadsheet UNCHANGED — do not regenerate or rewrite rows the teacher didn't ask to change.\n`
       : '';
 
-    const prompt = `You are an accounting exam assistant. Build (or update) the spreadsheet grid for this exam question from data/instructions the teacher provides.
+    const imageBlock = images.length > 0
+      ? `\nThe teacher also attached ${images.length > 1 ? `${images.length} images (read them as one continuous document, in order)` : 'an image'} — a photo or screenshot of the table/statement (trial balance, ledger, journal, or a finished statement). READ THE DATA DIRECTLY FROM THE IMAGE: every account name and figure you use must come from what you can actually see in it, not be guessed or invented. If part of the image is blurry, cut off, or illegible, do your best with what's clearly readable and do not fabricate figures for the unreadable part.\n`
+      : '';
+
+    const prompt = `You are a qualified accounting/finance teacher and exam assistant (IFRS/IAS-based, but adapt to whatever curriculum the question implies). Build (or update) the spreadsheet grid for this exam question from data/instructions the teacher provides${images.length > 0 ? ', including any attached image(s)' : ''}. Get the ACCOUNTING right first — correct classification, correct ordering, correct arithmetic — then format it professionally.
 
 Question: "${questionText.slice(0, 2000)}"
-${existingBlock}Teacher's input (treat as authoritative — this is the real data or change request to use): "${pastedTable.slice(0, 8000)}"
-Additional context (if any): "${passage.slice(0, 2000)}"
+${existingBlock}${imageBlock}${pastedTable.trim()
+      ? `Teacher's typed input (treat as authoritative — this is the real data or change request to use): "${pastedTable.slice(0, 8000)}"\n`
+      : ''}Additional context (if any): "${passage.slice(0, 2000)}"
 
 Return ONLY JSON of this shape (headers/column count vary by statement type — see rules below, do not always use the same 2 columns):
 {
@@ -2427,26 +2443,59 @@ Return ONLY JSON of this shape (headers/column count vary by statement type — 
 }
 - Always return the FULL, complete table set (every table, every row) — never a partial diff — even when you were only asked to change one value.
 - One table per financial statement/schedule the question asks for.
-- spreadsheetTemplate: row labels (and, for a Statement of Financial Position/Income Statement, section headings) filled in, value cells left as "".
-- spreadsheetModelAnswer: same structure with every value cell computed using standard accounting rules.
+- spreadsheetTemplate: row labels (and section headings) filled in, value cells left as "".
+- spreadsheetModelAnswer: same structure with every value cell correctly computed.
 - COMPLETE EVERYTHING THAT WAS PASTED: every account/line item present in the teacher's input must appear as its own row, using the exact same label/wording the teacher used (do not rename, merge, skip, summarize away, or invent line items that weren't given). Only ADD extra rows beyond what was given if the question explicitly needs derived/computed lines (e.g. subtotals, totals, or lines of a statement built FROM a pasted trial balance) — never REPLACE a given line with something else.
-- MATCH THE PROFESSIONAL FORMAT TO THE STATEMENT TYPE — not everything is Debit/Credit:
-  * Statement of Financial Position (Balance Sheet), Statement of Profit or Loss (Income Statement), Statement of Changes in Equity, Statement of Cash Flows: use the standard published-statement layout with headers like ["Item","FRW '000'","FRW '000'"] (match whatever currency/unit the source uses) — column 1 is the item/section heading (bold section headers such as "Non-Current Assets", "Current Assets", "Equity", "Current Liabilities" get their own row with no figures), column 2 holds the sub-amounts/workings for a line that needs several components added together (leave "" on rows that don't need one), column 3 holds the figure that carries into the statement's running total — section subtotals (e.g. "Total Current Assets") and the final total go in column 3. Do NOT use "Debit"/"Credit" headers for these statements.
-  * Trial Balance: exactly headers ["Item","Debit","Credit"], one figure per row on the correct side only (never both), and the Debit column total must equal the Credit column total — recheck if they don't.
-  * Ledger accounts / T-accounts: one table per account, headers ["Date","Particulars","Debit","Credit"], preserving which entries are on the debit side vs the credit side exactly as given (or as the transactions require), plus a closing balance row.
-  * Journal entries: headers ["Date","Particulars","Debit","Credit"], one row per account touched by each entry — the debited account's amount goes in Debit with Credit left "", the credited account's amount goes in Credit with Debit left "" (conventionally indent/prefix the credited account's particulars with "To ..."). Never put a Dr and Cr figure in the same row's single cell.
-  * Anything else (a schedule, workings, a computation the question asks for): use whichever column layout is standard for that specific output — only use Debit/Credit columns when double-entry actually applies to what you're producing.`;
+
+ACCOUNTING KNOWLEDGE TO APPLY — get the classification, ordering and arithmetic right, not just the layout:
+
+1) STATEMENT OF FINANCIAL POSITION (Balance Sheet) — line-item order matters, follow it exactly:
+   ASSETS: Non-Current Assets first, in order of permanence (e.g. Property/Plant/Equipment, Intangible assets, Long-term investments) → "Total Non-Current Assets" → Current Assets (Inventories, Receivables/Trade receivables, Prepayments, Short-term investments, Cash and Cash Equivalents — least liquid to most liquid) → "Total Current Assets" → "Total Assets".
+   EQUITY & LIABILITIES: Equity first (Share Capital, Share Premium, Retained Earnings/Revenue Reserves) → "Total Equity" → Non-Current Liabilities (long-term loans, debentures, deferred tax) → "Total Non-Current Liabilities" → Current Liabilities (Trade Payables, Accrued expenses, Tax payable, Provisions, Bank overdraft, current portion of long-term loans) → "Total Current Liabilities" → "Total Equity and Liabilities". This final figure MUST equal Total Assets — if it doesn't, find and fix the error before returning.
+
+2) INCOME STATEMENT (Statement of Profit or Loss) — top-to-bottom order:
+   Revenue/Sales → less Cost of Sales (= Opening Inventory + Purchases (+ Carriage Inwards − Purchase Returns) − Closing Inventory) → "Gross Profit" → add Other Income → less Operating Expenses (list items individually: e.g. Distribution costs, Administrative expenses, Depreciation, Bad debts/increase in allowance for doubtful debts) → "Operating Profit" → less Finance costs (loan interest) → "Profit Before Tax" → less Tax expense → "Profit for the Year". Dividends are NOT an expense here — they reduce Retained Earnings in the Statement of Changes in Equity instead.
+
+3) STATEMENT OF CHANGES IN EQUITY — columns per equity component (e.g. Share Capital, Retained Earnings, Total), rows in this order: Balance b/f → Profit for the year (add) → Dividends paid (deduct) → other movements (share issues, revaluation) → Balance c/f.
+
+4) STATEMENT OF CASH FLOWS — three sections in this order: Operating Activities (start from Profit Before Tax, add back non-cash items like Depreciation and Interest expense, then adjust for working-capital movements: − increase/+ decrease in Inventory, − increase/+ decrease in Receivables, + increase/− decrease in Payables) → Investing Activities (− purchase / + sale of Non-Current Assets, purchase/sale of investments) → Financing Activities (+ shares/loans issued, − loans repaid, − dividends paid) → "Net Increase/(Decrease) in Cash" → Cash at start → "Cash at End" (must reconcile to the Cash and Cash Equivalents figure in the Statement of Financial Position).
+
+5) COMMON ADJUSTMENTS — apply these correctly when the trial balance/notes mention them, and reflect the effect in BOTH statements they touch (P&L and SOFP), not just one:
+   - Depreciation: add to expenses in the Income Statement; reduce the asset's carrying amount (or increase Accumulated Depreciation) in the SOFP.
+   - Accrued expense (owing, not yet paid): full amount is still an expense in the Income Statement; the unpaid portion is a Current Liability in the SOFP.
+   - Prepaid expense (paid in advance): only the portion relating to this period is an expense; the rest is a Current Asset (Prepayments) in the SOFP.
+   - Accrued income / Deferred (unearned) income: accrued income is a Current Asset; deferred income is a Current Liability.
+   - Irrecoverable (bad) debts written off: reduce Receivables and add to expenses. Allowance/provision for doubtful debts: expense the CHANGE in the allowance (increase = expense, decrease = income), and show Receivables net of the allowance in the SOFP.
+   - Closing inventory: appears twice — as a deduction in the Cost of Sales calculation, AND as a Current Asset in the SOFP.
+   - Provisions (e.g. legal claims, warranties): expense in the Income Statement, liability (current or non-current, per its expected timing) in the SOFP.
+   - Accrued interest on loans: expense in the Income Statement (Finance costs), Current Liability in the SOFP.
+   - Tax expense: deducted in the Income Statement; any unpaid amount is Tax Payable, a Current Liability in the SOFP.
+
+6) DOUBLE-ENTRY / DEBIT & CREDIT (Trial Balance, Ledgers, Journals only — NOT the four statements above): Assets and Expenses normally carry Debit balances; Liabilities, Equity and Income normally carry Credit balances. Preserve whichever side the source data shows; never move a figure to the wrong side.
+
+FORMAT BY DOCUMENT TYPE:
+  * Statement of Financial Position, Income Statement, Statement of Changes in Equity, Statement of Cash Flows: headers like ["Item","FRW '000'","FRW '000'"] (match whatever currency/unit the source uses) — column 1 is the item/section heading (section headers like "Non-Current Assets" get their own row with no figures), column 2 holds sub-amounts/workings for a line needing several components added together (leave "" when not needed), column 3 holds the figure that carries into the statement's running total (subtotals and the final total go here). Do NOT use "Debit"/"Credit" headers for these.
+  * Trial Balance: exactly headers ["Item","Debit","Credit"], one figure per row on the correct side only, and the Debit column total must equal the Credit column total — recheck if they don't.
+  * Ledger accounts / T-accounts: one table per account, headers ["Date","Particulars","Debit","Credit"], preserving which entries are on which side, plus a closing balance row.
+  * Journal entries: headers ["Date","Particulars","Debit","Credit"], one row per account touched by each entry — the debited account's amount in Debit with Credit left "", the credited account's amount in Credit with Debit left "" (conventionally indent/prefix the credited account's particulars with "To ..."). Never put a Dr and Cr figure in the same row's single cell.
+  * Anything else (a schedule, workings, a ratio computation): use whichever layout is standard for that specific output; only use Debit/Credit columns when double-entry actually applies.
+
+Before returning, sanity-check your own arithmetic: does the Statement of Financial Position balance (Total Assets = Total Equity and Liabilities)? Does the Trial Balance balance? Does Gross Profit − Expenses actually equal the Profit figure you wrote down? Fix any mismatch rather than returning inconsistent numbers.`;
 
     const result = await groqClient.generateContent(prompt, {
       model: 'smart',
       jsonMode: true,
       temperature: 0.1,
-      maxTokens: 4096
+      // The vision model spends completion tokens on internal reasoning before the JSON, so it
+      // needs much more headroom than the text-only path or it gets cut off mid-thought —
+      // especially for a multi-table statement with many line items.
+      maxTokens: images.length > 0 ? 12000 : 4096,
+      images
     });
 
     const parsed = result.parsedContent || (result.text ? JSON.parse(result.text.match(/\{[\s\S]*\}/)?.[0] || '{}') : {});
     if (!parsed.spreadsheetModelAnswer) {
-      return res.status(422).json({ message: 'AI could not build a spreadsheet from that data. Try pasting a clearer table.' });
+      return res.status(422).json({ message: images.length > 0 ? 'AI could not read a table from that image. Try a clearer photo/screenshot.' : 'AI could not build a spreadsheet from that data. Try pasting a clearer table.' });
     }
 
     res.json({

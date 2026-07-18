@@ -50,7 +50,17 @@ const GROQ_MODELS = {
   // Long context model
   longContext: 'mixtral-8x7b-32768',
   // Default model
-  default: 'llama-3.3-70b-versatile'
+  default: 'llama-3.3-70b-versatile',
+  // Multimodal (vision) model — verified live against this account's /models list
+  // (input_modalities includes "image"; llama-4-scout/maverick are NOT available on this
+  // account despite being Groq's usual vision models elsewhere — always re-check with
+  // `groq.models.list()` before changing this if it 404s again). This is a REASONING model
+  // (supported_features includes "reasoning") — it spends completion tokens on internal
+  // chain-of-thought before the final JSON, so callers must pass a generous maxTokens or the
+  // response gets cut off mid-thought with no JSON at all ("json_validate_failed").
+  // If Groq deprecates/renames this, update it here only; every caller that passes
+  // options.images picks this up automatically (see generateContent below).
+  vision: 'qwen/qwen3.6-27b'
 };
 
 // Create a custom configuration for the Groq API client
@@ -132,13 +142,18 @@ const createGroqClient = () => {
     }
 
     const cleanPrompt = prompt.trim().replace(/[\x00-\x1F\x7F]/g, '');
-    const modelType = options.model || 'default';
+    // Images (data: URIs) force the vision model regardless of options.model — the text-only
+    // models silently reject/ignore image_url content, so this avoids a caller forgetting to
+    // request the right model when attaching a photo/screenshot.
+    const images = Array.isArray(options.images) ? options.images.filter(Boolean).slice(0, 3) : [];
+    const modelType = images.length > 0 ? 'vision' : (options.model || 'default');
     const useJsonMode = options.jsonMode !== false; // Default to true for reliable JSON
     const temperature = options.temperature ?? 0.3; // Lower temperature for more consistent outputs
     const maxTokens = options.maxTokens || 4096;
 
-    // Generate cache key for deduplication
-    const cacheKey = generateCacheKey({ prompt: cleanPrompt, model: getModel(modelType), jsonMode: useJsonMode });
+    // Generate cache key for deduplication — includes the images so two different photos with
+    // the same text prompt never collide on the same cached response.
+    const cacheKey = generateCacheKey({ prompt: cleanPrompt, model: getModel(modelType), jsonMode: useJsonMode, images });
 
     // Check if there's already an identical request in flight
     if (inFlightRequests.has(cacheKey) && !options.skipCache) {
@@ -162,7 +177,17 @@ const createGroqClient = () => {
 
           console.log(`Generating content with Groq (prompt length: ${cleanPrompt.length} chars, attempt ${attempt + 1})`);
 
-          // Build the request payload
+          // Build the request payload. When images are attached, the user message content
+          // becomes a multimodal array (text + one or more image_url parts) per the
+          // OpenAI-compatible vision format Groq's vision models expect; otherwise it's the
+          // plain string every other caller already relies on.
+          const userContent = images.length > 0
+            ? [
+                { type: 'text', text: cleanPrompt },
+                ...images.map((dataUri) => ({ type: 'image_url', image_url: { url: dataUri } }))
+              ]
+            : cleanPrompt;
+
           const messages = [
             {
               role: 'system',
@@ -170,7 +195,7 @@ const createGroqClient = () => {
             },
             {
               role: 'user',
-              content: cleanPrompt
+              content: userContent
             }
           ];
 

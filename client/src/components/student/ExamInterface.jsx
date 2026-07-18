@@ -248,6 +248,10 @@ const ExamInterface = () => {
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showTimeWarning, setShowTimeWarning] = useState(false);
   const openAnswerRef = useRef(null);
+  // Debounce timers for the optional written-answer text box on financial-spreadsheet
+  // questions, keyed by questionId (or sub-answer key) — see handleAnswerChange's
+  // 'financial-spreadsheet-written' case.
+  const writtenAnswerSaveTimers = useRef({});
 
   const [exam, setExam] = useState(null);
   const [session, setSession] = useState(null);
@@ -2029,6 +2033,25 @@ const ExamInterface = () => {
         newAnswer.hasChanges = true;
         setAnswers(prev => ({ ...prev, [questionId]: newAnswer }));
         return;
+
+      case 'financial-spreadsheet-written':
+        // The optional written answer alongside a financial-spreadsheet question's grid — kept
+        // in its own field since textAnswer above already holds the spreadsheet JSON. Debounced
+        // save (rather than relying on the navigate-away/pre-submit flush like the grid does)
+        // because a student may fill in ONLY this text box and never touch the grid at all.
+        newAnswer.writtenAnswer = value;
+        newAnswer.savedToServer = false;
+        newAnswer.hasChanges = true;
+        setAnswers(prev => ({ ...prev, [questionId]: newAnswer }));
+
+        if (writtenAnswerSaveTimers.current[questionId]) {
+          clearTimeout(writtenAnswerSaveTimers.current[questionId]);
+        }
+        writtenAnswerSaveTimers.current[questionId] = setTimeout(() => {
+          saveAnswerToServer(questionId, newAnswer.textAnswer || '', 'financial-spreadsheet', options)
+            .catch(err => console.error('Failed to autosave written answer:', err));
+        }, 1200);
+        return;
       case 'fill-in-blank':
       case 'open-ended':
       case 'image':
@@ -2177,9 +2200,18 @@ const ExamInterface = () => {
               }
               payload.dragDropAnswer = value;
               break;
-            case 'financial-spreadsheet':
+            case 'financial-spreadsheet': {
               payload.textAnswer = typeof value === 'string' ? value : JSON.stringify(value);
+              // Piggyback the optional written answer (if any) onto every spreadsheet save so
+              // the two stay in sync regardless of which one triggered this particular save —
+              // read from the latest local state rather than `value`, which only ever carries
+              // the spreadsheet JSON here.
+              const currentWritten = answers[questionId]?.writtenAnswer;
+              if (currentWritten !== undefined) {
+                payload.writtenAnswer = currentWritten;
+              }
               break;
+            }
             case 'open-ended':
             case 'essay':
             case 'short-answer':
@@ -2375,6 +2407,35 @@ const ExamInterface = () => {
         }
       }
 
+      // Also flush any sub-question answers that haven't been saved yet — these are keyed
+      // `${parentId}_sub_${idx}`, so they never match allQuestions.find(q => q._id === questionId)
+      // above and would otherwise be silently dropped if the student submits without first
+      // navigating away from a question with unsaved sub-question answers (e.g. a matching,
+      // ordering, drag-drop, or financial-spreadsheet sub-question).
+      Object.entries(answers).forEach(([answerKey, answer]) => {
+        const subMatch = answerKey.match(/^(.+)_sub_(\d+)$/);
+        if (!subMatch || !answer) return;
+        const [, parentId, subIdxStr] = subMatch;
+        const parentQuestion = allQuestions.find(q => q._id === parentId);
+        const subQ = parentQuestion?.subQuestions?.[parseInt(subIdxStr, 10)];
+        if (!subQ) return;
+        if (!(answer.hasChanges || !answer.savedToServer)) return;
+
+        const hasContent = answer.textAnswer?.trim() ||
+                         answer.selectedOption ||
+                         answer.matchingAnswers ||
+                         answer.orderingAnswer ||
+                         answer.dragDropAnswer;
+
+        if (hasContent) {
+          unsavedAnswers.push([answerKey, answer, subQ, {
+            parentQuestionId: parentId,
+            subQuestionIndex: parseInt(subIdxStr, 10),
+            isSubQuestion: true
+          }]);
+        }
+      });
+
       if (unsavedAnswers.length > 0) {
         setSnackbar({
           open: true,
@@ -2385,7 +2446,7 @@ const ExamInterface = () => {
         console.log(`Found ${unsavedAnswers.length} unsaved answers. Saving them now...`);
 
         // Save all unsaved answers in parallel for speed
-        const savePromises = unsavedAnswers.map(async ([questionId, answer, question]) => {
+        const savePromises = unsavedAnswers.map(async ([questionId, answer, question, subQuestionOptions]) => {
           try {
             // Determine what to save based on question type and answer content
             let valueToSave = null;
@@ -2410,7 +2471,7 @@ const ExamInterface = () => {
 
             if (valueToSave !== null) {
               console.log(`💾 Saving ${questionType} answer for question ${questionId}`);
-              await saveAnswerToServer(questionId, valueToSave, questionType);
+              await saveAnswerToServer(questionId, valueToSave, questionType, subQuestionOptions);
               console.log(`✅ Successfully saved answer for question ${questionId}`);
               return { questionId, success: true };
             } else {
@@ -4243,6 +4304,8 @@ const ExamInterface = () => {
                                   // FinancialSpreadsheet already serialises {data, headers} to a JSON string
                                   handleAnswerChange(currentQuestion._id, json, 'financial-spreadsheet');
                                 }}
+                                writtenAnswer={answers[currentQuestion._id]?.writtenAnswer || ''}
+                                onWrittenAnswerChange={(text) => handleAnswerChange(currentQuestion._id, text, 'financial-spreadsheet-written')}
                               />
                               {answers[currentQuestion._id]?.savedToServer && (
                                 <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, color: 'success.main' }}>
@@ -4646,6 +4709,30 @@ const ExamInterface = () => {
                                     </Box>
                                   );
                                   
+                                case 'financial-spreadsheet':
+                                  return (
+                                    <FinancialSpreadsheetQuestion
+                                      question={subQ}
+                                      mode="student"
+                                      studentAnswer={subAnswer?.textAnswer || null}
+                                      readOnly={!!subAnswer?.savedToServer}
+                                      onAnswerChange={(json) => handleAnswerChange(
+                                        subAnswerKey,
+                                        json,
+                                        'financial-spreadsheet',
+                                        { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                      )}
+                                      writtenAnswer={subAnswer?.writtenAnswer || ''}
+                                      onWrittenAnswerChange={(text) => handleAnswerChange(
+                                        subAnswerKey,
+                                        text,
+                                        'financial-spreadsheet-written',
+                                        { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                      )}
+                                      height={350}
+                                    />
+                                  );
+
                                 case 'open-ended':
                                 default:
                                   return (
@@ -4663,11 +4750,11 @@ const ExamInterface = () => {
                                         { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
                                       )}
                                       disabled={subAnswer?.answered}
-                                      sx={{ 
-                                        '& .MuiOutlinedInput-root': { 
+                                      sx={{
+                                        '& .MuiOutlinedInput-root': {
                                           bgcolor: 'background.default',
                                           fontSize: { xs: '0.875rem', sm: '1rem' }
-                                        } 
+                                        }
                                       }}
                                     />
                                   );
@@ -4718,10 +4805,10 @@ const ExamInterface = () => {
                                 </Box>
                                 
                                 {/* Sub-question text */}
-                                <Typography 
-                                  variant="body1" 
-                                  sx={{ 
-                                    mt: 1, 
+                                <Typography
+                                  variant="body1"
+                                  sx={{
+                                    mt: 1,
                                     mb: 2,
                                     whiteSpace: 'pre-wrap',
                                     fontSize: { xs: '0.9rem', sm: '1rem' },
@@ -4731,10 +4818,28 @@ const ExamInterface = () => {
                                   {subQ.text}
                                 </Typography>
 
-                                {/* Sub-question answer interface — for financial-spreadsheet questions
-                                    the single grid above is the answer to every part, so skip the
-                                    generic free-text box here to avoid a second, ungraded answer field */}
-                                {currentQuestion.type === 'financial-spreadsheet' ? (
+                                {/* Sub-question images */}
+                                {getQuestionImages(subQ).length > 0 && (
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                                    {getQuestionImages(subQ).map((src, i) => (
+                                      <Box
+                                        key={i}
+                                        component="img"
+                                        src={getImageUrl(src)}
+                                        alt={`${subQ.label || 'Sub-question'} image ${i + 1}`}
+                                        sx={{ width: '100%', maxHeight: 420, objectFit: 'contain', borderRadius: 1, border: '1px solid', borderColor: 'divider', bgcolor: 'background.default' }}
+                                      />
+                                    ))}
+                                  </Box>
+                                )}
+
+                                {/* Sub-question answer interface — for financial-spreadsheet PARENT
+                                    questions the single grid above is the answer to every part, so
+                                    skip the generic free-text box here to avoid a second, ungraded
+                                    answer field. This only applies when the sub-question doesn't have
+                                    its own independent type (e.g. a sub-question that is itself
+                                    financial-spreadsheet still gets its own grid below). */}
+                                {currentQuestion.type === 'financial-spreadsheet' && subType !== 'financial-spreadsheet' ? (
                                   <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                                     Answer this part in the spreadsheet above.
                                   </Typography>

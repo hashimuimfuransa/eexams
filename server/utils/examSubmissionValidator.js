@@ -235,6 +235,16 @@ const sanitizeAnswerData = (answerData) => {
       .trim();
   }
 
+  if (answerData.writtenAnswer) {
+    // Optional written answer alongside a financial-spreadsheet question — sanitized the same
+    // way as textAnswer.
+    sanitized.writtenAnswer = String(answerData.writtenAnswer)
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/javascript:/gi, '')
+      .replace(/on\w+\s*=/gi, '')
+      .trim();
+  }
+
   if (answerData.questionType) {
     sanitized.questionType = String(answerData.questionType).trim();
   }

@@ -41,6 +41,18 @@ const ResultSchema = new mongoose.Schema({
     textAnswer: {
       type: String // For open-ended
     },
+    // Optional written/explanatory answer alongside a financial-spreadsheet question's grid —
+    // kept separate from textAnswer since that field already holds the spreadsheet JSON for
+    // this question type. Graded independently and combined into the overall score/feedback above.
+    writtenAnswer: {
+      type: String
+    },
+    writtenAnswerScore: {
+      type: Number
+    },
+    writtenAnswerFeedback: {
+      type: String
+    },
     isCorrect: {
       type: Boolean
     },
@@ -85,7 +97,12 @@ const ResultSchema = new mongoose.Schema({
       answeredAt: Date,
       selectedOption: String,
       textAnswer: String,
-      questionType: String
+      questionType: String,
+      // Written/explanatory answer alongside a financial-spreadsheet sub-question's grid — see
+      // the top-level writtenAnswer field above. Per-sub-question score/feedback isn't tracked
+      // individually here (matching how sub-question scores generally aren't persisted per-part
+      // today); it's folded into the parent answer's combined score/feedback instead.
+      writtenAnswer: String
     }],
     hasSubQuestionAnswers: {
       type: Boolean,

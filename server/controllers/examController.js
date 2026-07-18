@@ -1781,7 +1781,7 @@ const startExam = async (req, res) => {
 // @access  Private/Student
 const submitAnswer = async (req, res) => {
   try {
-    const { questionId, selectedOption, textAnswer, questionType, matchingAnswers, orderingAnswer, dragDropAnswer } = req.body;
+    const { questionId, selectedOption, textAnswer, writtenAnswer, questionType, matchingAnswers, orderingAnswer, dragDropAnswer } = req.body;
 
     console.log('Received answer submission:', {
       questionId,
@@ -1814,6 +1814,7 @@ const submitAnswer = async (req, res) => {
       questionId: parentQuestionId,
       selectedOption,
       textAnswer,
+      writtenAnswer,
       questionType,
       matchingAnswers,
       orderingAnswer,
@@ -1902,6 +1903,7 @@ const submitAnswer = async (req, res) => {
     const {
       selectedOption: cleanSelectedOption,
       textAnswer: cleanTextAnswer,
+      writtenAnswer: cleanWrittenAnswer,
       matchingAnswers: cleanMatchingAnswers,
       orderingAnswer: cleanOrderingAnswer,
       dragDropAnswer: cleanDragDropAnswer
@@ -1939,8 +1941,12 @@ const submitAnswer = async (req, res) => {
       } else {
         subAnswerData.textAnswer = cleanTextAnswer;
         subAnswerData.questionType = questionType || 'open-ended';
+        // Optional written answer alongside a financial-spreadsheet sub-question's grid
+        if (cleanWrittenAnswer !== undefined) {
+          subAnswerData.writtenAnswer = cleanWrittenAnswer;
+        }
       }
-      
+
       result.answers[answerIndex].subQuestionAnswers[subQuestionIndex] = subAnswerData;
       
       // Mark parent question as having sub-answers
@@ -2195,7 +2201,7 @@ const submitAnswer = async (req, res) => {
         });
       }
     } else {
-      // For other question types (essays, short answers, etc.)
+      // For other question types (essays, short answers, financial-spreadsheet, etc.)
       try {
         const answerText = cleanTextAnswer || cleanSelectedOption || '';
 
@@ -2204,6 +2210,11 @@ const submitAnswer = async (req, res) => {
 
         // Store the answer (validation already done)
         result.answers[answerIndex].textAnswer = answerText;
+
+        // Optional written answer alongside a financial-spreadsheet question's grid
+        if (actualQuestionType === 'financial-spreadsheet' && cleanWrittenAnswer !== undefined) {
+          result.answers[answerIndex].writtenAnswer = cleanWrittenAnswer;
+        }
 
         // Provide immediate feedback to the student
         result.answers[answerIndex].feedback = 'Your answer has been saved. It will be graded when you complete the exam.';
@@ -2644,7 +2655,7 @@ const triggerAIGrading = async (req, res) => {
   try {
     const result = await Result.findById(req.params.resultId).populate({
       path: 'answers.question',
-      select: 'text type correctAnswer points section options'
+      select: 'text type correctAnswer points section options subQuestions subQuestionConfig'
     });
 
     if (!result) {
@@ -2665,13 +2676,32 @@ const triggerAIGrading = async (req, res) => {
       const answer = result.answers[i];
       const question = answer.question;
 
-      // Skip empty answers
-      if (!answer.textAnswer && !answer.selectedOption) {
+      // Skip empty answers — but a multi-part question's real answers live in
+      // subQuestionAnswers, not textAnswer/selectedOption, so don't skip those.
+      const hasSubQuestionAnswers = Array.isArray(answer.subQuestionAnswers) && answer.subQuestionAnswers.length > 0;
+      if (!answer.textAnswer && !answer.selectedOption && !hasSubQuestionAnswers) {
         console.log(`Skipping empty answer for question ${question._id}`);
         continue;
       }
 
       console.log(`Regrading question ${question._id} (type: ${question.type})`);
+
+      // Multi-part questions are graded per sub-question (each by its own type, e.g.
+      // multiple-choice/true-false/financial-spreadsheet), not via the generic dispatch below.
+      if (Array.isArray(question.subQuestions) && question.subQuestions.length > 0) {
+        try {
+          const { gradeSubQuestions } = require('../utils/gradeExam');
+          const subQGrading = await gradeSubQuestions(question, answer);
+          result.answers[i].score = subQGrading.score;
+          result.answers[i].feedback = subQGrading.feedback;
+          result.answers[i].isCorrect = subQGrading.isCorrect;
+          result.answers[i].correctedAnswer = question.correctAnswer || '';
+          console.log(`Regraded sub-questions for question ${question._id}, score: ${subQGrading.score}/${question.points}`);
+        } catch (subQError) {
+          console.error(`Sub-question regrading failed for question ${question._id}:`, subQError.message);
+        }
+        continue;
+      }
 
       try {
         // Use enhanced grading system for all question types

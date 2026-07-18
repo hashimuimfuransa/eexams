@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { toImageEntries } from '../../utils/getImageUrl';
 import MultiImageUploader from './MultiImageUploader';
 import {
@@ -24,6 +24,11 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
   const [expanded, setExpanded] = useState(false);
   const [edited, setEdited] = useState(false);
   const [localQ, setLocalQ] = useState(question);
+  // Tracks the latest localQ synchronously so back-to-back commits in the same tick
+  // (e.g. a spreadsheet's onModelChange immediately followed by onTemplateChange)
+  // each build on top of the other instead of both reading the same pre-update value.
+  const localQRef = useRef(question);
+  localQRef.current = localQ;
 
   const qType = localQ.type || 'multiple-choice';
   const typeColors = {
@@ -74,16 +79,19 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
   // separately remembers to click the Save checkmark before Save Draft/Publish. Typed fields
   // (text, options, correctAnswer, ...) keep the normal buffered Save/Cancel behavior.
   const commit = (updater) => {
-    const next = updater(localQ);
+    const next = updater(localQRef.current);
+    localQRef.current = next;
     setLocalQ(next);
     setEdited(false);
     onUpdate(next);
   };
 
   const commitSubQ = (idx, patch) => {
-    const updated = [...localQ.subQuestions];
+    const base = localQRef.current;
+    const updated = [...base.subQuestions];
     updated[idx] = { ...updated[idx], ...patch };
-    const next = { ...localQ, subQuestions: updated };
+    const next = { ...base, subQuestions: updated };
+    localQRef.current = next;
     setLocalQ(next);
     setEdited(false);
     onUpdate(next);

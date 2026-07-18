@@ -3986,9 +3986,11 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 {editingQuestion.subQuestions.map((subQ, idx) => {
                   const updateSubQ = (patch) => {
-                    const updated = [...editingQuestion.subQuestions];
-                    updated[idx] = { ...updated[idx], ...patch };
-                    setEditingQuestion({ ...editingQuestion, subQuestions: updated });
+                    setEditingQuestion(prev => {
+                      const updated = [...prev.subQuestions];
+                      updated[idx] = { ...updated[idx], ...patch };
+                      return { ...prev, subQuestions: updated };
+                    });
                   };
                   return (
                   <Box key={idx} sx={{ p: 1.5, bgcolor: 'white', borderRadius: 1.5, border: '1px solid #BAE6FD' }}>
@@ -5065,9 +5067,11 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
           </Typography>
           {(question.subQuestions || []).map((subQ, idx) => {
             const updateSubQ = (patch) => {
-              const newSubQs = [...(question.subQuestions || [])];
-              newSubQs[idx] = { ...newSubQs[idx], ...patch };
-              setQuestion(p => ({ ...p, subQuestions: newSubQs }));
+              setQuestion(p => {
+                const newSubQs = [...(p.subQuestions || [])];
+                newSubQs[idx] = { ...newSubQs[idx], ...patch };
+                return { ...p, subQuestions: newSubQs };
+              });
             };
             return (
             <Paper key={idx} elevation={0} sx={{ p: 1.5, mb: 1, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: '#F8FAFC' }}>

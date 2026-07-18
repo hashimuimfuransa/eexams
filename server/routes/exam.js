@@ -2405,7 +2405,6 @@ router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, a
     const { questionText = '', passage = '', pastedTable = '', currentSpreadsheet = '' } = req.body;
     // Accept one or more uploaded images (data: URIs) of a photo/screenshot of the table —
     // e.g. a trial balance photographed from a textbook or a screenshot of a spreadsheet.
-    // Groq's vision model reads the data directly from the image; no OCR step needed here.
     const images = Array.isArray(req.body.imageDataUris)
       ? req.body.imageDataUris.filter(u => typeof u === 'string' && u.startsWith('data:image/'))
       : (typeof req.body.imageDataUri === 'string' && req.body.imageDataUri.startsWith('data:image/') ? [req.body.imageDataUri] : []);
@@ -2419,21 +2418,46 @@ router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, a
       return res.status(429).json({ message: 'Please wait a moment before trying again.' });
     }
 
+    // If images were attached, transcribe them FIRST with a plain "read the image" prompt, then
+    // feed the transcribed text into the normal text-only accounting prompt below. Asking the
+    // vision model to ALSO do the full accounting transformation (classify/order/compute) in the
+    // same call made it spiral into unproductive internal reasoning on anything but the simplest
+    // source data — it would burn the entire token budget "thinking" and return a 400
+    // json_validate_failed with an empty response, no matter how high maxTokens was raised.
+    // Transcription alone is fast and reliable (~2-3s); the actual accounting work then runs on
+    // the same proven non-reasoning text model the paste-a-table flow already uses successfully.
+    let transcribedText = '';
+    if (images.length > 0) {
+      const transcribePrompt = `Transcribe every line of text and every number from ${images.length > 1 ? 'these images' : 'this image'} exactly as they appear, preserving the table/statement structure (row labels and their values, including which column/side each value is under). Do not interpret, compute, or reclassify anything — just transcribe what you see, in reading order.
+Return ONLY JSON: {"extractedText": "..."}`;
+      const transcribeResult = await groqClient.generateContent(transcribePrompt, {
+        jsonMode: true,
+        temperature: 0.1,
+        maxTokens: 4096,
+        images
+      });
+      const transcribeParsed = transcribeResult.parsedContent
+        || (transcribeResult.text ? JSON.parse(transcribeResult.text.match(/\{[\s\S]*\}/)?.[0] || '{}') : {});
+      transcribedText = (transcribeParsed.extractedText || '').trim();
+      if (!transcribedText) {
+        return res.status(422).json({ message: 'AI could not read any data from that image. Try a clearer photo/screenshot.' });
+      }
+    }
+
     const hasExisting = currentSpreadsheet && currentSpreadsheet.trim() && currentSpreadsheet !== '{"tables":[]}';
     const existingBlock = hasExisting
       ? `\nCurrent spreadsheet already built for this question (JSON): ${currentSpreadsheet.slice(0, 6000)}
 This is a SECOND request, editing what's already there. The teacher's input below could be either (a) a fresh table to merge in / replace a specific table with, or (b) a plain-English change request about the current spreadsheet above (e.g. "change salary expense to 500000", "add a row for depreciation", "swap the Dr/Cr on the loan line"). Apply ONLY the requested change and carry over every other row/table from the current spreadsheet UNCHANGED — do not regenerate or rewrite rows the teacher didn't ask to change.\n`
       : '';
 
-    const imageBlock = images.length > 0
-      ? `\nThe teacher also attached ${images.length > 1 ? `${images.length} images (read them as one continuous document, in order)` : 'an image'} — a photo or screenshot of the table/statement (trial balance, ledger, journal, or a finished statement). READ THE DATA DIRECTLY FROM THE IMAGE: every account name and figure you use must come from what you can actually see in it, not be guessed or invented. If part of the image is blurry, cut off, or illegible, do your best with what's clearly readable and do not fabricate figures for the unreadable part.\n`
-      : '';
+    // Combine typed input and/or transcribed-image text into one input block for the main prompt.
+    const combinedInput = [pastedTable.trim(), transcribedText].filter(Boolean).join('\n\n');
 
-    const prompt = `You are a qualified accounting/finance teacher and exam assistant (IFRS/IAS-based, but adapt to whatever curriculum the question implies). Build (or update) the spreadsheet grid for this exam question from data/instructions the teacher provides${images.length > 0 ? ', including any attached image(s)' : ''}. Get the ACCOUNTING right first — correct classification, correct ordering, correct arithmetic — then format it professionally.
+    const prompt = `You are a qualified accounting/finance teacher and exam assistant (IFRS/IAS-based, but adapt to whatever curriculum the question implies). Build (or update) the spreadsheet grid for this exam question from data/instructions the teacher provides. Get the ACCOUNTING right first — correct classification, correct ordering, correct arithmetic — then format it professionally.
 
 Question: "${questionText.slice(0, 2000)}"
-${existingBlock}${imageBlock}${pastedTable.trim()
-      ? `Teacher's typed input (treat as authoritative — this is the real data or change request to use): "${pastedTable.slice(0, 8000)}"\n`
+${existingBlock}${combinedInput
+      ? `Teacher's input (treat as authoritative — this is the real data or change request to use, whether typed directly or read from an uploaded photo/screenshot): "${combinedInput.slice(0, 8000)}"\n`
       : ''}Additional context (if any): "${passage.slice(0, 2000)}"
 
 Return ONLY JSON of this shape (headers/column count vary by statement type — see rules below, do not always use the same 2 columns):
@@ -2482,20 +2506,18 @@ FORMAT BY DOCUMENT TYPE:
 
 Before returning, sanity-check your own arithmetic: does the Statement of Financial Position balance (Total Assets = Total Equity and Liabilities)? Does the Trial Balance balance? Does Gross Profit − Expenses actually equal the Profit figure you wrote down? Fix any mismatch rather than returning inconsistent numbers.`;
 
+    // Runs on the regular text model now — the accounting transformation no longer needs
+    // vision, since any image content was already transcribed to text above.
     const result = await groqClient.generateContent(prompt, {
       model: 'smart',
       jsonMode: true,
       temperature: 0.1,
-      // The vision model spends completion tokens on internal reasoning before the JSON, so it
-      // needs much more headroom than the text-only path or it gets cut off mid-thought —
-      // especially for a multi-table statement with many line items.
-      maxTokens: images.length > 0 ? 12000 : 4096,
-      images
+      maxTokens: 4096
     });
 
     const parsed = result.parsedContent || (result.text ? JSON.parse(result.text.match(/\{[\s\S]*\}/)?.[0] || '{}') : {});
     if (!parsed.spreadsheetModelAnswer) {
-      return res.status(422).json({ message: images.length > 0 ? 'AI could not read a table from that image. Try a clearer photo/screenshot.' : 'AI could not build a spreadsheet from that data. Try pasting a clearer table.' });
+      return res.status(422).json({ message: images.length > 0 ? 'AI read the image but could not turn it into a spreadsheet. Try a clearer photo/screenshot.' : 'AI could not build a spreadsheet from that data. Try pasting a clearer table.' });
     }
 
     res.json({

@@ -2469,6 +2469,8 @@ Return ONLY JSON of this shape (headers/column count vary by statement type — 
 - One table per financial statement/schedule the question asks for.
 - spreadsheetTemplate: row labels (and section headings) filled in, value cells left as "".
 - spreadsheetModelAnswer: same structure with every value cell correctly computed.
+- EVERY VALUE CELL MUST BE A PLAIN FINAL NUMBER, NEVER AN ARITHMETIC EXPRESSION: do the addition/subtraction yourself and write only the result, e.g. write 225000, not "20000 + 280000 - 25000" or "20000+280000-25000". An expression instead of a number breaks the JSON and the whole response fails.
+- ONE ROW PER LINE ITEM — never write the same line item twice (e.g. once showing the calculation and again showing the answer). Work out the figure in your head/reasoning, then write that single row with only the final number.
 - COMPLETE EVERYTHING THAT WAS PASTED: every account/line item present in the teacher's input must appear as its own row, using the exact same label/wording the teacher used (do not rename, merge, skip, summarize away, or invent line items that weren't given). Only ADD extra rows beyond what was given if the question explicitly needs derived/computed lines (e.g. subtotals, totals, or lines of a statement built FROM a pasted trial balance) — never REPLACE a given line with something else.
 
 ACCOUNTING KNOWLEDGE TO APPLY — get the classification, ordering and arithmetic right, not just the layout:
@@ -2477,8 +2479,19 @@ ACCOUNTING KNOWLEDGE TO APPLY — get the classification, ordering and arithmeti
    ASSETS: Non-Current Assets first, in order of permanence (e.g. Property/Plant/Equipment, Intangible assets, Long-term investments) → "Total Non-Current Assets" → Current Assets (Inventories, Receivables/Trade receivables, Prepayments, Short-term investments, Cash and Cash Equivalents — least liquid to most liquid) → "Total Current Assets" → "Total Assets".
    EQUITY & LIABILITIES: Equity first (Share Capital, Share Premium, Retained Earnings/Revenue Reserves) → "Total Equity" → Non-Current Liabilities (long-term loans, debentures, deferred tax) → "Total Non-Current Liabilities" → Current Liabilities (Trade Payables, Accrued expenses, Tax payable, Provisions, Bank overdraft, current portion of long-term loans) → "Total Current Liabilities" → "Total Equity and Liabilities". This final figure MUST equal Total Assets — if it doesn't, find and fix the error before returning.
 
-2) INCOME STATEMENT (Statement of Profit or Loss) — top-to-bottom order:
-   Revenue/Sales → less Cost of Sales (= Opening Inventory + Purchases (+ Carriage Inwards − Purchase Returns) − Closing Inventory) → "Gross Profit" → add Other Income → less Operating Expenses (list items individually: e.g. Distribution costs, Administrative expenses, Depreciation, Bad debts/increase in allowance for doubtful debts) → "Operating Profit" → less Finance costs (loan interest) → "Profit Before Tax" → less Tax expense → "Profit for the Year". Dividends are NOT an expense here — they reduce Retained Earnings in the Statement of Changes in Equity instead.
+2) INCOME STATEMENT (Statement of Profit or Loss) — top-to-bottom order, AND exactly which column each figure belongs in (column 2 = workings/components being added up, column 3 = the running total that carries down the statement — see FORMAT BY DOCUMENT TYPE below for the general rule; this is how it applies specifically to an income statement):
+   - Revenue/Sales: straight into column 3 (no working needed unless there are several revenue streams, in which case list each in column 2 and the sum in column 3).
+   - Cost of Sales: if given to you as one figure, put it straight in column 3 (as a deduction). If you must COMPUTE it (Opening Inventory + Purchases + Carriage Inwards − Purchase Returns − Closing Inventory), put each of those components on its own row in column 2, and put only the final computed "Cost of Sales" figure in column 3.
+   - "Gross Profit" (= Revenue − Cost of Sales): column 3, a subtotal.
+   - Other Income: column 3 if a single item; if several items, list each in column 2 with their sum in column 3.
+   - Operating Expenses: THIS is the classic multi-component case — list every individual expense (Distribution costs, Administrative expenses, Depreciation, Bad debts/increase in allowance for doubtful debts, etc.) each on its own row in column 2, then put only the ONE combined "Total Operating Expenses" figure in column 3 as the deduction actually used in the running total. Never put more than one expense figure directly in column 3.
+   - "Operating Profit" (= Gross Profit + Other Income − Total Operating Expenses): column 3, a subtotal.
+   - Finance costs (loan interest): column 3, a deduction (list components in column 2 only if there is more than one finance cost).
+   - "Profit Before Tax": column 3, a subtotal.
+   - Tax expense: column 3, a deduction.
+   - "Profit for the Year": column 3, the final total (bold/underlined, this is the bottom-line figure).
+   Dividends are NOT an expense here — they reduce Retained Earnings in the Statement of Changes in Equity instead.
+   Sub-total vs. total column discipline applies identically whether this income statement is the question's own answer, one table among several in the same question, or the answer to a lettered sub-question (a), (b), (c) of a larger multi-part question — the column rules never change based on where the table is used.
 
 3) STATEMENT OF CHANGES IN EQUITY — columns per equity component (e.g. Share Capital, Retained Earnings, Total), rows in this order: Balance b/f → Profit for the year (add) → Dividends paid (deduct) → other movements (share issues, revaluation) → Balance c/f.
 
@@ -2504,7 +2517,7 @@ FORMAT BY DOCUMENT TYPE:
   * Journal entries: headers ["Date","Particulars","Debit","Credit"], one row per account touched by each entry — the debited account's amount in Debit with Credit left "", the credited account's amount in Credit with Debit left "" (conventionally indent/prefix the credited account's particulars with "To ..."). Never put a Dr and Cr figure in the same row's single cell.
   * Anything else (a schedule, workings, a ratio computation): use whichever layout is standard for that specific output; only use Debit/Credit columns when double-entry actually applies.
 
-Before returning, sanity-check your own arithmetic: does the Statement of Financial Position balance (Total Assets = Total Equity and Liabilities)? Does the Trial Balance balance? Does Gross Profit − Expenses actually equal the Profit figure you wrote down? Fix any mismatch rather than returning inconsistent numbers.`;
+Before returning, recompute every subtotal from its own components independently (don't just trust a number you wrote earlier) and sanity-check: does the Statement of Financial Position balance (Total Assets = Total Equity and Liabilities)? Does the Trial Balance balance? Does Revenue − Cost of Sales actually equal the Gross Profit figure you wrote (recompute Cost of Sales itself from its components first — this is the step most likely to be wrong)? Does Gross Profit + Other Income − Total Operating Expenses actually equal Operating Profit? Fix any mismatch rather than returning inconsistent numbers.`;
 
     // Runs on the regular text model now — the accounting transformation no longer needs
     // vision, since any image content was already transcribed to text above.

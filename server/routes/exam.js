@@ -2430,12 +2430,42 @@ router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, a
     if (images.length > 0) {
       const transcribePrompt = `Transcribe every line of text and every number from ${images.length > 1 ? 'these images' : 'this image'} exactly as they appear, preserving the table/statement structure (row labels and their values, including which column/side each value is under). Do not interpret, compute, or reclassify anything — just transcribe what you see, in reading order.
 Return ONLY JSON: {"extractedText": "..."}`;
-      const transcribeResult = await groqClient.generateContent(transcribePrompt, {
-        jsonMode: true,
-        temperature: 0.1,
-        maxTokens: 4096,
-        images
-      });
+
+      // The vision model is a reasoning model — on a harder-to-read photo (poor lighting, an
+      // angle, a lot of small text) it can burn its whole token budget "thinking" before writing
+      // any output at all, which Groq reports as a 400 json_validate_failed with an EMPTY
+      // failed_generation. Retry once with a much bigger budget before giving up; if it still
+      // fails, tell the teacher clearly instead of leaking the raw Groq error. A 413 (request too
+      // large — e.g. a multi-MB, uncompressed camera photo) is NOT retried: the same oversized
+      // image would just be rejected again, so fail fast with a size-specific message instead.
+      let transcribeResult;
+      try {
+        transcribeResult = await groqClient.generateContent(transcribePrompt, {
+          jsonMode: true,
+          temperature: 0.1,
+          maxTokens: 4096,
+          images
+        });
+      } catch (visionErr) {
+        if (visionErr.status === 413 || visionErr.message?.includes('413') || visionErr.message?.includes('too large') || visionErr.message?.includes('request_too_large')) {
+          console.error('Vision transcription failed — image too large:', visionErr.message);
+          return res.status(422).json({ message: 'That image is too large. Try a smaller photo/screenshot, or compress it before uploading.' });
+        }
+        console.warn('Vision transcription failed on first attempt, retrying with a larger token budget:', visionErr.message);
+        try {
+          transcribeResult = await groqClient.generateContent(transcribePrompt, {
+            jsonMode: true,
+            temperature: 0.1,
+            maxTokens: 16000,
+            images,
+            skipCache: true
+          });
+        } catch (retryErr) {
+          console.error('Vision transcription failed again on retry:', retryErr.message);
+          return res.status(422).json({ message: 'AI had trouble reading that image clearly. Try a clearer, better-lit photo (or a screenshot instead of a camera photo), or paste the data as text instead.' });
+        }
+      }
+
       const transcribeParsed = transcribeResult.parsedContent
         || (transcribeResult.text ? JSON.parse(transcribeResult.text.match(/\{[\s\S]*\}/)?.[0] || '{}') : {});
       transcribedText = (transcribeParsed.extractedText || '').trim();
@@ -2541,11 +2571,21 @@ Before returning, recompute every subtotal from its own components independently
   } catch (err) {
     console.error('ai-fill-spreadsheet error:', err);
     const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota');
-    res.status(is429 ? 429 : 500).json({
-      message: is429
-        ? 'AI quota exceeded. Please wait a moment and try again.'
-        : err.message || 'AI could not build the spreadsheet. Please try again.',
-    });
+    // Never leak Groq's raw error payload (e.g. "Groq API error: 400 {...json...}") to the
+    // teacher — translate the one we know about into plain English and fall back to a generic
+    // message for anything else unrecognized, rather than showing raw API/JSON internals.
+    const isJsonValidationFailure = err.message?.includes('json_validate_failed') || err.message?.includes('Failed to validate JSON') || err.message?.includes('Failed to generate JSON');
+    let message;
+    if (is429) {
+      message = 'AI quota exceeded. Please wait a moment and try again.';
+    } else if (isJsonValidationFailure) {
+      message = req.body.imageDataUris?.length || req.body.imageDataUri
+        ? 'AI had trouble processing that image. Try a clearer, better-lit photo, or paste the data as text instead.'
+        : 'AI had trouble with that request. Try rephrasing or simplifying what you pasted.';
+    } else {
+      message = 'AI could not build the spreadsheet. Please try again.';
+    }
+    res.status(is429 ? 429 : (isJsonValidationFailure ? 422 : 500)).json({ message });
   }
 });
 

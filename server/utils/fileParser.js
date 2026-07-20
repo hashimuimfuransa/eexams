@@ -11,81 +11,202 @@ const { coerceToGrid } = require('./spreadsheetGrading');
 
 const execAsync = promisify(exec);
 
+// A stray '(' or ')' character occasionally leaks into an otherwise-valid, otherwise-complete
+// JSON response from the AI when it generates longer structured output (observed live: an extra
+// ')' sitting between a table's closing brace and the tables array's closing bracket, corrupting
+// an otherwise fully correct multi-table financial-spreadsheet answer). JSON syntax never
+// legitimately contains a bare parenthesis outside of a quoted string, so stripping any '(' / ')'
+// found OUTSIDE string literals is a safe, targeted repair - it can only remove characters that
+// could never have been part of valid JSON to begin with (mirrored in routes/exam.js).
+const stripStrayParensOutsideStrings = (str) => {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (inString) {
+      result += ch;
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; result += ch; continue; }
+    if (ch === '(' || ch === ')') continue; // drop stray parens outside strings
+    result += ch;
+  }
+  return result;
+};
+
 // Normalize a spreadsheetTemplate/spreadsheetModelAnswer field returned by the AI into the
 // canonical { tables: [{ title, headers, data }, ...] } JSON-string shape expected by the
 // financial-spreadsheet question renderer/grader (mirrors normalizeSpreadsheetField in routes/exam.js).
 const normalizeSpreadsheetField = (value) => {
   if (!value) return value;
-  const parsed = typeof value === 'string' ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+  const tryParse = (s) => { try { return JSON.parse(s); } catch { return null; } };
+  const parsed = typeof value === 'string'
+    ? (tryParse(value) || tryParse(stripStrayParensOutsideStrings(value)))
+    : value;
   const grid = coerceToGrid(parsed);
   return grid ? JSON.stringify(grid) : (typeof value === 'string' ? value : JSON.stringify(value));
 };
 
 /**
- * Parse a PDF file using Python script
- * @param {string} filePath - Path to the PDF file
- * @returns {Promise<string>} - Extracted text
+ * Resolve a PDF reference (local path or Cloudinary URL) to a local file path, downloading it
+ * to a temp file first if needed. Returns { localFilePath, isTemp } — caller is responsible for
+ * deleting the temp file when isTemp is true.
+ */
+const resolveLocalPdfPath = async (filePath) => {
+  if (!(filePath.startsWith('http://') || filePath.startsWith('https://'))) {
+    return { localFilePath: filePath, isTemp: false };
+  }
+  console.log('Downloading PDF from URL:', filePath);
+  let downloadUrl = filePath;
+  if (filePath.includes('cloudinary.com')) {
+    const urlParts = filePath.split('/');
+    const versionIndex = urlParts.findIndex(part => /^\d+$/.test(part));
+    if (versionIndex !== -1 && versionIndex < urlParts.length - 1) {
+      const publicIdWithExt = urlParts.slice(versionIndex + 1).join('/');
+      const publicId = publicIdWithExt.replace(/\.[^/.]+$/, '');
+      downloadUrl = cloudinary.url(publicId, { resource_type: 'raw', sign_url: true, type: 'upload' });
+      console.log('Extracted public_id:', publicId);
+      console.log('Generated signed URL:', downloadUrl);
+    }
+  }
+  const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+  const tempDir = path.join(__dirname, '../temp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  const localFilePath = path.join(tempDir, `temp-${Date.now()}.pdf`);
+  fs.writeFileSync(localFilePath, response.data);
+  console.log('Downloaded PDF to:', localFilePath);
+  return { localFilePath, isTemp: true };
+};
+
+// One page per vision call, not several. Batching multiple page-images into a single call was
+// tried first (Groq allows up to 5 per request) but proved unreliable live: given a 5-page batch,
+// the model transcribed the first few pages in full and then silently stopped, dropping the rest
+// (two entire exam questions vanished from a real transcription this way, confirmed by their text
+// being completely absent from the output with no truncation warning). A single page is a small
+// enough task that the model has no reason to give up partway through, and pages are still
+// transcribed with real concurrency (see runWithConcurrencyLimit below), so this isn't slower in
+// wall-clock terms - just more, smaller, more reliable calls instead of few, large, riskier ones.
+const VISION_PAGE_CONCURRENCY = 4;
+const VISION_MAX_PAGES = 15;
+
+/**
+ * First-choice PDF extraction: render every page to an image and have the Groq vision model
+ * (the account's only vision-capable model — see GROQ_MODELS.vision in groqClient.js) transcribe
+ * it verbatim. Unlike pdfplumber (which only reads a PDF's embedded text layer) or Tesseract OCR
+ * (dumb character recognition with no structural understanding), a vision LLM can read scanned
+ * pages, handwriting, and reconstruct tables/columns the way a person would. This only produces
+ * plain transcribed text (mirroring the same "vision transcribes, text model reasons" split used
+ * elsewhere in this codebase) — it deliberately does NOT try to build the final exam JSON itself,
+ * so the existing, already-robust pasted-exam-parsing prompt in /exam/ai-generate still does that
+ * part unchanged.
+ */
+const extractPdfViaVision = async (filePath) => {
+  const { localFilePath, isTemp } = await resolveLocalPdfPath(filePath);
+  try {
+    const scriptPath = path.join(__dirname, '../pdf_extractor.py');
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const { stdout, stderr } = await execAsync(`${pythonCmd} "${scriptPath}" "${localFilePath}" --render-pages`, { maxBuffer: 1024 * 1024 * 200 });
+    if (stderr) {
+      console.error('Python page-render stderr:', stderr);
+    }
+    const result = JSON.parse(stdout);
+    if (result.error || !Array.isArray(result.pages) || result.pages.length === 0) {
+      throw new Error(result.error || 'No pages rendered');
+    }
+
+    const pages = result.pages.slice(0, VISION_MAX_PAGES);
+    console.log(`Vision PDF extraction: rendered ${pages.length} page(s), transcribing one page per call (up to ${VISION_PAGE_CONCURRENCY} in parallel)`);
+
+    const transcribePrompt = `Transcribe this exam document page completely and exactly as it appears, in reading order. Include every question, instruction, passage, word bank, diagram description (describe what the diagram/figure shows in words), and — if present — any teacher's marking guide/answer key. Preserve tables as rows of text with cells separated by " | ". Do not summarize, correct, or omit anything; this is a verbatim transcription, not an interpretation.
+Return ONLY JSON: {"extractedText": "..."}`;
+
+    const pageTexts = await runWithConcurrencyLimit(pages, VISION_PAGE_CONCURRENCY, async (page) => {
+      // A single page is usually a small transcription task, but the vision model (a reasoning
+      // model) occasionally still spends its token budget on internal chain-of-thought before
+      // writing any output, hitting "max completion tokens reached before generating a valid
+      // document" at maxTokens=4096 (the same failure mode fixed elsewhere in this codebase by
+      // retrying once with a higher cap) - a dense, table-heavy page seems most likely to trigger
+      // it. One retry at a much higher ceiling recovers most of these; only give up after that.
+      for (const maxTokens of [4096, 12000]) {
+        try {
+          const pageResult = await groqClient.generateContent(transcribePrompt, {
+            images: [page.dataUrl],
+            jsonMode: true,
+            temperature: 0.1,
+            maxTokens,
+            skipCache: maxTokens !== 4096
+          });
+          return (pageResult.parsedContent?.extractedText || '').trim();
+        } catch (err) {
+          console.warn(`Vision transcription failed for page ${page.page} at maxTokens=${maxTokens}:`, err.message);
+        }
+      }
+      console.error(`Vision transcription failed for page ${page.page} after retry, leaving it blank`);
+      return '';
+    });
+
+    let combinedText = '';
+    pages.forEach((page, i) => {
+      if (pageTexts[i]) {
+        combinedText += `\n--- PAGE ${page.page} ---\n${pageTexts[i]}\n`;
+      }
+    });
+
+    if (!combinedText.trim()) {
+      throw new Error('Vision model returned no transcribed text');
+    }
+    console.log(`Vision PDF extraction succeeded: ${combinedText.length} characters from ${pages.length} page(s)`);
+    return { text: combinedText, images: [], method: 'vision' };
+  } finally {
+    if (isTemp && fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+      console.log('Cleaned up temp file:', localFilePath);
+    }
+  }
+};
+
+/**
+ * Parse a PDF file — tries the vision-model extraction first (handles scanned/handwritten pages,
+ * tables, and diagrams far better than a text-layer parser), falling back to the existing
+ * pdfplumber/OCR Python pipeline if vision extraction fails or is unavailable for any reason.
+ * @param {string} filePath - Path to the PDF file (local path or Cloudinary URL)
+ * @returns {Promise<{text: string, images: Array}>}
  */
 const parsePdf = async (filePath) => {
   try {
+    return await extractPdfViaVision(filePath);
+  } catch (visionError) {
+    console.warn('Vision-based PDF extraction failed, falling back to pdfplumber/OCR:', visionError.message);
+  }
+
+  try {
     console.log(`Parsing PDF file using Python: ${filePath}`);
-    
-    let localFilePath = filePath;
-    
-    // Check if filePath is a URL (Cloudinary)
-    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-      console.log('Downloading PDF from URL:', filePath);
-      
-      // Generate signed URL for Cloudinary
-      let downloadUrl = filePath;
-      if (filePath.includes('cloudinary.com')) {
-        // Extract public_id from Cloudinary URL
-        // URL format: https://res.cloudinary.com/cloud_name/resource_type/type/version/public_id.extension
-        const urlParts = filePath.split('/');
-        const versionIndex = urlParts.findIndex(part => /^\d+$/.test(part));
-        if (versionIndex !== -1 && versionIndex < urlParts.length - 1) {
-          // Everything after version is the public_id (with extension)
-          const publicIdWithExt = urlParts.slice(versionIndex + 1).join('/');
-          const publicId = publicIdWithExt.replace(/\.[^/.]+$/, ''); // Remove extension
-          downloadUrl = cloudinary.url(publicId, { 
-            resource_type: 'raw',
-            sign_url: true,
-            type: 'upload'
-          });
-          console.log('Extracted public_id:', publicId);
-          console.log('Generated signed URL:', downloadUrl);
-        }
-      }
-      
-      const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-      const tempDir = path.join(__dirname, '../temp');
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-      const tempFileName = `temp-${Date.now()}.pdf`;
-      localFilePath = path.join(tempDir, tempFileName);
-      fs.writeFileSync(localFilePath, response.data);
-      console.log('Downloaded PDF to:', localFilePath);
-    }
-    
+    const { localFilePath, isTemp } = await resolveLocalPdfPath(filePath);
+
     // Path to the Python script
     const scriptPath = path.join(__dirname, '../pdf_extractor.py');
-    
+
     // Execute Python script (use 'python' for Windows, 'python3' for Unix)
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
     const { stdout, stderr } = await execAsync(`${pythonCmd} "${scriptPath}" "${localFilePath}"`);
-    
+
     if (stderr) {
       console.error('Python script stderr:', stderr);
     }
-    
+
     // Parse the JSON output
     const result = JSON.parse(stdout);
-    
+
     if (result.error) {
       throw new Error(result.error);
     }
-    
+
     if (!result.text || result.text.trim().length === 0) {
       console.error('PDF parsing returned empty text');
       throw new Error('PDF parsing returned empty text. The PDF may be image-based or corrupted.');
@@ -98,7 +219,7 @@ const parsePdf = async (filePath) => {
     }
 
     // Clean up temp file if it was downloaded
-    if (localFilePath !== filePath && fs.existsSync(localFilePath)) {
+    if (isTemp && fs.existsSync(localFilePath)) {
       fs.unlinkSync(localFilePath);
       console.log('Cleaned up temp file:', localFilePath);
     }
@@ -106,12 +227,12 @@ const parsePdf = async (filePath) => {
     return { text: result.text, images: result.images || [] };
   } catch (error) {
     console.error('Error parsing PDF:', error);
-    
+
     // Check if Python is not available
     if (error.message.includes('python') || error.message.includes('Python')) {
       throw new Error('Python is not installed or not in PATH. Please install Python and pdfplumber (pip install pdfplumber).');
     }
-    
+
     throw new Error(`Failed to parse PDF file: ${error.message}. The PDF may be image-based, corrupted, or password-protected.`);
   }
 };
@@ -857,7 +978,11 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
         question.type = question.type || 'open-ended';
         question.points = question.points || (section.name === 'A' ? 1 : section.name === 'B' ? 5 : 15);
         question.options = question.options || [];
-        question.correctAnswer = question.correctAnswer || 'Not provided';
+        // Coerce to a string here: the AI's JSON occasionally returns correctAnswer as an object
+        // or array instead of text, and every downstream check below assumes a string (.trim()).
+        question.correctAnswer = question.correctAnswer && typeof question.correctAnswer !== 'string'
+          ? JSON.stringify(question.correctAnswer)
+          : (question.correctAnswer || 'Not provided');
 
         // Ensure question number is set
         if (!question.questionNumber) {
@@ -870,7 +995,8 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
         // Use pre-loaded answers if available
         const questionNumber = question.questionNumber || (i + 1).toString();
         if (answerData.answers && answerData.answers[questionNumber]) {
-          question.correctAnswer = answerData.answers[questionNumber];
+          const preloadedAnswer = answerData.answers[questionNumber];
+          question.correctAnswer = typeof preloadedAnswer === 'string' ? preloadedAnswer : JSON.stringify(preloadedAnswer);
           console.log(`Using pre-loaded answer for question ${questionNumber}: ${question.correctAnswer}`);
           
           // Log if subQuestions already exist from AI
@@ -928,6 +1054,9 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
             subQ.type = subQ.type || 'open-ended';
             subQ.points = subQ.points || Math.ceil(question.points / question.subQuestions.length);
             subQ.label = subQ.label || String.fromCharCode(97 + j); // a, b, c, etc.
+            if (subQ.correctAnswer && typeof subQ.correctAnswer !== 'string') {
+              subQ.correctAnswer = JSON.stringify(subQ.correctAnswer);
+            }
 
             // Generate model answer for subquestion if not provided
             if (!subQ.correctAnswer || subQ.correctAnswer === 'Not provided' || subQ.correctAnswer.trim() === '') {
@@ -969,10 +1098,17 @@ const validateAndEnhanceExtraction = async (extractedData, answerData) => {
         }
 
         // Auto-detect matching questions from answer format
-        // If the correctAnswer contains multiple pairs with separators, convert to matching type
-        if (question.correctAnswer && typeof question.correctAnswer === 'string' && 
+        // If the correctAnswer contains multiple pairs with separators, convert to matching type.
+        // Skip entirely once the question already has real subQuestions: a proper multi-part
+        // question's AI-generated "combined" summary answer (see generateModelAnswer above)
+        // naturally contains patterns like "a) ... b) ... c) ..." that this pair-detector
+        // mistakes for "Term - Definition" matching pairs, incorrectly relabeling an already-
+        // correctly-structured open-ended question as "matching" (confirmed live: every
+        // multi-part question in a real exam got flipped to matching this way).
+        if (question.correctAnswer && typeof question.correctAnswer === 'string' &&
             !question.matchingPairs && !question.leftItems && !question.rightItems &&
-            question.type !== 'matching') {
+            question.type !== 'matching' &&
+            (!question.subQuestions || question.subQuestions.length === 0)) {
           const parsedPairs = parseMatchingPairsFromAnswer(question.correctAnswer);
           if (parsedPairs && parsedPairs.leftColumn.length >= 2) {
             console.log(`Auto-detected matching question from answer format for question ${questionNumber}`);
@@ -2187,6 +2323,366 @@ Only respond with valid JSON containing the options for each question. Do not in
     console.error('Error extracting options with AI:', error);
     throw error;
   }
+};
+
+// ============================================================================
+// CHUNKED EXAM EXTRACTION: asking one AI call to enumerate every question in a whole exam
+// (extractQuestionsWithEnhancedAI above) has been observed to silently drop entire top-level
+// questions from moderately long real exams (confirmed live: a 5-question, ~16k-character
+// combined exam+marking-guide document came back with only 3 questions, two entire ones
+// missing, well under the token cap - so it's the model losing track across a long/dense
+// document, not truncation). The fix: mechanically split the source documents into one chunk
+// per question FIRST (deterministic regex on "QUESTION ONE"/"QUESTION 2"-style headers, which
+// can't itself "drop" anything the way a generative call can), pair each exam question chunk
+// with its own matching marking-guide chunk, and run one small, focused extraction call per
+// question IN PARALLEL. Each call only has to get ONE question right, which is a far easier and
+// more reliable task than enumerating all of them in one shot.
+// ============================================================================
+
+const QUESTION_WORD_TO_NUM = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+  eighteen: 18, nineteen: 19, twenty: 20
+};
+
+const questionLabelToNumber = (label) => {
+  if (!label) return null;
+  const trimmed = label.trim().toLowerCase();
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  return QUESTION_WORD_TO_NUM[trimmed] || null;
+};
+
+// Finds "SECTION X" and "QUESTION <word-or-number>" header lines - each must be the ONLY thing
+// on its line (anchored start-to-end) so an inline reference like "as shown in Question One
+// above" mid-sentence is never mistaken for a real section/question boundary.
+const findDocumentBoundaries = (text) => {
+  const sectionRe = /^[ \t]*SECTION\s+([A-Z])[ \t]*:?[ \t]*$/gim;
+  const questionRe = /^[ \t]*(?:QUESTION\s+([A-Za-z]+)|Q(?:UESTION)?\.?\s*(\d+))[ \t]*:?[ \t]*$/gim;
+  const sections = [];
+  let m;
+  while ((m = sectionRe.exec(text)) !== null) {
+    sections.push({ name: m[1].toUpperCase(), index: m.index });
+  }
+  const questions = [];
+  while ((m = questionRe.exec(text)) !== null) {
+    const num = m[2] ? parseInt(m[2], 10) : questionLabelToNumber(m[1]);
+    if (num) questions.push({ number: num, index: m.index });
+  }
+  return { sections, questions };
+};
+
+// Splits a document into { headerText, chunks: [{number, section, text}] }, one chunk per
+// detected question, each running from its own header to the next question's header (or end of
+// document). Returns null if no question headers were found at all, so the caller can fall back
+// to the existing whole-document extraction instead (e.g. an exam that doesn't use the
+// "QUESTION ONE" convention this splitter looks for).
+const splitIntoQuestionChunks = (text) => {
+  const { sections, questions } = findDocumentBoundaries(text);
+  if (questions.length === 0) return null;
+  questions.sort((a, b) => a.index - b.index);
+  sections.sort((a, b) => a.index - b.index);
+  const chunksByNumber = new Map();
+  const order = [];
+  for (let i = 0; i < questions.length; i++) {
+    const start = questions[i].index;
+    const end = i + 1 < questions.length ? questions[i + 1].index : text.length;
+    let sectionName = 'A';
+    for (const s of sections) {
+      if (s.index <= start) sectionName = s.name;
+      else break;
+    }
+    const chunkText = text.slice(start, end).trim();
+    if (chunksByNumber.has(questions[i].number)) {
+      // Same question number seen twice (e.g. a continuation page) - append rather than drop.
+      const existing = chunksByNumber.get(questions[i].number);
+      existing.text += '\n\n' + chunkText;
+    } else {
+      const chunk = { number: questions[i].number, section: sectionName, text: chunkText };
+      chunksByNumber.set(questions[i].number, chunk);
+      order.push(questions[i].number);
+    }
+  }
+  return {
+    headerText: text.slice(0, questions[0].index).trim(),
+    chunks: order.map(n => chunksByNumber.get(n))
+  };
+};
+
+// Everything after this line, up to (but not including) the closing schema/"Document text:"
+// portion of the whole-document prompt in extractQuestionsWithEnhancedAI above, applies just as
+// well to extracting a single question - so the wording is intentionally kept identical to what
+// has already been tested there (deliberately duplicated rather than shared, so nothing about
+// the already-working whole-document path above is touched by adding this new path).
+const SINGLE_QUESTION_EXTRACTION_RULES = `CRITICAL INSTRUCTIONS:
+1. Preserve the exact wording of the question and its answer(s) as they appear
+2. Include all options for multiple choice questions with their correct letter labels (A, B, C, D, etc.)
+3. Identify and mark the correct answer for each multiple choice question
+4. Extract the question number if present
+5. Extract this question's type: multiple-choice, true-false, fill-in-blank, short answer, essay, matching, ordering, financial-spreadsheet (income statements, balance sheets, bank reconciliations, cash books, trial balances, ledgers the student must prepare)
+6. EXTRACT THE MARKING GUIDE / MODEL ANSWER: this question's text may be followed by its own marking guide/model answer block (often headed "Marking guide" or "Model answers", or just appearing as worked calculations). Use it as the authoritative source for correctAnswer - do not invent an answer that contradicts it.
+7. EXTRACT PASSAGES AND TABLES: Extract ALL reading passages, comprehension texts, diagrams, tables (trial balances, ledgers, lists of account balances shown inside [TABLE]...[/TABLE] markers or as aligned text), and any text blocks that serve as supporting context for this question. Store ALL of this in the question's "passage" field (there is no separate "context" field - "passage" is the only field that is saved and shown to the student), preserving every row/figure exactly.
+8. EXTRACT INSTRUCTIONS: Extract any instructions or directions that accompany this specific question
+
+CRITICAL - MODEL ANSWER GENERATION FOR OPEN-ENDED QUESTIONS:
+- If this is an open-ended question (short answer, essay, open-ended) and a model answer is NOT provided in the marking guide portion, you MUST generate a comprehensive model answer
+- Generated model answers should be accurate, detailed, and appropriate for the academic level
+- For mathematical questions, show the working/steps and the final answer
+- For conceptual questions, provide clear explanations with key points
+- For calculation questions, include the numerical answer with units where applicable
+- For questions with subquestions (a, b, c), generate answers for EACH subquestion
+- DO NOT leave correctAnswer as "Not provided" or empty - always provide a meaningful answer
+- NEVER skip generating an answer for an open-ended question
+
+SPECIAL HANDLING FOR FILL-IN-THE-BLANK QUESTIONS:
+- When you see patterns like "with ______ ______ sides", the blanks represent missing numbers or words
+- Infer the missing information from context (e.g., "shape with ______ sides" → likely needs a number like "8" for octagon)
+- Preserve the blank markers (_____) in the question text
+- Include the inferred answer in the correctAnswer field
+- For geometric shapes: triangle (3), square (4), pentagon (5), hexagon (6), heptagon (7), octagon (8), nonagon (9), decagon (10)
+- For other contexts, use the surrounding text to infer the missing information
+
+CRITICAL - DETECT MATCHING QUESTIONS:
+- Look for questions where the answer contains pairs of items separated by "-" or similar separators (e.g., "Item A - Match 1, Item B - Match 2, Item C - Match 3")
+- When you detect such patterns in the answer key, mark the question type as "matching"
+- Preserve the FULL answer string in the correctAnswer field exactly as it appears
+- DO NOT split the answer into separate fields - keep it as a single string in correctAnswer
+
+CRITICAL - DETECT SUBQUESTIONS (INCLUDING TRUE/FALSE STATEMENTS):
+- Look for this question having multiple labeled parts (e.g. a), b), c) or i), ii), iii))
+- When you detect such patterns, use the "subQuestions" array to store each part
+- Each subquestion MUST have: label, text, type, correctAnswer, and points
+- Subquestions can have MIXED types within the same question (e.g., some true-false, some open-ended, some multiple-choice)
+- For true/false subquestions: type "true-false" with correctAnswer "True" or "False"
+- For multiple-choice subquestions: type "multiple-choice" with options array (letter/text/isCorrect) and correctAnswer as the option letter
+- For open-ended or numeric subquestions: type "open-ended" with the answer text/number
+
+CRITICAL - MULTI-PART QUESTIONS MUST BE A SINGLE QUESTION OBJECT:
+- If this question has parts labeled a), b), c) or i), ii), iii), return ONE question object with a "subQuestions" array containing every part - never return multiple separate question objects for the same printed question
+- ALWAYS include ALL parts (a, b, c, d, etc.) - before finalizing, re-count the lettered/numbered sub-parts you found against how many appear in the source text (e.g. if you see "a), b), c), d), e)" there must be 5 sub-parts) and add back any missing
+
+CRITICAL - EXTRACT MARKS ALLOCATIONS EXACTLY:
+- Exam papers show marks in parentheses after each question or part, e.g. "(2 marks)", "(17 marks)", "(Total: 40 marks)"
+- Extract the marks shown for EACH part/sub-part into that part's "points" field exactly as printed - do not invent or round numbers
+- When this question has sub-parts with their own marks, set each subQuestion's "points" to its own printed value, and set this question's own top-level "points" to the "(Total: X marks)" value if printed, otherwise to the sum of the sub-parts
+- Do NOT split a single required output (e.g. "Income statement" worth 17 marks) into multiple sub-questions unless the source itself labels separate lettered/numbered parts
+
+CRITICAL - DETECT "CHOOSE N" AMONG THIS QUESTION'S OWN SUB-PARTS (not among separate whole questions - that is handled elsewhere):
+- Look for phrases like "Choose ONE", "Select ONE", "Answer any TWO of the following" applying to this question's own lettered parts
+- Set "subQuestionConfig": { "mode": "choose-n", "requiredCount": N, "scoringType": "partial" } on this question if so; otherwise omit subQuestionConfig or use { "mode": "all" }
+
+CRITICAL - HANDLING TABLES AND FINANCIAL DATA (e.g. trial balances, ledger balances, account lists):
+- The text may contain blocks wrapped as [TABLE] ... [/TABLE] where each line is a row with cells separated by " | ". These represent tables detected in the original PDF. Tabular data may also appear as plain aligned text (columns of account names and figures) without explicit [TABLE] markers - treat that the same way.
+- Reproduce this GIVEN data (data the student is handed, not data the student must produce) faithfully as a readable table in the question's "passage" field, using Markdown table syntax so every account name and figure survives exactly as printed.
+- NEVER copy the literal characters "[TABLE]", "[/TABLE]", or an ellipsis ("...") into your output as a stand-in for a table - read every row between the markers and reproduce the real row data.
+- Numbered adjustment notes that follow a trial balance belong in the same question's "passage" field, listed in full and in order, immediately after the table.
+
+CRITICAL - QUESTIONS THAT MIX THEORY PARTS WITH A REQUIRED FINANCIAL STATEMENT PART:
+- If this printed question has several lettered parts a), b), c) where most are ordinary theory/short-answer/journal-entry sub-parts but one part requires preparing a full financial statement, you cannot put a financial-spreadsheet inside a subQuestion (a subQuestion object has no spreadsheetTemplate/spreadsheetModelAnswer fields - any spreadsheet data placed there is silently lost). Instead return TWO question objects in your JSON array: one with type reflecting the ordinary theory sub-parts as a flat subQuestions array, and a SEPARATE object with "type": "financial-spreadsheet" for the part requiring the financial statement, with its own "text" naming which part it continues (e.g. "(continued from Question One, part (b)) Prepare: ...") and its own "questionNumber" (reuse the same number; the caller re-sequences).
+- NEVER set a subQuestion's "type" to "financial-spreadsheet".
+
+CRITICAL - FINANCIAL-SPREADSHEET QUESTIONS (accounting/finance exams: income statements, balance sheets/statements of financial position, cash flow statements, statements of changes in equity, ledgers, trial balances the student must draft, bank reconciliation statements, cash books, ratio analysis, budgets):
+- When this question instructs the student to PREPARE, DRAFT, or PRODUCE one of these, set "type": "financial-spreadsheet"
+- Include "spreadsheetTemplate" and "spreadsheetModelAnswer" as JSON strings of shape {"tables":[{"title":"...","headers":["Item","...","..."],"data":[["Row label","",""], ...]}]} (column count varies by statement type - see FORMAT BY DOCUMENT TYPE below - do not always use the same 2 columns) - one entry in "tables" per statement/schedule this question asks for
+- Always return the FULL, complete table - EVERY line item the statement needs, in the correct order, never a partial/abbreviated version. A Statement of Financial Position with only 2-3 rows is almost certainly wrong - a real SOFP has one row per asset/liability/equity line item plus subtotals (typically 8-15+ rows). Never collapse multiple line items into one row, and never turn a section name (e.g. "Current Assets") into a column header - sections are ROW labels, not columns.
+- "spreadsheetTemplate": row labels (and section headings) filled in, value cells left as ""
+- "spreadsheetModelAnswer": same structure with every value cell correctly computed, using the marking guide's own figures if present (fall back to computing them yourself from the trial balance/adjustments using standard accounting rules if the marking guide doesn't spell out a needed intermediate figure)
+- EVERY VALUE CELL MUST BE A PLAIN FINAL NUMBER, NEVER AN ARITHMETIC EXPRESSION: do the addition/subtraction yourself and write only the result (e.g. 225000, not "20000 + 280000 - 25000")
+- ONE ROW PER LINE ITEM - never write the same line item twice
+- COMPLETE EVERYTHING GIVEN: every account/line item present in the source must appear as its own row, using the same label/wording given (do not rename, merge, skip, or invent line items). Only add extra rows when the statement itself needs derived/computed lines (subtotals, totals).
+
+ACCOUNTING KNOWLEDGE TO APPLY - get the classification, ordering and arithmetic right, not just the layout:
+
+1) STATEMENT OF FINANCIAL POSITION (Balance Sheet) - line-item order matters, follow it exactly:
+   ASSETS: Non-Current Assets first, in order of permanence -> "Total Non-Current Assets" -> Current Assets (Inventories, Receivables, Prepayments, Cash and Cash Equivalents - least liquid to most liquid) -> "Total Current Assets" -> "Total Assets".
+   EQUITY & LIABILITIES: Equity first (Share Capital, Retained Earnings) -> "Total Equity" -> Non-Current Liabilities (long-term loans, debentures) -> "Total Non-Current Liabilities" -> Current Liabilities (Trade Payables, Accrued expenses, Tax payable) -> "Total Current Liabilities" -> "Total Equity and Liabilities". This final figure MUST equal Total Assets - if it doesn't, find and fix the error before returning.
+   Only add a subtotal row when the section has more than one line item, or the source itself explicitly shows that subtotal row.
+
+2) INCOME STATEMENT - top-to-bottom order, and exactly which column each figure belongs in (column 2 = workings/components being added up, column 3 = the running total - see FORMAT BY DOCUMENT TYPE below): Revenue -> Cost of Sales (components in column 2 if computed, final figure in column 3) -> "Gross Profit" -> Other Income -> Operating Expenses (every individual expense in column 2, one combined "Total Operating Expenses" in column 3) -> "Operating Profit" -> Finance costs -> "Profit Before Tax" -> Tax expense -> "Profit for the Year" (final total). Dividends are NOT an expense here.
+
+3) STATEMENT OF CHANGES IN EQUITY - columns per equity component (Share Capital, Retained Earnings, Total), rows: Balance b/f -> Profit for the year (add) -> Dividends paid (deduct) -> other movements -> Balance c/f.
+
+4) STATEMENT OF CASH FLOWS - three sections in order: Operating Activities (start from Profit Before Tax, add back non-cash items like Depreciation/Interest, adjust for working-capital movements) -> Investing Activities -> Financing Activities -> "Net Increase/(Decrease) in Cash" -> Cash at start -> "Cash at End" (must reconcile to Cash and Cash Equivalents in the SOFP).
+
+5) COMMON ADJUSTMENTS - apply correctly and reflect the effect in BOTH statements they touch (P&L and SOFP): Depreciation (expense in P&L, reduces asset in SOFP); Accrued expense (full expense in P&L, Current Liability in SOFP); Prepaid expense (only this period's portion is an expense, rest is Current Asset); Irrecoverable debts (reduce Receivables, expense in P&L); Closing inventory (deduction in Cost of Sales AND Current Asset in SOFP); Tax expense (deducted in P&L, unpaid amount is Tax Payable in SOFP).
+
+6) DOUBLE-ENTRY / DEBIT & CREDIT (Trial Balance, Ledgers, Journals only - NOT the four statements above): Assets and Expenses normally carry Debit balances; Liabilities, Equity and Income normally carry Credit balances. Preserve whichever side the source shows; never move a figure to the wrong side.
+
+FORMAT BY DOCUMENT TYPE:
+  * Statement of Financial Position, Income Statement, Statement of Changes in Equity, Statement of Cash Flows: headers like ["Item","FRW '000'","FRW '000'"] - column 1 is the item/section heading (section headers like "Non-Current Assets" get their own row with no figures), column 2 holds sub-amounts/workings for a line needing several components added together (leave "" when not needed), column 3 holds the figure that carries into the statement's running total. Do NOT use "Debit"/"Credit" headers for these, and do NOT turn section names into column headers.
+  * Trial Balance: exactly headers ["Item","Debit","Credit"], one figure per row on the correct side only, Debit total must equal Credit total.
+  * Ledger accounts / T-accounts: one table per account, headers ["Date","Particulars","Debit","Credit"], preserving exactly which side each entry is on as the source shows it; whichever side isn't used must be "" not 0.
+  * Journal entries: headers ["Date","Particulars","Debit","Credit"], one row per account touched by each entry.
+  * Anything else (schedule, workings, ratio computation): whichever layout is standard for that output; only use Debit/Credit columns when double-entry actually applies.
+
+Before finalizing, recompute every subtotal independently and sanity-check: does the Statement of Financial Position balance (Total Assets = Total Equity and Liabilities)? Does the Trial Balance balance? Fix any mismatch rather than returning inconsistent numbers.
+
+Return ONLY a JSON array containing one or more question objects for this single printed question (more than one only in the theory+financial-spreadsheet split case above), each with this shape:
+{
+  "questionNumber": <number>,
+  "text": "...",
+  "type": "multiple-choice|true-false|fill-in-blank|open-ended|matching|ordering|financial-spreadsheet",
+  "passage": "... (only if there is supporting context/data)",
+  "options": [{"letter":"A","text":"...","isCorrect":false}],
+  "subQuestions": [{"label":"a)","text":"...","type":"open-ended","correctAnswer":"...","points":1}],
+  "subQuestionConfig": {"mode":"all"},
+  "correctAnswer": "...",
+  "points": <number>,
+  "spreadsheetTemplate": "...",
+  "spreadsheetModelAnswer": "..."
+}
+Omit any field that doesn't apply (e.g. no "options" for a non-MCQ question, no subQuestions for a single-part question).`;
+
+const buildSingleQuestionPrompt = (chunkText) =>
+  `You are an expert exam document parser extracting ONE question (with its own marking guide/model answer, if present in the text below) from a larger exam.
+
+${SINGLE_QUESTION_EXTRACTION_RULES}
+
+Text for this one question (plus its own marking guide portion, if available):
+${chunkText}`;
+
+// Small, low-risk call over just the exam's cover/instructions text (everything before the
+// first question) - short enough that the "AI drops content from a long document" problem this
+// whole chunked path exists to avoid doesn't apply here.
+const extractDocumentMetadata = async (headerText) => {
+  const fallback = { instructions: '', allowSelectiveAnswering: false, sectionBRequiredQuestions: 3, sectionCRequiredQuestions: 1, sectionDescriptions: {} };
+  if (!headerText || !headerText.trim()) return fallback;
+  try {
+    const prompt = `Extract exam-level metadata from this exam's cover page / instructions text.
+
+CRITICAL - SELECTIVE ANSWERING (a section lets the student choose N of its M whole questions):
+- Many exams have a section (almost always named/lettered "B") where the student answers only SOME of the whole questions offered - e.g. "Attempt THREE of the FOUR questions in this section", "Answer any THREE questions". This is about choosing among several WHOLE separate questions, not parts of one question.
+- If detected for section B (or whichever section plays that role), set "allowSelectiveAnswering": true and "sectionBRequiredQuestions" to N.
+- If a DIFFERENT section also offers a choice among whole questions, set "sectionCRequiredQuestions" to that N.
+- If no section offers such a choice, set "allowSelectiveAnswering": false.
+
+Also extract, for each section letter you can identify (A, B, C...), its instruction/description text verbatim (e.g. "Section A has one compulsory question", "Section B has four questions, three questions to be attempted") into "sectionDescriptions".
+
+Return ONLY JSON:
+{"instructions": "general exam instructions verbatim", "allowSelectiveAnswering": false, "sectionBRequiredQuestions": 3, "sectionCRequiredQuestions": 1, "sectionDescriptions": {"A": "...", "B": "..."}}
+
+Text:
+${headerText.slice(0, 3000)}`;
+    const result = await groqClient.generateContent(prompt, { model: 'smart', jsonMode: true, temperature: 0.1, maxTokens: 1024 });
+    const parsed = result.parsedContent || {};
+    return { ...fallback, ...parsed };
+  } catch (err) {
+    console.warn('Document metadata extraction failed, using defaults:', err.message);
+    return fallback;
+  }
+};
+
+// Runs async worker(item) over items with at most `limit` in flight at once - keeps the parallel
+// per-question calls from all firing at the exact same instant and tripping a rate limit, while
+// still getting most of the parallelism benefit for a typical 4-8 question exam.
+const runWithConcurrencyLimit = async (items, limit, worker) => {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      results[i] = await worker(items[i], i);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+};
+
+/**
+ * Chunked exam extraction: splits examText and answerText into one chunk per detected question,
+ * pairs them up by question number, and extracts each question with its own parallel AI call
+ * instead of one call trying to enumerate the whole exam. Returns null (so the caller can fall
+ * back to extractQuestionsWithEnhancedAI's whole-document approach) if the source doesn't use a
+ * "QUESTION ONE"/"QUESTION 2"-style header this splitter can detect.
+ */
+const extractQuestionsChunked = async (examText, answerText = '', images = []) => {
+  const examSplit = splitIntoQuestionChunks(examText);
+  if (!examSplit || examSplit.chunks.length === 0) {
+    console.log('Chunked extraction: no "QUESTION N" headers detected in exam text, skipping chunked path');
+    return null;
+  }
+  const answerSplit = answerText ? splitIntoQuestionChunks(answerText) : null;
+  const answerChunksByNumber = new Map();
+  if (answerSplit) {
+    answerSplit.chunks.forEach(c => answerChunksByNumber.set(c.number, c.text));
+  }
+
+  console.log(`Chunked extraction: found ${examSplit.chunks.length} question chunk(s) in exam text` +
+    (answerSplit ? `, ${answerSplit.chunks.length} in marking guide` : ', no marking guide provided'));
+
+  const [metadata, perQuestionResults] = await Promise.all([
+    extractDocumentMetadata(examSplit.headerText),
+    runWithConcurrencyLimit(examSplit.chunks, 4, async (chunk) => {
+      const matchedAnswerText = answerChunksByNumber.get(chunk.number) || '';
+      const combined = matchedAnswerText ? combineExamAndAnswerText(chunk.text, matchedAnswerText) : chunk.text;
+      try {
+        const result = await groqClient.generateContent(buildSingleQuestionPrompt(combined), {
+          model: 'smart', jsonMode: true, temperature: 0.1, maxTokens: 4096
+        });
+        const parsed = result.parsedContent;
+        let questionObjs = null;
+        if (Array.isArray(parsed)) questionObjs = parsed;
+        else if (parsed && Array.isArray(parsed.questions)) questionObjs = parsed.questions;
+        else if (parsed && typeof parsed === 'object') questionObjs = [parsed];
+        if (!questionObjs || questionObjs.length === 0) {
+          console.warn(`Chunked extraction: question ${chunk.number} returned no usable content, skipping`);
+          return { section: chunk.section, questions: [] };
+        }
+        return { section: chunk.section, questions: questionObjs.map(q => ({ ...q, questionNumber: chunk.number })) };
+      } catch (err) {
+        console.error(`Chunked extraction: question ${chunk.number} failed, dropping just this one question:`, err.message);
+        return { section: chunk.section, questions: [] };
+      }
+    })
+  ]);
+
+  const sectionMap = new Map();
+  perQuestionResults.forEach(({ section, questions }) => {
+    if (!sectionMap.has(section)) sectionMap.set(section, []);
+    sectionMap.get(section).push(...questions);
+  });
+
+  const sections = Array.from(sectionMap.entries()).map(([name, questions]) => ({
+    name,
+    description: (metadata.sectionDescriptions && metadata.sectionDescriptions[name]) || `Section ${name}`,
+    questions
+  }));
+
+  const totalExtracted = sections.reduce((sum, s) => sum + s.questions.length, 0);
+  console.log(`Chunked extraction: ${totalExtracted} question(s) extracted across ${sections.length} section(s) (${examSplit.chunks.length} chunks attempted)`);
+  if (totalExtracted === 0) return null; // every chunk failed - let the caller fall back
+
+  return {
+    instructions: metadata.instructions,
+    allowSelectiveAnswering: metadata.allowSelectiveAnswering,
+    sectionBRequiredQuestions: metadata.sectionBRequiredQuestions,
+    sectionCRequiredQuestions: metadata.sectionCRequiredQuestions,
+    sections
+  };
+};
+
+/**
+ * Top-level entry point for turning an uploaded exam (+ optional answer/marking-guide file) into
+ * structured questions. Tries the chunked, per-question-parallel path first (most reliable for
+ * exams using a "QUESTION ONE"/"QUESTION 2" convention); falls back to the existing
+ * whole-document single-call extraction (extractQuestionsWithEnhancedAI, itself already backed
+ * by a regex-only fallback) for anything the chunker can't split, or if chunking comes back
+ * empty for some other reason.
+ */
+const extractExamQuestions = async (examText, answerText = '', images = []) => {
+  try {
+    const chunked = await extractQuestionsChunked(examText, answerText, images);
+    if (chunked) {
+      const validated = await validateAndEnhanceExtraction(chunked, { answers: {} });
+      if (images && images.length > 0) {
+        await attachDiagramImages(validated.sections, images);
+      }
+      return validated;
+    }
+  } catch (err) {
+    console.error('Chunked extraction failed outright, falling back to whole-document extraction:', err);
+  }
+  const combinedText = combineExamAndAnswerText(examText, answerText);
+  return extractQuestionsDirectly(combinedText, { answers: {} }, images);
 };
 
 const extractQuestionsDirectly = async (text, answerData = { answers: {} }, images = []) => {
@@ -3617,6 +4113,47 @@ const parseAnswerFileWithRegex = async (text) => {
 };
 
 /**
+ * Read a document (pdf/docx/txt) and return its plain text (+ any diagram images for PDFs).
+ * Shared by every exam-upload entry point so question and answer files are both read the
+ * same way, instead of each call site re-implementing its own extension-dispatch.
+ * @param {string} filePath - Local path or (for PDFs) a Cloudinary URL
+ * @param {string} [originalFilename] - Original upload filename, used for extension detection
+ *   when filePath itself doesn't carry a useful extension (e.g. a Cloudinary storage key)
+ */
+const readDocumentText = async (filePath, originalFilename = null) => {
+  const fileExtension = originalFilename
+    ? path.extname(originalFilename).toLowerCase()
+    : path.extname(filePath).toLowerCase();
+  if (fileExtension === '.pdf') {
+    const pdfResult = await parsePdf(filePath);
+    return { text: pdfResult.text, images: pdfResult.images || [] };
+  }
+  if (fileExtension === '.docx' || fileExtension === '.doc') {
+    return { text: await parseWord(filePath), images: [] };
+  }
+  if (fileExtension === '.txt') {
+    return { text: fs.readFileSync(filePath, 'utf8'), images: [] };
+  }
+  throw new Error(`Unsupported file type: ${fileExtension}`);
+};
+
+/**
+ * Combine a question paper's text with its marking guide/answer file's text into one document,
+ * so a SINGLE AI extraction call can reason about both together (matching sub-question answers
+ * to the right part of the right question) instead of separately parsing the answer file into a
+ * flat {questionNumber: answerString} map and bolting it on afterward. That older two-step
+ * approach (still available as parseAnswerFile, for any other caller that still wants it) proved
+ * unreliable for real multi-part accounting-style exams: it can only hold one flat string per
+ * question number (no per-sub-question granularity for a), b), i), ii)... parts), and its own
+ * extraction prompt truncated the source document to 4000 characters - meaning anything past
+ * roughly the first page of a real multi-page marking guide was silently never seen at all.
+ */
+const combineExamAndAnswerText = (examText, answerText) => {
+  if (!answerText || !answerText.trim()) return examText;
+  return `${examText}\n\n=== TEACHER'S MARKING GUIDE / MODEL ANSWERS (authoritative - use this to fill in the real correctAnswer for every question and sub-question above; match by question/part number) ===\n\n${answerText}`;
+};
+
+/**
  * Parse an exam file to extract questions
  * @param {string} filePath - Path to the exam file
  * @param {string} answerFilePath - Optional path to the answer file
@@ -3624,28 +4161,22 @@ const parseAnswerFileWithRegex = async (text) => {
  */
 const parseExamFile = async (filePath, answerFilePath = null) => {
   try {
-    // First parse the answer file if available
-    let answerData = { answers: {} };
+    const { text: examText, images } = await readDocumentText(filePath);
+    let answerText = '';
+
     if (answerFilePath && fs.existsSync(answerFilePath)) {
       try {
-        console.log(`Parsing answer file first: ${answerFilePath}`);
-        answerData = await parseAnswerFile(answerFilePath);
-        console.log(`Pre-loaded ${Object.keys(answerData.answers).length} answers from answer file`);
-
-        // Log each answer for debugging
-        Object.entries(answerData.answers).forEach(([questionNumber, answer]) => {
-          console.log(`Pre-loaded answer for question ${questionNumber}: ${answer}`);
-        });
+        console.log(`Reading marking guide/answer file: ${answerFilePath}`);
+        answerText = (await readDocumentText(answerFilePath)).text;
+        console.log(`Exam text (${examText.length} chars), marking guide (${answerText.length} chars)`);
       } catch (answerError) {
-        console.error('Error parsing answer file:', answerError);
-        console.error(answerError.stack); // Log the full stack trace
+        console.error('Error reading answer file, continuing with exam text only:', answerError);
       }
     } else {
       console.log(`No answer file provided or file does not exist: ${answerFilePath}`);
     }
 
-    // Now parse the exam file with the answer data
-    return await parseFile(filePath, answerData);
+    return await extractExamQuestions(examText, answerText, images);
   } catch (error) {
     console.error('Error parsing exam file:', error);
     console.error(error.stack); // Log the full stack trace
@@ -3657,8 +4188,12 @@ module.exports = {
   parseFile,
   parsePdf,
   parseWord,
+  readDocumentText,
+  combineExamAndAnswerText,
   extractQuestionsDirectly,
   extractQuestionsWithEnhancedAI,
+  extractQuestionsChunked,
+  extractExamQuestions,
   categorizeQuestionsWithAI,
   parseAnswerFile,
   parseExamFile

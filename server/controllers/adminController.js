@@ -2353,32 +2353,30 @@ const createExam = async (req, res) => {
       console.log('Created default sections for exam');
     }
 
-    // Process answer file first if it exists
-    let answerData = { answers: {} };
-    if (answerFilePath) {
-      try {
-        console.log('Processing answer file:', answerFilePath);
-        const { parseAnswerFile } = require('../utils/fileParser');
-        answerData = await parseAnswerFile(answerFilePath);
-        console.log(`Answer file processed, found ${Object.keys(answerData.answers).length} answers`);
-        Object.entries(answerData.answers).forEach(([qNum, ans]) => {
-          console.log(`  Question ${qNum}: ${ans}`);
-        });
-      } catch (answerError) {
-        console.error('Error processing answer file:', answerError);
-        console.log('Continuing without answer file data');
-      }
-    }
-
-    // Parse the exam file to extract questions if it exists
+    // Parse the exam file (and, if provided, its marking guide/answer file) to extract
+    // questions. Both files are read as plain text, then extractExamQuestions splits them into
+    // one chunk per question and extracts each question with its own parallel AI call - far more
+    // reliable for a real multi-question exam than one call trying to enumerate everything at
+    // once, which was observed to silently drop entire questions from moderately long exams.
     let parsingFailed = false;
     if (examFilePath) {
       try {
-        const { parseFile } = require('../utils/fileParser');
-        console.log('Attempting to parse exam file:', examFilePath);
-        console.log('Using original filename for extension:', examFileOriginalName);
+        const { readDocumentText, extractExamQuestions } = require('../utils/fileParser');
+        console.log('Reading exam file:', examFilePath, 'original name:', examFileOriginalName);
+        const { text: examText, images } = await readDocumentText(examFilePath, examFileOriginalName);
 
-        const parsedExam = await parseFile(examFilePath, answerData, examFileOriginalName);
+        let answerText = '';
+        if (answerFilePath) {
+          try {
+            console.log('Reading answer/marking-guide file:', answerFilePath);
+            answerText = (await readDocumentText(answerFilePath, answerFileOriginalName)).text;
+            console.log(`Exam text (${examText.length} chars), marking guide (${answerText.length} chars)`);
+          } catch (answerError) {
+            console.error('Error reading answer file, continuing with exam text only:', answerError);
+          }
+        }
+
+        const parsedExam = await extractExamQuestions(examText, answerText, images);
         console.log('Exam file parsed successfully');
 
         // Carry over "answer N of M questions" selective-answering settings the extractor

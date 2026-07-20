@@ -132,6 +132,44 @@ def extract_diagram_images(pdf_path, page_snippets):
     return images_out
 
 
+def render_all_pages(pdf_path, max_pages=15, dpi=130):
+    """
+    Render every page of the PDF (up to max_pages) to a PNG data URL, for the vision-model
+    extraction path: the whole document is handed to a vision LLM as images instead of relying
+    on pdfplumber's text layer, so scanned pages, handwriting, and complex tables/diagrams that
+    pdfplumber/OCR struggle with can still be read. Reuses the same Poppler resolution as
+    extract_diagram_images. Best-effort per page — one failed page is skipped, not fatal.
+    """
+    try:
+        from pdf2image import convert_from_path
+    except ImportError as e:
+        return {"error": f"pdf2image not available: {e}"}
+
+    poppler_path = _resolve_poppler_path()
+    try:
+        kwargs = {"dpi": dpi, "first_page": 1, "last_page": max_pages}
+        if poppler_path:
+            kwargs["poppler_path"] = poppler_path
+        rendered = convert_from_path(pdf_path, **kwargs)
+    except Exception as e:
+        return {"error": f"Failed to render PDF pages: {str(e)}"}
+
+    pages_out = []
+    for page_num, image in enumerate(rendered, start=1):
+        try:
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            pages_out.append({"page": page_num, "dataUrl": f"data:image/png;base64,{b64}"})
+        except Exception as e:
+            print(f"Failed to encode page {page_num}: {e}", file=sys.stderr)
+            continue
+
+    if not pages_out:
+        return {"error": "No pages could be rendered to images"}
+    return {"success": True, "pages": pages_out}
+
+
 def extract_text_from_pdf(pdf_path):
     """Extract text from PDF using pdfplumber with enhanced formatting preservation"""
     try:
@@ -193,10 +231,13 @@ def extract_text_from_pdf(pdf_path):
         return {"error": f"Failed to parse PDF: {str(e)}"}
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print(json.dumps({"error": "Usage: python pdf_extractor.py <pdf_path>"}))
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "Usage: python pdf_extractor.py <pdf_path> [--render-pages]"}))
         sys.exit(1)
 
     pdf_path = sys.argv[1]
-    result = extract_text_from_pdf(pdf_path)
+    if len(sys.argv) > 2 and sys.argv[2] == '--render-pages':
+        result = render_all_pages(pdf_path)
+    else:
+        result = extract_text_from_pdf(pdf_path)
     print(json.dumps(result))

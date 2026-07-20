@@ -4,7 +4,6 @@ const multer = require('multer');
 const path = require('path');
 const mammoth = require('mammoth');
 const { examFileStorage, referenceFileStorage } = require('../config/cloudinary');
-const pdf = require('pdf-parse');
 const {
   createExam,
   getExams,
@@ -1031,35 +1030,40 @@ router.post('/upload-reference', auth, isAdminOrTeacher, referenceUpload.single(
 
     const { path: cloudinaryUrl, originalname, mimetype, size } = req.file;
     const ext = path.extname(originalname).toLowerCase();
-    
+
     console.log(`File uploaded to Cloudinary: ${cloudinaryUrl}`);
     console.log(`Processing file: ${originalname}, size: ${(size / 1024 / 1024).toFixed(2)}MB, type: ${mimetype}`);
 
-    // Download file from Cloudinary for text extraction
-    const axios = require('axios');
     let content = '';
-    
+
     try {
-      const response = await axios.get(cloudinaryUrl, { 
-        responseType: 'arraybuffer',
-        timeout: 30000 // 30 second timeout
-      });
-      const buffer = Buffer.from(response.data);
-      
-      // Parse file based on type
       if (ext === '.pdf') {
-        const data = await pdf(buffer);
-        content = data.text;
+        // parsePdf tries the Groq vision model first (handles scanned pages, handwriting,
+        // tables, diagrams far better than a text-layer parser), falling back automatically to
+        // the pdfplumber/OCR pipeline if that fails — see fileParser.js.
+        const { parsePdf } = require('../utils/fileParser');
+        const pdfResult = await parsePdf(cloudinaryUrl);
+        content = pdfResult.text;
         console.log(`PDF extracted: ${content.length} characters`);
-      } else if (ext === '.doc' || ext === '.docx') {
-        const result = await mammoth.extractRawText({ buffer });
-        content = result.value;
-        console.log(`DOCX extracted: ${content.length} characters`);
-      } else if (ext === '.txt') {
-        content = buffer.toString('utf-8');
-        console.log(`TXT extracted: ${content.length} characters`);
       } else {
-        return res.status(400).json({ message: 'Unsupported file type' });
+        // Download file from Cloudinary for text extraction
+        const axios = require('axios');
+        const response = await axios.get(cloudinaryUrl, {
+          responseType: 'arraybuffer',
+          timeout: 30000 // 30 second timeout
+        });
+        const buffer = Buffer.from(response.data);
+
+        if (ext === '.doc' || ext === '.docx') {
+          const result = await mammoth.extractRawText({ buffer });
+          content = result.value;
+          console.log(`DOCX extracted: ${content.length} characters`);
+        } else if (ext === '.txt') {
+          content = buffer.toString('utf-8');
+          console.log(`TXT extracted: ${content.length} characters`);
+        } else {
+          return res.status(400).json({ message: 'Unsupported file type' });
+        }
       }
     } catch (downloadError) {
       console.error('Error downloading/processing file from Cloudinary:', downloadError);

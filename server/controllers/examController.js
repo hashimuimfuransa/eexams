@@ -99,92 +99,25 @@ const createExam = async (req, res) => {
         console.log(`Parsing exam file for direct question extraction: ${examFilePath}`);
         console.log(`Using answer file: ${answerFilePath}`);
 
-        // First parse the answer file to get the answers
-        let answerData = { answers: {} };
+        // Read the exam file's text, and if a marking guide/answer file was also uploaded, read
+        // its text too. extractExamQuestions splits both into one chunk per question and
+        // extracts each with its own parallel AI call - far more reliable for a real multi-
+        // question exam than one call trying to enumerate everything at once.
+        const { readDocumentText, extractExamQuestions } = require('../utils/fileParser');
+        const { text: examText } = await readDocumentText(examFilePath);
+        let answerText = '';
+
         if (answerFilePath && fs.existsSync(answerFilePath)) {
           try {
-            const { parseAnswerFile } = require('../utils/fileParser');
-            console.log(`Parsing answer file directly: ${answerFilePath}`);
-            answerData = await parseAnswerFile(answerFilePath);
-            console.log(`Extracted ${Object.keys(answerData.answers).length} answers from answer file`);
-
-            // Log each answer for debugging
-            Object.entries(answerData.answers).forEach(([questionNumber, answer]) => {
-              console.log(`Answer for question ${questionNumber}: ${answer}`);
-            });
-
-            // If we didn't get any answers, add some hardcoded ones for testing
-            if (Object.keys(answerData.answers).length === 0) {
-              console.log("No answers found in answer file, adding hardcoded answers for testing");
-              answerData.answers[1] = 'C'; // Web browsing is NOT a function of OS
-              answerData.answers[2] = 'B'; // ALU performs arithmetic operations
-              answerData.answers[3] = 'C'; // ROM = Read-Only Memory
-              answerData.answers[4] = 'A'; // Microsoft Word is application software
-              answerData.answers[5] = 'A'; // POST = Power On Self Test
-              answerData.answers[6] = 'C'; // Motherboard is main circuit board
-              answerData.answers[7] = 'A'; // USB is common for keyboard
-              answerData.answers[8] = 'B'; // Higher cost per GB is disadvantage of SSD
-              answerData.answers[9] = 'D'; // RAM is volatile memory
-              answerData.answers[10] = 'A'; // Compiler translates high-level code
-
-              // Log the hardcoded answers
-              Object.entries(answerData.answers).forEach(([questionNumber, answer]) => {
-                console.log(`Hardcoded answer for question ${questionNumber}: ${answer}`);
-              });
-            }
+            console.log(`Reading answer/marking-guide file: ${answerFilePath}`);
+            answerText = (await readDocumentText(answerFilePath)).text;
+            console.log(`Exam text (${examText.length} chars), marking guide (${answerText.length} chars)`);
           } catch (answerError) {
-            console.error('Error parsing answer file:', answerError);
-
-            // Add hardcoded answers as fallback
-            console.log("Error parsing answer file, adding hardcoded answers as fallback");
-            answerData.answers[1] = 'C'; // Web browsing is NOT a function of OS
-            answerData.answers[2] = 'B'; // ALU performs arithmetic operations
-            answerData.answers[3] = 'C'; // ROM = Read-Only Memory
-            answerData.answers[4] = 'A'; // Microsoft Word is application software
-            answerData.answers[5] = 'A'; // POST = Power On Self Test
-            answerData.answers[6] = 'C'; // Motherboard is main circuit board
-            answerData.answers[7] = 'A'; // USB is common for keyboard
-            answerData.answers[8] = 'B'; // Higher cost per GB is disadvantage of SSD
-            answerData.answers[9] = 'D'; // RAM is volatile memory
-            answerData.answers[10] = 'A'; // Compiler translates high-level code
+            console.error('Error reading answer file, continuing with exam text only:', answerError);
           }
-        } else {
-          // Add hardcoded answers if no answer file
-          console.log("No answer file provided, adding hardcoded answers");
-          answerData.answers[1] = 'C'; // Web browsing is NOT a function of OS
-          answerData.answers[2] = 'B'; // ALU performs arithmetic operations
-          answerData.answers[3] = 'C'; // ROM = Read-Only Memory
-          answerData.answers[4] = 'A'; // Microsoft Word is application software
-          answerData.answers[5] = 'A'; // POST = Power On Self Test
-          answerData.answers[6] = 'C'; // Motherboard is main circuit board
-          answerData.answers[7] = 'A'; // USB is common for keyboard
-          answerData.answers[8] = 'B'; // Higher cost per GB is disadvantage of SSD
-          answerData.answers[9] = 'D'; // RAM is volatile memory
-          answerData.answers[10] = 'A'; // Compiler translates high-level code
         }
 
-        // Now parse the exam file with the answer data
-        const { extractQuestionsDirectly } = require('../utils/fileParser');
-
-        // Parse the exam file
-        const fileExtension = path.extname(examFilePath).toLowerCase();
-        let examText = '';
-
-        if (fileExtension === '.pdf') {
-          const { parsePdf } = require('../utils/fileParser');
-          const pdfResult = await parsePdf(examFilePath);
-          examText = pdfResult.text;
-        } else if (fileExtension === '.docx' || fileExtension === '.doc') {
-          const { parseWord } = require('../utils/fileParser');
-          examText = await parseWord(examFilePath);
-        } else if (fileExtension === '.txt') {
-          examText = fs.readFileSync(examFilePath, 'utf8');
-        } else {
-          throw new Error(`Unsupported file type: ${fileExtension}`);
-        }
-
-        // Extract questions directly from the text with the answer data
-        const parsedExam = await extractQuestionsDirectly(examText, answerData);
+        const parsedExam = await extractExamQuestions(examText, answerText);
         console.log('Successfully parsed exam file directly');
 
         // Log the extracted questions

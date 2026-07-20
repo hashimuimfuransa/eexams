@@ -319,12 +319,19 @@ const createGroqClient = () => {
       inFlightRequests.set(cacheKey, requestPromise);
     }
 
-    // Clean up the in-flight map when the promise resolves or rejects
+    // Clean up the in-flight map when the promise resolves or rejects. `.finally()` returns a
+    // NEW promise that adopts requestPromise's rejection - if requestPromise rejects and nothing
+    // attaches a handler to what .finally() returns (as was the case here), Node reports THAT
+    // derived promise as an unhandled rejection and crashes the process, even though the real
+    // requestPromise below is properly awaited/caught by every caller. This only became visible
+    // once calls started running several at a time (parallel per-page/per-question extraction) -
+    // a bare `.catch(() => {})` on the derived promise silences the harmless duplicate without
+    // touching requestPromise's real rejection, which callers still see and handle normally.
     requestPromise.finally(() => {
       if (!options.skipCache) {
         inFlightRequests.delete(cacheKey);
       }
-    });
+    }).catch(() => {});
 
     return requestPromise;
   };

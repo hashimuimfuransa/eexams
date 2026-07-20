@@ -2428,7 +2428,7 @@ router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, a
     // the same proven non-reasoning text model the paste-a-table flow already uses successfully.
     let transcribedText = '';
     if (images.length > 0) {
-      const transcribePrompt = `Transcribe every line of text and every number from ${images.length > 1 ? 'these images' : 'this image'} exactly as they appear, preserving the table/statement structure (row labels and their values, including which column/side each value is under). Do not interpret, compute, or reclassify anything — just transcribe what you see, in reading order.
+      const transcribePrompt = `Transcribe every line of text and every number from ${images.length > 1 ? 'these images' : 'this image'} exactly as they appear, preserving the table/statement structure (row labels and their values, including which column/side each value is under). If there are MULTIPLE separate tables/accounts (e.g. several ledger T-accounts each with their own title like "Capital", "Bank", "Inventory", followed by a trial balance) clearly mark where each one starts and ends and keep its title with it — do not merge separate accounts/tables together. Also transcribe any heading/instruction text (e.g. "i. Relevant ledger accounts...", "ii. Trial balance...") exactly as written, since it says what the teacher actually wants produced. Do not interpret, compute, or reclassify anything — just transcribe what you see, in reading order.
 Return ONLY JSON: {"extractedText": "..."}`;
 
       // The vision model is a reasoning model — on a harder-to-read photo (poor lighting, an
@@ -2484,6 +2484,14 @@ This is a SECOND request, editing what's already there. The teacher's input belo
     const combinedInput = [pastedTable.trim(), transcribedText].filter(Boolean).join('\n\n');
 
     const prompt = `You are a qualified accounting/finance teacher and exam assistant (IFRS/IAS-based, but adapt to whatever curriculum the question implies). Build (or update) the spreadsheet grid for this exam question from data/instructions the teacher provides. Get the ACCOUNTING right first — correct classification, correct ordering, correct arithmetic — then format it professionally.
+
+STEP ZERO — WORK OUT WHAT OUTPUT TYPE IS ACTUALLY BEING ASKED FOR. DO THIS BEFORE ANYTHING ELSE. Read the Question wording and look at what the teacher's input already IS, then reproduce/complete THAT — do not default to building a financial statement just because you're looking at accounting data:
+  - If the question says "ledger(s)", "ledger account(s)", "T-account(s)", or the teacher's input is already one or more running Dr/Cr accounts (an account name/title like "Capital", "Bank", "Inventory", etc., with Date/Particulars/Debit/Credit entries and a running or closing balance) → your job is to REPRODUCE/COMPLETE those exact ledger accounts, ONE TABLE PER ACCOUNT (each table's title = that account's name, in the same order given). Do NOT turn them into an Income Statement or Statement of Financial Position — that is a different question, not what was asked.
+  - If the question says "trial balance", or the input already is one → reproduce it as a trial balance table (one "Item"/"Debit"/"Credit" table). Do not convert it into a financial statement.
+  - If the question says "journal" or "journal entries", or the input already is one → reproduce as journal entries.
+  - ONLY produce a Statement of Financial Position, Income Statement, Statement of Changes in Equity, or Statement of Cash Flows when the question EXPLICITLY asks to "prepare"/"draw up" THAT specific statement. Never generate one as an unrequested bonus, and never substitute one for the ledgers/trial balance/journal the question actually asked for.
+  - If the question has multiple lettered/numbered parts asking for different things (e.g. "(i) prepare the ledger accounts... (ii) prepare the trial balance..."), build one table (or one table per account, for ledgers) per part, matching what each part actually asks for — not one financial statement covering everything.
+  - If you are genuinely unsure what the question is asking for and the input is a plain trial balance with no further instruction, only then is producing the statement it's most obviously for (if any) a reasonable default.
 
 Question: "${questionText.slice(0, 2000)}"
 ${existingBlock}${combinedInput

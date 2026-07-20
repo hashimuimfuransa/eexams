@@ -2395,6 +2395,71 @@ const checkCooldown = (map, userId, cooldownMs) => {
   return true;
 };
 
+// The AI reliably gets figures right but sometimes puts a value on the wrong side (Debit vs
+// Credit) — in a ledger this shows up as the closing "Balance b/d"/"c/d"/"c/f" row landing on
+// the wrong column (a strong prior toward "assets carry a debit balance" that plain prompt
+// instructions did not reliably override even after two rounds of more explicit wording); in a
+// trial balance it shows up as a whole account (e.g. Capital, a credit balance) being placed in
+// the wrong column entirely. Rather than keep tuning the prompt and hoping, this mechanically
+// verifies the one invariant that must always hold (Debit column total === Credit column total)
+// and, when it doesn't, looks for a SINGLE row whose side-flip would exactly fix the imbalance —
+// swapping it deterministically instead of asking the model to get it right. Only ever touches a
+// row whose flip yields an EXACT balance; if no such single row exists, the table is left
+// untouched (better to surface a real error for the teacher to fix in the grid than to silently
+// guess wrong).
+function fixDebitCreditPlacement(table) {
+  if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data)) return table;
+  const headersLower = table.headers.map(h => String(h || '').toLowerCase());
+  const drIdx = headersLower.findIndex(h => h.includes('debit'));
+  const crIdx = headersLower.findIndex(h => h.includes('credit'));
+  if (drIdx === -1 || crIdx === -1) return table; // not a Dr/Cr-shaped table at all (e.g. a financial statement)
+
+  // Ledger/T-account (Date, Particulars, Debit, Credit): a real transaction row is very unlikely
+  // to simply be on the wrong side, so only the derived "balance" row is a safe candidate to
+  // flip. Trial Balance (Item, Debit, Credit): there's no derived row at all — ANY account can be
+  // the one the model misclassified onto the wrong side, so every row is a candidate.
+  const isLedgerShaped = table.headers.length >= 4;
+
+  const toNum = (v) => {
+    if (typeof v === 'number') return v;
+    const n = parseFloat(String(v ?? '').replace(/,/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+
+  let drTotal = 0, crTotal = 0;
+  table.data.forEach(row => { drTotal += toNum(row[drIdx]); crTotal += toNum(row[crIdx]); });
+  const diff = drTotal - crTotal;
+  if (Math.abs(diff) < 0.01) return table; // already balanced
+
+  for (let i = 0; i < table.data.length; i++) {
+    const row = table.data[i];
+    const label = `${row[0] || ''} ${row[1] || ''}`.toLowerCase();
+    if (isLedgerShaped && !label.includes('balance')) continue;
+    const drVal = toNum(row[drIdx]);
+    const crVal = toNum(row[crIdx]);
+    // On the debit side right now — would flipping it to credit make both totals equal?
+    if (drVal > 0 && Math.abs(crVal) < 0.01 && Math.abs(diff - 2 * drVal) < 0.01) {
+      const fixed = [...row];
+      fixed[crIdx] = drVal;
+      fixed[drIdx] = 0;
+      table.data[i] = fixed;
+      console.warn(`Auto-corrected "${table.title}": moved "${row[1] || row[0]}" (${drVal}) from Debit to Credit to balance.`);
+      return table;
+    }
+    // On the credit side right now — would flipping it to debit make both totals equal?
+    if (crVal > 0 && Math.abs(drVal) < 0.01 && Math.abs(diff + 2 * crVal) < 0.01) {
+      const fixed = [...row];
+      fixed[drIdx] = crVal;
+      fixed[crIdx] = 0;
+      table.data[i] = fixed;
+      console.warn(`Auto-corrected "${table.title}": moved "${row[1] || row[0]}" (${crVal}) from Credit to Debit to balance.`);
+      return table;
+    }
+  }
+  console.warn(`"${table.title}" is unbalanced (Debit ${drTotal} vs Credit ${crTotal}) and no single row's flip fixes it — leaving as returned by the AI.`);
+  return table;
+}
+
 // Teacher pastes a table (from Excel/Word) while authoring a financial-spreadsheet question;
 // AI turns it into the canonical { tables: [{title, headers, data}] } grid — both the fully
 // computed model answer and (via normalizeSpreadsheetField on the client) the blank student
@@ -2577,9 +2642,23 @@ Before returning, recompute every subtotal from its own components independently
       return res.status(422).json({ message: images.length > 0 ? 'AI read the image but could not turn it into a spreadsheet. Try a clearer photo/screenshot.' : 'AI could not build a spreadsheet from that data. Try pasting a clearer table.' });
     }
 
+    // Normalize to the canonical {tables:[...]} shape first, then mechanically verify/fix each
+    // ledger/trial-balance table's Debit/Credit placement (see fixDebitCreditPlacement above).
+    const modelAnswerJson = normalizeSpreadsheetField(parsed.spreadsheetModelAnswer);
+    let modelAnswerGrid;
+    try {
+      modelAnswerGrid = JSON.parse(modelAnswerJson);
+      if (Array.isArray(modelAnswerGrid.tables)) {
+        modelAnswerGrid.tables = modelAnswerGrid.tables.map(fixDebitCreditPlacement);
+      }
+    } catch {
+      modelAnswerGrid = null;
+    }
+    const fixedModelAnswerJson = modelAnswerGrid ? JSON.stringify(modelAnswerGrid) : modelAnswerJson;
+
     res.json({
-      spreadsheetTemplate: normalizeSpreadsheetField(parsed.spreadsheetTemplate || parsed.spreadsheetModelAnswer),
-      spreadsheetModelAnswer: normalizeSpreadsheetField(parsed.spreadsheetModelAnswer),
+      spreadsheetTemplate: normalizeSpreadsheetField(parsed.spreadsheetTemplate) || fixedModelAnswerJson,
+      spreadsheetModelAnswer: fixedModelAnswerJson,
     });
   } catch (err) {
     console.error('ai-fill-spreadsheet error:', err);

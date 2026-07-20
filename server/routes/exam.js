@@ -2460,6 +2460,113 @@ function fixDebitCreditPlacement(table) {
   return table;
 }
 
+// fixDebitCreditPlacement above only catches a SINGLE misplaced row per table (the derived
+// balance row, or one misclassified trial-balance account). It cannot fix a ledger where SEVERAL
+// ordinary transaction rows are on the wrong side at once (e.g. a "Bank" account with receipts
+// showing as Credit and payments showing as Debit — the exact opposite of correct). A follow-up
+// AI "verify this against the source" pass was tried and tested live against that exact scenario;
+// it barely fixed anything and even broke a row that was already correct — this specific failure
+// mode is not something the model can reliably self-correct by re-reading its own output. So this
+// applies real double-entry rules mechanically instead: classify the two accounts in each row
+// (this ledger's own title, and the contra account named in "Particulars") by their normal nature
+// — asset/expense (Dr) vs liability/equity/income (Cr) — and derive which side the row belongs on
+// from that pairing, the same way an accounting teacher would reason about it. Falls back to
+// leaving a row untouched whenever the contra can't be confidently classified (e.g. it's just a
+// customer/supplier proper name with no generic keyword) — an unrecognized row is left as the AI
+// returned it rather than risk "fixing" something that was already right.
+function classifyAccountNature(name) {
+  const t = String(name || '').toLowerCase();
+  if (/\bcapital\b|retained earnings|\bdrawings\b/.test(t)) return 'equity';
+  if (/\bsales\b|\brevenue\b|commission received|discount received|interest received|\bincome\b/.test(t)) return 'income';
+  if (/payable|creditor|\bloan\b|overdraft|accrued|provision/.test(t)) return 'liability';
+  if (/\bexpense\b|\bwages\b|\bsalaries\b|\bpurchases\b|discount allowed|cost of sales|depreciation/.test(t)) return 'expense';
+  if (/\bbank\b|\bcash\b/.test(t)) return 'cash';
+  if (/receivable|debtor/.test(t)) return 'receivable';
+  if (/inventory|\bstock\b|motor vehicle|\bvehicle\b|equipment|\bland\b|\bbuilding\b|\bprepaid\b|investment|\bplant\b|machinery/.test(t)) return 'other-asset';
+  return null;
+}
+const LEDGER_ASSET_NATURES = new Set(['cash', 'receivable', 'other-asset']);
+const ledgerNormalSide = (nature) => (LEDGER_ASSET_NATURES.has(nature) || nature === 'expense') ? 'dr' : (nature ? 'cr' : null);
+const LEDGER_OUTFLOW_RE = /\bpaid\b|\bpayment\b|purchas|\bbought\b|withdr|\bimport/i;
+const LEDGER_INFLOW_RE = /\breceiv|\bsale\b|\bsold\b|\bdeposit\b|\bcollect|\bbanked\b|introduc/i;
+
+function correctLedgerRowSide(thisNature, contraNature, particulars) {
+  if (!thisNature) return null;
+  if (contraNature && contraNature !== thisNature) {
+    if (contraNature === 'income' || contraNature === 'equity') {
+      // Recognizing income/equity always credits the contra account; the value received lands on
+      // this account's own normal (increasing) side.
+      return ledgerNormalSide(thisNature);
+    }
+    if (contraNature === 'expense') {
+      return LEDGER_ASSET_NATURES.has(thisNature) ? 'cr' : null;
+    }
+    if (contraNature === 'liability') {
+      return LEDGER_ASSET_NATURES.has(thisNature) ? 'cr' : (thisNature === 'expense' ? 'dr' : null);
+    }
+    // contraNature is itself an asset type (cash/receivable/other-asset) but a different one than
+    // thisNature — this account (income/equity/liability/expense) paired with an asset movement.
+    if (LEDGER_ASSET_NATURES.has(contraNature)) {
+      if (thisNature === 'income' || thisNature === 'equity') return 'cr';
+      if (thisNature === 'liability') return LEDGER_OUTFLOW_RE.test(particulars) ? 'dr' : null;
+      if (thisNature === 'expense') return 'dr';
+    }
+  }
+  if (LEDGER_ASSET_NATURES.has(thisNature) && LEDGER_ASSET_NATURES.has(contraNature)) {
+    const outflow = LEDGER_OUTFLOW_RE.test(particulars);
+    const inflow = LEDGER_INFLOW_RE.test(particulars);
+    if (thisNature === 'cash') {
+      if (outflow) return 'cr';
+      if (inflow) return 'dr';
+      return contraNature === 'receivable' ? 'dr' : 'cr'; // collecting a debtor = in; acquiring any other asset = out
+    }
+    if (contraNature === 'cash') {
+      // thisNature is the non-cash asset (receivable or other-asset), contra is cash/bank.
+      if (outflow) return 'dr'; // cash paid OUT to acquire/increase this asset
+      if (inflow) return 'cr'; // this asset realized/collected INTO cash -> decreases
+      return thisNature === 'other-asset' ? 'dr' : 'cr';
+    }
+    // Two non-cash assets with no cash involved at all — genuinely ambiguous, leave alone.
+    return null;
+  }
+  return null;
+}
+
+function fixLedgerRowSidesByNature(table) {
+  if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data) || table.headers.length < 4) return table;
+  const headersLower = table.headers.map(h => String(h || '').toLowerCase());
+  const drIdx = headersLower.findIndex(h => h.includes('debit'));
+  const crIdx = headersLower.findIndex(h => h.includes('credit'));
+  if (drIdx === -1 || crIdx === -1) return table;
+  const thisNature = classifyAccountNature(table.title);
+  if (!thisNature) return table;
+  const toNum = (v) => {
+    if (typeof v === 'number') return v;
+    const n = parseFloat(String(v ?? '').replace(/,/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+  table.data = table.data.map(row => {
+    const label = `${row[0] || ''} ${row[1] || ''}`;
+    if (/balance/i.test(label)) return row; // leave the derived closing/carried-down figure alone
+    const drVal = toNum(row[drIdx]);
+    const crVal = toNum(row[crIdx]);
+    if (drVal <= 0 && crVal <= 0) return row;
+    const particulars = String(row[1] || row[0] || '');
+    const contraNature = classifyAccountNature(particulars);
+    const correctSide = correctLedgerRowSide(thisNature, contraNature, particulars);
+    if (!correctSide) return row;
+    const currentSide = drVal > 0 ? 'dr' : 'cr';
+    if (correctSide === currentSide) return row;
+    const amt = drVal > 0 ? drVal : crVal;
+    const fixed = [...row];
+    fixed[drIdx] = correctSide === 'dr' ? amt : 0;
+    fixed[crIdx] = correctSide === 'cr' ? amt : 0;
+    console.warn(`Auto-corrected "${table.title}": moved "${particulars}" (${amt}) from ${currentSide === 'dr' ? 'Debit' : 'Credit'} to ${correctSide === 'dr' ? 'Debit' : 'Credit'} based on double-entry rules.`);
+    return fixed;
+  });
+  return table;
+}
+
 // Teacher pastes a table (from Excel/Word) while authoring a financial-spreadsheet question;
 // AI turns it into the canonical { tables: [{title, headers, data}] } grid — both the fully
 // computed model answer and (via normalizeSpreadsheetField on the client) the blank student
@@ -2642,18 +2749,22 @@ Before returning, recompute every subtotal from its own components independently
       return res.status(422).json({ message: images.length > 0 ? 'AI read the image but could not turn it into a spreadsheet. Try a clearer photo/screenshot.' : 'AI could not build a spreadsheet from that data. Try pasting a clearer table.' });
     }
 
-    // Normalize to the canonical {tables:[...]} shape first, then mechanically verify/fix each
-    // ledger/trial-balance table's Debit/Credit placement (see fixDebitCreditPlacement above).
+    // Normalize to the canonical {tables:[...]} shape first, then mechanically fix each
+    // ledger/trial-balance table's Debit/Credit placement: first apply real double-entry rules
+    // per row (fixLedgerRowSidesByNature — handles multiple simultaneously-misplaced transaction
+    // rows), then the single-row balance-invariant check (fixDebitCreditPlacement — catches a
+    // remaining misplaced derived balance row or misclassified trial-balance account).
     const modelAnswerJson = normalizeSpreadsheetField(parsed.spreadsheetModelAnswer);
     let modelAnswerGrid;
     try {
       modelAnswerGrid = JSON.parse(modelAnswerJson);
       if (Array.isArray(modelAnswerGrid.tables)) {
-        modelAnswerGrid.tables = modelAnswerGrid.tables.map(fixDebitCreditPlacement);
+        modelAnswerGrid.tables = modelAnswerGrid.tables.map(t => fixDebitCreditPlacement(fixLedgerRowSidesByNature(t)));
       }
     } catch {
       modelAnswerGrid = null;
     }
+
     const fixedModelAnswerJson = modelAnswerGrid ? JSON.stringify(modelAnswerGrid) : modelAnswerJson;
 
     res.json({

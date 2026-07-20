@@ -2407,6 +2407,41 @@ const checkCooldown = (map, userId, cooldownMs) => {
 // row whose flip yields an EXACT balance; if no such single row exists, the table is left
 // untouched (better to surface a real error for the teacher to fix in the grid than to silently
 // guess wrong).
+// The AI sometimes fills the side a Debit/Credit row isn't using with the number 0 instead of an
+// empty string, which then renders as a literal "0" in the grid instead of a blank cell. Applies
+// to any Debit/Credit-shaped table (ledgers AND trial balances) — run last, after any row-side
+// corrections, so cells that just got flipped are normalized too.
+function blankOutUnusedDebitCreditCells(table) {
+  if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data)) return table;
+  const headersLower = table.headers.map(h => String(h || '').toLowerCase());
+  const drIdx = headersLower.findIndex(h => h.includes('debit'));
+  const crIdx = headersLower.findIndex(h => h.includes('credit'));
+  if (drIdx === -1 || crIdx === -1) return table;
+  const toNum = (v) => {
+    if (typeof v === 'number') return v;
+    const n = parseFloat(String(v ?? '').replace(/,/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+  table.data = table.data.map(row => {
+    const dr = toNum(row[drIdx]);
+    const cr = toNum(row[crIdx]);
+    const drIsZero = row[drIdx] === 0 || row[drIdx] === '0';
+    const crIsZero = row[crIdx] === 0 || row[crIdx] === '0';
+    if (dr > 0 && crIsZero) {
+      const next = [...row];
+      next[crIdx] = '';
+      return next;
+    }
+    if (cr > 0 && drIsZero) {
+      const next = [...row];
+      next[drIdx] = '';
+      return next;
+    }
+    return row;
+  });
+  return table;
+}
+
 function fixDebitCreditPlacement(table) {
   if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data)) return table;
   const headersLower = table.headers.map(h => String(h || '').toLowerCase());
@@ -2474,16 +2509,26 @@ function fixDebitCreditPlacement(table) {
 // leaving a row untouched whenever the contra can't be confidently classified (e.g. it's just a
 // customer/supplier proper name with no generic keyword) — an unrecognized row is left as the AI
 // returned it rather than risk "fixing" something that was already right.
-function classifyAccountNature(name) {
-  const t = String(name || '').toLowerCase();
+// Ledger particulars text usually mixes the real contra-account name with parenthetical detail
+// (e.g. "Bank (annual rent paid)", "Rent (annual)") — classifying the whole string can pick up a
+// keyword from the wrong part (e.g. "rent" beating "Bank" for nature). So classification always
+// tries the part BEFORE the first "(" first (the actual account name, by ledger convention) and
+// only falls back to scanning the full string if that primary part doesn't match anything.
+function classifyByKeywords(t) {
   if (/\bcapital\b|retained earnings|\bdrawings\b/.test(t)) return 'equity';
-  if (/\bsales\b|\brevenue\b|commission received|discount received|interest received|\bincome\b/.test(t)) return 'income';
+  if (/\bsales?\b|\brevenue\b|commission received|discount received|interest received|\bincome\b/.test(t)) return 'income';
   if (/payable|creditor|\bloan\b|overdraft|accrued|provision/.test(t)) return 'liability';
-  if (/\bexpense\b|\bwages\b|\bsalaries\b|\bpurchases\b|discount allowed|cost of sales|depreciation/.test(t)) return 'expense';
+  if (/\bprepaid\b/.test(t)) return 'other-asset'; // check before "expense" — "Prepaid Rent" must not match generic "rent"
+  if (/\bexpense\b|\brent\b|\bwages\b|\bsalaries\b|\bpurchases\b|discount allowed|cost of sales|depreciation/.test(t)) return 'expense';
   if (/\bbank\b|\bcash\b/.test(t)) return 'cash';
   if (/receivable|debtor/.test(t)) return 'receivable';
-  if (/inventory|\bstock\b|motor vehicle|\bvehicle\b|equipment|\bland\b|\bbuilding\b|\bprepaid\b|investment|\bplant\b|machinery/.test(t)) return 'other-asset';
+  if (/inventory|\bstock\b|motor vehicle|\bvehicle\b|equipment|\bland\b|\bbuilding\b|investment|\bplant\b|machinery/.test(t)) return 'other-asset';
   return null;
+}
+function classifyAccountNature(name) {
+  const full = String(name || '').toLowerCase();
+  const head = full.split('(')[0].trim();
+  return (head && classifyByKeywords(head)) || classifyByKeywords(full);
 }
 const LEDGER_ASSET_NATURES = new Set(['cash', 'receivable', 'other-asset']);
 const ledgerNormalSide = (nature) => (LEDGER_ASSET_NATURES.has(nature) || nature === 'expense') ? 'dr' : (nature ? 'cr' : null);
@@ -2492,6 +2537,9 @@ const LEDGER_INFLOW_RE = /\breceiv|\bsale\b|\bsold\b|\bdeposit\b|\bcollect|\bban
 
 function correctLedgerRowSide(thisNature, contraNature, particulars) {
   if (!thisNature) return null;
+  const outflow = LEDGER_OUTFLOW_RE.test(particulars);
+  const inflow = LEDGER_INFLOW_RE.test(particulars);
+
   if (contraNature && contraNature !== thisNature) {
     if (contraNature === 'income' || contraNature === 'equity') {
       // Recognizing income/equity always credits the contra account; the value received lands on
@@ -2504,30 +2552,35 @@ function correctLedgerRowSide(thisNature, contraNature, particulars) {
     if (contraNature === 'liability') {
       return LEDGER_ASSET_NATURES.has(thisNature) ? 'cr' : (thisNature === 'expense' ? 'dr' : null);
     }
-    // contraNature is itself an asset type (cash/receivable/other-asset) but a different one than
-    // thisNature — this account (income/equity/liability/expense) paired with an asset movement.
     if (LEDGER_ASSET_NATURES.has(contraNature)) {
+      // contraNature is itself an asset type but a different one than thisNature.
       if (thisNature === 'income' || thisNature === 'equity') return 'cr';
-      if (thisNature === 'liability') return LEDGER_OUTFLOW_RE.test(particulars) ? 'dr' : null;
+      if (thisNature === 'liability') return outflow ? 'dr' : null;
       if (thisNature === 'expense') return 'dr';
+      // Both this and contra are asset-types (different subtypes) — fall through: resolved below
+      // by whichever side is actually cash, since "paid"/"received" wording is only meaningful
+      // from the cash side's own perspective, not the asset-being-acquired's perspective.
     }
   }
-  if (LEDGER_ASSET_NATURES.has(thisNature) && LEDGER_ASSET_NATURES.has(contraNature)) {
-    const outflow = LEDGER_OUTFLOW_RE.test(particulars);
-    const inflow = LEDGER_INFLOW_RE.test(particulars);
-    if (thisNature === 'cash') {
-      if (outflow) return 'cr';
-      if (inflow) return 'dr';
-      return contraNature === 'receivable' ? 'dr' : 'cr'; // collecting a debtor = in; acquiring any other asset = out
-    }
-    if (contraNature === 'cash') {
-      // thisNature is the non-cash asset (receivable or other-asset), contra is cash/bank.
-      if (outflow) return 'dr'; // cash paid OUT to acquire/increase this asset
-      if (inflow) return 'cr'; // this asset realized/collected INTO cash -> decreases
-      return thisNature === 'other-asset' ? 'dr' : 'cr';
-    }
-    // Two non-cash assets with no cash involved at all — genuinely ambiguous, leave alone.
+
+  // thisNature IS the cash/bank ledger itself: outflow/inflow wording describes Bank's own
+  // perspective directly, regardless of whether the contra could be classified at all (this is
+  // what resolves rows naming an unrecognized customer/supplier, e.g. "African Bags Ltd (part
+  // payment)" or "Munini Ltd (deposit on credit sale)", which have no generic account keyword).
+  if (thisNature === 'cash') {
+    if (outflow) return 'cr';
+    if (inflow) return 'dr';
+    if (contraNature === 'receivable') return 'dr'; // collecting a debtor = money in
+    if (LEDGER_ASSET_NATURES.has(contraNature)) return 'cr'; // acquiring any other asset = money out
     return null;
+  }
+  // thisNature is a non-cash asset (receivable/other-asset) and the contra is identifiably cash —
+  // same wording, opposite meaning: cash paying OUT increases this asset; cash coming IN means
+  // this asset was just realized/collected, so it decreases.
+  if (contraNature === 'cash' || /\bbank\b|\bcash\b/.test(particulars)) {
+    if (outflow) return 'dr';
+    if (inflow) return 'cr';
+    return thisNature === 'other-asset' ? 'dr' : 'cr';
   }
   return null;
 }
@@ -2539,12 +2592,12 @@ function fixLedgerRowSidesByNature(table) {
   const crIdx = headersLower.findIndex(h => h.includes('credit'));
   if (drIdx === -1 || crIdx === -1) return table;
   const thisNature = classifyAccountNature(table.title);
-  if (!thisNature) return table;
   const toNum = (v) => {
     if (typeof v === 'number') return v;
     const n = parseFloat(String(v ?? '').replace(/,/g, ''));
     return isNaN(n) ? 0 : n;
   };
+  if (!thisNature) return table;
   table.data = table.data.map(row => {
     const label = `${row[0] || ''} ${row[1] || ''}`;
     if (/balance/i.test(label)) return row; // leave the derived closing/carried-down figure alone
@@ -2730,6 +2783,7 @@ FORMAT BY DOCUMENT TYPE:
     - After filling in every row, the Debit column total and the Credit column total for that account must be EQUAL (a ledger account always balances) — if they don't, you put something on the wrong side; find and fix it before returning.
     - Keep every account/particulars label worded exactly as given (e.g. if the source writes "Rent expense" in lower case, or "Bank (capital introduced)", keep that exact wording — do not re-capitalize, rename, or tidy it up).
     - Preserve the exact number and order of accounts/tables given — if the source shows 9 separate ledger accounts, return exactly 9 tables in the same order, each with only that account's own entries.
+    - Every row uses only ONE of the two columns — whichever side (Debit or Credit) the entry is NOT on must be the empty string "", never the number 0. A ledger row is never both blank-string on one side and a numeric 0 on the other; it is always a real number on one side and "" on the other.
   * Journal entries: headers ["Date","Particulars","Debit","Credit"], one row per account touched by each entry — the debited account's amount in Debit with Credit left "", the credited account's amount in Credit with Debit left "" (conventionally indent/prefix the credited account's particulars with "To ..."). Never put a Dr and Cr figure in the same row's single cell.
   * Anything else (a schedule, workings, a ratio computation): use whichever layout is standard for that specific output; only use Debit/Credit columns when double-entry actually applies.
 
@@ -2759,7 +2813,7 @@ Before returning, recompute every subtotal from its own components independently
     try {
       modelAnswerGrid = JSON.parse(modelAnswerJson);
       if (Array.isArray(modelAnswerGrid.tables)) {
-        modelAnswerGrid.tables = modelAnswerGrid.tables.map(t => fixDebitCreditPlacement(fixLedgerRowSidesByNature(t)));
+        modelAnswerGrid.tables = modelAnswerGrid.tables.map(t => blankOutUnusedDebitCreditCells(fixDebitCreditPlacement(fixLedgerRowSidesByNature(t))));
       }
     } catch {
       modelAnswerGrid = null;

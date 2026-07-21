@@ -183,6 +183,22 @@ def extract_text_from_pdf(pdf_path):
         diagram_pages = {}  # page_num -> text snippet, for pages that reference a diagram/figure
         with pdfplumber.open(pdf_path) as pdf:
             for page_num, page in enumerate(pdf.pages, start=1):
+                # Drop rotated (non-upright) characters before extracting text. Exam PDFs are
+                # frequently stamped with a diagonal repeating watermark (e.g. "iCPA...APRIL2022");
+                # pdfplumber's extract_text() sorts chars purely by position, so a diagonal
+                # watermark's characters land at every y-coordinate on the page and get
+                # interleaved character-by-character into real body text lines. That silently
+                # breaks anything that depends on a clean line of text - most importantly the
+                # "QUESTION TWO"/"QUESTION THREE" header-line regex in fileParser.js's chunked
+                # extractor, which requires the header to be the ONLY thing on its line: once
+                # watermark noise corrupts those lines, only the first question header still
+                # matches and the entire rest of a multi-question exam collapses into one chunk
+                # (confirmed live: a 5-question paper with a diagonal watermark yielded only 1
+                # extracted question, while its unwatermarked marking guide yielded all 5). Real
+                # body text in these PDFs is horizontal, so filtering to upright-only chars removes
+                # the watermark without touching legitimate content.
+                page = page.filter(lambda obj: obj.get("object_type") != "char" or obj.get("upright", True))
+
                 # Extract text with layout preservation
                 text = page.extract_text()
 

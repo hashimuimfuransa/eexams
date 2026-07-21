@@ -2426,7 +2426,6 @@ const createExam = async (req, res) => {
                   // Get question number from data (if available), otherwise use global counter
                   const questionNumber = questionData.number || globalQuestionNumber;
 
-                  // Use answer from answer file if available
                   let correctAnswer = questionData.correctAnswer;
                   let subQuestions = questionData.subQuestions || [];
                   
@@ -2445,30 +2444,6 @@ const createExam = async (req, res) => {
                     }
                   }
                   
-                  if (answerData.answers && answerData.answers[questionNumber]) {
-                    const answerFromFile = answerData.answers[questionNumber];
-                    
-                    // Check if the answer from file is an object with letter keys (subquestions)
-                    if (answerFromFile && typeof answerFromFile === 'object') {
-                      const keys = Object.keys(answerFromFile);
-                      const hasLetterKeys = keys.some(k => /^[a-z]$/i.test(k));
-                      
-                      if (hasLetterKeys) {
-                        // Parse as subquestions
-                        subQuestions = parseSubquestionsFromObject(answerFromFile, questionData.text);
-                        correctAnswer = 'See subquestions';
-                        console.log(`Parsed answer file object as subquestions for question ${questionNumber}`);
-                      } else {
-                        // For other objects, stringify
-                        correctAnswer = JSON.stringify(answerFromFile);
-                        console.log(`Converted answer file object to string for question ${questionNumber}`);
-                      }
-                    } else {
-                      correctAnswer = answerFromFile;
-                      console.log(`Using answer from answer file for question ${questionNumber}: ${correctAnswer}`);
-                    }
-                  }
-
                   // Convert correctAnswer to string if it's still an object (for matching questions, etc.)
                   if (correctAnswer && typeof correctAnswer === 'object') {
                     correctAnswer = JSON.stringify(correctAnswer);

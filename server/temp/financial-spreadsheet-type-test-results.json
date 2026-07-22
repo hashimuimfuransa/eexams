@@ -1,0 +1,1636 @@
+[
+  {
+    "name": "Trial Balance",
+    "status": "PASS",
+    "ms": 2307,
+    "tables": [
+      {
+        "title": "Trial Balance as at 31 December 2024",
+        "headers": [
+          "Item",
+          "Debit",
+          "Credit"
+        ],
+        "data": [
+          [
+            "Bank",
+            "49,528,000",
+            ""
+          ],
+          [
+            "Motor Vehicle",
+            "16,000,000",
+            ""
+          ],
+          [
+            "Inventory",
+            "25,200,000",
+            ""
+          ],
+          [
+            "Prepaid Rent",
+            "1,404,000",
+            ""
+          ],
+          [
+            "Rent",
+            "468,000",
+            ""
+          ],
+          [
+            "Accounts Receivable",
+            "1,000,000",
+            ""
+          ],
+          [
+            "Accounts Payable",
+            "",
+            "400,000"
+          ],
+          [
+            "Sales",
+            "",
+            "27,200,000"
+          ],
+          [
+            "Capital",
+            "",
+            "66,000,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Ledger Accounts / T-accounts",
+    "status": "PASS",
+    "ms": 2093,
+    "tables": [
+      {
+        "title": "Capital account",
+        "headers": [
+          "Date",
+          "Particulars",
+          "Debit",
+          "Credit"
+        ],
+        "data": [
+          [
+            "01-Oct",
+            "Bank",
+            "",
+            "50,000,000"
+          ],
+          [
+            "01-Oct",
+            "Motor Vehicle",
+            "",
+            "16,000,000"
+          ],
+          [
+            "",
+            "Balance c/d",
+            "",
+            "66,000,000"
+          ]
+        ]
+      },
+      {
+        "title": "Bank account",
+        "headers": [
+          "Date",
+          "Particulars",
+          "Debit",
+          "Credit"
+        ],
+        "data": [
+          [
+            "01-Oct",
+            "Capital",
+            "50,000,000",
+            ""
+          ],
+          [
+            "02-Oct",
+            "Rent",
+            "",
+            "1,872,000"
+          ],
+          [
+            "",
+            "Balance c/d",
+            "48,128,000",
+            ""
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Journal Entries",
+    "status": "PASS",
+    "ms": 1397,
+    "tables": [
+      {
+        "title": "Journal Entry",
+        "headers": [
+          "Date",
+          "Particulars",
+          "Debit",
+          "Credit"
+        ],
+        "data": [
+          [
+            "",
+            "Purchases",
+            "5,000,000",
+            ""
+          ],
+          [
+            "",
+            "To Accounts Payable",
+            "",
+            "5,000,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Income Statement",
+    "status": "PASS",
+    "ms": 2497,
+    "tables": [
+      {
+        "title": "Statement of Profit or Loss",
+        "headers": [
+          "Item",
+          "Workings",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Revenue",
+            "",
+            "463,000,000"
+          ],
+          [
+            "Cost of Sales",
+            "",
+            ""
+          ],
+          [
+            "Purchases",
+            "296,000,000",
+            ""
+          ],
+          [
+            "Return outwards",
+            "7,500,000",
+            ""
+          ],
+          [
+            "Closing inventory",
+            "52,600,000",
+            ""
+          ],
+          [
+            "Cost of Sales",
+            "",
+            "240,900,000"
+          ],
+          [
+            "Gross Profit",
+            "",
+            "222,100,000"
+          ],
+          [
+            "Wages and salaries",
+            "96,000,000",
+            ""
+          ],
+          [
+            "Prepaid wages and salaries",
+            "16,500,000",
+            ""
+          ],
+          [
+            "Wages and salaries expense",
+            "",
+            "79,500,000"
+          ],
+          [
+            "Marketing costs",
+            "",
+            "14,500,000"
+          ],
+          [
+            "Other operating expenses",
+            "",
+            "18,650,000"
+          ],
+          [
+            "Total Operating Expenses",
+            "",
+            "112,650,000"
+          ],
+          [
+            "Operating Profit",
+            "",
+            "109,450,000"
+          ],
+          [
+            "Interest expense",
+            "",
+            "1,440,000"
+          ],
+          [
+            "Profit Before Tax",
+            "",
+            "108,010,000"
+          ],
+          [
+            "Income tax",
+            "",
+            "1,200,000"
+          ],
+          [
+            "Profit for the Year",
+            "",
+            "106,810,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Statement of Financial Position",
+    "status": "PASS",
+    "ms": 2714,
+    "tables": [
+      {
+        "title": "Statement of Financial Position as at 31 December 2024",
+        "headers": [
+          "Item",
+          "FRW '000'",
+          "FRW '000'"
+        ],
+        "data": [
+          [
+            "Non-Current Assets",
+            "",
+            ""
+          ],
+          [
+            "Land",
+            "124800",
+            ""
+          ],
+          [
+            "Buildings (net)",
+            "181400",
+            ""
+          ],
+          [
+            "Plant & Machinery (net)",
+            "112710",
+            ""
+          ],
+          [
+            "Computers (net)",
+            "36000",
+            ""
+          ],
+          [
+            "Total Non-Current Assets",
+            "",
+            "454910"
+          ],
+          [
+            "Current Assets",
+            "",
+            ""
+          ],
+          [
+            "Inventory",
+            "52600",
+            ""
+          ],
+          [
+            "Receivables (net)",
+            "35280",
+            ""
+          ],
+          [
+            "Prepaid Salaries",
+            "16500",
+            ""
+          ],
+          [
+            "Cash at bank",
+            "57180",
+            ""
+          ],
+          [
+            "Total Current Assets",
+            "",
+            "161560"
+          ],
+          [
+            "Total Assets",
+            "",
+            "616470"
+          ],
+          [
+            "Equity",
+            "",
+            ""
+          ],
+          [
+            "Share capital",
+            "290000",
+            ""
+          ],
+          [
+            "Share premium",
+            "50000",
+            ""
+          ],
+          [
+            "Retained earnings",
+            "101030",
+            ""
+          ],
+          [
+            "Total Equity",
+            "",
+            "441030"
+          ],
+          [
+            "Non-Current Liabilities",
+            "",
+            ""
+          ],
+          [
+            "12% Redeemable Debentures",
+            "120000",
+            ""
+          ],
+          [
+            "Total Non-Current Liabilities",
+            "",
+            "120000"
+          ],
+          [
+            "Current Liabilities",
+            "",
+            ""
+          ],
+          [
+            "Trade payables",
+            "52800",
+            ""
+          ],
+          [
+            "Accrued interest",
+            "1440",
+            ""
+          ],
+          [
+            "Tax payable",
+            "1200",
+            ""
+          ],
+          [
+            "Total Current Liabilities",
+            "",
+            "55440"
+          ],
+          [
+            "Total Equity and Liabilities",
+            "",
+            "616470"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Statement of Changes in Equity",
+    "status": "PASS",
+    "ms": 2029,
+    "tables": [
+      {
+        "title": "Statement of Changes in Equity",
+        "headers": [
+          "Item",
+          "Share Capital",
+          "Retained Earnings",
+          "Total"
+        ],
+        "data": [
+          [
+            "Balance b/f",
+            "200,000,000",
+            "155,000,000",
+            "355,000,000"
+          ],
+          [
+            "Profit for the year",
+            "0",
+            "160,000,000",
+            "160,000,000"
+          ],
+          [
+            "Dividends paid",
+            "0",
+            "-55,000,000",
+            "-55,000,000"
+          ],
+          [
+            "Balance c/f",
+            "200,000,000",
+            "260,000,000",
+            "460,000,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Cash Flow Statement (IAS 7, with derived workings)",
+    "status": "PASS",
+    "ms": 4467,
+    "tables": [
+      {
+        "title": "Statement of Cash Flows",
+        "headers": [
+          "Item",
+          "Workings",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Profit before tax",
+            "",
+            "300,000,000"
+          ],
+          [
+            "Depreciation",
+            "",
+            "50,000,000"
+          ],
+          [
+            "Loss on disposal",
+            "",
+            "13,000,000"
+          ],
+          [
+            "Increase in inventory",
+            "",
+            "-48,000,000"
+          ],
+          [
+            "Increase in receivables",
+            "",
+            "-75,000,000"
+          ],
+          [
+            "Increase in payables",
+            "",
+            "8,000,000"
+          ],
+          [
+            "Interest paid",
+            "",
+            "75,000,000"
+          ],
+          [
+            "Tax paid",
+            "",
+            "130,000,000"
+          ],
+          [
+            "Cash generated from operations",
+            "",
+            "120,000,000"
+          ],
+          [
+            "Net cash from operating activities",
+            "",
+            "-5,000,000"
+          ],
+          [
+            "Proceeds from disposal",
+            "",
+            "32,000,000"
+          ],
+          [
+            "Purchase of PPE",
+            "",
+            "-125,000,000"
+          ],
+          [
+            "Net cash from investing activities",
+            "",
+            "-93,000,000"
+          ],
+          [
+            "Proceeds from issue of shares",
+            "",
+            "50,000,000"
+          ],
+          [
+            "Proceeds from loan",
+            "",
+            "120,000,000"
+          ],
+          [
+            "Dividends paid",
+            "",
+            "-55,000,000"
+          ],
+          [
+            "Net cash from financing activities",
+            "",
+            "115,000,000"
+          ],
+          [
+            "Net increase in cash and cash equivalents",
+            "",
+            "17,000,000"
+          ],
+          [
+            "Cash and cash equivalents at the beginning of the year",
+            "",
+            "-97,000,000"
+          ],
+          [
+            "Cash and cash equivalents at the end of the year",
+            "",
+            "-80,000,000"
+          ]
+        ]
+      },
+      {
+        "title": "WK1: Depreciation",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Opening accumulated depreciation",
+            "340,000,000"
+          ],
+          [
+            "Closing accumulated depreciation",
+            "290,000,000"
+          ],
+          [
+            "Depreciation for the year",
+            "50,000,000"
+          ]
+        ]
+      },
+      {
+        "title": "WK2: Loss on disposal",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Carrying amount of asset disposed",
+            "45,000,000"
+          ],
+          [
+            "Proceeds from disposal",
+            "32,000,000"
+          ],
+          [
+            "Loss on disposal",
+            "13,000,000"
+          ]
+        ]
+      },
+      {
+        "title": "WK3: Interest paid",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Opening interest payable",
+            "25,000,000"
+          ],
+          [
+            "Closing interest payable",
+            "0"
+          ],
+          [
+            "Finance cost for the year",
+            "75,000,000"
+          ],
+          [
+            "Interest paid",
+            "100,000,000"
+          ]
+        ]
+      },
+      {
+        "title": "WK4: Tax paid",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Opening tax payable",
+            "110,000,000"
+          ],
+          [
+            "Closing tax payable",
+            "120,000,000"
+          ],
+          [
+            "Tax charge for the year",
+            "140,000,000"
+          ],
+          [
+            "Tax paid",
+            "130,000,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Cash Book / Adjusted Cash Book",
+    "status": "PASS",
+    "ms": 1936,
+    "tables": [
+      {
+        "title": "Adjusted Cash Book",
+        "headers": [
+          "Details (Dr)",
+          "Amount",
+          "Details (Cr)",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Balance as per cash book",
+            "3,350,000",
+            "",
+            ""
+          ],
+          [
+            "Cash book undercast",
+            "420,000",
+            "",
+            ""
+          ],
+          [
+            "Direct deposit by customer",
+            "260,000",
+            "",
+            ""
+          ],
+          [
+            "",
+            "",
+            "Dishonoured cheque",
+            "1,640,000"
+          ],
+          [
+            "",
+            "",
+            "Standing order not yet in cash book",
+            "500,000"
+          ],
+          [
+            "",
+            "",
+            "Bank charges",
+            "250,000"
+          ],
+          [
+            "Bal c/d",
+            "2,390,000",
+            "Bal c/d",
+            "2,390,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Bank Reconciliation Statement",
+    "status": "PASS",
+    "ms": 1393,
+    "tables": [
+      {
+        "title": "Bank Reconciliation Statement",
+        "headers": [
+          "Item",
+          "FRW '000'",
+          "FRW '000'"
+        ],
+        "data": [
+          [
+            "Balance as per adjusted cash book",
+            "",
+            "4,167"
+          ],
+          [
+            "Add:",
+            "",
+            ""
+          ],
+          [
+            "Unpresented cheque",
+            "1,772",
+            ""
+          ],
+          [
+            "Less:",
+            "",
+            ""
+          ],
+          [
+            "Uncredited cheque",
+            "(1,800)",
+            ""
+          ],
+          [
+            "Balance as per bank statement",
+            "",
+            "4,139"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Ratio Analysis",
+    "status": "PASS",
+    "ms": 1647,
+    "tables": [
+      {
+        "title": "Ratio Analysis",
+        "headers": [
+          "Ratio",
+          "2023",
+          "2024"
+        ],
+        "data": [
+          [
+            "Current Ratio",
+            "4.77:1",
+            "3.14:1"
+          ],
+          [
+            "Gross Profit Margin",
+            "26.8%",
+            "28.8%"
+          ],
+          [
+            "Receivables Period",
+            "49 days",
+            "45 days"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "IPSAS Statement of Financial Performance & Position",
+    "status": "PASS",
+    "ms": 2589,
+    "tables": [
+      {
+        "title": "Statement of Financial Performance",
+        "headers": [
+          "Item",
+          "FRW '000'"
+        ],
+        "data": [
+          [
+            "Transfers from exchequer",
+            "356,000"
+          ],
+          [
+            "Fees and fines",
+            "12,000"
+          ],
+          [
+            "Total revenue",
+            "368,000"
+          ],
+          [
+            "Salaries and wages",
+            "186,500"
+          ],
+          [
+            "Finance cost",
+            "52,000"
+          ],
+          [
+            "Total expenditure",
+            "238,500"
+          ],
+          [
+            "Surplus/(Deficit) for the year",
+            "129,500"
+          ]
+        ]
+      },
+      {
+        "title": "Statement of Financial Position",
+        "headers": [
+          "Item",
+          "FRW '000'"
+        ],
+        "data": [
+          [
+            "Land and buildings",
+            "190,930"
+          ],
+          [
+            "Total Non-Current Assets",
+            "190,930"
+          ],
+          [
+            "Cash and cash equivalents",
+            "29,550"
+          ],
+          [
+            "Total Current Assets",
+            "29,550"
+          ],
+          [
+            "Total Assets",
+            "220,480"
+          ],
+          [
+            "Accumulated surplus b/f",
+            "112,050"
+          ],
+          [
+            "Surplus/(Deficit) for the year",
+            "129,500"
+          ],
+          [
+            "Total Equity",
+            "241,550"
+          ],
+          [
+            "Long-term borrowings",
+            "62,320"
+          ],
+          [
+            "Total Non-Current Liabilities",
+            "62,320"
+          ],
+          [
+            "Ministries payables",
+            "16,000"
+          ],
+          [
+            "Total Current Liabilities",
+            "16,000"
+          ],
+          [
+            "Total Equity and Liabilities",
+            "220,480"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Control Account (Receivables Control)",
+    "status": "PASS",
+    "ms": 2008,
+    "tables": [
+      {
+        "title": "Receivables (Sales Ledger) Control Account",
+        "headers": [
+          "Date",
+          "Particulars",
+          "Debit",
+          "Credit"
+        ],
+        "data": [
+          [
+            "",
+            "Balance b/f",
+            "8,000,000",
+            ""
+          ],
+          [
+            "",
+            "Credit sales",
+            "25,000,000",
+            ""
+          ],
+          [
+            "",
+            "Cash received",
+            "",
+            "20,000,000"
+          ],
+          [
+            "",
+            "Discounts allowed",
+            "",
+            "500,000"
+          ],
+          [
+            "",
+            "Bad debts written off",
+            "",
+            "300,000"
+          ],
+          [
+            "",
+            "Balance c/f",
+            "12,200,000",
+            ""
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Suspense Account & Correction of Errors",
+    "status": "PASS",
+    "ms": 1832,
+    "tables": [
+      {
+        "title": "Suspense Account",
+        "headers": [
+          "Date",
+          "Particulars",
+          "Debit",
+          "Credit"
+        ],
+        "data": [
+          [
+            "",
+            "Balance b/d",
+            "250,000",
+            ""
+          ],
+          [
+            "",
+            "Sale of 250,000",
+            "",
+            "250,000"
+          ],
+          [
+            "",
+            "Balance c/d",
+            "",
+            "0"
+          ]
+        ]
+      },
+      {
+        "title": "Statement of Corrected Net Profit",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Original Net Profit",
+            "5,000,000"
+          ],
+          [
+            "Omitted Sale",
+            "250,000"
+          ],
+          [
+            "Corrected Net Profit",
+            "5,250,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Manufacturing Account",
+    "status": "PASS",
+    "ms": 2386,
+    "tables": [
+      {
+        "title": "Manufacturing Account (Statement of Cost of Production) for the year ended 31 December 2024",
+        "headers": [
+          "Item",
+          "Workings",
+          "Cost"
+        ],
+        "data": [
+          [
+            "Direct materials consumed",
+            "2000000 + 20000000 - 3000000",
+            "17000000"
+          ],
+          [
+            "Direct labour",
+            "",
+            "8000000"
+          ],
+          [
+            "Factory overheads",
+            "",
+            "5000000"
+          ],
+          [
+            "Prime Cost",
+            "17000000 + 8000000 + 5000000",
+            "30000000"
+          ],
+          [
+            "Add: Opening Work-in-Progress",
+            "",
+            "1000000"
+          ],
+          [
+            "Less: Closing Work-in-Progress",
+            "",
+            "1500000"
+          ],
+          [
+            "Cost of Production",
+            "30000000 + 1000000 - 1500000",
+            "31500000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Statement of Affairs (Incomplete Records)",
+    "status": "PASS",
+    "ms": 1941,
+    "tables": [
+      {
+        "title": "Statement of Affairs at 1 Jan 2024",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Assets",
+            "40000000"
+          ],
+          [
+            "Liabilities",
+            "15000000"
+          ],
+          [
+            "Capital",
+            "25000000"
+          ]
+        ]
+      },
+      {
+        "title": "Statement of Affairs at 31 Dec 2024",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Assets",
+            "58000000"
+          ],
+          [
+            "Liabilities",
+            "18000000"
+          ],
+          [
+            "Capital",
+            "40000000"
+          ]
+        ]
+      },
+      {
+        "title": "Statement of Profit from Incomplete Records",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Capital at start of year",
+            "25000000"
+          ],
+          [
+            "Add: Capital introduced",
+            "5000000"
+          ],
+          [
+            "Less: Drawings",
+            "6000000"
+          ],
+          [
+            "Profit for the year",
+            "15000000"
+          ],
+          [
+            "Capital at end of year",
+            "40000000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Partnership Appropriation + Partners' Capital Accounts",
+    "status": "PASS",
+    "ms": 2109,
+    "tables": [
+      {
+        "title": "Profit and Loss Appropriation Account",
+        "headers": [
+          "Item",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Net Profit",
+            "20000000"
+          ],
+          [
+            "Interest on Capital: A",
+            "1000000"
+          ],
+          [
+            "Interest on Capital: B",
+            "800000"
+          ],
+          [
+            "Partner Salary: B",
+            "2000000"
+          ],
+          [
+            "Residual Profit",
+            "10000000"
+          ],
+          [
+            "Share of Residual Profit: A",
+            "5000000"
+          ],
+          [
+            "Share of Residual Profit: B",
+            "5000000"
+          ]
+        ]
+      },
+      {
+        "title": "Partners' Capital Accounts",
+        "headers": [
+          "Item",
+          "A",
+          "B"
+        ],
+        "data": [
+          [
+            "Balance b/f",
+            "30000000",
+            "25000000"
+          ],
+          [
+            "Interest on Capital",
+            "1000000",
+            "800000"
+          ],
+          [
+            "Partner Salary",
+            "0",
+            "2000000"
+          ],
+          [
+            "Drawings",
+            "-4000000",
+            "-3500000"
+          ],
+          [
+            "Share of Residual Profit",
+            "5000000",
+            "5000000"
+          ],
+          [
+            "Balance c/f",
+            "36000000",
+            "30500000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Receipts & Payments / Income & Expenditure (Non-Profit)",
+    "status": "PASS",
+    "ms": 2511,
+    "tables": [
+      {
+        "title": "Receipts and Payments Account",
+        "headers": [
+          "Details (Dr)",
+          "Amount",
+          "Details (Cr)",
+          "Amount"
+        ],
+        "data": [
+          [
+            "Subscriptions received",
+            "5,000,000",
+            "",
+            ""
+          ],
+          [
+            "Cash at bank b/f",
+            "1,000,000",
+            "",
+            ""
+          ],
+          [
+            "",
+            "",
+            "Rent paid",
+            "2,000,000"
+          ],
+          [
+            "",
+            "",
+            "Purchase of new equipment",
+            "3,000,000"
+          ],
+          [
+            "Refreshment sales",
+            "800,000",
+            "",
+            ""
+          ],
+          [
+            "",
+            "",
+            "Wages",
+            "1,200,000"
+          ],
+          [
+            "",
+            "",
+            "Total Payments",
+            "6,200,000"
+          ],
+          [
+            "",
+            "6,800,000",
+            "",
+            "6,200,000"
+          ],
+          [
+            "",
+            "",
+            "Balance c/d",
+            "600,000"
+          ]
+        ]
+      },
+      {
+        "title": "Income and Expenditure Account",
+        "headers": [
+          "Item",
+          "Amount",
+          ""
+        ],
+        "data": [
+          [
+            "Subscriptions received",
+            "5,000,000",
+            ""
+          ],
+          [
+            "Refreshment sales",
+            "800,000",
+            ""
+          ],
+          [
+            "Total Income",
+            "5,800,000",
+            ""
+          ],
+          [
+            "Rent paid",
+            "",
+            "2,000,000"
+          ],
+          [
+            "Wages",
+            "",
+            "1,200,000"
+          ],
+          [
+            "Total Expenditure",
+            "",
+            "3,200,000"
+          ],
+          [
+            "Surplus/(Deficit) for the year",
+            "",
+            "2,600,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "PPE Note (columnar by asset class)",
+    "status": "PASS",
+    "ms": 2004,
+    "tables": [
+      {
+        "title": "Property, Plant and Equipment Note",
+        "headers": [
+          "Item",
+          "Land",
+          "Buildings",
+          "Equipment",
+          "Total"
+        ],
+        "data": [
+          [
+            "Cost b/f",
+            "50,000,000",
+            "100,000,000",
+            "30,000,000",
+            "180,000,000"
+          ],
+          [
+            "Additions",
+            "",
+            "10,000,000",
+            "",
+            "10,000,000"
+          ],
+          [
+            "Disposals",
+            "",
+            "",
+            "-5,000,000",
+            "-5,000,000"
+          ],
+          [
+            "Accumulated depreciation b/f",
+            "",
+            "20,000,000",
+            "10,000,000",
+            "30,000,000"
+          ],
+          [
+            "Charge for year",
+            "",
+            "5,000,000",
+            "3,000,000",
+            "8,000,000"
+          ],
+          [
+            "Eliminated on disposal",
+            "",
+            "",
+            "-4,000,000",
+            "-4,000,000"
+          ],
+          [
+            "Accumulated depreciation c/f",
+            "",
+            "25,000,000",
+            "9,000,000",
+            "34,000,000"
+          ],
+          [
+            "Net Book Value",
+            "50,000,000",
+            "85,000,000",
+            "21,000,000",
+            "156,000,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Cash Budget (columnar by period)",
+    "status": "PASS",
+    "ms": 2060,
+    "tables": [
+      {
+        "title": "Cash Budget",
+        "headers": [
+          "Month",
+          "Opening Cash Balance",
+          "Cash Sales",
+          "Cash Purchases",
+          "Rent Paid",
+          "Net Cash Flow",
+          "Closing Cash Balance"
+        ],
+        "data": [
+          [
+            "January",
+            "2,000,000",
+            "5,000,000",
+            "3,000,000",
+            "1,000,000",
+            "1,000,000",
+            "3,000,000"
+          ],
+          [
+            "February",
+            "3,000,000",
+            "6,000,000",
+            "3,500,000",
+            "1,000,000",
+            "1,500,000",
+            "4,500,000"
+          ],
+          [
+            "March",
+            "4,500,000",
+            "7,000,000",
+            "4,000,000",
+            "1,000,000",
+            "2,000,000",
+            "6,500,000"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Investment Appraisal (NPV)",
+    "status": "PASS",
+    "ms": 1940,
+    "tables": [
+      {
+        "title": "Net Present Value Calculation",
+        "headers": [
+          "Year",
+          "Cash Flow",
+          "Discount Factor",
+          "Present Value"
+        ],
+        "data": [
+          [
+            "0",
+            "-10,000,000",
+            "1",
+            "-10,000,000"
+          ],
+          [
+            "1",
+            "4,000,000",
+            "0.9091",
+            "3,636,364"
+          ],
+          [
+            "2",
+            "4,000,000",
+            "0.8264",
+            "3,305,792"
+          ],
+          [
+            "3",
+            "4,000,000",
+            "0.7513",
+            "3,005,280"
+          ],
+          [
+            "4",
+            "4,000,000",
+            "0.6830",
+            "2,732,072"
+          ],
+          [
+            "Net Present Value",
+            "",
+            "",
+            "2,679,508"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Loan / Bond Amortization Schedule",
+    "status": "PASS",
+    "ms": 1785,
+    "tables": [
+      {
+        "title": "Loan Amortization Schedule",
+        "headers": [
+          "Period",
+          "Opening Balance",
+          "Interest",
+          "Repayment",
+          "Closing Balance"
+        ],
+        "data": [
+          [
+            "0",
+            "10,000,000",
+            "0",
+            "0",
+            "10,000,000"
+          ],
+          [
+            "1",
+            "10,000,000",
+            "1,000,000",
+            "4,021,148",
+            "6,978,852"
+          ],
+          [
+            "2",
+            "6,978,852",
+            "697,885",
+            "4,021,148",
+            "3,655,589"
+          ],
+          [
+            "3",
+            "3,655,589",
+            "365,559",
+            "4,021,148",
+            "0"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Standard Costing Variance Analysis",
+    "status": "PASS",
+    "ms": 1651,
+    "tables": [
+      {
+        "title": "Variance Analysis",
+        "headers": [
+          "Variance",
+          "Amount",
+          "Favourable/Adverse"
+        ],
+        "data": [
+          [
+            "Material Price Variance",
+            "5000",
+            "Adverse"
+          ],
+          [
+            "Material Usage Variance",
+            "500",
+            "Favourable"
+          ]
+        ]
+      },
+      {
+        "title": "Reconciliation of Budgeted Profit to Actual Profit",
+        "headers": [
+          "Item",
+          "Amount",
+          ""
+        ],
+        "data": [
+          [
+            "Budgeted Profit",
+            "5000000",
+            ""
+          ],
+          [
+            "Material Price Variance",
+            "-5000",
+            ""
+          ],
+          [
+            "Material Usage Variance",
+            "500",
+            ""
+          ],
+          [
+            "Actual Profit",
+            "4999500",
+            ""
+          ]
+        ]
+      }
+    ]
+  }
+]

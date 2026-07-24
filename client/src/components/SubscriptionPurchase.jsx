@@ -24,9 +24,11 @@ import {
   ToggleButton,
   FormControl,
   InputLabel,
-  Avatar,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  Stepper,
+  Step,
+  StepLabel
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import {
@@ -114,6 +116,13 @@ const PAYMENT_METHODS = [
   },
 ];
 
+// The purchase flow is a linear wizard — each of these is its own standalone
+// "page" (only one rendered at a time), not stacked together on one screen.
+const STEP_PLAN = 'plan';
+const STEP_METHOD = 'method';
+const STEP_PHONE = 'phone';
+const STEP_SUMMARY = 'summary';
+
 const GATEWAY_ERROR_MESSAGES = {
   'payment request failed': 'Payment failed. Please make sure your phone number is registered for {method} and has sufficient balance.',
   'invalid phone': 'The phone number you entered is not registered for {method}. Please use your active mobile money number.',
@@ -173,6 +182,7 @@ const SubscriptionPurchase = () => {
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [activeSubscription, setActiveSubscription] = useState(null);
   const [activeSubscriptionTimeLeft, setActiveSubscriptionTimeLeft] = useState(null);
+  const [activeStep, setActiveStep] = useState(STEP_PLAN);
 
   useEffect(() => {
     if (!user?.level) {
@@ -454,7 +464,38 @@ const SubscriptionPurchase = () => {
     setSelectedPlan(prev => (filtered.some(p => p._id === prev) ? prev : ''));
   }, [planScope, allLevelPlans, filterLevelId, filterSubLevel, minPrice, maxPrice, sortBy]);
 
+  // A page reload during a mobile-money USSD prompt restores mobilePending
+  // from sessionStorage — jump straight back to the summary/pay page so the
+  // student isn't dropped back at plan selection mid-payment.
+  useEffect(() => {
+    if (mobilePending) setActiveStep(STEP_SUMMARY);
+  }, [mobilePending]);
+
   const selectedMethodConfig = PAYMENT_METHODS.find(m => m.id === paymentMethod);
+
+  const goToMethodStep = () => {
+    if (!selectedPlan) {
+      setError('Please select a subscription plan');
+      return;
+    }
+    setError(null);
+    setActiveStep(STEP_METHOD);
+  };
+
+  const goToPhoneOrSummaryStep = () => {
+    setActiveStep(selectedMethodConfig?.requiresPhone ? STEP_PHONE : STEP_SUMMARY);
+  };
+
+  const goToSummaryStep = () => {
+    if (!validatePhone(localPhone)) return;
+    setActiveStep(STEP_SUMMARY);
+  };
+
+  const goBackStep = () => {
+    if (activeStep === STEP_METHOD) setActiveStep(STEP_PLAN);
+    else if (activeStep === STEP_PHONE) setActiveStep(STEP_METHOD);
+    else if (activeStep === STEP_SUMMARY) setActiveStep(selectedMethodConfig?.requiresPhone ? STEP_PHONE : STEP_METHOD);
+  };
 
   const validatePhone = (value, code = countryCode) => {
     if (!selectedMethodConfig?.requiresPhone) return true;
@@ -585,8 +626,31 @@ const SubscriptionPurchase = () => {
 
   const selectedPlanData = plans.find(p => p._id === selectedPlan);
 
+  // Drives the sticky bottom nav bar — one Back/primary-action pair shared by
+  // every step, rather than each step having its own (easy to miss) buttons.
+  const showBackButton = activeStep !== STEP_PLAN && !(activeStep === STEP_SUMMARY && mobilePending);
+  const primaryDisabled = activeStep === STEP_PLAN
+    ? !selectedPlan
+    : activeStep === STEP_SUMMARY
+    ? (submitting || !selectedPlan || mobilePending)
+    : false;
+  const primaryOnClick = activeStep === STEP_PLAN
+    ? goToMethodStep
+    : activeStep === STEP_METHOD
+    ? goToPhoneOrSummaryStep
+    : activeStep === STEP_PHONE
+    ? goToSummaryStep
+    : handlePurchase;
+  const primaryLabel = activeStep === STEP_SUMMARY
+    ? (submitting
+        ? <CircularProgress size={22} color="inherit" />
+        : mobilePending
+        ? 'Waiting for payment...'
+        : `Pay with ${selectedMethodConfig?.label}`)
+    : 'Continue';
+
   return (
-    <Container maxWidth="lg" sx={{ mt: { xs: 2, sm: 4 }, mb: { xs: 4, sm: 8 }, px: { xs: 2, sm: 3 } }}>
+    <Container maxWidth="lg" sx={{ mt: { xs: 2, sm: 4 }, mb: { xs: 4, sm: 8 }, pb: { xs: 12, sm: 14 }, px: { xs: 2, sm: 3 } }}>
       <Button
         startIcon={<ArrowBack />}
         onClick={() => navigate('/student/dashboard')}
@@ -669,150 +733,25 @@ const SubscriptionPurchase = () => {
         </Paper>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'center', mb: { xs: 3, sm: 4 } }}>
-        <ToggleButtonGroup
-          value={planScope}
-          exclusive
-          onChange={handleScopeChange}
-          disabled={mobilePending}
-          fullWidth={isMobile}
-          sx={{
-            bgcolor: 'background.paper',
-            boxShadow: 1,
-            borderRadius: 2,
-            width: { xs: '100%', sm: 'auto' },
-            '& .MuiToggleButton-root': {
-              textTransform: 'none',
-              px: { xs: 1.5, sm: 3 },
-              py: 1,
-              fontWeight: 600,
-              borderRadius: 2,
-              fontSize: { xs: '0.8rem', sm: '0.875rem' },
-              flex: { xs: 1, sm: 'initial' },
-              whiteSpace: 'nowrap'
-            }
-          }}
-        >
-          <ToggleButton value="level">
-            <School fontSize="small" sx={{ mr: 1 }} />
-            Whole Level
-          </ToggleButton>
-          <ToggleButton value="exam">
-            <Quiz fontSize="small" sx={{ mr: 1 }} />
-            Single Exam
-          </ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
-
-      {planScope === 'exam' && (
-        <Box sx={{ maxWidth: 480, mx: 'auto', mb: { xs: 3, sm: 4 } }}>
-          <FormControl fullWidth disabled={mobilePending}>
-            <InputLabel>Choose an exam</InputLabel>
-            <Select
-              value={selectedExamId}
-              label="Choose an exam"
-              onChange={(e) => handleExamSelect(e.target.value)}
-            >
-              {examOptionsLoading && (
-                <MenuItem value="" disabled>Loading exams...</MenuItem>
-              )}
-              {!examOptionsLoading && examOptions.length === 0 && (
-                <MenuItem value="" disabled>No subscription-only exams available for your level</MenuItem>
-              )}
-              {examOptions.map((exam) => (
-                <MenuItem key={exam._id} value={exam._id}>
-                  {exam.title}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
-      )}
-
-      {planScope === 'level' && (
-        <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: { xs: 3, sm: 4 }, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-            <FilterList fontSize="small" color="action" />
-            <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">
-              Filter Plans
-            </Typography>
-          </Box>
-          <Grid container spacing={1.5}>
-            <Grid item xs={6} sm={3}>
-              <FormControl fullWidth size="small" disabled={mobilePending}>
-                <InputLabel>Level</InputLabel>
-                <Select
-                  value={filterLevelId}
-                  label="Level"
-                  onChange={(e) => { setFilterLevelId(e.target.value); setFilterSubLevel(''); }}
-                >
-                  {levelsList.map((lvl) => (
-                    <MenuItem key={lvl._id} value={lvl._id}>
-                      {lvl.name}{lvl._id === user?.level?._id ? ' (Your level)' : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <FormControl fullWidth size="small" disabled={mobilePending || availableFilterSubLevels.length === 0}>
-                <InputLabel>Sub-level</InputLabel>
-                <Select
-                  value={filterSubLevel}
-                  label="Sub-level"
-                  onChange={(e) => setFilterSubLevel(e.target.value)}
-                >
-                  <MenuItem value="">All Sub-levels</MenuItem>
-                  <MenuItem value="__entire__">Entire Level Only</MenuItem>
-                  {availableFilterSubLevels.map((sub) => (
-                    <MenuItem key={sub._id || sub.name} value={sub.name}>{sub.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={6} sm={2}>
-              <TextField
-                fullWidth
-                size="small"
-                type="number"
-                label="Min Price"
-                value={minPrice}
-                onChange={(e) => setMinPrice(e.target.value)}
-                disabled={mobilePending}
-                inputProps={{ min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={6} sm={2}>
-              <TextField
-                fullWidth
-                size="small"
-                type="number"
-                label="Max Price"
-                value={maxPrice}
-                onChange={(e) => setMaxPrice(e.target.value)}
-                disabled={mobilePending}
-                inputProps={{ min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={2}>
-              <FormControl fullWidth size="small" disabled={mobilePending}>
-                <InputLabel>Sort By</InputLabel>
-                <Select value={sortBy} label="Sort By" onChange={(e) => setSortBy(e.target.value)}>
-                  <MenuItem value="recommended">Recommended</MenuItem>
-                  <MenuItem value="price_asc">Price: Low to High</MenuItem>
-                  <MenuItem value="price_desc">Price: High to Low</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-
-          {filterLevelId && filterLevelId !== user?.level?._id && (
-            <Alert severity="info" icon={<Info fontSize="small" />} sx={{ mt: 1.5, py: 0, fontSize: '0.8rem' }}>
-              You're browsing plans for a different level. Purchasing one will switch your account to that level.
-            </Alert>
-          )}
-        </Paper>
-      )}
+      <Stepper
+        activeStep={
+          activeStep === STEP_PLAN ? 0
+          : activeStep === STEP_METHOD ? 1
+          : activeStep === STEP_PHONE ? 2
+          : selectedMethodConfig?.requiresPhone ? 3 : 2
+        }
+        alternativeLabel
+        sx={{ mb: { xs: 3, sm: 4 } }}
+      >
+        {(selectedMethodConfig?.requiresPhone
+          ? ['Select a plan', 'Payment method', 'Phone number', 'Summary & pay']
+          : ['Select a plan', 'Payment method', 'Summary & pay']
+        ).map((label) => (
+          <Step key={label}>
+            <StepLabel>{isMobile ? '' : label}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
@@ -820,410 +759,597 @@ const SubscriptionPurchase = () => {
         </Alert>
       )}
 
-      {paymentCancelled && (
-        <Alert
-          severity="error"
-          sx={{ mb: 3 }}
-          action={
-            <Button
-              color="inherit"
-              size="small"
-              startIcon={<Refresh />}
-              onClick={() => setPaymentCancelled(false)}
+      {/* ---------- Page 1: Select a plan ---------- */}
+      {activeStep === STEP_PLAN && (
+        <>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: { xs: 3, sm: 4 } }}>
+            <ToggleButtonGroup
+              value={planScope}
+              exclusive
+              onChange={handleScopeChange}
+              fullWidth={isMobile}
+              sx={{
+                bgcolor: 'background.paper',
+                boxShadow: 1,
+                borderRadius: 2,
+                width: { xs: '100%', sm: 'auto' },
+                '& .MuiToggleButton-root': {
+                  textTransform: 'none',
+                  px: { xs: 1.5, sm: 3 },
+                  py: 1,
+                  fontWeight: 600,
+                  borderRadius: 2,
+                  fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                  flex: { xs: 1, sm: 'initial' },
+                  whiteSpace: 'nowrap'
+                }
+              }}
             >
-              Try Again
-            </Button>
-          }
-        >
-          <Typography fontWeight="bold">Payment failed</Typography>
-          <Typography variant="body2">
-            We couldn&apos;t confirm your payment — it may have been cancelled or timed out. Please try again; if money left your account, do not pay again until you&apos;ve confirmed with support.
-          </Typography>
-        </Alert>
+              <ToggleButton value="level">
+                <School fontSize="small" sx={{ mr: 1 }} />
+                Whole Level
+              </ToggleButton>
+              <ToggleButton value="exam">
+                <Quiz fontSize="small" sx={{ mr: 1 }} />
+                Single Exam
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
+          {planScope === 'exam' && (
+            <Box sx={{ maxWidth: 480, mx: 'auto', mb: { xs: 3, sm: 4 } }}>
+              <FormControl fullWidth>
+                <InputLabel>Choose an exam</InputLabel>
+                <Select
+                  value={selectedExamId}
+                  label="Choose an exam"
+                  onChange={(e) => handleExamSelect(e.target.value)}
+                >
+                  {examOptionsLoading && (
+                    <MenuItem value="" disabled>Loading exams...</MenuItem>
+                  )}
+                  {!examOptionsLoading && examOptions.length === 0 && (
+                    <MenuItem value="" disabled>No subscription-only exams available for your level</MenuItem>
+                  )}
+                  {examOptions.map((exam) => (
+                    <MenuItem key={exam._id} value={exam._id}>
+                      {exam.title}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          )}
+
+          {planScope === 'level' && (
+            <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: { xs: 3, sm: 4 }, borderRadius: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <FilterList fontSize="small" color="action" />
+                <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">
+                  Filter Plans
+                </Typography>
+              </Box>
+              <Grid container spacing={1.5}>
+                <Grid item xs={6} sm={3}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Level</InputLabel>
+                    <Select
+                      value={filterLevelId}
+                      label="Level"
+                      onChange={(e) => { setFilterLevelId(e.target.value); setFilterSubLevel(''); }}
+                    >
+                      {levelsList.map((lvl) => (
+                        <MenuItem key={lvl._id} value={lvl._id}>
+                          {lvl.name}{lvl._id === user?.level?._id ? ' (Your level)' : ''}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <FormControl fullWidth size="small" disabled={availableFilterSubLevels.length === 0}>
+                    <InputLabel>Sub-level</InputLabel>
+                    <Select
+                      value={filterSubLevel}
+                      label="Sub-level"
+                      onChange={(e) => setFilterSubLevel(e.target.value)}
+                    >
+                      <MenuItem value="">All Sub-levels</MenuItem>
+                      <MenuItem value="__entire__">Entire Level Only</MenuItem>
+                      {availableFilterSubLevels.map((sub) => (
+                        <MenuItem key={sub._id || sub.name} value={sub.name}>{sub.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6} sm={2}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="Min Price"
+                    value={minPrice}
+                    onChange={(e) => setMinPrice(e.target.value)}
+                    inputProps={{ min: 0 }}
+                  />
+                </Grid>
+                <Grid item xs={6} sm={2}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="Max Price"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                    inputProps={{ min: 0 }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={2}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Sort By</InputLabel>
+                    <Select value={sortBy} label="Sort By" onChange={(e) => setSortBy(e.target.value)}>
+                      <MenuItem value="recommended">Recommended</MenuItem>
+                      <MenuItem value="price_asc">Price: Low to High</MenuItem>
+                      <MenuItem value="price_desc">Price: High to Low</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+
+              {filterLevelId && filterLevelId !== user?.level?._id && (
+                <Alert severity="info" icon={<Info fontSize="small" />} sx={{ mt: 1.5, py: 0, fontSize: '0.8rem' }}>
+                  You're browsing plans for a different level. Purchasing one will switch your account to that level.
+                </Alert>
+              )}
+            </Paper>
+          )}
+
+          {planScope === 'exam' && !selectedExamId ? (
+            <Paper sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', borderRadius: 2 }}>
+              <Typography variant={isMobile ? 'subtitle1' : 'h6'} color="text.secondary">
+                Pick an exam above to see its subscription plans.
+              </Typography>
+            </Paper>
+          ) : !loading && plans.length === 0 ? (
+            <Paper sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', borderRadius: 2 }}>
+              <Typography variant={isMobile ? 'subtitle1' : 'h6'} color="text.secondary">
+                {planScope === 'level'
+                  ? 'No plans match your filters.'
+                  : 'No subscription plans available for this exam yet.'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                {planScope === 'level'
+                  ? 'Try widening your price range or choosing a different level/sub-level.'
+                  : 'Please contact support for more information.'}
+              </Typography>
+            </Paper>
+          ) : !loading && (
+            <>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 0.75 }}
+              >
+                <TouchApp fontSize="small" color="action" />
+                Click anywhere on a card, or use the “Select this plan” button, to choose it.
+              </Typography>
+              <RadioGroup value={selectedPlan} onChange={(e) => setSelectedPlan(e.target.value)}>
+                {plans.map((plan) => {
+                  const isSelected = selectedPlan === plan._id;
+                  return (
+                  <Card
+                    key={plan._id}
+                    elevation={isSelected ? 4 : 1}
+                    sx={{
+                      mb: 2,
+                      border: isSelected ? '2px solid' : '1px solid',
+                      borderColor: isSelected ? 'primary.main' : 'divider',
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                      position: 'relative',
+                      bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.06) : 'background.paper',
+                      transition: 'all 0.2s ease',
+                      '&:hover': { boxShadow: 4, borderColor: 'primary.main' }
+                    }}
+                    onClick={() => setSelectedPlan(plan._id)}
+                  >
+                    {isSelected && (
+                      <Chip
+                        icon={<CheckCircle sx={{ fontSize: '1rem !important' }} />}
+                        label="Selected"
+                        color="primary"
+                        size="small"
+                        sx={{ position: 'absolute', top: -12, right: { xs: 12, sm: 16 }, fontWeight: 700 }}
+                      />
+                    )}
+                    <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, mb: 1, flexWrap: 'wrap' }}>
+                            <Radio checked={isSelected} value={plan._id} sx={{ p: { xs: 0.5, sm: 1 } }} />
+                            <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">{plan.name}</Typography>
+                            <Chip
+                              label={planScope === 'exam' ? 'Single Exam' : (plan.subLevel ? plan.subLevel : 'Entire Level')}
+                              color={planScope === 'exam' ? 'secondary' : (plan.subLevel ? 'default' : 'primary')}
+                              size="small"
+                              variant="outlined"
+                            />
+                            {plan.discountPercentage > 0 && (
+                              <Chip label={`${plan.discountPercentage}% OFF`} color="error" size="small" sx={{ fontWeight: 500 }} />
+                            )}
+                          </Box>
+                          <Typography variant="h4" fontWeight="bold" color="primary" sx={{ mb: 1, fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>
+                            {plan.currency === 'RWF' ? 'RWF' : '$'} {plan.price.toLocaleString()}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            {formatPlanDuration(plan)} access
+                          </Typography>
+                          {plan.features?.length > 0 && (
+                            <Box sx={{ mt: 2 }}>
+                              {plan.features.map((feature, idx) => (
+                                <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                  <CheckCircle color="success" fontSize="small" />
+                                  <Typography variant="body2">{feature}</Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          )}
+                        </Box>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                        <Button
+                          variant={isSelected ? 'contained' : 'outlined'}
+                          color="primary"
+                          size="small"
+                          startIcon={isSelected ? <CheckCircle /> : null}
+                          onClick={(e) => { e.stopPropagation(); setSelectedPlan(plan._id); }}
+                          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+                        >
+                          {isSelected ? 'Selected' : 'Select this plan'}
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                  );
+                })}
+              </RadioGroup>
+            </>
+          )}
+        </>
       )}
 
-      {mobilePending && (
-        <Alert severity="info" sx={{ mb: 3 }} icon={<PhoneAndroid />}>
-          <Typography fontWeight="bold">Payment prompt sent to your phone!</Typography>
-          <Typography variant="body2" sx={{ mt: 0.5 }}>
-            Open your <strong>{paymentMethod === 'mobile_money' ? 'MTN MoMo' : 'Airtel Money'}</strong> app or dial the USSD code to approve the payment of{' '}
-            <strong>RWF {(pendingPlanData || selectedPlanData)?.price?.toLocaleString()}</strong>.
-            Your subscription will activate automatically once the payment is confirmed.
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Payments are securely processed by <strong>ITEC Pay</strong>. This page will update automatically.
-          </Typography>
-        </Alert>
-      )}
-
-      {loading && mobilePending && (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
-          <CircularProgress size={28} />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Checking payment status...
-          </Typography>
+      {/* ---------- Page 2: Choose payment method ---------- */}
+      {activeStep === STEP_METHOD && (
+        <Box sx={{ maxWidth: 560, mx: 'auto' }}>
+          <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
+              Choose how to pay
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              {PAYMENT_METHODS.map((method) => (
+                <Box
+                  key={method.id}
+                  onClick={() => {
+                    setPaymentMethod(method.id);
+                    setPhoneError('');
+                    if (user?.phone) {
+                      const { code, local } = parseProfilePhone(user.phone);
+                      setCountryCode(code);
+                      setLocalPhone(local);
+                    } else {
+                      setLocalPhone('');
+                    }
+                  }}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: { xs: 1, sm: 1.5 },
+                    p: { xs: 1, sm: 1.5 },
+                    borderRadius: 2,
+                    border: '2px solid',
+                    borderColor: paymentMethod === method.id ? method.color : 'divider',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    bgcolor: paymentMethod === method.id ? `${method.color}18` : 'transparent',
+                    '&:hover': { borderColor: method.color, bgcolor: `${method.color}10` }
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: { xs: 32, sm: 36 },
+                      height: { xs: 32, sm: 36 },
+                      borderRadius: 1.5,
+                      bgcolor: method.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: method.textColor,
+                      flexShrink: 0
+                    }}
+                  >
+                    {method.icon}
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" fontWeight="bold" noWrap>{method.label}</Typography>
+                    <Typography variant="caption" color="text.secondary" noWrap>{method.description}</Typography>
+                  </Box>
+                  <Radio
+                    checked={paymentMethod === method.id}
+                    size="small"
+                    sx={{ p: 0, color: method.color, '&.Mui-checked': { color: method.color } }}
+                    readOnly
+                  />
+                </Box>
+              ))}
+            </Box>
+          </Paper>
         </Box>
       )}
 
-      {planScope === 'exam' && !selectedExamId && !mobilePending ? (
-        <Paper sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', borderRadius: 2 }}>
-          <Typography variant={isMobile ? 'subtitle1' : 'h6'} color="text.secondary">
-            Pick an exam above to see its subscription plans.
-          </Typography>
-        </Paper>
-      ) : !loading && plans.length === 0 && !mobilePending ? (
-        <Paper sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center', borderRadius: 2 }}>
-          <Typography variant={isMobile ? 'subtitle1' : 'h6'} color="text.secondary">
-            {planScope === 'level'
-              ? 'No plans match your filters.'
-              : 'No subscription plans available for this exam yet.'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {planScope === 'level'
-              ? 'Try widening your price range or choosing a different level/sub-level.'
-              : 'Please contact support for more information.'}
-          </Typography>
-        </Paper>
-      ) : !loading && (
-        <Grid container spacing={{ xs: 2, sm: 3 }}>
-          {/* Plans list */}
-          <Grid item xs={12} md={8}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
-              <Avatar sx={{ width: 26, height: 26, bgcolor: 'primary.main', fontSize: '0.8rem', fontWeight: 700 }}>1</Avatar>
-              <Typography variant="subtitle1" fontWeight="bold">
-                Select a plan
-              </Typography>
-            </Box>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 0.75 }}
-            >
-              <TouchApp fontSize="small" color="action" />
-              Click anywhere on a card, or use the “Select this plan” button, to choose it.
+      {/* ---------- Page 3: Phone number (only for methods that need it) ---------- */}
+      {activeStep === STEP_PHONE && (
+        <Box sx={{ maxWidth: 560, mx: 'auto' }}>
+          <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
+              Enter your phone number
             </Typography>
-            <RadioGroup value={selectedPlan} onChange={(e) => setSelectedPlan(e.target.value)}>
-              {plans.map((plan) => {
-                const isSelected = selectedPlan === plan._id;
-                return (
-                <Card
-                  key={plan._id}
-                  elevation={isSelected ? 4 : 1}
-                  sx={{
-                    mb: 2,
-                    border: isSelected ? '2px solid' : '1px solid',
-                    borderColor: isSelected ? 'primary.main' : 'divider',
-                    borderRadius: 2,
-                    cursor: 'pointer',
-                    position: 'relative',
-                    bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.06) : 'background.paper',
-                    transition: 'all 0.2s ease',
-                    '&:hover': { boxShadow: 4, borderColor: 'primary.main' }
-                  }}
-                  onClick={() => setSelectedPlan(plan._id)}
-                >
-                  {isSelected && (
-                    <Chip
-                      icon={<CheckCircle sx={{ fontSize: '1rem !important' }} />}
-                      label="Selected"
-                      color="primary"
-                      size="small"
-                      sx={{ position: 'absolute', top: -12, right: { xs: 12, sm: 16 }, fontWeight: 700 }}
-                    />
-                  )}
-                  <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, mb: 1, flexWrap: 'wrap' }}>
-                          <Radio checked={isSelected} value={plan._id} sx={{ p: { xs: 0.5, sm: 1 } }} />
-                          <Typography variant={isMobile ? 'subtitle1' : 'h6'} fontWeight="bold">{plan.name}</Typography>
-                          <Chip
-                            label={planScope === 'exam' ? 'Single Exam' : (plan.subLevel ? plan.subLevel : 'Entire Level')}
-                            color={planScope === 'exam' ? 'secondary' : (plan.subLevel ? 'default' : 'primary')}
-                            size="small"
-                            variant="outlined"
-                          />
-                          {plan.discountPercentage > 0 && (
-                            <Chip label={`${plan.discountPercentage}% OFF`} color="error" size="small" sx={{ fontWeight: 500 }} />
-                          )}
-                        </Box>
-                        <Typography variant="h4" fontWeight="bold" color="primary" sx={{ mb: 1, fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>
-                          {plan.currency === 'RWF' ? 'RWF' : '$'} {plan.price.toLocaleString()}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          {formatPlanDuration(plan)} access
-                        </Typography>
-                        {plan.features?.length > 0 && (
-                          <Box sx={{ mt: 2 }}>
-                            {plan.features.map((feature, idx) => (
-                              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                                <CheckCircle color="success" fontSize="small" />
-                                <Typography variant="body2">{feature}</Typography>
-                              </Box>
-                            ))}
-                          </Box>
-                        )}
-                      </Box>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-                      <Button
-                        variant={isSelected ? 'contained' : 'outlined'}
-                        color="primary"
-                        size="small"
-                        startIcon={isSelected ? <CheckCircle /> : null}
-                        onClick={(e) => { e.stopPropagation(); setSelectedPlan(plan._id); }}
-                        sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
-                      >
-                        {isSelected ? 'Selected' : 'Select this plan'}
-                      </Button>
-                    </Box>
-                  </CardContent>
-                </Card>
-                );
-              })}
-            </RadioGroup>
-          </Grid>
-
-          {/* Order summary + payment method */}
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: { xs: 2, sm: 3 }, position: { xs: 'static', md: 'sticky' }, top: 100, borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Avatar sx={{ width: 26, height: 26, bgcolor: 'primary.main', fontSize: '0.8rem', fontWeight: 700 }}>2</Avatar>
-                <Typography variant="h6" fontWeight="bold">
-                  Order Summary
-                </Typography>
-              </Box>
-              <Divider sx={{ my: 2 }} />
-
-              {selectedPlan ? (
-                <>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2" color="text.secondary">Plan:</Typography>
-                    <Typography variant="body2" fontWeight="bold">{selectedPlanData?.name}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2" color="text.secondary">Duration:</Typography>
-                    <Typography variant="body2">{formatPlanDuration(selectedPlanData)}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      {planScope === 'exam' ? 'Exam:' : 'Level:'}
-                    </Typography>
-                    <Typography variant="body2" sx={{ textAlign: 'right' }}>
-                      {planScope === 'exam'
-                        ? (examOptions.find(e => e._id === selectedExamId)?.title || '—')
-                        : `${selectedPlanData?.level?.name || '—'}${selectedPlanData?.subLevel ? ` — ${selectedPlanData.subLevel}` : ''}`}
-                    </Typography>
-                  </Box>
-                  {planScope === 'level' && selectedPlanData?.level?._id && selectedPlanData.level._id !== user?.level?._id && (
-                    <Alert severity="warning" sx={{ mb: 2, py: 0, fontSize: '0.75rem' }}>
-                      This will switch your account level to {selectedPlanData.level.name}.
-                    </Alert>
-                  )}
-                  <Divider sx={{ my: 2 }} />
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="h6" fontWeight="bold">Total:</Typography>
-                    <Typography variant="h6" fontWeight="bold" color="primary">
-                      {selectedPlanData?.currency === 'RWF' ? 'RWF' : '$'}{' '}
-                      {selectedPlanData?.price.toLocaleString()}
-                    </Typography>
-                  </Box>
-                </>
-              ) : (
-                <Box
-                  sx={{
-                    textAlign: 'center',
-                    py: 2,
-                    mb: 2,
-                    px: 1.5,
-                    borderRadius: 2,
-                    border: '1px dashed',
-                    borderColor: 'divider',
-                    bgcolor: 'action.hover'
-                  }}
-                >
-                  <ArrowForward
-                    sx={{
-                      transform: { xs: 'rotate(90deg)', md: 'rotate(180deg)' },
-                      color: 'text.disabled',
-                      mb: 0.5
-                    }}
-                  />
-                  <Typography variant="body2" color="text.secondary">
-                    {isMobile
-                      ? 'Pick a plan above — it will show up here.'
-                      : 'Pick a plan on the left — it will show up here.'}
-                  </Typography>
-                </Box>
-              )}
-
-              {/* Payment Method Selection */}
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-                <Avatar sx={{ width: 24, height: 24, bgcolor: 'primary.main', fontSize: '0.75rem', fontWeight: 700 }}>3</Avatar>
-                <Typography variant="subtitle2" fontWeight="bold">
-                  Choose how to pay
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>
-                {PAYMENT_METHODS.map((method) => (
-                  <Box
-                    key={method.id}
-                    onClick={() => {
-                      setPaymentMethod(method.id);
-                      setPhoneError('');
-                      if (user?.phone) {
-                        const { code, local } = parseProfilePhone(user.phone);
-                        setCountryCode(code);
-                        setLocalPhone(local);
-                      } else {
-                        setLocalPhone('');
-                      }
-                    }}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: { xs: 1, sm: 1.5 },
-                      p: { xs: 1, sm: 1.5 },
-                      borderRadius: 2,
-                      border: '2px solid',
-                      borderColor: paymentMethod === method.id ? method.color : 'divider',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      bgcolor: paymentMethod === method.id ? `${method.color}18` : 'transparent',
-                      '&:hover': { borderColor: method.color, bgcolor: `${method.color}10` }
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: { xs: 32, sm: 36 },
-                        height: { xs: 32, sm: 36 },
-                        borderRadius: 1.5,
-                        bgcolor: method.color,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: method.textColor,
-                        flexShrink: 0
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              We'll send a payment prompt to this number via {selectedMethodConfig?.label}.
+            </Typography>
+            <TextField
+              fullWidth
+              autoFocus
+              label="Phone Number"
+              placeholder={selectedMethodConfig?.phonePlaceholder}
+              value={localPhone}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^\d\s\-]/g, '');
+                setLocalPhone(val);
+                if (phoneError) validatePhone(val);
+              }}
+              error={!!phoneError}
+              helperText={phoneError || selectedMethodConfig?.phoneHelperText}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start" sx={{ mr: 0 }}>
+                    <Select
+                      value={countryCode}
+                      onChange={(e) => {
+                        setCountryCode(e.target.value);
+                        if (phoneError) validatePhone(localPhone, e.target.value);
                       }}
+                      variant="standard"
+                      disableUnderline
+                      renderValue={(val) => {
+                        const entry = COUNTRY_CODES.find(c => c.code === val);
+                        return (
+                          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {entry?.flag} {val}
+                          </Typography>
+                        );
+                      }}
+                      sx={{ minWidth: 90, '& .MuiSelect-select': { py: 0 } }}
                     >
-                      {method.icon}
-                    </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="body2" fontWeight="bold" noWrap>{method.label}</Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap>{method.description}</Typography>
-                    </Box>
-                    <Radio
-                      checked={paymentMethod === method.id}
-                      size="small"
-                      sx={{ p: 0, color: method.color, '&.Mui-checked': { color: method.color } }}
-                      readOnly
-                    />
-                  </Box>
-                ))}
-              </Box>
+                      {COUNTRY_CODES.map(({ code, country, flag }) => (
+                        <MenuItem key={code} value={code}>
+                          <Typography variant="body2">{flag} {code} — {country}</Typography>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5 }} />
+                  </InputAdornment>
+                )
+              }}
+              inputProps={{ inputMode: 'tel' }}
+            />
+          </Paper>
+        </Box>
+      )}
 
-              {/* Phone number input for mobile money */}
-              {selectedMethodConfig?.requiresPhone && (
-                <TextField
-                  fullWidth
-                  label="Phone Number"
-                  placeholder={selectedMethodConfig.phonePlaceholder}
-                  value={localPhone}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/[^\d\s\-]/g, '');
-                    setLocalPhone(val);
-                    if (phoneError) validatePhone(val);
-                  }}
-                  error={!!phoneError}
-                  helperText={phoneError || selectedMethodConfig.phoneHelperText}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start" sx={{ mr: 0 }}>
-                        <Select
-                          value={countryCode}
-                          onChange={(e) => {
-                            setCountryCode(e.target.value);
-                            if (phoneError) validatePhone(localPhone, e.target.value);
-                          }}
-                          variant="standard"
-                          disableUnderline
-                          renderValue={(val) => {
-                            const entry = COUNTRY_CODES.find(c => c.code === val);
-                            return (
-                              <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                {entry?.flag} {val}
-                              </Typography>
-                            );
-                          }}
-                          sx={{ minWidth: 90, '& .MuiSelect-select': { py: 0 } }}
-                        >
-                          {COUNTRY_CODES.map(({ code, country, flag }) => (
-                            <MenuItem key={code} value={code}>
-                              <Typography variant="body2">{flag} {code} — {country}</Typography>
-                            </MenuItem>
-                          ))}
-                        </Select>
-                        <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5 }} />
-                      </InputAdornment>
-                    )
-                  }}
-                  sx={{ mb: 2 }}
-                  size="small"
-                  inputProps={{ inputMode: 'tel' }}
-                />
-              )}
-
-              <Button
-                variant="contained"
-                fullWidth
-                size="large"
-                onClick={handlePurchase}
-                disabled={submitting || !selectedPlan || mobilePending}
-                sx={{ borderRadius: 2, py: 1.5 }}
-              >
-                {submitting
-                  ? <CircularProgress size={22} color="inherit" />
-                  : mobilePending
-                  ? 'Waiting for payment...'
-                  : `Pay with ${selectedMethodConfig?.label}`}
-              </Button>
-
-              {mobilePending && (
+      {/* ---------- Page 4: Order summary & pay ---------- */}
+      {activeStep === STEP_SUMMARY && (
+        <Box sx={{ maxWidth: 560, mx: 'auto' }}>
+          {paymentCancelled && (
+            <Alert
+              severity="error"
+              sx={{ mb: 3 }}
+              action={
                 <Button
-                  variant="outlined"
-                  color="error"
-                  fullWidth
+                  color="inherit"
                   size="small"
                   startIcon={<Refresh />}
-                  onClick={() => {
-                    sessionStorage.removeItem('pendingMobilePayment');
-                    setMobilePending(false);
-                    setPendingReference(null);
-                    setPendingPlanData(null);
-                    setPaymentCancelled(true);
-                  }}
-                  sx={{ mt: 1 }}
+                  onClick={() => setPaymentCancelled(false)}
                 >
-                  Cancel &amp; Try Again
+                  Try Again
                 </Button>
-              )}
+              }
+            >
+              <Typography fontWeight="bold">Payment failed</Typography>
+              <Typography variant="body2">
+                We couldn&apos;t confirm your payment — it may have been cancelled or timed out. Please try again; if money left your account, do not pay again until you&apos;ve confirmed with support.
+              </Typography>
+            </Alert>
+          )}
 
-              {mobilePending && (
-                <Button
-                  variant="text"
-                  fullWidth
-                  size="small"
-                  onClick={() => navigate('/student/dashboard')}
-                  sx={{ mt: 0.5 }}
-                >
-                  Go to Dashboard
-                </Button>
-              )}
-            </Paper>
-          </Grid>
-        </Grid>
+          {mobilePending && (
+            <Alert severity="info" sx={{ mb: 3 }} icon={<PhoneAndroid />}>
+              <Typography fontWeight="bold">Payment prompt sent to your phone!</Typography>
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                Open your <strong>{paymentMethod === 'mobile_money' ? 'MTN MoMo' : 'Airtel Money'}</strong> app or dial the USSD code to approve the payment of{' '}
+                <strong>RWF {(pendingPlanData || selectedPlanData)?.price?.toLocaleString()}</strong>.
+                Your subscription will activate automatically once the payment is confirmed.
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Payments are securely processed by <strong>ITEC Pay</strong>. This page will update automatically.
+              </Typography>
+            </Alert>
+          )}
+
+          {loading && mobilePending && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <CircularProgress size={28} />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Checking payment status...
+              </Typography>
+            </Box>
+          )}
+
+          <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
+              Order Summary
+            </Typography>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="body2" color="text.secondary">Plan:</Typography>
+              <Typography variant="body2" fontWeight="bold">{selectedPlanData?.name}</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="body2" color="text.secondary">Duration:</Typography>
+              <Typography variant="body2">{formatPlanDuration(selectedPlanData)}</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                {planScope === 'exam' ? 'Exam:' : 'Level:'}
+              </Typography>
+              <Typography variant="body2" sx={{ textAlign: 'right' }}>
+                {planScope === 'exam'
+                  ? (examOptions.find(e => e._id === selectedExamId)?.title || '—')
+                  : `${selectedPlanData?.level?.name || '—'}${selectedPlanData?.subLevel ? ` — ${selectedPlanData.subLevel}` : ''}`}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">Paying with:</Typography>
+              <Typography variant="body2">
+                {selectedMethodConfig?.label}{selectedMethodConfig?.requiresPhone ? ` — ${countryCode}${localPhone}` : ''}
+              </Typography>
+            </Box>
+            {planScope === 'level' && selectedPlanData?.level?._id && selectedPlanData.level._id !== user?.level?._id && (
+              <Alert severity="warning" sx={{ mb: 2, py: 0, fontSize: '0.75rem' }}>
+                This will switch your account level to {selectedPlanData.level.name}.
+              </Alert>
+            )}
+            <Divider sx={{ my: 2 }} />
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6" fontWeight="bold">Total:</Typography>
+              <Typography variant="h6" fontWeight="bold" color="primary">
+                {selectedPlanData?.currency === 'RWF' ? 'RWF' : '$'}{' '}
+                {selectedPlanData?.price.toLocaleString()}
+              </Typography>
+            </Box>
+
+            {mobilePending && (
+              <Button
+                variant="outlined"
+                color="error"
+                fullWidth
+                size="small"
+                startIcon={<Refresh />}
+                onClick={() => {
+                  sessionStorage.removeItem('pendingMobilePayment');
+                  setMobilePending(false);
+                  setPendingReference(null);
+                  setPendingPlanData(null);
+                  setPaymentCancelled(true);
+                }}
+                sx={{ mt: 1 }}
+              >
+                Cancel &amp; Try Again
+              </Button>
+            )}
+
+            {mobilePending && (
+              <Button
+                variant="text"
+                fullWidth
+                size="small"
+                onClick={() => navigate('/student/dashboard')}
+                sx={{ mt: 0.5 }}
+              >
+                Go to Dashboard
+              </Button>
+            )}
+          </Paper>
+        </Box>
       )}
+
+      {/* Sticky bottom nav — Back / Continue / Pay stay visible while scrolling, on every device */}
+      <Box
+        sx={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: theme.zIndex.appBar,
+          bgcolor: 'background.paper',
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          boxShadow: '0 -4px 16px rgba(0,0,0,0.1)',
+          py: { xs: 1.25, sm: 1.5 },
+          px: { xs: 2, sm: 3 },
+        }}
+      >
+        <Box
+          sx={{
+            maxWidth: activeStep === STEP_PLAN ? 'none' : 560,
+            mx: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: 1
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {showBackButton && (
+              <Button
+                startIcon={<ArrowBack />}
+                onClick={goBackStep}
+                size={isMobile ? 'medium' : 'large'}
+                sx={{ borderRadius: 2, flexShrink: 0 }}
+              >
+                Back
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              size="large"
+              fullWidth={isMobile || activeStep !== STEP_PLAN}
+              endIcon={activeStep !== STEP_SUMMARY && !submitting ? <ArrowForward /> : null}
+              disabled={primaryDisabled}
+              onClick={primaryOnClick}
+              sx={{
+                borderRadius: 2,
+                px: 4,
+                py: 1.25,
+                ml: !isMobile && !showBackButton ? 'auto' : 0,
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                '&:hover': { transform: 'translateY(-2px)' },
+                '&:active': { transform: 'translateY(0)' },
+                ...(!primaryDisabled && {
+                  animation: 'ctaPulse 1.8s ease-in-out infinite',
+                  '&:hover': { animation: 'none', transform: 'translateY(-2px)' },
+                }),
+                '@keyframes ctaPulse': {
+                  '0%, 100%': { boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0.5)}` },
+                  '50%': { boxShadow: `0 0 0 9px ${alpha(theme.palette.primary.main, 0)}` },
+                },
+                '@keyframes ctaArrowNudge': {
+                  '0%, 100%': { transform: 'translateX(0)' },
+                  '50%': { transform: 'translateX(5px)' },
+                },
+                '& .MuiButton-endIcon': !primaryDisabled ? {
+                  animation: 'ctaArrowNudge 1.2s ease-in-out infinite',
+                } : {},
+                '@media (prefers-reduced-motion: reduce)': {
+                  animation: 'none',
+                  '& .MuiButton-endIcon': { animation: 'none' },
+                },
+              }}
+            >
+              {primaryLabel}
+            </Button>
+          </Box>
+        </Box>
+      </Box>
     </Container>
   );
 };

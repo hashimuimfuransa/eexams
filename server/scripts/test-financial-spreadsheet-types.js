@@ -166,6 +166,36 @@ const CASES = [
     }
   },
   {
+    name: 'Sales Journal + Purchases Journal + Cash Book (multi-table page)',
+    questionText: 'From the following transactions for July 2023, prepare the Sales Journal, the Purchases Journal and the Cash Book (bank column).',
+    pastedTable: `04-Jul Credit sale to Pierre 1,050,000. 11-Jul Credit sale to Vincent 950,000. 18-Jul Credit sale to Josiane 400,000.
+02-Jul Credit purchase from Kasinza 1,000,000. 09-Jul Credit purchase from Aline 500,000. 17-Jul Credit purchase from Daniella 980,000.
+01-Jul Shop fittings & fixtures 1,200,000 bought from Mugambo Fitments Ltd (capital item, not a purchases-journal item).
+13-Jul Cash sales banked 350,000. 16-Jul Received cheque from Pierre 1,050,000. 19-Jul Paid Kasinza by cheque (settlement) 1,000,000. 21-Jul Paid delivery expenses by cheque 55,000. 31-Jul Bank charges 12,000. Opening bank balance 1 Jul: nil.`,
+    validate(tables) {
+      const sales = findTable(tables, 'sales journal', 'sales day book');
+      const purchases = findTable(tables, 'purchases journal', 'purchases day book');
+      const cashBook = findTable(tables, 'cash book');
+      if (!sales) throw new Error('no Sales Journal table returned (should be a separate table from the Cash Book)');
+      if (!purchases) throw new Error('no Purchases Journal table returned (should be a separate table from the Cash Book)');
+      if (!cashBook) throw new Error('no Cash Book table returned');
+      const salesH = sales.headers.map(h => String(h || '').toLowerCase());
+      if (salesH.some(h => h.includes('debit') || h.includes('credit') || h.includes('(dr)') || h.includes('(cr)'))) {
+        throw new Error(`Sales Journal must be a single-amount-column listing, not Dr/Cr, got headers ${JSON.stringify(sales.headers)}`);
+      }
+      const purchasesH = purchases.headers.map(h => String(h || '').toLowerCase());
+      if (purchasesH.some(h => h.includes('debit') || h.includes('credit') || h.includes('(dr)') || h.includes('(cr)'))) {
+        throw new Error(`Purchases Journal must be a single-amount-column listing, not Dr/Cr, got headers ${JSON.stringify(purchases.headers)}`);
+      }
+      const salesHasCash = (sales.data || []).some(r => /cash|cheque|bank/i.test(r.join(' ')));
+      if (salesHasCash) throw new Error('Sales Journal should list credit sales only, not the cash sale/cheque receipt');
+      const purchasesHasCapitalItem = (purchases.data || []).some(r => /shop fittings|fixtures/i.test(r.join(' ')));
+      if (purchasesHasCapitalItem) throw new Error('Purchases Journal must exclude the capital item (shop fittings) per the source note');
+      const cbH = cashBook.headers.map(h => String(h || '').toLowerCase());
+      if (!cbH.some(h => h.includes('dr')) || !cbH.some(h => h.includes('cr'))) throw new Error(`Cash Book expected "(Dr)"/"(Cr)" headers, got ${JSON.stringify(cashBook.headers)}`);
+    }
+  },
+  {
     name: 'Bank Reconciliation Statement',
     questionText: 'Prepare a bank reconciliation statement as at 31 December 2024, starting from the adjusted cash book balance of 4,167,000.',
     pastedTable: 'Adjusted cash book balance 4,167,000. Unpresented cheque (John) 1,772,000. Uncredited cheque from customer 1,800,000.',

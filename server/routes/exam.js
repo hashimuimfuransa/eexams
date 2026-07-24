@@ -2424,11 +2424,37 @@ const checkCooldown = (map, userId, cooldownMs) => {
 // empty string, which then renders as a literal "0" in the grid instead of a blank cell. Applies
 // to any Debit/Credit-shaped table (ledgers AND trial balances) — run last, after any row-side
 // corrections, so cells that just got flipped are normalized too.
+// Ledger-shaped Dr/Cr detection used by the three correction functions below. A real photographed
+// ledger/passbook/cash-book account very often abbreviates its two amount columns to just "Dr"/
+// "Cr" (e.g. "Bank Dr (Receipts)"/"Bank Cr (Payments)", or a bare "Dr"/"Cr") rather than spelling
+// out "Debit"/"Credit" — matching only the full words (as this used to) meant any such table got
+// NO auto-correction at all, the same failure mode as the Cash Book's "(Dr)"/"(Cr)" headers.
+// \bdr\b/\bcr\b matches "Dr"/"Cr" as a standalone token (bounded by non-word chars or start/end)
+// so it won't false-positive inside longer words like "Drawings" or "Creditors".
+// A "Balance b/d"/"Balance brought down/forward" row that appears AFTER a "Balance c/d"/"carried
+// down/forward" row in the same table is only the informational OPENING balance for the NEXT
+// period (e.g. a cash book's "01-Aug Balance b/d (overdraft)" line shown for continuity right
+// after July's own closing "31-Jul Balance c/d") — it is not part of THIS period's own Dr/Cr
+// figures and must be excluded when checking whether this table balances, or a table that already
+// balances gets misreported as off by exactly that carried-forward amount. A "Balance b/d" row
+// with no PRECEDING "c/d" row in the same table is the genuine opening balance the period itself
+// started with, and must stay included in the sum.
+function isCarriedForwardContinuationRow(data, rowIndex, rowLabel) {
+  const label = rowLabel(data[rowIndex]);
+  if (!/\bb\/d\b|\bb\/f\b|brought\s+(down|forward)/i.test(label)) return false;
+  return data.slice(0, rowIndex).some(r => /\bc\/d\b|\bc\/f\b|carried\s+(down|forward)/i.test(rowLabel(r)));
+}
+
+function findDebitCreditColumnIndexes(headers) {
+  const headersLower = (headers || []).map(h => String(h || '').toLowerCase());
+  const drIdx = headersLower.findIndex(h => h.includes('debit') || /\bdr\b/.test(h));
+  const crIdx = headersLower.findIndex(h => h.includes('credit') || /\bcr\b/.test(h));
+  return { drIdx, crIdx };
+}
+
 function blankOutUnusedDebitCreditCells(table) {
   if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data)) return table;
-  const headersLower = table.headers.map(h => String(h || '').toLowerCase());
-  const drIdx = headersLower.findIndex(h => h.includes('debit'));
-  const crIdx = headersLower.findIndex(h => h.includes('credit'));
+  const { drIdx, crIdx } = findDebitCreditColumnIndexes(table.headers);
   if (drIdx === -1 || crIdx === -1) return table;
   const toNum = (v) => {
     if (typeof v === 'number') return v;
@@ -2457,9 +2483,7 @@ function blankOutUnusedDebitCreditCells(table) {
 
 function fixDebitCreditPlacement(table) {
   if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data)) return table;
-  const headersLower = table.headers.map(h => String(h || '').toLowerCase());
-  const drIdx = headersLower.findIndex(h => h.includes('debit'));
-  const crIdx = headersLower.findIndex(h => h.includes('credit'));
+  const { drIdx, crIdx } = findDebitCreditColumnIndexes(table.headers);
   if (drIdx === -1 || crIdx === -1) return table; // not a Dr/Cr-shaped table at all (e.g. a financial statement)
 
   // Ledger/T-account (Date, Particulars, Debit, Credit): a real transaction row is very unlikely
@@ -2474,14 +2498,19 @@ function fixDebitCreditPlacement(table) {
     return isNaN(n) ? 0 : n;
   };
 
+  const rowLabel = (row) => `${row[0] || ''} ${row[1] || ''}`.toLowerCase();
   let drTotal = 0, crTotal = 0;
-  table.data.forEach(row => { drTotal += toNum(row[drIdx]); crTotal += toNum(row[crIdx]); });
+  table.data.forEach((row, i) => {
+    if (isCarriedForwardContinuationRow(table.data, i, rowLabel)) return;
+    drTotal += toNum(row[drIdx]); crTotal += toNum(row[crIdx]);
+  });
   const diff = drTotal - crTotal;
   if (Math.abs(diff) < 0.01) return table; // already balanced
 
   for (let i = 0; i < table.data.length; i++) {
     const row = table.data[i];
-    const label = `${row[0] || ''} ${row[1] || ''}`.toLowerCase();
+    const label = rowLabel(row);
+    if (isCarriedForwardContinuationRow(table.data, i, rowLabel)) continue;
     if (isLedgerShaped && !label.includes('balance')) continue;
     const drVal = toNum(row[drIdx]);
     const crVal = toNum(row[crIdx]);
@@ -2600,9 +2629,7 @@ function correctLedgerRowSide(thisNature, contraNature, particulars) {
 
 function fixLedgerRowSidesByNature(table) {
   if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data) || table.headers.length < 4) return table;
-  const headersLower = table.headers.map(h => String(h || '').toLowerCase());
-  const drIdx = headersLower.findIndex(h => h.includes('debit'));
-  const crIdx = headersLower.findIndex(h => h.includes('credit'));
+  const { drIdx, crIdx } = findDebitCreditColumnIndexes(table.headers);
   if (drIdx === -1 || crIdx === -1) return table;
   const thisNature = classifyAccountNature(table.title);
   const toNum = (v) => {
@@ -2633,6 +2660,111 @@ function fixLedgerRowSidesByNature(table) {
   return table;
 }
 
+// The three functions above key off the literal substring "debit"/"credit" in a header, which
+// deliberately never matches a Cash Book / Receipts & Payments Account — its headers are
+// ["Details (Dr)","Amount","Details (Cr)","Amount"] per the prompt's own formatting rule (Dr/Cr
+// abbreviations, not the words). That's correct (a Cash Book's two amount columns are independent
+// running lists, not two sides of the same per-row transaction like a ledger's Debit/Credit
+// columns), but it means Cash Book tables got NO automatic error correction at all. These two
+// functions are the Cash Book-shaped equivalent: same "only touch what a safe, exact fix allows"
+// philosophy, adapted to the fact that a Cash Book's Dr/Cr amount columns sit one-per-side next to
+// their own label column, not aligned as a single row's two sides.
+function findCashBookAmountColumns(headers) {
+  if (!Array.isArray(headers) || headers.length < 4) return null;
+  const { drIdx: drLabelIdx, crIdx: crLabelIdx } = findDebitCreditColumnIndexes(headers);
+  if (drLabelIdx === -1 || crLabelIdx === -1 || drLabelIdx === crLabelIdx) return null;
+  const drAmtIdx = drLabelIdx + 1;
+  const crAmtIdx = crLabelIdx + 1;
+  if (drAmtIdx >= headers.length || crAmtIdx >= headers.length || drAmtIdx === crLabelIdx || crAmtIdx === drLabelIdx) return null;
+  return { drLabelIdx, drAmtIdx, crLabelIdx, crAmtIdx };
+}
+
+// The AI sometimes fills the amount cell for a side that has no item on a given row with 0
+// instead of "", which then renders as a literal "0" in the grid instead of a blank cell —
+// same failure mode blankOutUnusedDebitCreditCells fixes for ledgers, adapted to the Cash Book's
+// label-then-amount column pairs (blank the amount only when its OWN label cell is also empty,
+// since the two sides here are independent lists, not opposite sides of one transaction).
+function blankOutUnusedCashBookCells(table) {
+  if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data)) return table;
+  const cols = findCashBookAmountColumns(table.headers);
+  if (!cols) return table;
+  const { drLabelIdx, drAmtIdx, crLabelIdx, crAmtIdx } = cols;
+  table.data = table.data.map(row => {
+    const next = [...row];
+    const drLabelEmpty = !String(row[drLabelIdx] ?? '').trim();
+    const crLabelEmpty = !String(row[crLabelIdx] ?? '').trim();
+    if (drLabelEmpty && (row[drAmtIdx] === 0 || row[drAmtIdx] === '0')) next[drAmtIdx] = '';
+    if (crLabelEmpty && (row[crAmtIdx] === 0 || row[crAmtIdx] === '0')) next[crAmtIdx] = '';
+    return next;
+  });
+  return table;
+}
+
+// Enforces the one invariant the prompt itself requires: the Dr amount column total must equal
+// the Cr amount column total. If they don't, the safest single-figure fix (mirroring
+// fixDebitCreditPlacement's "only touch a row whose fix yields an EXACT balance" rule) is the
+// balancing "Bal c/d"/"Bal b/d" row the prompt requires the Cash Book to end with — adjust ONLY
+// that row's own amount so the two columns become equal, rather than guessing which ordinary
+// transaction row is wrong. Also keeps the final "Totals" row (if present) showing the correct,
+// identical grand total under both amount columns.
+function fixCashBookBalance(table) {
+  if (!table || !Array.isArray(table.headers) || !Array.isArray(table.data)) return table;
+  const cols = findCashBookAmountColumns(table.headers);
+  if (!cols) return table;
+  const { drLabelIdx, drAmtIdx, crLabelIdx, crAmtIdx } = cols;
+  const toNum = (v) => {
+    if (typeof v === 'number') return v;
+    const n = parseFloat(String(v ?? '').replace(/,/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+  const rowText = (row) => `${row[drLabelIdx] || ''} ${row[crLabelIdx] || ''}`;
+  const isTotalsRow = (row) => /\btotal/i.test(rowText(row));
+  const isBalRow = (label) => /\bbal(ance)?\b/i.test(label) && /(c\/d|b\/d|c\/f|b\/f|carried|brought)/i.test(label);
+
+  let totalsRowIdx = -1;
+  let drSum = 0, crSum = 0;
+  table.data.forEach((row, i) => {
+    if (isTotalsRow(row)) { totalsRowIdx = i; return; }
+    if (isCarriedForwardContinuationRow(table.data, i, rowText)) return;
+    drSum += toNum(row[drAmtIdx]);
+    crSum += toNum(row[crAmtIdx]);
+  });
+
+  const diff = drSum - crSum;
+  if (Math.abs(diff) >= 0.01) {
+    const deficientSide = diff > 0 ? 'cr' : 'dr'; // side with the smaller sum is the one that needs topping up
+    let fixed = false;
+    for (let i = 0; i < table.data.length; i++) {
+      if (i === totalsRowIdx || isCarriedForwardContinuationRow(table.data, i, rowText)) continue;
+      const row = table.data[i];
+      const label = String(deficientSide === 'cr' ? row[crLabelIdx] : row[drLabelIdx] || '');
+      if (!isBalRow(label)) continue;
+      const amtIdx = deficientSide === 'cr' ? crAmtIdx : drAmtIdx;
+      const current = toNum(row[amtIdx]);
+      const needed = current + Math.abs(diff);
+      const fixedRow = [...row];
+      fixedRow[amtIdx] = needed;
+      table.data[i] = fixedRow;
+      if (deficientSide === 'cr') crSum += Math.abs(diff); else drSum += Math.abs(diff);
+      console.warn(`Auto-corrected Cash Book "${table.title}": adjusted "${label}" from ${current} to ${needed} to balance Dr/Cr totals.`);
+      fixed = true;
+      break;
+    }
+    if (!fixed) {
+      console.warn(`Cash Book "${table.title}" is unbalanced (Dr ${drSum} vs Cr ${crSum}) and no balancing row found to fix — leaving as returned by the AI.`);
+    }
+  }
+
+  if (totalsRowIdx !== -1) {
+    const grand = Math.max(drSum, crSum);
+    const fixedRow = [...table.data[totalsRowIdx]];
+    fixedRow[drAmtIdx] = grand;
+    fixedRow[crAmtIdx] = grand;
+    table.data[totalsRowIdx] = fixedRow;
+  }
+  return table;
+}
+
 // Extracted to a standalone, side-effect-free function (rather than left inline in the route)
 // so it can be unit-tested directly against the Groq API without needing Express/Mongo/auth —
 // see server/scripts/test-financial-spreadsheet-types.js.
@@ -2643,6 +2775,7 @@ STEP ZERO — WORK OUT WHAT OUTPUT TYPE IS ACTUALLY BEING ASKED FOR. DO THIS BEF
   - If the question says "ledger(s)", "ledger account(s)", "T-account(s)", or the teacher's input is already one or more running Dr/Cr accounts (an account name/title like "Capital", "Bank", "Inventory", etc., with Date/Particulars/Debit/Credit entries and a running or closing balance) → your job is to REPRODUCE/COMPLETE those exact ledger accounts, ONE TABLE PER ACCOUNT (each table's title = that account's name, in the same order given). Do NOT turn them into an Income Statement or Statement of Financial Position — that is a different question, not what was asked.
   - If the question says "trial balance", or the input already is one → reproduce it as a trial balance table (one "Item"/"Debit"/"Credit" table). Do not convert it into a financial statement.
   - If the question says "journal" or "journal entries", or the input already is one → reproduce as journal entries.
+  - If the question says "sales journal"/"sales day book", "purchases journal"/"purchases day book", "returns inwards journal", or "returns outwards journal" — or the input already looks like one (a dated LIST of credit sales/purchases/returns, one invoice per row, EACH ROW HAS ONLY ONE AMOUNT COLUMN, ending in a "Monthly total"/"Total" row) → build that Day Book (see FORMAT BY DOCUMENT TYPE below). This is NOT a Dr/Cr double-entry table and is NOT the Cash Book — a Day Book only lists CREDIT transactions (no cash/cheque received or paid); if the same page also has a Cash Book and/or another Day Book, build each as its own separate table, keeping cash/cheque items only in the Cash Book and credit-only items only in their matching Day Book — never mix an item into both.
   - If the question says "cash book" or "adjusted cash book" (or the input already looks like one — a running cash/bank balance being corrected for bank charges, standing orders, dishonoured cheques, direct deposits, casting errors) → build the Cash Book / Adjusted Cash Book table (see FORMAT BY DOCUMENT TYPE below). Do not build a Bank Reconciliation Statement instead unless that is also explicitly asked for as a separate part.
   - If the question says "bank reconciliation (statement)" → build the Bank Reconciliation Statement table, reconciling for TIMING differences only (unpresented cheques, uncredited deposits) starting from the adjusted cash book balance — never re-list the cash-book-correcting items again here.
   - If the question says "cash flow statement" / "statement of cash flows" → build it per IAS 7 (see point 4 below), including any needed WK supporting-workings tables.
@@ -2737,7 +2870,7 @@ ACCOUNTING KNOWLEDGE TO APPLY — get the classification, ordering and arithmeti
 FORMAT BY DOCUMENT TYPE:
   * Statement of Financial Position, Income Statement, Statement of Changes in Equity, Statement of Cash Flows, Statement of Financial Performance (IPSAS), Bank Reconciliation Statement: headers like ["Item","FRW '000'","FRW '000'"] (match whatever currency/unit the source uses) — column 1 is the item/section heading (section headers like "Non-Current Assets", or "Add:"/"Less:" in a bank reconciliation, get their own row with no figures), column 2 holds sub-amounts/workings for a line needing several components added together (leave "" when not needed), column 3 holds the figure that carries into the statement's running total (subtotals and the final total go here). Do NOT use "Debit"/"Credit" headers for these. For a Cash Flow Statement with derived supporting figures, add each working (WK1, WK2, ...) as its own separate table in the same "tables" array rather than cramming the derivation into the main statement's rows.
   * Trial Balance: exactly headers ["Item","Debit","Credit"], one figure per row on the correct side only, and the Debit column total must equal the Credit column total — recheck if they don't.
-  * Ledger accounts / T-accounts: one table per account, headers ["Date","Particulars","Debit","Credit"], preserving EVERY structural detail exactly as the source shows it — this account type is where getting the side (column) right matters most and is most often gotten wrong:
+  * Ledger accounts / T-accounts: one table per account, headers ["Date","Particulars","Debit","Credit"] (or, ONLY if the source itself shows a running balance recalculated after every single row instead of one final closing-balance row — e.g. a bank passbook style account — headers ["Date","Particulars","Debit","Credit","Balance"], with each row's Balance being the running total after that row, not a repeat of the whole-account closing figure), preserving EVERY structural detail exactly as the source shows it — this account type is where getting the side (column) right matters most and is most often gotten wrong:
     - Every entry goes on EXACTLY the side (Debit or Credit) the source already shows it on. Never move an entry to the "textbook" side you'd expect from general accounting convention if the source shows it differently — the source is authoritative, not your prior expectations.
     - The closing "Balance b/d"/"Balance c/d"/"Balance c/f" figure's SIDE is determined by which column needs it to make the two column totals equal (it goes on whichever side currently has the SMALLER total) — if the source already shows which side it's on, copy that side exactly; only compute the NUMBER if the cell was left blank, never re-derive or flip which column it sits in.
     - After filling in every row, the Debit column total and the Credit column total for that account must be EQUAL (a ledger account always balances) — if they don't, you put something on the wrong side; find and fix it before returning.
@@ -2745,14 +2878,15 @@ FORMAT BY DOCUMENT TYPE:
     - Preserve the exact number and order of accounts/tables given — if the source shows 9 separate ledger accounts, return exactly 9 tables in the same order, each with only that account's own entries.
     - Every row uses only ONE of the two columns — whichever side (Debit or Credit) the entry is NOT on must be the empty string "", never the number 0. A ledger row is never both blank-string on one side and a numeric 0 on the other; it is always a real number on one side and "" on the other.
   * Journal entries: headers ["Date","Particulars","Debit","Credit"], one row per account touched by each entry — the debited account's amount in Debit with Credit left "", the credited account's amount in Credit with Debit left "". ALWAYS prefix the credited account's particulars with the literal text "To " (e.g. "To Accounts Payable", "To Sales") — this is not optional styling, every credited-account row must start with "To ". Never put a Dr and Cr figure in the same row's single cell.
-  * Cash Book / Adjusted Cash Book: ONE table, headers ["Details (Dr)","Amount","Details (Cr)","Amount"] — use "(Dr)"/"(Cr)" abbreviations exactly like this, not the words "Debit"/"Credit". Column 1-2 is the debit side (the opening balance and every item that increases it), column 3-4 is the credit side (every item that decreases it, ending with the balancing figure "Bal c/d" on whichever side is currently smaller). Put a Dr-side item and a Cr-side item on the SAME row only when both happen to line up positionally (as in a source you're reproducing); otherwise list each side's items down its own pair of columns and leave the other side's cells "" for rows where it has nothing (never 0). The final row must show the grand total, and that total must be IDENTICAL under the Dr amount column and the Cr amount column.
+  * Cash Book / Adjusted Cash Book: ONE table, headers ["Details (Dr)","Amount","Details (Cr)","Amount"] — use "(Dr)"/"(Cr)" abbreviations exactly like this, not the words "Debit"/"Credit". ALWAYS use these exact 4 headers even when the source you're transcribing/reproducing uses different header wording for the same two-sided shape (e.g. a source showing "Date | Particulars | Ref | Bank Dr (Receipts) | Bank Cr (Payments)" is STILL this same Cash Book shape underneath — convert its header row to the canonical 4 headers above, do not just copy the source's own header text verbatim). Column 1-2 is the debit side (the opening balance and every item that increases it), column 3-4 is the credit side (every item that decreases it, ending with the balancing figure "Bal c/d" on whichever side is currently smaller). Put a Dr-side item and a Cr-side item on the SAME row only when both happen to line up positionally (as in a source you're reproducing); otherwise list each side's items down its own pair of columns and leave the other side's cells "" for rows where it has nothing (never 0). The final row must show the grand total, and that total must be IDENTICAL under the Dr amount column and the Cr amount column. ONLY if the source itself instead shows a single-column running-balance cash book (one list of transactions in date order — e.g. a bank column of a cash book, or a passbook — with a "Balance" recalculated after every row, NOT two side-by-side Dr/Cr amount columns) reproduce THAT shape instead: headers ["Date","Particulars","Receipts","Payments","Balance"], one row per transaction, Balance showing the running total after that row (bracket it, e.g. "(4,000)", when it is an overdraft).
+  * Sales Journal / Purchases Journal / Returns Inwards Journal / Returns Outwards Journal (Day Books): headers ["Date","Customer","Ref","Amount"] for a Sales Journal or Returns Inwards Journal, or ["Date","Supplier","Ref","Amount"] for a Purchases Journal or Returns Outwards Journal — ONE row per credit transaction in date order (use whatever reference/invoice code the source gives, or "" if none), ending in a "Monthly total" (or "Total") row summing the Amount column. A single column of amounts, never Debit/Credit columns — this is a listing, not a double-entry table. If a capital item or a cash/cheque transaction is mentioned alongside the credit transactions (e.g. "Shop fittings FRW 1,200,000 ... is a capital item, not included in the Purchases Journal"), leave it OUT of the Day Book entirely — note it only if the question explicitly asks for narrative/workings elsewhere.
   * Bank Reconciliation Statement: same 3-column layout as the statements above (["Item","FRW ...","FRW ..."]) — start row is "Balance as per adjusted cash book" (or "Balance as per bank statement", per the question's own direction), then "Add:" as its OWN SEPARATE row with no figures (never merge the word "Add:" into the same row as the item it introduces) followed by one row per item that increases the balance, then "Less:" as its OWN SEPARATE row (again, never merged with an item) followed by one row per item that decreases it (write deductions as negative, e.g. "(1,800)"), ending in "Balance as per bank statement" (or the cash book balance, if reconciling in that direction) as the final total. Follow this exact row-by-row pattern (do not compress "Add:"/"Less:" into the following item's row): ["Balance as per adjusted cash book","","4,167"], ["Add:","",""], ["Unpresented cheque","1,772",""], ["Less:","",""], ["Uncredited cheque","(1,800)",""], ["Balance as per bank statement","","4,139"].
   * Ratio Analysis: headers ["Ratio","<Year 1>","<Year 2>",...] (add a "Formula" column only if the source material itself shows the formula for each ratio) — one row per ratio, in the order the question lists them, one column per year/period; every value cell is a short formatted string with its unit as described in point 7 above (e.g. "3.14:1", "28.8%", "32 days", "15.36 times") — this is the one table type where that is correct, not a bare number.
   * Standard Costing Variance Analysis: per-variance working tables are optional extras, but you MUST end with one final table titled "Variance Analysis" with EXACTLY headers ["Variance","Amount","Favourable/Adverse"] — a workings table alone, without this final summary table, is an incomplete answer. Example rows to follow exactly this shape: ["Material Price Variance","9,500","Adverse"], ["Material Usage Variance","500","Favourable"].
   * Control accounts, suspense account, manufacturing account, statement of affairs, partnership accounts, receipts and payments/income and expenditure, consolidated accounts, PPE note/disposal account, budgets, cost sheet/process/contract accounts, tax computation/capital allowances, investment appraisal, loan amortization: see point 9 above for each one's specific header layout.
   * Anything else not covered above (a one-off schedule or workings): use whichever layout is standard for that specific output; only use Debit/Credit columns when double-entry actually applies.
 
-Before returning, recompute every subtotal from its own components independently (don't just trust a number you wrote earlier) and sanity-check: does the Statement of Financial Position balance (Total Assets = Total Equity and Liabilities)? Does the Trial Balance balance? Does Revenue − Cost of Sales actually equal the Gross Profit figure you wrote (recompute Cost of Sales itself from its components first — this is the step most likely to be wrong)? Does Gross Profit + Other Income − Total Operating Expenses actually equal Operating Profit? Does the Cash Book/Adjusted Cash Book's Dr-side total equal its Cr-side total? Does the Bank Reconciliation Statement's final figure actually equal the bank-statement (or cash-book) balance it's meant to reconcile to? Does the Cash Flow Statement's closing cash and cash equivalents equal the SOFP's cash figure? For an Investment Appraisal, re-add the Present Value column (including Year 0's own outflow) independently to get the Net Present Value/NPV row — this running total is arithmetic that is easy to get wrong, so re-derive it rather than trusting a first pass. Fix any mismatch rather than returning inconsistent numbers.`;
+Before returning, recompute every subtotal from its own components independently (don't just trust a number you wrote earlier) and sanity-check: does the Statement of Financial Position balance (Total Assets = Total Equity and Liabilities)? Does the Trial Balance balance? Does Revenue − Cost of Sales actually equal the Gross Profit figure you wrote (recompute Cost of Sales itself from its components first — this is the step most likely to be wrong)? Does Gross Profit + Other Income − Total Operating Expenses actually equal Operating Profit? Does the Cash Book/Adjusted Cash Book's Dr-side total equal its Cr-side total? Does a Sales/Purchases Journal (Day Book) contain ONLY credit transactions, with no cash/cheque item that belongs in the Cash Book instead? Does the Bank Reconciliation Statement's final figure actually equal the bank-statement (or cash-book) balance it's meant to reconcile to? Does the Cash Flow Statement's closing cash and cash equivalents equal the SOFP's cash figure? For an Investment Appraisal, re-add the Present Value column (including Year 0's own outflow) independently to get the Net Present Value/NPV row — this running total is arithmetic that is easy to get wrong, so re-derive it rather than trusting a first pass. Fix any mismatch rather than returning inconsistent numbers.`;
 }
 
 // Teacher pastes a table (from Excel/Word) while authoring a financial-spreadsheet question;
@@ -2788,7 +2922,7 @@ router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, a
     // the same proven non-reasoning text model the paste-a-table flow already uses successfully.
     let transcribedText = '';
     if (images.length > 0) {
-      const transcribePrompt = `Transcribe every line of text and every number from ${images.length > 1 ? 'these images' : 'this image'} exactly as they appear, preserving the table/statement structure (row labels and their values, including which column/side each value is under). If there are MULTIPLE separate tables/accounts (e.g. several ledger T-accounts each with their own title like "Capital", "Bank", "Inventory", followed by a trial balance) clearly mark where each one starts and ends and keep its title with it — do not merge separate accounts/tables together. Also transcribe any heading/instruction text (e.g. "i. Relevant ledger accounts...", "ii. Trial balance...") exactly as written, since it says what the teacher actually wants produced. Do not interpret, compute, or reclassify anything — just transcribe what you see, in reading order.
+      const transcribePrompt = `Transcribe every line of text and every number from ${images.length > 1 ? 'these images' : 'this image'} exactly as they appear, preserving the table/statement structure (row labels and their values, including which column/side each value is under). If there are MULTIPLE separate tables/accounts on the page (e.g. several ledger T-accounts each with their own title like "Capital", "Bank", "Inventory", followed by a trial balance — OR a Sales Journal, a Purchases Journal, and a Cash Book all on the same page, which is common in one exam question) clearly mark where each one starts and ends and keep its own title/heading with it — do not merge separate accounts/tables/journals together, and do not merge a Day Book (Sales Journal/Purchases Journal, one amount column per row) with the Cash Book (two amount columns, Dr side and Cr side) even when they sit right next to each other. For any table with TWO SIDES shown side-by-side (a ledger's Debit/Credit columns, or a Cash Book's Dr/Cr columns), transcribe each side's rows top-to-bottom in the order printed and make clear which side (left/Dr or right/Cr) each row and amount belongs to — do not reorder or interleave the two sides. Also transcribe any heading/instruction text (e.g. "i. Relevant ledger accounts...", "ii. Trial balance...", "Prepare the Sales Journal, the Purchases Journal and the Cash Book...") exactly as written, since it says what the teacher actually wants produced. Do not interpret, compute, or reclassify anything — just transcribe what you see, in reading order.
 Return ONLY JSON: {"extractedText": "..."}`;
 
       // The vision model is a reasoning model — on a harder-to-read photo (poor lighting, an
@@ -2869,7 +3003,10 @@ This is a SECOND request, editing what's already there. The teacher's input belo
     try {
       modelAnswerGrid = JSON.parse(modelAnswerJson);
       if (Array.isArray(modelAnswerGrid.tables)) {
-        modelAnswerGrid.tables = modelAnswerGrid.tables.map(t => blankOutUnusedDebitCreditCells(fixDebitCreditPlacement(fixLedgerRowSidesByNature(t))));
+        modelAnswerGrid.tables = modelAnswerGrid.tables.map(t => {
+          const ledgerFixed = blankOutUnusedDebitCreditCells(fixDebitCreditPlacement(fixLedgerRowSidesByNature(t)));
+          return blankOutUnusedCashBookCells(fixCashBookBalance(ledgerFixed));
+        });
       }
     } catch {
       modelAnswerGrid = null;
@@ -3049,3 +3186,10 @@ module.exports = router;
 // which needs to build the exact live prompt without booting Express/Mongo/auth. Attaching these
 // to the exported router object is harmless — Express only ever calls it as middleware.
 module.exports.buildFillSpreadsheetPrompt = buildFillSpreadsheetPrompt;
+// Same rationale — lets the Cash Book auto-correction safety net be unit-tested directly
+// (server/scripts/test-cashbook-postprocessing.js) without needing Groq/Express/Mongo at all.
+module.exports.fixCashBookBalance = fixCashBookBalance;
+module.exports.blankOutUnusedCashBookCells = blankOutUnusedCashBookCells;
+module.exports.fixDebitCreditPlacement = fixDebitCreditPlacement;
+module.exports.fixLedgerRowSidesByNature = fixLedgerRowSidesByNature;
+module.exports.blankOutUnusedDebitCreditCells = blankOutUnusedDebitCreditCells;

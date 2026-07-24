@@ -6,6 +6,7 @@ const Level = require('../models/Level');
 const User = require('../models/User');
 const Result = require('../models/Result');
 const PendingPayment = require('../models/PendingPayment');
+const Cashout = require('../models/Cashout');
 const itecPayment = require('../services/itecPayment');
 const { streamSubscriptionInvoice } = require('../utils/invoiceGenerator');
 const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, getEffectiveLevelSubscriptionStatus } = require('../utils/subscriptionStatus');
@@ -922,6 +923,29 @@ const cancelAccountPlanSubscription = async (req, res) => {
   }
 };
 
+// Grand total platform revenue (level/exam subscriptions + org/individual
+// account-tier plans) minus everything already cashed out — what's left for
+// the super admin to withdraw. Shared by the stats endpoint (to display it)
+// and createCashout (to cap withdrawals at what's actually available).
+const getAvailableBalance = async () => {
+  const levelSubs = await Subscription.find({}, 'amountPaid');
+  const levelRevenue = levelSubs.reduce((sum, s) => sum + (s.amountPaid || 0), 0);
+
+  const accountPlanAgg = await PendingPayment.aggregate([
+    { $match: { status: 'completed', $or: [{ organizationPlan: { $ne: null } }, { individualPlan: { $ne: null } }] } },
+    { $group: { _id: null, total: { $sum: '$amount' } } }
+  ]);
+  const accountPlanRevenue = accountPlanAgg[0]?.total || 0;
+
+  const cashoutAgg = await Cashout.aggregate([
+    { $group: { _id: null, total: { $sum: '$amount' } } }
+  ]);
+  const totalCashedOut = cashoutAgg[0]?.total || 0;
+
+  const grandTotalRevenue = levelRevenue + accountPlanRevenue;
+  return { grandTotalRevenue, totalCashedOut, availableBalance: grandTotalRevenue - totalCashedOut };
+};
+
 // @desc    Get subscription statistics
 // @route   GET /api/subscriptions/stats
 // @access  Private/SuperAdmin
@@ -1151,9 +1175,10 @@ const getSubscriptionStats = async (req, res) => {
       return { activeCount, totalRevenue, totalPurchases, revenueByTier, recentPayments };
     };
 
-    const [organizationPlanStats, individualPlanStats] = await Promise.all([
+    const [organizationPlanStats, individualPlanStats, cashoutSummary] = await Promise.all([
       buildAccountPlanStats('organization'),
-      buildAccountPlanStats('individual')
+      buildAccountPlanStats('individual'),
+      getAvailableBalance()
     ]);
 
     res.json({
@@ -1181,10 +1206,107 @@ const getSubscriptionStats = async (req, res) => {
       accountPlans: {
         organization: organizationPlanStats,
         individual: individualPlanStats
-      }
+      },
+      cashoutSummary
     });
   } catch (error) {
     console.error('Get subscription stats error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Cash out platform revenue by transferring it to the super admin's
+//          mobile money number via iTechPay's /api/transfer payout endpoint
+//          (itecPayment.transferToPhone). A Cashout record is only written
+//          after iTechPay confirms the transfer succeeded, so the recorded
+//          history reflects money that has actually left the platform.
+// @route   POST /api/subscriptions/cashouts
+// @access  Private/SuperAdmin
+const createCashout = async (req, res) => {
+  try {
+    const { amount, phoneNumber, provider, note } = req.body;
+
+    const numericAmount = Number(amount);
+    if (!numericAmount || numericAmount <= 0) {
+      return res.status(400).json({ message: 'Enter a valid amount greater than 0' });
+    }
+    if (!phoneNumber || !phoneNumber.trim()) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+    if (!['mtn', 'airtel'].includes(provider)) {
+      return res.status(400).json({ message: 'Select MTN or Airtel as the provider' });
+    }
+
+    const { availableBalance } = await getAvailableBalance();
+    if (numericAmount > availableBalance) {
+      return res.status(400).json({
+        message: `Amount exceeds available balance (RWF ${availableBalance.toLocaleString()})`
+      });
+    }
+
+    const paymentMethod = provider === 'airtel' ? 'airtel_money' : 'mobile_money';
+
+    let transferResult;
+    try {
+      transferResult = await itecPayment.transferToPhone({
+        amount: numericAmount,
+        phone: phoneNumber.trim(),
+        paymentMethod
+      });
+    } catch (transferErr) {
+      console.error('createCashout: transfer failed:', transferErr.message);
+      return res.status(502).json({
+        message: transferErr.isGatewayError
+          ? `iTechPay declined the transfer: ${transferErr.message}`
+          : 'Transfer failed — no money was moved and nothing was recorded'
+      });
+    }
+
+    const cashout = await Cashout.create({
+      amount: numericAmount,
+      phoneNumber: phoneNumber.trim(),
+      provider,
+      note: (note || '').trim(),
+      transactionId: transferResult.transactionId,
+      gatewayResponse: transferResult.raw,
+      requestedBy: req.user._id
+    });
+
+    res.status(201).json(cashout);
+  } catch (error) {
+    console.error('createCashout error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    List cashout history
+// @route   GET /api/subscriptions/cashouts
+// @access  Private/SuperAdmin
+const getCashouts = async (req, res) => {
+  try {
+    const cashouts = await Cashout.find()
+      .populate('requestedBy', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .limit(200);
+    res.json(cashouts);
+  } catch (error) {
+    console.error('getCashouts error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Delete a mistaken cashout record
+// @route   DELETE /api/subscriptions/cashouts/:id
+// @access  Private/SuperAdmin
+const deleteCashout = async (req, res) => {
+  try {
+    const cashout = await Cashout.findByIdAndDelete(req.params.id);
+    if (!cashout) {
+      return res.status(404).json({ message: 'Cashout record not found' });
+    }
+    res.json({ message: 'Cashout record deleted' });
+  } catch (error) {
+    console.error('deleteCashout error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -1411,5 +1533,8 @@ module.exports = {
   getSubscriptionStats,
   getAccountPlanSubscribers,
   cancelAccountPlanSubscription,
-  assignAccountPlan
+  assignAccountPlan,
+  createCashout,
+  getCashouts,
+  deleteCashout
 };

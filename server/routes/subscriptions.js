@@ -20,7 +20,10 @@ const {
   getSubscriptionStats,
   getAccountPlanSubscribers,
   cancelAccountPlanSubscription,
-  assignAccountPlan
+  assignAccountPlan,
+  createCashout,
+  getCashouts,
+  deleteCashout
 } = require('../controllers/subscriptionController');
 const auth = require('../middleware/auth');
 const { isSuperAdmin, isAdmin, isTeacher } = require('../middleware/role');
@@ -58,6 +61,12 @@ router.get('/stats/overview', isSuperAdmin, getSubscriptionStats);
 router.get('/account-plans/subscribers', isSuperAdmin, getAccountPlanSubscribers);
 router.post('/account-plans/assign', isSuperAdmin, assignAccountPlan);
 router.post('/account-plans/:userId/cancel', isSuperAdmin, cancelAccountPlanSubscription);
+// Manual cashout log — super admin records withdrawals of platform revenue
+// to their own mobile money number. No automated money movement (see
+// createCashout in the controller for why).
+router.get('/cashouts', isSuperAdmin, getCashouts);
+router.post('/cashouts', isSuperAdmin, createCashout);
+router.delete('/cashouts/:id', isSuperAdmin, deleteCashout);
 router.post('/', isSuperAdmin, createSubscription);
 router.patch('/:id/renew', isSuperAdmin, renewSubscription);
 router.get('/', isSuperAdmin, getSubscriptions);

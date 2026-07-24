@@ -126,6 +126,53 @@ class ITECPaymentService {
     };
   }
 
+  // Sends money OUT to a phone number (cashout/payout), as opposed to
+  // createPaymentRequest which collects money FROM a customer. Mirrors the
+  // /api2/pay request/response shape since iTechPay hasn't published payout
+  // docs — same { amount, phone, key, req_ref } body, same success heuristic.
+  // NOT YET CONFIRMED against a real successful transfer response; the only
+  // test so far returned { status: 400, data: { message: "Unauthorized" } }
+  // for a placeholder key. Treat the success path as unverified until a real
+  // transfer has been confirmed to actually land on the recipient's phone.
+  async transferToPhone({ amount, phone, paymentMethod, reference }) {
+    const provider = this.getProvider(paymentMethod || 'mobile_money');
+    console.log(`[iTechPay] transferToPhone: provider=${provider}, amount=${amount}, phone=${this.normalizePhone(phone)}`);
+
+    const apiKey = this.getApiKey(provider);
+    const req_ref = reference || crypto.randomUUID();
+
+    const result = await this.post(
+      'https://pay.itecpay.rw/api/transfer',
+      {
+        amount: Number(amount),
+        phone: this.normalizePhone(phone),
+        key: apiKey,
+        req_ref
+      }
+    );
+
+    const statusVal = String(result?.status ?? '').toLowerCase();
+    const ok = result?.status === 200 || result?.status === true || result?.status === 1 ||
+      statusVal === 'success' || statusVal === 'ok' || statusVal === '200';
+
+    if (!ok) {
+      const errMsg = result?.data?.message || result?.message || `Transfer failed (status: ${result?.status})`;
+      console.error(`[iTechPay] Transfer rejected: ${errMsg}`);
+      const err = new Error(errMsg);
+      err.isGatewayError = true;
+      throw err;
+    }
+
+    const txId = result?.data?.transaction_id || result?.data?.financial_transaction_id || req_ref;
+    console.log(`[iTechPay] Transfer request accepted: txId=${txId}, phone=${this.normalizePhone(phone)}`);
+    return {
+      success: true,
+      transactionId: txId,
+      reference: req_ref,
+      raw: result
+    };
+  }
+
   async verifyPayment(reference, paymentMethod) {
     const provider = this.getProvider(paymentMethod);
     const apiKey = this.getApiKey(provider);

@@ -182,6 +182,18 @@ const SubscriptionReports = () => {
   // space since it acts on Subscription documents, not User documents.
   const [subActioningId, setSubActioningId] = useState(null);
 
+  // Cashout log — super admin records withdrawals of platform revenue to
+  // their own mobile money number. There's no iTechPay payout API, so this
+  // is a manual record, not an automated transfer.
+  const [cashouts, setCashouts] = useState([]);
+  const [cashoutsLoading, setCashoutsLoading] = useState(true);
+  const [cashoutAmount, setCashoutAmount] = useState('');
+  const [cashoutPhone, setCashoutPhone] = useState('');
+  const [cashoutProvider, setCashoutProvider] = useState('mtn');
+  const [cashoutNote, setCashoutNote] = useState('');
+  const [cashoutSubmitting, setCashoutSubmitting] = useState(false);
+  const [cashoutDeletingId, setCashoutDeletingId] = useState(null);
+
   // Search + filters for the Manage Subscribers table
   const [subscriberSearch, setSubscriberSearch] = useState('');
   const [subscriberTypeFilter, setSubscriberTypeFilter] = useState('all');
@@ -260,6 +272,7 @@ const SubscriptionReports = () => {
     fetchPendingPayments();
     fetchSubscribers();
     fetchExamSubs();
+    fetchCashouts();
   }, []);
 
   const fetchStats = async () => {
@@ -380,6 +393,68 @@ const SubscriptionReports = () => {
     }
   };
 
+  const fetchCashouts = async () => {
+    try {
+      setCashoutsLoading(true);
+      const res = await api.get('/subscriptions/cashouts');
+      setCashouts(res.data || []);
+    } catch (err) {
+      console.error('Error fetching cashouts:', err);
+    } finally {
+      setCashoutsLoading(false);
+    }
+  };
+
+  const handleCreateCashout = async () => {
+    const amount = Number(cashoutAmount);
+    if (!amount || amount <= 0) {
+      setToast({ severity: 'error', message: 'Enter a valid amount' });
+      return;
+    }
+    if (!cashoutPhone.trim()) {
+      setToast({ severity: 'error', message: 'Enter a phone number' });
+      return;
+    }
+    // This fires a real, immediate mobile money transfer — confirm before sending.
+    if (!window.confirm(
+      `Send RWF ${amount.toLocaleString()} to ${cashoutPhone.trim()} (${cashoutProvider.toUpperCase()}) right now? This cannot be undone.`
+    )) {
+      return;
+    }
+    setCashoutSubmitting(true);
+    try {
+      await api.post('/subscriptions/cashouts', {
+        amount,
+        phoneNumber: cashoutPhone.trim(),
+        provider: cashoutProvider,
+        note: cashoutNote.trim()
+      });
+      setToast({ severity: 'success', message: 'Transfer sent and recorded' });
+      setCashoutAmount('');
+      setCashoutPhone('');
+      setCashoutNote('');
+      await Promise.all([fetchCashouts(), fetchStats()]);
+    } catch (err) {
+      setToast({ severity: 'error', message: err.response?.data?.message || 'Transfer failed' });
+    } finally {
+      setCashoutSubmitting(false);
+    }
+  };
+
+  const handleDeleteCashout = async (cashout) => {
+    if (!window.confirm(`Remove this RWF ${cashout.amount?.toLocaleString()} log entry? This only deletes the record — it does not reverse the transfer.`)) return;
+    setCashoutDeletingId(cashout._id);
+    try {
+      await api.delete(`/subscriptions/cashouts/${cashout._id}`);
+      setToast({ severity: 'success', message: 'Cashout record deleted' });
+      await Promise.all([fetchCashouts(), fetchStats()]);
+    } catch (err) {
+      setToast({ severity: 'error', message: err.response?.data?.message || 'Failed to delete cashout' });
+    } finally {
+      setCashoutDeletingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, textAlign: 'center' }}>
@@ -400,6 +475,134 @@ const SubscriptionReports = () => {
           <Typography color="error">{error}</Typography>
         </Box>
       )}
+
+      {/* Cashout — super admin withdraws platform revenue to their own phone */}
+      <Card elevation={3} sx={{ mb: 4 }}>
+        <CardContent>
+          <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <AttachMoney color="success" />
+            Cashout
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            All subscription revenue belongs to you. Recording a cashout sends that amount to the phone number below
+            via iTechPay immediately — this is a real transfer, not just a log entry.
+          </Typography>
+
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ p: 2, bgcolor: 'success.light', borderRadius: 2 }}>
+                <Typography variant="body2" color="text.secondary">Available Balance</Typography>
+                <Typography variant="h5" fontWeight="bold">
+                  RWF {(stats?.cashoutSummary?.availableBalance ?? 0).toLocaleString()}
+                </Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ p: 2, bgcolor: 'grey.200', borderRadius: 2 }}>
+                <Typography variant="body2" color="text.secondary">Total Cashed Out</Typography>
+                <Typography variant="h5" fontWeight="bold">
+                  RWF {(stats?.cashoutSummary?.totalCashedOut ?? 0).toLocaleString()}
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+
+          <Stack direction="row" spacing={1.5} sx={{ mb: 3, flexWrap: 'wrap', rowGap: 1.5 }} alignItems="flex-start">
+            <TextField
+              size="small"
+              label="Amount (RWF)"
+              type="number"
+              value={cashoutAmount}
+              onChange={(e) => setCashoutAmount(e.target.value)}
+              sx={{ minWidth: 160 }}
+            />
+            <TextField
+              size="small"
+              label="Phone number"
+              placeholder="+2507XXXXXXXX"
+              value={cashoutPhone}
+              onChange={(e) => setCashoutPhone(e.target.value)}
+              sx={{ minWidth: 200 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Provider</InputLabel>
+              <Select label="Provider" value={cashoutProvider} onChange={(e) => setCashoutProvider(e.target.value)}>
+                <MenuItem value="mtn">MTN MoMo</MenuItem>
+                <MenuItem value="airtel">Airtel Money</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              size="small"
+              label="Note (optional)"
+              value={cashoutNote}
+              onChange={(e) => setCashoutNote(e.target.value)}
+              sx={{ minWidth: 200, flexGrow: 1 }}
+            />
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<AttachMoney />}
+              disabled={cashoutSubmitting}
+              onClick={handleCreateCashout}
+            >
+              {cashoutSubmitting ? 'Sending…' : 'Send Cashout'}
+            </Button>
+          </Stack>
+
+          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Cashout History</Typography>
+          {cashoutsLoading ? (
+            <CircularProgress size={24} />
+          ) : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Date</TableCell>
+                    <TableCell align="right">Amount</TableCell>
+                    <TableCell>Phone Number</TableCell>
+                    <TableCell>Provider</TableCell>
+                    <TableCell>Note</TableCell>
+                    <TableCell>Recorded By</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {cashouts.map((c) => (
+                    <TableRow key={c._id}>
+                      <TableCell>{new Date(c.createdAt).toLocaleString()}</TableCell>
+                      <TableCell align="right">RWF {c.amount?.toLocaleString()}</TableCell>
+                      <TableCell>{c.phoneNumber}</TableCell>
+                      <TableCell sx={{ textTransform: 'capitalize' }}>{c.provider}</TableCell>
+                      <TableCell>{c.note || '-'}</TableCell>
+                      <TableCell>
+                        {c.requestedBy?.firstName} {c.requestedBy?.lastName}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          disabled={cashoutDeletingId === c._id}
+                          onClick={() => handleDeleteCashout(c)}
+                        >
+                          Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {cashouts.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">
+                        <Typography variant="body2" color="text.secondary">No cashouts recorded yet</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Pending Payments Needing Review */}
       <Card elevation={3} sx={{ mb: 4, border: pendingPayments.length > 0 ? '1px solid' : 'none', borderColor: 'warning.main' }}>

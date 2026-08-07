@@ -32,6 +32,7 @@ import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } from './DashboardShell';
 import StudentManagement from '../components/teacher/StudentManagement';
 import { FinancialSpreadsheetQuestion } from '../components/FinancialSpreadsheet';
+import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../components/shared/FinancialAnswerReview';
 import AIQuestionAssist from '../components/shared/AIQuestionAssist';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
 import usePlan from '../hooks/usePlan';
@@ -6489,15 +6490,10 @@ function ResultsSection({ results, exams = [] }) {
                       <Typography variant="body2" fontWeight="medium">{answer.question?.text || 'Question text not available'}</Typography>
                       
                       {/* Student's Answer */}
-                      {answer.question?.type === 'financial-spreadsheet' ? (
-                        <Box sx={{mt:1}}>
-                          <FinancialSpreadsheetQuestion
-                            question={answer.question}
-                            mode="grading"
-                            studentAnswer={answer.textAnswer || null}
-                            readOnly
-                          />
-                        </Box>
+                      {isFinancialSpreadsheetQuestion(answer.question) ? (
+                        // Shared with every other results view, so it also picks up the written
+                        // half of the answer and the correctAnswer fallback for older questions.
+                        <FinancialAnswerReview question={answer.question} answer={answer} height={320} />
                       ) : (
                       <Box sx={{mt:1,p:1,bgcolor:'#F8FAFC',borderRadius:1}}>
                         <Typography variant="caption" color="text.secondary" fontWeight={600}>Student's Answer:</Typography>

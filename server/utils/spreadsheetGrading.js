@@ -14,10 +14,16 @@
 function coerceTable(t) {
   if (!t || typeof t !== 'object') return null;
   if (Array.isArray(t.data)) {
+    // `formulas` (the raw "=SUM(B2:B10)" behind a value) and `givenColumns` (which columns the
+    // student receives pre-filled) are carried through untouched. Neither affects grading — only
+    // `data` is compared — but normalizeSpreadsheetField() re-serialises through here, so
+    // dropping them would silently discard a teacher's column setup and everyone's formulas.
     return {
       title: typeof t.title === 'string' ? t.title : '',
       headers: Array.isArray(t.headers) ? t.headers : [],
-      data: t.data
+      data: t.data,
+      ...(Array.isArray(t.formulas) && t.formulas.length ? { formulas: t.formulas } : {}),
+      ...(Array.isArray(t.givenColumns) ? { givenColumns: t.givenColumns } : {})
     };
   }
   const entries = Object.entries(t).filter(([key]) => !['headers', 'data', 'title'].includes(key));

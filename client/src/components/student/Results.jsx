@@ -86,7 +86,7 @@ import {
 import { styled } from '@mui/material/styles';
 import api from '../../services/api';
 import StudentLayout from './StudentLayout';
-import FinancialSpreadsheet from '../FinancialSpreadsheet';
+import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../shared/FinancialAnswerReview';
 
 // Google Play Icon SVG
 const GooglePlayIcon = () => (
@@ -722,22 +722,16 @@ const Results = () => {
         {/* ── Financial Spreadsheet ── */}
         {qType === 'financial-spreadsheet' && (
           <Box sx={{ mb: 2 }}>
-            <FinancialSpreadsheet
-              mode="grading"
-              questionData={{
-                ...answer.question,
-                // spreadsheetModelAnswer can be missing on older/edited questions;
-                // correctAnswer is always kept as a mirror of it at save time.
-                spreadsheetModelAnswer: answer.question?.spreadsheetModelAnswer || answer.question?.correctAnswer,
-              }}
-              studentAnswerRaw={answer.textAnswer}
-              height={320}
-            />
+            <FinancialAnswerReview question={answer.question} answer={answer} height={320} />
           </Box>
         )}
 
-        {/* ── Open-ended / Essay / Fill-in / Short answer ── */}
-        {(qType === 'open-ended' || qType === 'essay' || qType === 'fill-in-blank' || qType === 'short-answer') && (
+        {/* ── Open-ended / Essay / Fill-in / Short answer ──
+            Skipped when the question is answered entirely through its sub-questions: the parent
+            holds no answer of its own, so this rendered an empty box and a "Not provided" model
+            answer directly above the sub-question section that has the real content. */}
+        {(qType === 'open-ended' || qType === 'essay' || qType === 'fill-in-blank' || qType === 'short-answer')
+          && !(answer.question?.subQuestions?.length > 0) && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>
             <Box>
               <Typography sx={labelStyle}>Your Answer</Typography>
@@ -792,7 +786,13 @@ const Results = () => {
                         color={subResult.isCorrect ? 'success' : 'error'} size="small" sx={{ flexShrink: 0 }} />
                     )}
                   </Box>
-                  {subNotAnswered ? (
+                  {isFinancialSpreadsheetQuestion(subQ) ? (
+                    /* Both grids in one place. Printing subAnswer.textAnswer and
+                       subQ.correctAnswer as strings dumped the serialised sheets as JSON — the
+                       most common shape for these questions is a multi-part one, so this is the
+                       path a student actually lands on. */
+                    <FinancialAnswerReview question={subQ} answer={subAnswer} height={300} />
+                  ) : subNotAnswered ? (
                     <Box>
                       <Typography variant="body2" color="error.main" fontStyle="italic" sx={{ mb: 0.5 }}>Not answered</Typography>
                       {(subQ.correctAnswer || subResult?.correctedAnswer) && (
@@ -811,13 +811,16 @@ const Results = () => {
                           <strong>Correct answer:</strong> {String(subResult?.correctedAnswer || subQ.correctAnswer)}
                         </Typography>
                       )}
-                      {subResult?.feedback && (
-                        <Box sx={{ mt: 0.75, p: 1, bgcolor: alpha(theme.palette.primary.main, 0.06), borderRadius: 1, borderLeft: '3px solid', borderColor: 'primary.light' }}>
-                          <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'primary.dark', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            {subResult.feedback}
-                          </Typography>
-                        </Box>
-                      )}
+                    </Box>
+                  )}
+
+                  {/* Outside the branches above so the mark breakdown ("32/126 filled cells are
+                      correct") reaches spreadsheet and unanswered sub-questions too. */}
+                  {subResult?.feedback && (
+                    <Box sx={{ mt: 0.75, p: 1, bgcolor: alpha(theme.palette.primary.main, 0.06), borderRadius: 1, borderLeft: '3px solid', borderColor: 'primary.light' }}>
+                      <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'primary.dark', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                        {subResult.feedback}
+                      </Typography>
                     </Box>
                   )}
                 </Paper>
@@ -959,6 +962,13 @@ const Results = () => {
       ? Math.round((new Date(detailedResult.endTime) - new Date(detailedResult.startTime)) / 60000)
       : null;
 
+    // Retake availability, resolved server-side against the same rules the
+    // exam-start endpoint enforces, so the button never leads to a 403.
+    const retakeInfo = detailedResult.retakeInfo || {};
+    const retakeExamId = detailedResult.exam?._id;
+    const canRetake = !!retakeInfo.canRetake && !!retakeExamId;
+    const needsSubscriptionToRetake = !canRetake && !!retakeInfo.requiresSubscription;
+
     // ─── Build an overall study recommendation from section performance,
     // AI-flagged missing concepts, and unanswered questions ──────────────────
     const buildRecommendation = () => {
@@ -1088,6 +1098,22 @@ const Results = () => {
                   gap: { xs: 1, sm: 1.5 },
                   width: { xs: '100%', sm: 'auto' }
                 }}>
+                  {/* Retake CTA — solid white so it stands out from the other
+                      translucent header actions on the gradient */}
+                  {canRetake && (
+                    <Button variant="contained" component={RouterLink} to={`/student/exam/start/${retakeExamId}`}
+                      startIcon={<Refresh />} size={isMobile ? 'small' : 'medium'}
+                      sx={{ bgcolor: 'white', color: theme.palette.primary.dark, '&:hover': { bgcolor: 'rgba(255,255,255,0.88)' }, textTransform: 'none', fontWeight: 800, fontSize: { xs: '0.75rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>
+                      Retake Exam
+                    </Button>
+                  )}
+                  {needsSubscriptionToRetake && (
+                    <Button variant="contained" component={RouterLink} to="/student/subscriptions"
+                      startIcon={<Refresh />} size={isMobile ? 'small' : 'medium'}
+                      sx={{ bgcolor: 'white', color: theme.palette.warning.dark, '&:hover': { bgcolor: 'rgba(255,255,255,0.88)' }, textTransform: 'none', fontWeight: 800, fontSize: { xs: '0.75rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>
+                      Subscribe to Retake
+                    </Button>
+                  )}
                   <Button variant="contained" onClick={() => navigate('/student/results')}
                     startIcon={<ArrowBack />} size={isMobile ? 'small' : 'medium'}
                     sx={{ bgcolor: 'rgba(255,255,255,0.15)', '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' }, textTransform: 'none', fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>

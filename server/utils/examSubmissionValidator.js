@@ -134,7 +134,7 @@ const validateAnswerSubmission = (answerData, question) => {
     return { success: false, errors, warnings };
   }
 
-  const { questionId, selectedOption, textAnswer, questionType, matchingAnswers, orderingAnswer, dragDropAnswer } = answerData;
+  const { questionId, selectedOption, textAnswer, writtenAnswer, questionType, matchingAnswers, orderingAnswer, dragDropAnswer } = answerData;
 
   // Validate question ID
   if (!questionId) {
@@ -176,6 +176,19 @@ const validateAnswerSubmission = (answerData, question) => {
         errors.push('Drag-drop answer object is required for drag-drop questions');
       }
       break;
+
+    case 'financial-spreadsheet': {
+      // Two halves, either of which is a complete answer on its own: the grid (textAnswer, a JSON
+      // string of the student's tables) and the optional written explanation. A question can ask
+      // only for a comment, so an empty grid alongside written text is valid — it used to fall
+      // through to the default branch below and be rejected as "Text answer is required".
+      const hasGrid = textAnswer && textAnswer.toString().trim().length > 0;
+      const hasWritten = writtenAnswer && writtenAnswer.toString().trim().length > 0;
+      if (!hasGrid && !hasWritten) {
+        errors.push('A spreadsheet answer or a written answer is required for financial-spreadsheet questions');
+      }
+      break;
+    }
 
     case 'fill-in-blank':
     case 'open-ended':

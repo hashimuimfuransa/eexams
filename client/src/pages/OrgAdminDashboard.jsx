@@ -15,6 +15,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../components/shared/FinancialAnswerReview';
 import SearchableSelect from '../components/shared/SearchableSelect';
 import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
@@ -1302,6 +1303,13 @@ function ResultsSection({ results, resultsTotal, resultsPage, setResultsPage }) 
                                   </Box>
                                 </Box>
                                 
+                                {/* Financial spreadsheet: the sheet the student filled in, with the
+                                    correct sheet on its own tab. Rendered before the plain-text
+                                    branch below, which would print the serialised grid as JSON. */}
+                                {isFinancialSpreadsheetQuestion(ans.question) && (
+                                  <FinancialAnswerReview question={ans.question} answer={ans} height={300} />
+                                )}
+
                                 {/* Student's Answer for Open-Ended Questions */}
                                 {(ans.question?.type === 'open-ended' || ans.question?.type === 'short-answer' || ans.question?.type === 'essay') && (ans.textAnswer || ans.text) && (
                                   <Box sx={{ mt: 0.5, p: 1, bgcolor: '#F8FAFC', borderRadius: 1 }}>

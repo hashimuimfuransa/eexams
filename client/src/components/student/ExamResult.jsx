@@ -47,6 +47,7 @@ import {
 import api from '../../utils/api';
 import { formatDate } from '../../utils/formatters';
 import { useAuth } from '../../context/AuthContext';
+import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../shared/FinancialAnswerReview';
 
 // Google Play Icon SVG
 const GooglePlayIcon = () => (
@@ -475,7 +476,13 @@ const ExamResult = () => {
                         <Typography variant="body2" color="text.secondary" gutterBottom>
                           Your Answer:
                         </Typography>
-                        {question.type === 'multiple-choice' || question.type === 'true-false' ? (
+                        {isFinancialSpreadsheetQuestion(question) ? (
+                          // The grid and the correct grid, side by side in tabs — rendering this
+                          // answer's raw JSON as text told the student nothing.
+                          <Box sx={{ mb: 2 }}>
+                            <FinancialAnswerReview question={question} answer={answer} height={320} />
+                          </Box>
+                        ) : question.type === 'multiple-choice' || question.type === 'true-false' ? (
                           <Box
                             sx={{
                               p: 2,
@@ -537,8 +544,11 @@ const ExamResult = () => {
                           </Typography>
                         )}
 
-                        {/* Correct Answer (only shown if student's answer is incorrect) */}
-                        {!isCorrect && (
+                        {/* Correct Answer (only shown if student's answer is incorrect).
+                            Skipped for spreadsheets — the review above already carries the correct
+                            sheet on its own tab, and question.correctAnswer for this type is the
+                            serialised grid, which would print as raw JSON here. */}
+                        {!isCorrect && !isFinancialSpreadsheetQuestion(question) && (
                           <>
                             <Typography variant="body2" color="success.main" fontWeight="bold" gutterBottom>
                               Correct Answer:
@@ -646,10 +656,14 @@ const ExamResult = () => {
                                     </Box>
                                     {subAnswer?.answered ? (
                                       <Box sx={{ mt: 1 }}>
-                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                          <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
-                                        </Typography>
-                                        {subResult && !subResult.isCorrect && subResult.correctedAnswer && (
+                                        {isFinancialSpreadsheetQuestion(subQ) ? (
+                                          <FinancialAnswerReview question={subQ} answer={subAnswer} height={280} />
+                                        ) : (
+                                          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                            <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                          </Typography>
+                                        )}
+                                        {subResult && !subResult.isCorrect && subResult.correctedAnswer && !isFinancialSpreadsheetQuestion(subQ) && (
                                           <Typography variant="body2" color="success.main" sx={{ mb: 0.5 }}>
                                             <strong>Correct answer:</strong> {subResult.correctedAnswer}
                                           </Typography>
@@ -698,10 +712,14 @@ const ExamResult = () => {
                                     </Box>
                                     {subAnswer?.answered ? (
                                       <Box sx={{ mt: 1 }}>
-                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                          <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
-                                        </Typography>
-                                        {subResult && !isCorrect && subResult.correctedAnswer && (
+                                        {isFinancialSpreadsheetQuestion(subQ) ? (
+                                          <FinancialAnswerReview question={subQ} answer={subAnswer} height={280} />
+                                        ) : (
+                                          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                            <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                          </Typography>
+                                        )}
+                                        {subResult && !isCorrect && subResult.correctedAnswer && !isFinancialSpreadsheetQuestion(subQ) && (
                                           <Typography variant="body2" color="success.main" sx={{ mb: 0.5 }}>
                                             <strong>Correct answer:</strong> {subResult.correctedAnswer}
                                           </Typography>
@@ -991,7 +1009,11 @@ const ExamResult = () => {
                               <Typography variant="body2" color="text.secondary" gutterBottom>
                                 Your Answer:
                               </Typography>
-                              {question.type === 'multiple-choice' || question.type === 'true-false' ? (
+                              {isFinancialSpreadsheetQuestion(question) ? (
+                                <Box sx={{ mb: 2 }}>
+                                  <FinancialAnswerReview question={question} answer={answer} height={320} />
+                                </Box>
+                              ) : question.type === 'multiple-choice' || question.type === 'true-false' ? (
                                 <Box
                                   sx={{
                                     p: 2,
@@ -1043,8 +1065,9 @@ const ExamResult = () => {
                                 </Typography>
                               )}
 
-                              {/* Correct Answer (only shown if student's answer is incorrect) */}
-                              {!isCorrect && question.correctAnswer && (
+                              {/* Correct Answer (only shown if incorrect; spreadsheets carry
+                                  theirs on the review's own tab — see the block above). */}
+                              {!isCorrect && question.correctAnswer && !isFinancialSpreadsheetQuestion(question) && (
                                 <>
                                   <Typography variant="body2" color="success.main" fontWeight="bold" gutterBottom>
                                     Correct Answer:

@@ -248,10 +248,6 @@ const ExamInterface = () => {
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showTimeWarning, setShowTimeWarning] = useState(false);
   const openAnswerRef = useRef(null);
-  // Debounce timers for the optional written-answer text box on financial-spreadsheet
-  // questions, keyed by questionId (or sub-answer key) — see handleAnswerChange's
-  // 'financial-spreadsheet-written' case.
-  const writtenAnswerSaveTimers = useRef({});
 
   const [exam, setExam] = useState(null);
   const [session, setSession] = useState(null);
@@ -1667,7 +1663,21 @@ const ExamInterface = () => {
         const refAnswer = questionType === 'financial-spreadsheet' ? (currentAnswer?.textAnswer || '') : (openAnswerRef.current ? openAnswerRef.current() : '');
         const currentTextAnswer = (refAnswer && (typeof refAnswer === 'string' ? refAnswer.trim() : true)) ? refAnswer : (currentAnswer?.textAnswer || '');
         console.log(`🔍 Open-ended question: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
-        if (currentTextAnswer && currentTextAnswer.trim()) {
+        // A financial-spreadsheet question can be answered in the written box alone (the grid is
+        // optional scaffolding for some parts), and that written text rides along on the
+        // spreadsheet payload — so an empty grid must not skip the save.
+        const hasWrittenOnly = questionType === 'financial-spreadsheet'
+          && !currentTextAnswer?.trim()
+          && !!currentAnswer?.writtenAnswer?.trim();
+        if (hasWrittenOnly) {
+          try {
+            await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer || '', 'financial-spreadsheet');
+            console.log(`✅ Saved written-only financial-spreadsheet answer for ${currentQuestion._id}`);
+            if (isLastQuestion()) setLastQuestionSaved(true);
+          } catch (saveError) {
+            console.error('❌ Failed to save written-only spreadsheet answer:', saveError);
+          }
+        } else if (currentTextAnswer && currentTextAnswer.trim()) {
           try {
             // Save directly using the current answer from ref or state
             await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
@@ -2035,22 +2045,17 @@ const ExamInterface = () => {
         return;
 
       case 'financial-spreadsheet-written':
-        // The optional written answer alongside a financial-spreadsheet question's grid — kept
-        // in its own field since textAnswer above already holds the spreadsheet JSON. Debounced
-        // save (rather than relying on the navigate-away/pre-submit flush like the grid does)
-        // because a student may fill in ONLY this text box and never touch the grid at all.
+        // The optional written answer alongside a financial-spreadsheet question's grid — kept in
+        // its own field since textAnswer above already holds the spreadsheet JSON. Like the grid,
+        // it is held locally and flushed by handleNextQuestion / the pre-submit sweep. It used to
+        // autosave on a 1.2s debounce, but every save flips savedToServer, which put the grid into
+        // read-only mid-working — so typing a comment locked the spreadsheet the student was
+        // still filling in. handleNextQuestion now saves on a written answer alone, so nothing is
+        // lost by waiting.
         newAnswer.writtenAnswer = value;
         newAnswer.savedToServer = false;
         newAnswer.hasChanges = true;
         setAnswers(prev => ({ ...prev, [questionId]: newAnswer }));
-
-        if (writtenAnswerSaveTimers.current[questionId]) {
-          clearTimeout(writtenAnswerSaveTimers.current[questionId]);
-        }
-        writtenAnswerSaveTimers.current[questionId] = setTimeout(() => {
-          saveAnswerToServer(questionId, newAnswer.textAnswer || '', 'financial-spreadsheet', options)
-            .catch(err => console.error('Failed to autosave written answer:', err));
-        }, 1200);
         return;
       case 'fill-in-blank':
       case 'open-ended':
@@ -2104,10 +2109,16 @@ const ExamInterface = () => {
       // Use the provided type directly from exam data
       const actualType = type || question.type || 'open-ended';
 
+      // A financial-spreadsheet question can be answered in its written box alone, so an empty
+      // grid only counts as empty when there is no written answer riding along with it.
+      const writtenForSpreadsheet = actualType === 'financial-spreadsheet'
+        ? (answers[questionId]?.writtenAnswer || '').trim()
+        : '';
+
       // Validate value based on question type
       if (!value && actualType !== 'multiple-choice' && actualType !== 'true-false') {
         // For non-multiple choice questions, require some content
-        if (typeof value === 'string' && value.trim().length === 0) {
+        if (typeof value === 'string' && value.trim().length === 0 && !writtenForSpreadsheet) {
           throw new Error('Answer cannot be empty');
         }
       }
@@ -2369,8 +2380,10 @@ const ExamInterface = () => {
       Object.entries(answers).forEach(([questionId, answer]) => {
         const question = allQuestions.find(q => q._id === questionId);
         if (question && answer && (answer.hasChanges || !answer.savedToServer)) {
-          // Check if answer has content
+          // Check if answer has content. writtenAnswer counts: a financial-spreadsheet question
+          // can be answered entirely in its written box, and that no longer autosaves.
           const hasContent = answer.textAnswer?.trim() ||
+                           answer.writtenAnswer?.trim() ||
                            answer.selectedOption ||
                            answer.matchingAnswers ||
                            answer.orderingAnswer ||
@@ -2396,6 +2409,7 @@ const ExamInterface = () => {
 
         if (currentAnswer) {
           const hasContent = currentAnswer.textAnswer?.trim() ||
+                           currentAnswer.writtenAnswer?.trim() ||
                            currentAnswer.selectedOption ||
                            currentAnswer.matchingAnswers ||
                            currentAnswer.orderingAnswer ||
@@ -2422,6 +2436,7 @@ const ExamInterface = () => {
         if (!(answer.hasChanges || !answer.savedToServer)) return;
 
         const hasContent = answer.textAnswer?.trim() ||
+                         answer.writtenAnswer?.trim() ||
                          answer.selectedOption ||
                          answer.matchingAnswers ||
                          answer.orderingAnswer ||
@@ -2452,7 +2467,11 @@ const ExamInterface = () => {
             let valueToSave = null;
             let questionType = question.type;
 
-            if (answer.textAnswer?.trim()) {
+            if (questionType === 'financial-spreadsheet') {
+              // The grid may legitimately be empty while the written half is answered; the
+              // written text is attached to this payload by saveAnswerToServer.
+              valueToSave = answer.textAnswer?.trim() || '';
+            } else if (answer.textAnswer?.trim()) {
               valueToSave = answer.textAnswer.trim();
               questionType = questionType || 'open-ended';
             } else if (answer.selectedOption) {
@@ -4299,7 +4318,11 @@ const ExamInterface = () => {
                                 question={currentQuestion}
                                 mode="student"
                                 studentAnswer={answers[currentQuestion._id]?.textAnswer || null}
-                                readOnly={!!answers[currentQuestion._id]?.savedToServer}
+                                // Never locked mid-exam: a saved answer must stay editable so a
+                                // student can come back and revise it, the same decision already
+                                // made for open-ended questions below. Saving happens on
+                                // navigation, not on every keystroke.
+                                readOnly={false}
                                 onAnswerChange={(json) => {
                                   // FinancialSpreadsheet already serialises {data, headers} to a JSON string
                                   handleAnswerChange(currentQuestion._id, json, 'financial-spreadsheet');
@@ -4715,7 +4738,7 @@ const ExamInterface = () => {
                                       question={subQ}
                                       mode="student"
                                       studentAnswer={subAnswer?.textAnswer || null}
-                                      readOnly={!!subAnswer?.savedToServer}
+                                      readOnly={false} // stays editable after saving — see the main spreadsheet branch
                                       onAnswerChange={(json) => handleAnswerChange(
                                         subAnswerKey,
                                         json,

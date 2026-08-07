@@ -7,6 +7,7 @@ const Subscription = require('../models/Subscription');
 const emailService = require('../utils/emailService');
 const { freeExamMatchesUserSubLevel, subscriptionCoversExam, syncUserLevelFromSubscription } = require('../utils/subLevelAccess');
 const { generateOverallRecommendation } = require('../utils/resultRecommendation');
+const { SPREADSHEET_QUESTION_FIELDS } = require('../utils/resultQuestionFields');
 
 // @desc    Get available exams for student (level-scoped exam bank)
 // @route   GET /api/student/exams
@@ -462,13 +463,118 @@ const getStudentResults = async (req, res) => {
   }
 };
 
+// Works out whether a student can start another attempt at an exam they have
+// already completed, mirroring exactly what POST /exam/:id/start will accept:
+// validateExamAccess's grant/level/subscription rules plus the admin lock.
+// startExam itself imposes no extra retake limit — a completed result simply
+// falls through to a new attempt — so access IS retake availability here.
+//
+// Deliberately NOT gated on exam.allowRetake: that schema flag defaults to
+// false and no code path or admin screen ever sets it, so gating on it would
+// hide the button on every exam in the database while the API happily allows
+// the attempt. It's still reported for callers that want to show the flag.
+const buildRetakeInfo = async (exam, userId) => {
+  const info = {
+    allowRetake: !!exam?.allowRetake,
+    accessUnlocked: false,
+    canRetake: false,
+    requiresSubscription: false
+  };
+
+  if (!exam) return info;
+
+  const user = await User.findById(userId).populate('level');
+  if (!user) return info;
+
+  // Correct any drift between the student's selected level and their active
+  // subscription before gating on it, same as the exam-bank/start paths do.
+  const synced = await syncUserLevelFromSubscription(userId, user.level?._id, user.subLevel);
+  if (synced) {
+    user.level = synced.level;
+    user.subLevel = synced.subLevel;
+  }
+
+  // An explicit grant (teacher assignment / approved request) unlocks the exam
+  // regardless of level or subscription. A retake request only counts while its
+  // access code is unused — once spent, the retake it paid for is over.
+  const approvedRequests = await ExamRequest.find({
+    student: userId,
+    exam: exam._id,
+    status: 'approved'
+  }).select('isRetake accessCodeUsed').lean();
+
+  const hasApprovedRetake = approvedRequests.some(r => r.isRetake && !r.accessCodeUsed);
+  // Queried rather than populated onto the exam — the client has no business
+  // receiving the whole assignedTo roster just to render one button.
+  const hasLegacyGrant = approvedRequests.some(r => !r.isRetake || !r.accessCodeUsed) ||
+    !!(await Exam.exists({ _id: exam._id, assignedTo: userId }));
+
+  // Joining via a teacher's share link is a grant too — validateExamAccess lets
+  // it through, so the button must not tell these students to buy a plan.
+  const hasShareGrant = hasLegacyGrant ? false : !!(await SharedExam.exists({
+    exam: exam._id,
+    isActive: true,
+    students: {
+      $elemMatch: {
+        $or: [
+          { student: userId },
+          { studentId: userId },
+          ...(user.email ? [{ email: user.email.toLowerCase().trim() }] : [])
+        ]
+      }
+    }
+  }));
+
+  const hasDirectGrant = hasLegacyGrant || hasShareGrant;
+
+  // A student whose level moved on since taking this exam is refused by
+  // validateExamAccess before any subscription is even considered.
+  const levelMismatch = !!user.level && !!exam.level &&
+    exam.level.toString() !== user.level._id.toString();
+
+  if (hasDirectGrant) {
+    info.accessUnlocked = true;
+  } else if (levelMismatch) {
+    info.accessUnlocked = false;
+  } else {
+    const examSubscription = await Subscription.getActiveSubscriptionForExam(userId, exam._id);
+    if (examSubscription && examSubscription.isValid()) {
+      info.accessUnlocked = true;
+    } else {
+      const levelSubscription = user.level
+        ? await Subscription.getActiveSubscriptionForLevel(userId, user.level._id)
+        : null;
+      const hasLevelSubscription = !!(levelSubscription && levelSubscription.isValid() &&
+        subscriptionCoversExam(levelSubscription, exam));
+
+      // A free exam grants one attempt only — the student has already spent it
+      // on the result they're looking at, so a retake needs a subscription too.
+      info.accessUnlocked = exam.accessType === 'free'
+        ? freeExamMatchesUserSubLevel(exam, user) && hasLevelSubscription
+        : hasLevelSubscription;
+    }
+  }
+
+  const isLocked = hasDirectGrant ? false : !!exam.isLocked;
+
+  // An approved, unused retake request is a direct grant of one more attempt,
+  // so it stands on its own even past the admin lock.
+  info.canRetake = hasApprovedRetake || (info.accessUnlocked && !isLocked);
+  info.requiresSubscription = !info.canRetake && !isLocked;
+
+  return info;
+};
+
 // @desc    Get detailed result for a specific exam
 // @route   GET /api/student/results/:resultId
 // @access  Private/Student
 const getDetailedResult = async (req, res) => {
+  // Declared outside the try so the catch can still read it — otherwise any
+  // failure in here throws a second time on `startTime is not defined` and the
+  // real error never reaches the log or the client.
+  const startTime = Date.now();
   try {
     console.log(`🔍 Fetching detailed result for ID: ${req.params.resultId}, student: ${req.user._id}`);
-    const startTime = Date.now();
 
     // Validate the resultId
     if (!req.params.resultId || !req.params.resultId.match(/^[0-9a-fA-F]{24}$/)) {
@@ -525,12 +631,15 @@ const getDetailedResult = async (req, res) => {
     })
     .populate({
       path: 'answers.question',
-      select: 'text type options correctAnswer points section matchingPairs leftItems rightItems subQuestions subQuestionConfig imageUrl wordBank passage subsectionTitle subsection instructions sectionTitle itemsToOrder dragDropData explanation answerKey gradingCriteria keyPoints acceptableAnswers marks correctMatches spreadsheetTemplate spreadsheetModelAnswer',
+      // SPREADSHEET_QUESTION_FIELDS is appended so the written-answer half of a
+      // financial-spreadsheet question (prompt, model answer, marks) reaches the results view
+      // alongside the grid — previously only the two grid fields were selected.
+      select: `text type options correctAnswer points section matchingPairs leftItems rightItems subQuestions subQuestionConfig imageUrl wordBank passage subsectionTitle subsection instructions sectionTitle itemsToOrder dragDropData explanation answerKey gradingCriteria keyPoints acceptableAnswers marks correctMatches ${SPREADSHEET_QUESTION_FIELDS.join(' ')}`,
       options: { lean: true } // Use lean for better performance
     })
     .populate({
       path: 'exam',
-      select: 'title description timeLimit sections',
+      select: 'title description timeLimit sections allowRetake isLocked accessType level subLevel',
       options: { lean: true }
     })
     .lean(); // Use lean for the main query too
@@ -574,6 +683,15 @@ const getDetailedResult = async (req, res) => {
           console.error('Failed to persist overallRecommendation:', err.message)
         );
       }
+    }
+
+    // Tell the result page whether another attempt is available. Never let a
+    // failure here block the result itself — the page just hides the button.
+    try {
+      result.retakeInfo = await buildRetakeInfo(result.exam, req.user._id);
+    } catch (retakeError) {
+      console.error('Failed to resolve retake availability:', retakeError.message);
+      result.retakeInfo = { allowRetake: false, accessUnlocked: false, canRetake: false, requiresSubscription: false };
     }
 
     const endTime = Date.now();

@@ -16,6 +16,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../components/shared/FinancialAnswerReview';
 import SearchableSelect from '../components/shared/SearchableSelect';
 import { tokens, gradients, planColors as PLAN_COLORS } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
@@ -4414,6 +4415,13 @@ function StudentResultsSection({ searchQuery }) {
                       </Box>
                     </Box>
 
+                  {questionType === 'financial-spreadsheet' && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Spreadsheet answer:</Typography>
+                      <FinancialAnswerReview question={question} answer={answer} height={300} />
+                    </Box>
+                  )}
+
                   {questionType === 'multiple-choice' && options.length > 0 && (
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Options:</Typography>
@@ -4588,10 +4596,19 @@ function StudentResultsSection({ searchQuery }) {
                             </Box>
                             {subAnswer?.answered ? (
                               <Box sx={{ mt: 1 }}>
-                                <Typography variant="body2" sx={{ color: tokens.textMuted }}>
-                                  Your answer: {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
-                                </Typography>
-                                {subResult && !isCorrect && subResult.correctedAnswer && (
+                                {isFinancialSpreadsheetQuestion(question?.subQuestions?.[subIdx]) ? (
+                                  <FinancialAnswerReview
+                                    question={question.subQuestions[subIdx]}
+                                    answer={subAnswer}
+                                    height={260}
+                                  />
+                                ) : (
+                                  <Typography variant="body2" sx={{ color: tokens.textMuted }}>
+                                    Your answer: {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                  </Typography>
+                                )}
+                                {subResult && !isCorrect && subResult.correctedAnswer
+                                  && !isFinancialSpreadsheetQuestion(question?.subQuestions?.[subIdx]) && (
                                   <Typography variant="body2" sx={{ color: tokens.accent, mt: 0.5 }}>
                                     Correct answer: {subResult.correctedAnswer}
                                   </Typography>

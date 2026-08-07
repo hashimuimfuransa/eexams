@@ -24,6 +24,7 @@ import { CheckCircle, Cancel, Home } from '@mui/icons-material';
 import { Helmet } from 'react-helmet-async';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../components/shared/FinancialAnswerReview';
 
 const ExamResult = () => {
   const { resultId } = useParams();
@@ -178,21 +179,31 @@ const ExamResult = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {result.answers?.map((answer, idx) => (
-                  <TableRow key={idx} sx={{ '&:hover': { backgroundColor: '#F8FAFC' } }}>
+                {result.answers?.map((answer, idx) => {
+                  // A spreadsheet answer can't be summarised in a table cell — the sheet and the
+                  // correct sheet go in a full-width row underneath instead of dumping the
+                  // serialised grid into "Your Answer" as JSON.
+                  const isSpreadsheet = isFinancialSpreadsheetQuestion(answer.question);
+                  return (
+                  <React.Fragment key={idx}>
+                  <TableRow sx={{ '&:hover': { backgroundColor: '#F8FAFC' } }}>
                     <TableCell sx={{ maxWidth: 300 }}>
                       <Typography sx={{ fontSize: 14 }}>
-                        {idx + 1}. Question {idx + 1}
+                        {idx + 1}. {answer.question?.text
+                          ? String(answer.question.text).slice(0, 90)
+                          : `Question ${idx + 1}`}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography sx={{ fontSize: 14, color: '#64748b' }}>
-                        {answer.selectedOption || answer.textAnswer || 'Not answered'}
+                        {isSpreadsheet
+                          ? 'Spreadsheet — see below'
+                          : (answer.selectedOption || answer.textAnswer || 'Not answered')}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography sx={{ fontSize: 14, color: '#0CBD73', fontWeight: 600 }}>
-                        {answer.correctedAnswer || 'N/A'}
+                        {isSpreadsheet ? 'See below' : (answer.correctedAnswer || 'N/A')}
                       </Typography>
                     </TableCell>
                     <TableCell sx={{ textAlign: 'center' }}>
@@ -204,11 +215,20 @@ const ExamResult = () => {
                     </TableCell>
                     <TableCell sx={{ textAlign: 'right' }}>
                       <Typography sx={{ fontWeight: 700 }}>
-                        {answer.score}/1
+                        {answer.score}/{answer.question?.points ?? 1}
                       </Typography>
                     </TableCell>
                   </TableRow>
-                ))}
+                  {isSpreadsheet && (
+                    <TableRow>
+                      <TableCell colSpan={5} sx={{ py: 1, bgcolor: '#FAFAFA' }}>
+                        <FinancialAnswerReview question={answer.question} answer={answer} height={300} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </React.Fragment>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>

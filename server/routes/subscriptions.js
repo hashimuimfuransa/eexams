@@ -23,7 +23,8 @@ const {
   assignAccountPlan,
   createCashout,
   getCashouts,
-  deleteCashout
+  deleteCashout,
+  verifyCashoutPassword
 } = require('../controllers/subscriptionController');
 const auth = require('../middleware/auth');
 const { isSuperAdmin, isAdmin, isTeacher } = require('../middleware/role');
@@ -61,9 +62,10 @@ router.get('/stats/overview', isSuperAdmin, getSubscriptionStats);
 router.get('/account-plans/subscribers', isSuperAdmin, getAccountPlanSubscribers);
 router.post('/account-plans/assign', isSuperAdmin, assignAccountPlan);
 router.post('/account-plans/:userId/cancel', isSuperAdmin, cancelAccountPlanSubscription);
-// Manual cashout log — super admin records withdrawals of platform revenue
-// to their own mobile money number. No automated money movement (see
-// createCashout in the controller for why).
+// Cashout — super admin sends platform revenue to their own mobile money
+// number via iTechPay's transfer endpoint. verify-password is a step-up
+// auth gate the frontend calls before revealing the panel.
+router.post('/cashouts/verify-password', isSuperAdmin, verifyCashoutPassword);
 router.get('/cashouts', isSuperAdmin, getCashouts);
 router.post('/cashouts', isSuperAdmin, createCashout);
 router.delete('/cashouts/:id', isSuperAdmin, deleteCashout);

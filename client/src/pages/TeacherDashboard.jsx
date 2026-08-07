@@ -27,6 +27,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import SearchableSelect from '../components/shared/SearchableSelect';
 import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, W, getDynamicGreeting } from './DashboardShell';
 import StudentManagement from '../components/teacher/StudentManagement';
@@ -274,20 +275,17 @@ function ExamLevelAccessFields({ levels, level, subLevel, accessType, onChange, 
   return (
     <Grid container spacing={isXs ? 1.5 : 2} sx={{ mb: isXs ? 1.5 : 2 }}>
       <Grid item xs={12} sm={hasSubLevels ? 6 : 12} md={hasSubLevels ? 4 : (isEnterprise ? 6 : 12)}>
-        <FormControl fullWidth size="small">
-          <InputLabel>Level (optional)</InputLabel>
-          <Select
-            value={level || ''}
-            label="Level (optional)"
-            onChange={e => onChange({ level: e.target.value, subLevel: '' })}
-            sx={{ borderRadius: 2 }}
-          >
-            <MenuItem value=""><em>None</em></MenuItem>
-            {levels.map(lvl => (
-              <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        <SearchableSelect
+          label="Level (optional)"
+          value={level || ''}
+          onChange={value => onChange({ level: value, subLevel: '' })}
+          placeholder="Search levels..."
+          options={[
+            { value: '', label: 'None' },
+            ...levels.map(lvl => ({ value: lvl._id, label: lvl.name }))
+          ]}
+          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+        />
       </Grid>
       {hasSubLevels && (
         <Grid item xs={12} sm={6} md={isEnterprise ? 4 : 6}>
@@ -349,12 +347,14 @@ function ExamLevelAccessPanel({ exam, levels, saving, onSave, isEnterprise }) {
       <Typography fontWeight={700} sx={{ fontSize: 13, color: tokens.textSecondary, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Level & Access</Typography>
       <Grid container spacing={2} alignItems="center">
         <Grid item xs={12} sm={hasSubLevels ? 4 : (isEnterprise ? 6 : 12)}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Level</InputLabel>
-            <Select value={level} label="Level" onChange={e => { setLevel(e.target.value); setSubLevel(''); }} sx={{ borderRadius: 2, bgcolor: 'white' }}>
-              {levels.map(lvl => <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <SearchableSelect
+            label="Level"
+            value={level}
+            onChange={value => { setLevel(value); setSubLevel(''); }}
+            placeholder="Search levels..."
+            options={levels.map(lvl => ({ value: lvl._id, label: lvl.name }))}
+            sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
         </Grid>
         {hasSubLevels && (
           <Grid item xs={12} sm={isEnterprise ? 4 : 8}>
@@ -4529,20 +4529,17 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         </Grid>
         <Grid item xs={12} sm={6}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Level (optional)</InputLabel>
-            <Select
-              value={exam.level || ''}
-              label="Level (optional)"
-              onChange={e => setExam(p => ({ ...p, level: e.target.value, subLevel: '' }))}
-              sx={{ borderRadius: 2 }}
-            >
-              <MenuItem value=""><em>None</em></MenuItem>
-              {levels.map(lvl => (
-                <MenuItem key={lvl._id} value={lvl._id}>{lvl.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <SearchableSelect
+            label="Level (optional)"
+            value={exam.level || ''}
+            onChange={value => setExam(p => ({ ...p, level: value, subLevel: '' }))}
+            placeholder="Search levels..."
+            options={[
+              { value: '', label: 'None' },
+              ...levels.map(lvl => ({ value: lvl._id, label: lvl.name }))
+            ]}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
         </Grid>
         {(levels.find(l => l._id === exam.level)?.subLevels || []).filter(s => s.isActive).length > 0 && (
           <Grid item xs={12} sm={6}>
@@ -5653,13 +5650,19 @@ function StudentsSection() {
             <MenuItem value="blocked">Blocked</MenuItem>
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 130 }}>
-          <InputLabel sx={{ fontSize: 13 }}>Class</InputLabel>
-          <Select value={classFilter} onChange={e => setClassFilter(e.target.value)} label="Class" sx={{ borderRadius: 2, fontSize: 13 }}>
-            <MenuItem value="all">All Classes</MenuItem>
-            {uniqueClasses.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-          </Select>
-        </FormControl>
+        <SearchableSelect
+          label="Class"
+          value={classFilter}
+          onChange={value => setClassFilter(value || 'all')}
+          emptyValue="all"
+          placeholder="Search classes..."
+          options={[
+            { value: 'all', label: 'All Classes' },
+            ...uniqueClasses.map(c => ({ value: c, label: c }))
+          ]}
+          fullWidth={false}
+          sx={{ minWidth: 160, '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }}
+        />
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel sx={{ fontSize: 13 }}>Sort By</InputLabel>
           <Select value={sortBy} onChange={e => setSortBy(e.target.value)} label="Sort By" sx={{ borderRadius: 2, fontSize: 13 }}>
@@ -6223,14 +6226,18 @@ function ResultsSection({ results, exams = [] }) {
               />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <FormControl size="small" fullWidth>
-                <InputLabel sx={{fontSize:13}}>Exam</InputLabel>
-                <Select value={filterExam} onChange={e=>setFilterExam(e.target.value)} label="Exam"
-                  sx={{ borderRadius:2, fontSize:13 }}>
-                  <MenuItem value="all">All Exams</MenuItem>
-                  {uniqueExams.map(e=><MenuItem key={e._id} value={e._id} sx={{fontSize:13}}>{e.title}</MenuItem>)}
-                </Select>
-              </FormControl>
+              <SearchableSelect
+                label="Exam"
+                value={filterExam}
+                onChange={value=>setFilterExam(value || 'all')}
+                emptyValue="all"
+                placeholder="Type an exam name..."
+                options={[
+                  { value: 'all', label: 'All Exams' },
+                  ...uniqueExams.map(e=>({ value: e._id, label: e.title }))
+                ]}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }}
+              />
             </Grid>
             <Grid item xs={6} sm={3} md={1.5}>
               <FormControl size="small" fullWidth>
@@ -6836,14 +6843,14 @@ function _LeaderboardSection_DEAD_CODE_DO_NOT_USE({ exams = [] }) {
       <Paper elevation={0} sx={{ p:2.5, mb:2, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white' }}>
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} sm={6} md={4}>
-            <FormControl size="small" fullWidth>
-              <InputLabel sx={{ fontSize:13 }}>Select Exam</InputLabel>
-              <Select value={selectedExam} onChange={e => setSelectedExam(e.target.value)} label="Select Exam"
-                sx={{ borderRadius:2, fontSize:13 }}>
-                <MenuItem value="" sx={{ fontSize:13 }}>— Choose an exam —</MenuItem>
-                {exams.map(e => <MenuItem key={e._id} value={e._id} sx={{ fontSize:13 }}>{e.title}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <SearchableSelect
+              label="Select Exam"
+              value={selectedExam}
+              onChange={value => setSelectedExam(value)}
+              placeholder="Type an exam name..."
+              options={exams.map(e => ({ value: e._id, label: e.title }))}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius:2, fontSize:13 } }}
+            />
           </Grid>
           {selectedExam && (
             <>
@@ -8114,20 +8121,19 @@ function TemplatesSection({ exams, setExams, setActiveSection }) {
               }}
               sx={{ flexGrow: 1, minWidth: 200 }}
             />
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Level</InputLabel>
-              <Select
-                value={audienceFilter}
-                label="Level"
-                onChange={(e) => setAudienceFilter(e.target.value)}
-                sx={{ borderRadius: 2 }}
-              >
-                <MenuItem value="all">All Levels</MenuItem>
-                {uniqueAudiences.map(audience => (
-                  <MenuItem key={audience} value={audience}>{audience}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <SearchableSelect
+              label="Level"
+              value={audienceFilter}
+              onChange={(value) => setAudienceFilter(value || 'all')}
+              emptyValue="all"
+              placeholder="Search levels..."
+              options={[
+                { value: 'all', label: 'All Levels' },
+                ...uniqueAudiences.map(audience => ({ value: audience, label: audience }))
+              ]}
+              fullWidth={false}
+              sx={{ minWidth: 180, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
           </Paper>
 
           {loadingQB ? (
@@ -8218,14 +8224,17 @@ function TemplatesSection({ exams, setExams, setActiveSection }) {
           <Typography sx={{ color: tokens.textMuted, mb: 2, fontSize: 13.5, fontFamily: "DM Sans,sans-serif" }}>
             Select an exam to save as a reusable template. The original exam will not be changed.
           </Typography>
-          <FormControl fullWidth size="small">
-            <InputLabel>Select Exam</InputLabel>
-            <Select value={selectedExamId} label="Select Exam" onChange={e => setSelectedExamId(e.target.value)} sx={{ borderRadius: 2 }}>
-              {exams.filter(e => e.status !== 'template').map(e => (
-                <MenuItem key={e._id} value={e._id}>{e.title} <Typography component="span" variant="caption" sx={{ ml: 1, color: tokens.textMuted }}>({e.status})</Typography></MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <SearchableSelect
+            label="Select Exam"
+            value={selectedExamId}
+            onChange={value => setSelectedExamId(value)}
+            placeholder="Type an exam name..."
+            options={exams.filter(e => e.status !== 'template').map(e => ({
+              value: e._id,
+              label: `${e.title} (${e.status})`
+            }))}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => setSaveDialog(false)} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Container,
   Typography,
@@ -49,6 +49,7 @@ import {
   ArrowForward
 } from '@mui/icons-material';
 import api from '../services/api';
+import SearchableSelect from './shared/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { formatPlanDuration } from '../utils/planUtils';
 
@@ -184,18 +185,58 @@ const SubscriptionPurchase = () => {
   const [activeSubscriptionTimeLeft, setActiveSubscriptionTimeLeft] = useState(null);
   const [activeStep, setActiveStep] = useState(STEP_PLAN);
 
+  const [searchParams] = useSearchParams();
+
   useEffect(() => {
     if (!user?.level) {
       navigate('/student/dashboard');
       return;
     }
-    setFilterLevelId(user.level._id);
-    setFilterSubLevel(user.subLevel || '');
+    // Deep link from the exam bank ("Subscribe Now" on a locked exam) — start
+    // the student on that exam's level rather than their profile default.
+    const examIdParam = searchParams.get('examId');
+    const levelIdParam = searchParams.get('levelId');
+    const subLevelParam = searchParams.get('subLevel');
+
+    setFilterLevelId(levelIdParam || user.level._id);
+    setFilterSubLevel(subLevelParam || user.subLevel || '');
     fetchAllLevelPlans();
     fetchLevelsList();
-    fetchExamOptions();
     fetchActiveSubscription();
+
+    // Exam options must land before preselecting, so the dropdown can show
+    // the chosen exam instead of an empty box.
+    (async () => {
+      await fetchExamOptions();
+      if (examIdParam) preselectExamFromLink(examIdParam);
+    })();
   }, [user]);
+
+  // An exam is only preselected when it can actually be bought on its own.
+  // If it has no exam-scoped plans, the student stays on the Whole Level tab,
+  // already filtered to that exam's level — which is what unlocks it.
+  const preselectExamFromLink = async (examId) => {
+    try {
+      const [plansRes, examRes] = await Promise.all([
+        api.get(`/subscription-plans/exam/${examId}/active`),
+        api.get(`/marketplace/exams/${examId}`).catch(() => null)
+      ]);
+      const examPlans = plansRes.data || [];
+      if (examPlans.length === 0) return;
+
+      const title = examRes?.data?.title;
+      if (title) {
+        setExamOptions(prev => (
+          prev.some(e => e._id === examId) ? prev : [...prev, { _id: examId, title }]
+        ));
+      }
+      setPlanScope('exam');
+      setSelectedExamId(examId);
+      setPlans(examPlans);
+    } catch (err) {
+      console.error('Error preselecting exam from link:', err);
+    }
+  };
 
   const fetchActiveSubscription = async () => {
     try {
@@ -798,26 +839,20 @@ const SubscriptionPurchase = () => {
 
           {planScope === 'exam' && (
             <Box sx={{ maxWidth: 480, mx: 'auto', mb: { xs: 3, sm: 4 } }}>
-              <FormControl fullWidth>
-                <InputLabel>Choose an exam</InputLabel>
-                <Select
-                  value={selectedExamId}
-                  label="Choose an exam"
-                  onChange={(e) => handleExamSelect(e.target.value)}
-                >
-                  {examOptionsLoading && (
-                    <MenuItem value="" disabled>Loading exams...</MenuItem>
-                  )}
-                  {!examOptionsLoading && examOptions.length === 0 && (
-                    <MenuItem value="" disabled>No subscription-only exams available for your level</MenuItem>
-                  )}
-                  {examOptions.map((exam) => (
-                    <MenuItem key={exam._id} value={exam._id}>
-                      {exam.title}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <SearchableSelect
+                label="Choose an exam"
+                size="medium"
+                value={selectedExamId}
+                onChange={handleExamSelect}
+                loading={examOptionsLoading}
+                options={examOptions.map((exam) => ({ value: exam._id, label: exam.title }))}
+                placeholder="Type an exam name..."
+                noOptionsText={
+                  examOptionsLoading
+                    ? 'Loading exams...'
+                    : 'No subscription-only exams available for your level'
+                }
+              />
             </Box>
           )}
 
@@ -831,20 +866,16 @@ const SubscriptionPurchase = () => {
               </Box>
               <Grid container spacing={1.5}>
                 <Grid item xs={6} sm={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Level</InputLabel>
-                    <Select
-                      value={filterLevelId}
-                      label="Level"
-                      onChange={(e) => { setFilterLevelId(e.target.value); setFilterSubLevel(''); }}
-                    >
-                      {levelsList.map((lvl) => (
-                        <MenuItem key={lvl._id} value={lvl._id}>
-                          {lvl.name}{lvl._id === user?.level?._id ? ' (Your level)' : ''}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect
+                    label="Level"
+                    value={filterLevelId}
+                    onChange={(value) => { setFilterLevelId(value); setFilterSubLevel(''); }}
+                    options={levelsList.map((lvl) => ({
+                      value: lvl._id,
+                      label: `${lvl.name}${lvl._id === user?.level?._id ? ' (Your level)' : ''}`
+                    }))}
+                    placeholder="Search levels..."
+                  />
                 </Grid>
                 <Grid item xs={6} sm={3}>
                   <FormControl fullWidth size="small" disabled={availableFilterSubLevels.length === 0}>

@@ -1215,6 +1215,32 @@ const getSubscriptionStats = async (req, res) => {
   }
 };
 
+// @desc    Step-up auth gate for the Cashout panel — re-checks the logged-in
+//          super admin's password before the frontend reveals a panel that
+//          can send real money. Does not issue a new token or session; it's
+//          a UI unlock, not a re-login.
+// @route   POST /api/subscriptions/cashouts/verify-password
+// @access  Private/SuperAdmin
+const verifyCashoutPassword = async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required' });
+    }
+
+    const user = await User.findById(req.user._id);
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Incorrect password' });
+    }
+
+    res.json({ verified: true });
+  } catch (error) {
+    console.error('verifyCashoutPassword error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Cash out platform revenue by transferring it to the super admin's
 //          mobile money number via iTechPay's /api/transfer payout endpoint
 //          (itecPayment.transferToPhone). A Cashout record is only written
@@ -1536,5 +1562,6 @@ module.exports = {
   assignAccountPlan,
   createCashout,
   getCashouts,
-  deleteCashout
+  deleteCashout,
+  verifyCashoutPassword
 };

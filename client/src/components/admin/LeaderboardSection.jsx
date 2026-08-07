@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { EmojiEvents, Leaderboard as LeaderboardIcon, Search, Download } from '@mui/icons-material';
 import api from '../../services/api';
+import SearchableSelect from '../shared/SearchableSelect';
 import { tokens } from '../../pages/dashboardTokens';
 
 export default function LeaderboardSection({ exams: examsProp = [], systemWide = false }) {
@@ -307,14 +308,18 @@ export default function LeaderboardSection({ exams: examsProp = [], systemWide =
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={4} md={2}>
-                <FormControl size="small" fullWidth>
-                  <InputLabel sx={{ fontSize:13 }}>Class</InputLabel>
-                  <Select value={filterClass} onChange={e => setFilterClass(e.target.value)} label="Class"
-                    sx={{ borderRadius:2, fontSize:13 }}>
-                    <MenuItem value="all" sx={{ fontSize:13 }}>All</MenuItem>
-                    {uniqueClasses.map(c => <MenuItem key={c} value={c} sx={{ fontSize:13 }}>{c}</MenuItem>)}
-                  </Select>
-                </FormControl>
+                <SearchableSelect
+                  label="Class"
+                  value={filterClass}
+                  onChange={value => setFilterClass(value || 'all')}
+                  emptyValue="all"
+                  placeholder="Search classes..."
+                  options={[
+                    { value: 'all', label: 'All' },
+                    ...uniqueClasses.map(c => ({ value: c, label: c }))
+                  ]}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }}
+                />
               </Grid>
             </>
           )}

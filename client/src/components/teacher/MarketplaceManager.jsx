@@ -37,6 +37,7 @@ import {
 } from '@mui/material';
 import { Check, X, Phone, Email, Person, Refresh, ContentCopy, Delete, Add, Edit, Visibility, Upgrade, Assessment, TrendingUp } from '@mui/icons-material';
 import api from '../../services/api';
+import SearchableSelect from '../shared/SearchableSelect';
 import usePlan from '../../hooks/usePlan';
 
 const MarketplaceManager = ({ exam }) => {
@@ -429,74 +430,58 @@ const MarketplaceManager = ({ exam }) => {
 
             {/* Level Selection */}
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel id="level-select-label">Level / Target Audience</InputLabel>
-                <Select
-                  labelId="level-select-label"
-                  value={settings.levelId ? String(settings.levelId) : ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    console.log('[DEBUG] Select onChange:', { value });
-                    if (value === 'create_new') {
-                      setNewLevelDialog({ open: true, name: '', description: '', subLevels: [] });
-                    } else {
-                      handleSettingsChange('levelId', value);
-                      handleSettingsChange('subLevel', ''); // Reset sub-level when level changes
-                      // Update targetAudience to match level name
-                      const selectedLevel = levels.find(l => String(l._id) === value);
-                      console.log('[DEBUG] Selected level from onChange:', selectedLevel);
-                      if (selectedLevel) {
-                        handleSettingsChange('targetAudience', selectedLevel.name);
-                      }
-                    }
-                  }}
-                  renderValue={(selected) => {
-                    console.log('[DEBUG] renderValue called:', { selected, levelsCount: levels.length });
-                    if (!selected) return <em>Select a level</em>;
-                    const selectedLevel = levels.find(l => String(l._id) === selected);
-                    console.log('[DEBUG] renderValue found level:', selectedLevel);
-                    return selectedLevel ? selectedLevel.name : <em>Select a level</em>;
-                  }}
-                  label="Level / Target Audience"
-                  sx={{ borderRadius: 2 }}
-                  disabled={loadingLevels}
-                  endAdornment={loadingLevels ? <CircularProgress size={20} sx={{ mr: 2 }} /> : null}
-                >
-                  <MenuItem value="">
-                    <em>Select a level</em>
-                  </MenuItem>
-                  {levels.map((level) => (
-                    <MenuItem
-                      key={String(level._id)}
-                      value={String(level._id)}
-                      onClick={() => {
-                        console.log('[DEBUG] MenuItem clicked:', { levelId: level._id, levelName: level.name });
-                        handleSettingsChange('levelId', String(level._id));
-                        handleSettingsChange('subLevel', '');
-                        handleSettingsChange('targetAudience', level.name);
-                      }}
-                    >
+              <SearchableSelect
+                label="Level / Target Audience"
+                size="medium"
+                value={settings.levelId ? String(settings.levelId) : ''}
+                disabled={loadingLevels}
+                loading={loadingLevels}
+                placeholder="Search levels..."
+                onChange={(value) => {
+                  if (value === 'create_new') {
+                    setNewLevelDialog({ open: true, name: '', description: '', subLevels: [] });
+                    return;
+                  }
+                  handleSettingsChange('levelId', value);
+                  handleSettingsChange('subLevel', ''); // Reset sub-level when level changes
+                  // Update targetAudience to match level name
+                  const selectedLevel = levels.find(l => String(l._id) === value);
+                  handleSettingsChange('targetAudience', selectedLevel ? selectedLevel.name : '');
+                }}
+                options={[
+                  ...levels.map((level) => ({
+                    value: String(level._id),
+                    label: level.name,
+                    subLevelCount: level.subLevels?.filter(s => s.isActive).length || 0,
+                    description: level.description
+                  })),
+                  { value: 'create_new', label: 'Create New Level', isCreate: true }
+                ]}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props} key={option.value}>
+                    {option.isCreate ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', color: '#0CBD73', fontWeight: 600 }}>
+                        <Add sx={{ fontSize: 18, mr: 0.5 }} />
+                        {option.label}
+                      </Box>
+                    ) : (
                       <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                        <span>{level.name}</span>
-                        {level.subLevels?.length > 0 && (
+                        <span>{option.label}</span>
+                        {option.subLevelCount > 0 && (
                           <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73' }}>
-                            ({level.subLevels.filter(s => s.isActive).length} sub-levels)
+                            ({option.subLevelCount} sub-levels)
                           </Typography>
                         )}
-                        {level.description && !level.subLevels?.length && (
+                        {option.description && !option.subLevelCount && (
                           <Typography component="span" variant="caption" sx={{ ml: 1, color: '#64748B' }}>
-                            ({level.description})
+                            ({option.description})
                           </Typography>
                         )}
                       </Box>
-                    </MenuItem>
-                  ))}
-                  <MenuItem value="create_new" sx={{ color: '#0CBD73', fontWeight: 600 }}>
-                    <Add sx={{ fontSize: 18, mr: 0.5 }} />
-                    Create New Level
-                  </MenuItem>
-                </Select>
-              </FormControl>
+                    )}
+                  </Box>
+                )}
+              />
               <Typography variant="caption" sx={{ color: '#64748B', mt: 0.5, display: 'block' }}>
                 Select an existing level or create a new one to avoid duplicates
               </Typography>

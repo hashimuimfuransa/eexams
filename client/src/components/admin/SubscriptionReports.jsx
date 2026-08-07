@@ -28,7 +28,11 @@ import {
   Collapse,
   IconButton,
   Tabs,
-  Tab
+  Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Assessment,
@@ -46,9 +50,12 @@ import {
   Search,
   FilterAltOff,
   ExpandMore,
-  ExpandLess
+  ExpandLess,
+  Lock,
+  LockOpen
 } from '@mui/icons-material';
 import api from '../../services/api';
+import SearchableSelect from '../shared/SearchableSelect';
 
 // Renders the org/individual-teacher account-plan report block: summary
 // counts, revenue by tier, and the most recent completed purchases. These
@@ -194,6 +201,15 @@ const SubscriptionReports = () => {
   const [cashoutSubmitting, setCashoutSubmitting] = useState(false);
   const [cashoutDeletingId, setCashoutDeletingId] = useState(null);
 
+  // Cashout panel is hidden behind a password re-entry gate — it can send
+  // real money, so it stays locked until the super admin confirms their
+  // password again, even though they're already logged in.
+  const [cashoutUnlocked, setCashoutUnlocked] = useState(false);
+  const [cashoutPasswordDialogOpen, setCashoutPasswordDialogOpen] = useState(false);
+  const [cashoutPasswordInput, setCashoutPasswordInput] = useState('');
+  const [cashoutPasswordError, setCashoutPasswordError] = useState('');
+  const [cashoutVerifying, setCashoutVerifying] = useState(false);
+
   // Search + filters for the Manage Subscribers table
   const [subscriberSearch, setSubscriberSearch] = useState('');
   const [subscriberTypeFilter, setSubscriberTypeFilter] = useState('all');
@@ -272,7 +288,7 @@ const SubscriptionReports = () => {
     fetchPendingPayments();
     fetchSubscribers();
     fetchExamSubs();
-    fetchCashouts();
+    // Cashout history is only fetched once the password gate is unlocked.
   }, []);
 
   const fetchStats = async () => {
@@ -393,6 +409,26 @@ const SubscriptionReports = () => {
     }
   };
 
+  const handleUnlockCashout = async () => {
+    if (!cashoutPasswordInput) {
+      setCashoutPasswordError('Enter your password');
+      return;
+    }
+    setCashoutVerifying(true);
+    setCashoutPasswordError('');
+    try {
+      await api.post('/subscriptions/cashouts/verify-password', { password: cashoutPasswordInput });
+      setCashoutUnlocked(true);
+      setCashoutPasswordDialogOpen(false);
+      setCashoutPasswordInput('');
+      fetchCashouts();
+    } catch (err) {
+      setCashoutPasswordError(err.response?.data?.message || 'Incorrect password');
+    } finally {
+      setCashoutVerifying(false);
+    }
+  };
+
   const fetchCashouts = async () => {
     try {
       setCashoutsLoading(true);
@@ -476,130 +512,152 @@ const SubscriptionReports = () => {
         </Box>
       )}
 
-      {/* Cashout — super admin withdraws platform revenue to their own phone */}
+      {/* Cashout — super admin withdraws platform revenue to their own phone.
+          Hidden behind a password re-entry gate since it sends real money. */}
       <Card elevation={3} sx={{ mb: 4 }}>
         <CardContent>
-          <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <AttachMoney color="success" />
-            Cashout
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            All subscription revenue belongs to you. Recording a cashout sends that amount to the phone number below
-            via iTechPay immediately — this is a real transfer, not just a log entry.
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {cashoutUnlocked ? <LockOpen color="success" /> : <Lock color="action" />}
+              Cashout
+            </Typography>
+            {!cashoutUnlocked && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Lock />}
+                onClick={() => { setCashoutPasswordError(''); setCashoutPasswordDialogOpen(true); }}
+              >
+                Unlock
+              </Button>
+            )}
+          </Box>
 
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={6}>
-              <Box sx={{ p: 2, bgcolor: 'success.light', borderRadius: 2 }}>
-                <Typography variant="body2" color="text.secondary">Available Balance</Typography>
-                <Typography variant="h5" fontWeight="bold">
-                  RWF {(stats?.cashoutSummary?.availableBalance ?? 0).toLocaleString()}
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Box sx={{ p: 2, bgcolor: 'grey.200', borderRadius: 2 }}>
-                <Typography variant="body2" color="text.secondary">Total Cashed Out</Typography>
-                <Typography variant="h5" fontWeight="bold">
-                  RWF {(stats?.cashoutSummary?.totalCashedOut ?? 0).toLocaleString()}
-                </Typography>
-              </Box>
-            </Grid>
-          </Grid>
-
-          <Stack direction="row" spacing={1.5} sx={{ mb: 3, flexWrap: 'wrap', rowGap: 1.5 }} alignItems="flex-start">
-            <TextField
-              size="small"
-              label="Amount (RWF)"
-              type="number"
-              value={cashoutAmount}
-              onChange={(e) => setCashoutAmount(e.target.value)}
-              sx={{ minWidth: 160 }}
-            />
-            <TextField
-              size="small"
-              label="Phone number"
-              placeholder="+2507XXXXXXXX"
-              value={cashoutPhone}
-              onChange={(e) => setCashoutPhone(e.target.value)}
-              sx={{ minWidth: 200 }}
-            />
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <InputLabel>Provider</InputLabel>
-              <Select label="Provider" value={cashoutProvider} onChange={(e) => setCashoutProvider(e.target.value)}>
-                <MenuItem value="mtn">MTN MoMo</MenuItem>
-                <MenuItem value="airtel">Airtel Money</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              size="small"
-              label="Note (optional)"
-              value={cashoutNote}
-              onChange={(e) => setCashoutNote(e.target.value)}
-              sx={{ minWidth: 200, flexGrow: 1 }}
-            />
-            <Button
-              variant="contained"
-              color="success"
-              startIcon={<AttachMoney />}
-              disabled={cashoutSubmitting}
-              onClick={handleCreateCashout}
-            >
-              {cashoutSubmitting ? 'Sending…' : 'Send Cashout'}
-            </Button>
-          </Stack>
-
-          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Cashout History</Typography>
-          {cashoutsLoading ? (
-            <CircularProgress size={24} />
+          {!cashoutUnlocked ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Hidden for security — this panel sends real money. Re-enter your password to view and use it.
+            </Typography>
           ) : (
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Date</TableCell>
-                    <TableCell align="right">Amount</TableCell>
-                    <TableCell>Phone Number</TableCell>
-                    <TableCell>Provider</TableCell>
-                    <TableCell>Note</TableCell>
-                    <TableCell>Recorded By</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {cashouts.map((c) => (
-                    <TableRow key={c._id}>
-                      <TableCell>{new Date(c.createdAt).toLocaleString()}</TableCell>
-                      <TableCell align="right">RWF {c.amount?.toLocaleString()}</TableCell>
-                      <TableCell>{c.phoneNumber}</TableCell>
-                      <TableCell sx={{ textTransform: 'capitalize' }}>{c.provider}</TableCell>
-                      <TableCell>{c.note || '-'}</TableCell>
-                      <TableCell>
-                        {c.requestedBy?.firstName} {c.requestedBy?.lastName}
-                      </TableCell>
-                      <TableCell align="right">
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="error"
-                          disabled={cashoutDeletingId === c._id}
-                          onClick={() => handleDeleteCashout(c)}
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {cashouts.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} align="center">
-                        <Typography variant="body2" color="text.secondary">No cashouts recorded yet</Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+                All subscription revenue belongs to you. Recording a cashout sends that amount to the phone number
+                below via iTechPay immediately — this is a real transfer, not just a log entry.
+              </Typography>
+
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ p: 2, bgcolor: 'success.light', borderRadius: 2 }}>
+                    <Typography variant="body2" color="text.secondary">Available Balance</Typography>
+                    <Typography variant="h5" fontWeight="bold">
+                      RWF {(stats?.cashoutSummary?.availableBalance ?? 0).toLocaleString()}
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ p: 2, bgcolor: 'grey.200', borderRadius: 2 }}>
+                    <Typography variant="body2" color="text.secondary">Total Cashed Out</Typography>
+                    <Typography variant="h5" fontWeight="bold">
+                      RWF {(stats?.cashoutSummary?.totalCashedOut ?? 0).toLocaleString()}
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+
+              <Stack direction="row" spacing={1.5} sx={{ mb: 3, flexWrap: 'wrap', rowGap: 1.5 }} alignItems="flex-start">
+                <TextField
+                  size="small"
+                  label="Amount (RWF)"
+                  type="number"
+                  value={cashoutAmount}
+                  onChange={(e) => setCashoutAmount(e.target.value)}
+                  sx={{ minWidth: 160 }}
+                />
+                <TextField
+                  size="small"
+                  label="Phone number"
+                  placeholder="+2507XXXXXXXX"
+                  value={cashoutPhone}
+                  onChange={(e) => setCashoutPhone(e.target.value)}
+                  sx={{ minWidth: 200 }}
+                />
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel>Provider</InputLabel>
+                  <Select label="Provider" value={cashoutProvider} onChange={(e) => setCashoutProvider(e.target.value)}>
+                    <MenuItem value="mtn">MTN MoMo</MenuItem>
+                    <MenuItem value="airtel">Airtel Money</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  label="Note (optional)"
+                  value={cashoutNote}
+                  onChange={(e) => setCashoutNote(e.target.value)}
+                  sx={{ minWidth: 200, flexGrow: 1 }}
+                />
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<AttachMoney />}
+                  disabled={cashoutSubmitting}
+                  onClick={handleCreateCashout}
+                >
+                  {cashoutSubmitting ? 'Sending…' : 'Send Cashout'}
+                </Button>
+              </Stack>
+
+              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Cashout History</Typography>
+              {cashoutsLoading ? (
+                <CircularProgress size={24} />
+              ) : (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Date</TableCell>
+                        <TableCell align="right">Amount</TableCell>
+                        <TableCell>Phone Number</TableCell>
+                        <TableCell>Provider</TableCell>
+                        <TableCell>Note</TableCell>
+                        <TableCell>Recorded By</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {cashouts.map((c) => (
+                        <TableRow key={c._id}>
+                          <TableCell>{new Date(c.createdAt).toLocaleString()}</TableCell>
+                          <TableCell align="right">RWF {c.amount?.toLocaleString()}</TableCell>
+                          <TableCell>{c.phoneNumber}</TableCell>
+                          <TableCell sx={{ textTransform: 'capitalize' }}>{c.provider}</TableCell>
+                          <TableCell>{c.note || '-'}</TableCell>
+                          <TableCell>
+                            {c.requestedBy?.firstName} {c.requestedBy?.lastName}
+                          </TableCell>
+                          <TableCell align="right">
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              disabled={cashoutDeletingId === c._id}
+                              onClick={() => handleDeleteCashout(c)}
+                            >
+                              Delete
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {cashouts.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} align="center">
+                            <Typography variant="body2" color="text.secondary">No cashouts recorded yet</Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -892,15 +950,19 @@ const SubscriptionReports = () => {
                       )
                     }}
                   />
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <InputLabel>Level</InputLabel>
-                    <Select label="Level" value={examLevelFilter} onChange={(e) => setExamLevelFilter(e.target.value)}>
-                      <MenuItem value="all">All levels</MenuItem>
-                      {examLevelOptions.map((name) => (
-                        <MenuItem key={name} value={name}>{name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect
+                    label="Level"
+                    value={examLevelFilter}
+                    onChange={(value) => setExamLevelFilter(value || 'all')}
+                    emptyValue="all"
+                    options={[
+                      { value: 'all', label: 'All levels' },
+                      ...examLevelOptions.map((name) => ({ value: name, label: name }))
+                    ]}
+                    placeholder="Search levels..."
+                    fullWidth={false}
+                    sx={{ minWidth: 160 }}
+                  />
                   <FormControl size="small" sx={{ minWidth: 140 }}>
                     <InputLabel>Status</InputLabel>
                     <Select label="Status" value={examStatusFilter} onChange={(e) => setExamStatusFilter(e.target.value)}>
@@ -1472,6 +1534,43 @@ const SubscriptionReports = () => {
           </Alert>
         )}
       </Snackbar>
+
+      <Dialog
+        open={cashoutPasswordDialogOpen}
+        onClose={() => !cashoutVerifying && setCashoutPasswordDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Lock fontSize="small" />
+          Confirm your password
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            The Cashout panel sends real money to a phone number. Re-enter your password to unlock it.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            type="password"
+            label="Password"
+            value={cashoutPasswordInput}
+            onChange={(e) => { setCashoutPasswordInput(e.target.value); setCashoutPasswordError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleUnlockCashout(); }}
+            error={!!cashoutPasswordError}
+            helperText={cashoutPasswordError}
+            disabled={cashoutVerifying}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCashoutPasswordDialogOpen(false)} disabled={cashoutVerifying}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleUnlockCashout} disabled={cashoutVerifying}>
+            {cashoutVerifying ? 'Verifying…' : 'Unlock'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

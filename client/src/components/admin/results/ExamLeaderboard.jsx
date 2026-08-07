@@ -45,6 +45,7 @@ import {
   FilterList as FilterListIcon
 } from '@mui/icons-material';
 import api from '../../../services/api';
+import SearchableSelect from '../../shared/SearchableSelect';
 
 const ExamLeaderboard = ({ examId: propExamId, allExams = [], isOverall = false }) => {
   const params = useParams();
@@ -445,9 +446,7 @@ const ExamLeaderboard = ({ examId: propExamId, allExams = [], isOverall = false 
   };
 
   // Handle exam selection change
-  const handleExamChange = (event) => {
-    const newExamId = event.target.value;
-
+  const handleExamChange = (newExamId) => {
     // Don't do anything if the value is the same
     if (newExamId === selectedExamId) {
       return;
@@ -681,31 +680,18 @@ const ExamLeaderboard = ({ examId: propExamId, allExams = [], isOverall = false 
             Filter by Exam:
           </Typography>
 
-          <FormControl sx={{ minWidth: 250, flex: 1 }}>
-            <InputLabel id="exam-select-label">Select Exam</InputLabel>
-            <Select
-              labelId="exam-select-label"
-              id="exam-select"
-              value={selectedExamId}
-              onChange={handleExamChange}
-              label="Select Exam"
-              disabled={loadingExams}
-            >
-              {loadingExams ? (
-                <MenuItem value="">
-                  <CircularProgress size={20} sx={{ mr: 1 }} /> Loading exams...
-                </MenuItem>
-              ) : exams.length === 0 ? (
-                <MenuItem value="">No exams available</MenuItem>
-              ) : (
-                exams.map((exam) => (
-                  <MenuItem key={exam._id} value={exam._id}>
-                    {exam.title}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </FormControl>
+          <SearchableSelect
+            label="Select Exam"
+            size="medium"
+            value={selectedExamId}
+            onChange={handleExamChange}
+            disabled={loadingExams}
+            loading={loadingExams}
+            options={exams.map((exam) => ({ value: exam._id, label: exam.title }))}
+            placeholder="Type an exam name..."
+            noOptionsText={loadingExams ? 'Loading exams...' : 'No exams available'}
+            sx={{ minWidth: 250, flex: 1 }}
+          />
         </Box>
       </Paper>
 

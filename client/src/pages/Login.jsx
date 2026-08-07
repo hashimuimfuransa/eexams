@@ -655,162 +655,6 @@ const Login = () => {
             </div>
           )}
 
-          {/* Login method toggle */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-            <button
-              type="button"
-              onClick={() => setLoginMethod('phone')}
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: 8,
-                border: `1.5px solid ${loginMethod === 'phone' ? tokens.accent : (isDark ? tokens.dark.border : tokens.surfaceBorder)}`,
-                background: loginMethod === 'phone' ? `${tokens.accent}15` : 'transparent',
-                color: loginMethod === 'phone' ? tokens.accent : (isDark ? tokens.dark.textSecondary : tokens.textSecondary),
-                cursor: 'pointer',
-                fontFamily: "'DM Sans', sans-serif",
-                fontSize: 13,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                transition: 'all 0.2s',
-              }}
-            >
-              <Icon.Phone s={14} />
-              Phone
-            </button>
-            <button
-              type="button"
-              onClick={() => setLoginMethod('email')}
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: 8,
-                border: `1.5px solid ${loginMethod === 'email' ? tokens.accent : (isDark ? tokens.dark.border : tokens.surfaceBorder)}`,
-                background: loginMethod === 'email' ? `${tokens.accent}15` : 'transparent',
-                color: loginMethod === 'email' ? tokens.accent : (isDark ? tokens.dark.textSecondary : tokens.textSecondary),
-                cursor: 'pointer',
-                fontFamily: "'DM Sans', sans-serif",
-                fontSize: 13,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                transition: 'all 0.2s',
-              }}
-            >
-              <Icon.Mail s={14} />
-              Email
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit}>
-            {loginMethod === 'email' ? (
-              <Input
-                isDark={isDark}
-                icon={<Icon.Mail />}
-                label="Email address"
-                type="email" id="email" name="email" autoComplete="email" autoFocus
-                value={email} onChange={handleEmailChange}
-              />
-            ) : (
-              <PhoneInput
-                isDark={isDark}
-                label="Phone number"
-                id="phone"
-                name="phone"
-                autoComplete="tel"
-                autoFocus
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                onEmailDetected={(emailValue) => {
-                  setEmail(emailValue);
-                  setLoginMethod('email');
-                  setPhone('');
-                }}
-              />
-            )}
-            <Input
-              isDark={isDark}
-              icon={<Icon.Lock />}
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              id="password" name="password" autoComplete="current-password"
-              value={password} onChange={(e) => setPassword(e.target.value)}
-              endAdornment={
-                <button type="button" onClick={() => setShowPassword(s => !s)} style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-                  display: 'flex', alignItems: 'center', padding: 4,
-                }}>
-                  {showPassword ? <Icon.EyeOff /> : <Icon.Eye />}
-                </button>
-              }
-            />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-              <RouterLink to="/forgot-password" style={{ fontSize: 13.5, fontWeight: 600, color: tokens.accent, textDecoration: 'none' }}>
-                Forgot password?
-              </RouterLink>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || isLockedOut}
-              style={{
-                width: '100%', padding: '14px', borderRadius: 12,
-                fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
-                background: isLockedOut
-                  ? (isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt)
-                  : 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                color: isLockedOut ? (isDark ? tokens.dark.textSecondary : tokens.textSecondary) : 'white',
-                border: 'none', cursor: loading || isLockedOut ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.7 : 1,
-                boxShadow: isLockedOut ? 'none' : '0 8px 24px rgba(12,189,115,0.35)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                transition: 'transform 0.15s ease',
-              }}
-            >
-              {loading ? (
-                <>
-                  <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', animation: 'spin 0.8s linear infinite' }} />
-                  Logging in...
-                </>
-              ) : isLockedOut ? (
-                <>Locked ({formatTime(remainingTime)})</>
-              ) : (
-                <>Log in <Icon.Arrow /></>
-              )}
-            </button>
-
-            {isLockedOut && (
-              <div style={{ marginTop: 16, padding: '12px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: tokens.warning, marginBottom: 2 }}>Account temporarily locked</div>
-                <div style={{ fontSize: 12.5, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
-                  Too many failed attempts. Wait {formatTime(remainingTime)} before retrying.
-                </div>
-              </div>
-            )}
-
-            {!isLockedOut && failedAttempts > 0 && (
-              <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 10, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.06)', border: `1px solid ${tokens.accent}33` }}>
-                <span style={{ fontSize: 12.5, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
-                  {failedAttempts} failed attempt{failedAttempts !== 1 ? 's' : ''}. {3 - failedAttempts} remaining before lockout.
-                </span>
-              </div>
-            )}
-          </form>
-
-          {/* Divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0 18px' }}>
-            <div style={{ flex: 1, height: 1, background: isDark ? tokens.dark.border : tokens.surfaceBorder }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase' }}>or</span>
-            <div style={{ flex: 1, height: 1, background: isDark ? tokens.dark.border : tokens.surfaceBorder }} />
-          </div>
-
           {/* FedCM Lockout Warning */}
           {fedcmLocked && (
             <div style={{
@@ -966,6 +810,162 @@ const Login = () => {
             </svg>
             Continue with Google
           </button>
+
+          {/* Divider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0 18px' }}>
+            <div style={{ flex: 1, height: 1, background: isDark ? tokens.dark.border : tokens.surfaceBorder }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>or continue with email or phone</span>
+            <div style={{ flex: 1, height: 1, background: isDark ? tokens.dark.border : tokens.surfaceBorder }} />
+          </div>
+
+          {/* Login method toggle */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+            <button
+              type="button"
+              onClick={() => setLoginMethod('phone')}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: 8,
+                border: `1.5px solid ${loginMethod === 'phone' ? tokens.accent : (isDark ? tokens.dark.border : tokens.surfaceBorder)}`,
+                background: loginMethod === 'phone' ? `${tokens.accent}15` : 'transparent',
+                color: loginMethod === 'phone' ? tokens.accent : (isDark ? tokens.dark.textSecondary : tokens.textSecondary),
+                cursor: 'pointer',
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 13,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.2s',
+              }}
+            >
+              <Icon.Phone s={14} />
+              Phone
+            </button>
+            <button
+              type="button"
+              onClick={() => setLoginMethod('email')}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: 8,
+                border: `1.5px solid ${loginMethod === 'email' ? tokens.accent : (isDark ? tokens.dark.border : tokens.surfaceBorder)}`,
+                background: loginMethod === 'email' ? `${tokens.accent}15` : 'transparent',
+                color: loginMethod === 'email' ? tokens.accent : (isDark ? tokens.dark.textSecondary : tokens.textSecondary),
+                cursor: 'pointer',
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 13,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.2s',
+              }}
+            >
+              <Icon.Mail s={14} />
+              Email
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            {loginMethod === 'email' ? (
+              <Input
+                isDark={isDark}
+                icon={<Icon.Mail />}
+                label="Email address"
+                type="email" id="email" name="email" autoComplete="email" autoFocus
+                value={email} onChange={handleEmailChange}
+              />
+            ) : (
+              <PhoneInput
+                isDark={isDark}
+                label="Phone number"
+                id="phone"
+                name="phone"
+                autoComplete="tel"
+                autoFocus
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onEmailDetected={(emailValue) => {
+                  setEmail(emailValue);
+                  setLoginMethod('email');
+                  setPhone('');
+                }}
+              />
+            )}
+            <Input
+              isDark={isDark}
+              icon={<Icon.Lock />}
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              id="password" name="password" autoComplete="current-password"
+              value={password} onChange={(e) => setPassword(e.target.value)}
+              endAdornment={
+                <button type="button" onClick={() => setShowPassword(s => !s)} style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+                  display: 'flex', alignItems: 'center', padding: 4,
+                }}>
+                  {showPassword ? <Icon.EyeOff /> : <Icon.Eye />}
+                </button>
+              }
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
+              <RouterLink to="/forgot-password" style={{ fontSize: 13.5, fontWeight: 600, color: tokens.accent, textDecoration: 'none' }}>
+                Forgot password?
+              </RouterLink>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || isLockedOut}
+              style={{
+                width: '100%', padding: '14px', borderRadius: 12,
+                fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 15,
+                background: isLockedOut
+                  ? (isDark ? tokens.dark.surfaceAlt : tokens.surfaceAlt)
+                  : 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
+                color: isLockedOut ? (isDark ? tokens.dark.textSecondary : tokens.textSecondary) : 'white',
+                border: 'none', cursor: loading || isLockedOut ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+                boxShadow: isLockedOut ? 'none' : '0 8px 24px rgba(12,189,115,0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'transform 0.15s ease',
+              }}
+            >
+              {loading ? (
+                <>
+                  <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', animation: 'spin 0.8s linear infinite' }} />
+                  Logging in...
+                </>
+              ) : isLockedOut ? (
+                <>Locked ({formatTime(remainingTime)})</>
+              ) : (
+                <>Log in <Icon.Arrow /></>
+              )}
+            </button>
+
+            {isLockedOut && (
+              <div style={{ marginTop: 16, padding: '12px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: tokens.warning, marginBottom: 2 }}>Account temporarily locked</div>
+                <div style={{ fontSize: 12.5, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
+                  Too many failed attempts. Wait {formatTime(remainingTime)} before retrying.
+                </div>
+              </div>
+            )}
+
+            {!isLockedOut && failedAttempts > 0 && (
+              <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 10, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.06)', border: `1px solid ${tokens.accent}33` }}>
+                <span style={{ fontSize: 12.5, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary }}>
+                  {failedAttempts} failed attempt{failedAttempts !== 1 ? 's' : ''}. {3 - failedAttempts} remaining before lockout.
+                </span>
+              </div>
+            )}
+          </form>
 
           <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`, textAlign: 'center' }}>
             <div style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 12 }}>

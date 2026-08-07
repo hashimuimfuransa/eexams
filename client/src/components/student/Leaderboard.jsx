@@ -40,6 +40,7 @@ import {
   AccessTime
 } from '@mui/icons-material';
 import api from '../../services/api';
+import SearchableSelect from '../shared/SearchableSelect';
 import StudentLayout from './StudentLayout';
 
 const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
@@ -113,8 +114,7 @@ const Leaderboard = () => {
       .finally(() => setLbLoading(false));
   }, [selectedExamId, leaderboards]);
 
-  const handleExamChange = (e) => {
-    const id = e.target.value;
+  const handleExamChange = (id) => {
     setSelectedExamId(id);
     setSearchParams(id ? { exam: id } : {});
   };
@@ -402,29 +402,45 @@ const Leaderboard = () => {
               ) : (
                 <>
                   {/* Exam selector */}
-                  <FormControl fullWidth sx={{ mb: 3 }}>
-                    <InputLabel>Select Exam</InputLabel>
-                    <Select
-                      value={selectedExamId}
-                      onChange={handleExamChange}
-                      label="Select Exam"
-                    >
-                      {results.map((result) => {
-                        const examId = result.exam?._id || result.exam;
-                        const examTitle = result.examTitle || result.exam?.title || 'Exam';
-                        const pct = calculatePercentage(result.totalScore, result.maxPossibleScore);
-                        return (
-                          <MenuItem key={result._id} value={String(examId)}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 2 }}>
-                              <Typography variant="body2" noWrap sx={{ flex: 1 }}>{examTitle}</Typography>
-                              <Chip label={`${pct}%`} size="small"
-                                color={pct >= 70 ? 'success' : 'error'} sx={{ fontWeight: 700 }} />
-                            </Box>
-                          </MenuItem>
-                        );
-                      })}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect
+                    label="Select Exam"
+                    size="medium"
+                    value={selectedExamId}
+                    onChange={handleExamChange}
+                    placeholder="Type an exam name..."
+                    sx={{ mb: 3 }}
+                    options={Array.from(
+                      results.reduce((byExam, result) => {
+                        const examId = String(result.exam?._id || result.exam);
+                        // A retaken exam has several results — one entry each
+                        // would give the picker duplicate options.
+                        if (!byExam.has(examId)) {
+                          byExam.set(examId, {
+                            value: examId,
+                            label: result.examTitle || result.exam?.title || 'Exam',
+                            percentage: calculatePercentage(result.totalScore, result.maxPossibleScore)
+                          });
+                        }
+                        return byExam;
+                      }, new Map()).values()
+                    )}
+                    renderOption={(props, option) => (
+                      <Box
+                        component="li"
+                        {...props}
+                        key={option.value}
+                        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
+                      >
+                        <Typography variant="body2" noWrap sx={{ flex: 1 }}>{option.label}</Typography>
+                        <Chip
+                          label={`${option.percentage}%`}
+                          size="small"
+                          color={option.percentage >= 70 ? 'success' : 'error'}
+                          sx={{ fontWeight: 700 }}
+                        />
+                      </Box>
+                    )}
+                  />
 
                   {selectedExamId && (() => {
                     const selectedResult = results.find(r => String(r.exam?._id || r.exam) === selectedExamId);

@@ -5,7 +5,7 @@ import {
   useMediaQuery, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, LinearProgress, IconButton, Tooltip,
   Select, FormControl, InputLabel, MenuItem as MuiMenuItem, Avatar,
-  InputAdornment, Snackbar, Alert
+  InputAdornment, Snackbar, Alert, Pagination
 } from '@mui/material';
 import {
   Dashboard as DashIcon, Business, People, Settings, AttachMoney,
@@ -16,6 +16,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import SearchableSelect from '../components/shared/SearchableSelect';
 import { tokens, gradients, planColors as PLAN_COLORS } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
 import LeaderboardSection from '../components/admin/LeaderboardSection';
@@ -1017,6 +1018,13 @@ function AllUsersSection() {
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const PAGE_SIZE = 10;
+  const isMobileUsers = useMediaQuery('(max-width:600px)');
+
   // Manual "Assign Plan" (super admin grants a plan without payment)
   const [assignPlanUser, setAssignPlanUser] = useState(null);
   const [assignPlanLoading, setAssignPlanLoading] = useState(false);
@@ -1081,7 +1089,7 @@ function AllUsersSection() {
       }
       setSnack({ open: true, msg: 'Plan assigned successfully', severity: 'success' });
       closeAssignPlan();
-      fetchUsers();
+      fetchUsers(page, search, roleFilter);
     } catch (err) {
       setSnack({ open: true, msg: err.response?.data?.message || 'Failed to assign plan', severity: 'error' });
     } finally {
@@ -1089,15 +1097,31 @@ function AllUsersSection() {
     }
   };
 
-  const fetchUsers=()=>{
+  const fetchUsers=(targetPage=1, newSearch=search, newRole=roleFilter)=>{
     setLoading(true);
-    const params = roleFilter ? `?role=${roleFilter}` : '';
-    api.get(`/superadmin/users${params}`).then(r=>setUsers(r.data?.users||[])).finally(()=>setLoading(false));
+    const query = new URLSearchParams();
+    query.append('page', targetPage);
+    query.append('limit', PAGE_SIZE);
+    if (newRole) query.append('role', newRole);
+    if (newSearch) query.append('search', newSearch);
+    api.get(`/superadmin/users?${query.toString()}`).then(r=>{
+      setUsers(r.data?.users||[]);
+      setTotalPages(r.data?.pagination?.pages || 1);
+      setTotalUsers(r.data?.pagination?.total || 0);
+      setPage(r.data?.pagination?.page || targetPage);
+    }).finally(()=>setLoading(false));
   };
 
+  // Debounced search/role filter → refetch page 1
   useEffect(()=>{
-    fetchUsers();
-  },[roleFilter]);
+    const t = setTimeout(()=>{ fetchUsers(1, search, roleFilter); }, 400);
+    return ()=>clearTimeout(t);
+  },[search, roleFilter]);
+
+  const handlePageChange=(e, value)=>{
+    setPage(value);
+    fetchUsers(value, search, roleFilter);
+  };
 
   const handleBlock=async()=>{
     if(!selectedUser)return;
@@ -1119,9 +1143,13 @@ function AllUsersSection() {
     setProcessing(true);
     try{
       await api.delete(`/superadmin/users/${selectedUser._id}`);
-      setUsers(p=>p.filter(u=>u._id!==selectedUser._id));
+      const remainingOnPage = users.length - 1;
+      setTotalUsers(t=>Math.max(0, t-1));
       setActionDialog(null);
       setSelectedUser(null);
+      // If we deleted the last row on the current page (and it's not page 1), go to previous page
+      const targetPage = remainingOnPage === 0 && page > 1 ? page - 1 : page;
+      fetchUsers(targetPage, search, roleFilter);
     }catch(err){
       console.error('Delete error:',err);
     }finally{
@@ -1145,7 +1173,7 @@ function AllUsersSection() {
       setSnack({ open: true, msg: 'Super admin created successfully', severity: 'success' });
       setCreateDialog(false);
       setNewSuperAdmin({ firstName: '', lastName: '', email: '', password: '', phone: '', organization: '' });
-      fetchUsers();
+      fetchUsers(1, search, roleFilter);
     } catch (err) {
       setSnack({ open: true, msg: err.response?.data?.message || 'Failed to create super admin', severity: 'error' });
     } finally {
@@ -1195,7 +1223,7 @@ function AllUsersSection() {
       setSnack({ open: true, msg: 'User updated successfully', severity: 'success' });
       setEditUserDialog(null);
       setEditUserData({ firstName: '', lastName: '', email: '', phone: '', organization: '', password: '', currentPassword: '' });
-      fetchUsers();
+      fetchUsers(page, search, roleFilter);
     } catch (err) {
       setSnack({ open: true, msg: err.response?.data?.message || 'Failed to update user', severity: 'error' });
     } finally {
@@ -1203,7 +1231,7 @@ function AllUsersSection() {
     }
   };
 
-  const filtered=users.filter(u=>`${u.firstName} ${u.lastName} ${u.email} ${u.organization||''}`.toLowerCase().includes(search.toLowerCase()));
+  const filtered=users;
 
   return(
     <Box>
@@ -1314,6 +1342,24 @@ function AllUsersSection() {
                 </TableRow>);})}
             </TableBody>
           </Table></TableContainer>
+          {/* Pagination Footer */}
+          {totalUsers > 0 && (
+            <Box sx={{ px: 2, py: 1.5, borderTop:`1px solid ${tokens.surfaceBorder}`, bgcolor:'#F8FAFC', display:'flex', flexDirection:{xs:'column',sm:'row'}, alignItems:{xs:'center',sm:'flex-start'}, justifyContent:'space-between', gap:1 }}>
+              <Typography variant="caption" sx={{ color:tokens.textMuted, fontWeight:600, whiteSpace:'nowrap' }}>
+                Showing {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, totalUsers)} of {totalUsers} users
+              </Typography>
+              <Pagination
+                count={totalPages}
+                page={page}
+                onChange={handlePageChange}
+                color="primary"
+                size={isMobileUsers ? 'small' : 'medium'}
+                shape="rounded"
+                siblingCount={isMobileUsers ? 0 : 1}
+                boundaryCount={isMobileUsers ? 1 : 2}
+              />
+            </Box>
+          )}
         </Paper>
       )}
 
@@ -1434,34 +1480,30 @@ function AllUsersSection() {
                   <MuiMenuItem value="exam">Exam Plan</MuiMenuItem>
                 </Select>
               </FormControl>
-              <FormControl fullWidth size="small">
-                <InputLabel>Plan</InputLabel>
-                <Select label="Plan" value={assignPlanId} onChange={e=>setAssignPlanId(e.target.value)}>
-                  {(assignPlanScope==='level'?levelPlans:examPlans).map(p=>(
-                    <MuiMenuItem key={p._id} value={p._id}>
-                      {p.name} — {p.level?.name||p.exam?.title||''} ({p.durationDays}d, {p.currency} {p.price})
-                    </MuiMenuItem>
-                  ))}
-                  {(assignPlanScope==='level'?levelPlans:examPlans).length===0&&(
-                    <MuiMenuItem value="" disabled>No active {assignPlanScope} plans available</MuiMenuItem>
-                  )}
-                </Select>
-              </FormControl>
+              <SearchableSelect
+                label="Plan"
+                value={assignPlanId}
+                onChange={setAssignPlanId}
+                placeholder="Search plans by name, level or exam..."
+                noOptionsText={`No active ${assignPlanScope} plans available`}
+                options={(assignPlanScope==='level'?levelPlans:examPlans).map(p=>({
+                  value: p._id,
+                  label: `${p.name} — ${p.level?.name||p.exam?.title||''} (${p.durationDays}d, ${p.currency} ${p.price})`
+                }))}
+              />
             </>
           ):assignPlanUser?(
-            <FormControl fullWidth size="small">
-              <InputLabel>Plan</InputLabel>
-              <Select label="Plan" value={assignPlanId} onChange={e=>setAssignPlanId(e.target.value)}>
-                {accountPlans.map(p=>(
-                  <MuiMenuItem key={p._id} value={p._id}>
-                    {p.name} ({p.tierKey}) — {p.durationDays}d, {p.currency} {p.price}
-                  </MuiMenuItem>
-                ))}
-                {accountPlans.length===0&&(
-                  <MuiMenuItem value="" disabled>No active plans available</MuiMenuItem>
-                )}
-              </Select>
-            </FormControl>
+            <SearchableSelect
+              label="Plan"
+              value={assignPlanId}
+              onChange={setAssignPlanId}
+              placeholder="Search plans..."
+              noOptionsText="No active plans available"
+              options={accountPlans.map(p=>({
+                value: p._id,
+                label: `${p.name} (${p.tierKey}) — ${p.durationDays}d, ${p.currency} ${p.price}`
+              }))}
+            />
           ):null}
           <Box sx={{p:2,bgcolor:'#F5F3FF',borderRadius:2,border:'1px solid #DDD6FE',mt:2}}>
             <Typography variant="body2" sx={{color:'#5B21B6'}}>This grants the plan immediately with no payment recorded. If the user already has an active subscription/plan, its expiry will be extended rather than replaced.</Typography>
@@ -3202,36 +3244,22 @@ function ExamBankMarketplaceSection({ searchQuery }) {
               <TextField fullWidth label="Target Audience" size="small" value={editDialog?.targetAudience || ''} onChange={(e) => setEditDialog(d => ({ ...d, targetAudience: e.target.value }))} sx={{ borderRadius: 2 }} />
             </Grid>
             <Grid item xs={12}>
-              <FormControl fullWidth size="small">
-                <InputLabel sx={{ fontWeight: 600 }}>Level</InputLabel>
-                <Select
-                  label="Level"
-                  value={editDialog?.levelId ? String(editDialog.levelId) : ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setEditDialog(d => ({ ...d, levelId: value, subLevel: '' }));
-                  }}
-                  sx={{ borderRadius: 2 }}
-                  disabled={loadingLevels}
-                >
-                  <MuiMenuItem value="">
-                    <em>Select a level</em>
-                  </MuiMenuItem>
-                  {levels.map((level) => (
-                    <MuiMenuItem
-                      key={String(level._id)}
-                      value={String(level._id)}
-                    >
-                      {level.name}
-                      {level.subLevels?.filter(s => s.isActive).length > 0 && (
-                        <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73', fontSize: 10 }}>
-                          ({level.subLevels.filter(s => s.isActive).length} sub)
-                        </Typography>
-                      )}
-                    </MuiMenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <SearchableSelect
+                label="Level"
+                value={editDialog?.levelId ? String(editDialog.levelId) : ''}
+                onChange={(value) => setEditDialog(d => ({ ...d, levelId: value, subLevel: '' }))}
+                disabled={loadingLevels}
+                loading={loadingLevels}
+                placeholder="Search levels..."
+                options={levels.map((level) => {
+                  const subCount = level.subLevels?.filter(s => s.isActive).length || 0;
+                  return {
+                    value: String(level._id),
+                    label: subCount > 0 ? `${level.name} (${subCount} sub)` : level.name
+                  };
+                })}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              />
             </Grid>
             <Grid item xs={12}>
               <FormControl fullWidth size="small" disabled={getAvailableSubLevels().length === 0}>
@@ -3724,18 +3752,22 @@ function ExamRequestsSection({ searchQuery }) {
             </FormControl>
           </Grid>
           <Grid item xs={6} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Organization</InputLabel>
-              <Select label="Organization" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)} sx={{ borderRadius: 2, bgcolor: '#FAFBFC' }}>
-                <MuiMenuItem value="">All Organizations</MuiMenuItem>
-                {organizations.map(orgId => {
-                  const org = requests.find(r => r.organization?.id === orgId)?.organization;
-                  return org ? (
-                    <MuiMenuItem key={orgId} value={orgId}>{org.name}</MuiMenuItem>
-                  ) : null;
-                })}
-              </Select>
-            </FormControl>
+            <SearchableSelect
+              label="Organization"
+              value={orgFilter}
+              onChange={(value) => setOrgFilter(value)}
+              placeholder="Search organizations..."
+              options={[
+                { value: '', label: 'All Organizations' },
+                ...organizations
+                  .map(orgId => {
+                    const org = requests.find(r => r.organization?.id === orgId)?.organization;
+                    return org ? { value: orgId, label: org.name } : null;
+                  })
+                  .filter(Boolean)
+              ]}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#FAFBFC' } }}
+            />
           </Grid>
           <Grid item xs={12} md={2}>
             <Button

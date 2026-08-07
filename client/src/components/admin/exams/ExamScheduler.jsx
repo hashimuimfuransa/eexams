@@ -40,6 +40,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { getAllExams, getAllStudents, scheduleExam } from '../../../services/adminService';
+import SearchableSelect from '../../shared/SearchableSelect';
 
 const ExamScheduler = () => {
   const theme = useTheme();
@@ -175,8 +176,7 @@ const ExamScheduler = () => {
   };
 
   // Handle student selection
-  const handleStudentChange = (event) => {
-    const { value } = event.target;
+  const handleStudentChange = (value) => {
     setScheduleData({
       ...scheduleData,
       studentIds: value
@@ -391,27 +391,22 @@ const ExamScheduler = () => {
                   <Typography variant="body2">Loading exams...</Typography>
                 </Box>
               ) : (
-                <TextField
-                  fullWidth
-                  select
-                  label="Select Exam"
-                  name="examId"
-                  value={scheduleData.examId}
-                  onChange={handleChange}
-                  required
-                  error={!!errors.examId}
-                  helperText={errors.examId}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                >
-                  {exams.length > 0 ? (
-                    exams.map((exam) => (
-                      <MenuItem key={exam._id} value={exam._id}>
-                        {exam.title}
-                      </MenuItem>
-                    ))
-                  ) : (
-                    <MenuItem disabled>No unscheduled exams available. Create a new exam first.</MenuItem>
-                  )}
+                <>
+                  <SearchableSelect
+                    label="Select Exam"
+                    size="medium"
+                    value={scheduleData.examId}
+                    onChange={(value) => handleChange({ target: { name: 'examId', value } })}
+                    placeholder="Type an exam name..."
+                    noOptionsText="No unscheduled exams available"
+                    options={exams.map((exam) => ({ value: exam._id, label: exam.title }))}
+                    textFieldProps={{
+                      required: true,
+                      error: !!errors.examId,
+                      helperText: errors.examId
+                    }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
                   {exams.length === 0 && (
                     <>
                       <FormHelperText error>
@@ -429,7 +424,7 @@ const ExamScheduler = () => {
                       </Button>
                     </>
                   )}
-                </TextField>
+                </>
               )}
             </Grid>
 
@@ -446,40 +441,36 @@ const ExamScheduler = () => {
                   error={!!errors.studentIds}
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                 >
-                  <InputLabel id="select-students-label">Select Students</InputLabel>
-                  <Select
-                    labelId="select-students-label"
+                  <SearchableSelect
+                    label="Select Students"
+                    size="medium"
                     multiple
-                    name="studentIds"
                     value={scheduleData.studentIds}
                     onChange={handleStudentChange}
-                    renderValue={(selected) => {
-                      if (selected.length === 0) {
-                        return <Typography color="text.secondary">No students selected</Typography>;
-                      }
-
-                      if (selected.length === 1) {
-                        const student = students.find(s => s._id === selected[0]);
-                        return student ? `${student.firstName} ${student.lastName}` : 'Unknown student';
-                      }
-
-                      return `${selected.length} students selected`;
+                    placeholder="Search by name or email..."
+                    noOptionsText="No available students"
+                    disableCloseOnSelect
+                    options={students.map((student) => ({
+                      value: student._id,
+                      label: `${student.firstName} ${student.lastName}`,
+                      email: student.email
+                    }))}
+                    filterOptions={(opts, { inputValue }) => {
+                      const term = inputValue.trim().toLowerCase();
+                      if (!term) return opts;
+                      return opts.filter(o =>
+                        o.label.toLowerCase().includes(term) ||
+                        (o.email || '').toLowerCase().includes(term)
+                      );
                     }}
-                  >
-                    {students.length > 0 ? (
-                      students.map((student) => (
-                        <MenuItem key={student._id} value={student._id}>
-                          <Checkbox checked={scheduleData.studentIds.indexOf(student._id) > -1} />
-                          <ListItemText
-                            primary={`${student.firstName} ${student.lastName}`}
-                            secondary={student.email}
-                          />
-                        </MenuItem>
-                      ))
-                    ) : (
-                      <MenuItem disabled>No available students</MenuItem>
+                    renderOption={(props, option, { selected }) => (
+                      <Box component="li" {...props} key={option.value}>
+                        <Checkbox checked={selected} sx={{ mr: 1 }} />
+                        <ListItemText primary={option.label} secondary={option.email} />
+                      </Box>
                     )}
-                  </Select>
+                    textFieldProps={{ error: !!errors.studentIds }}
+                  />
                   {errors.studentIds && (
                     <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.5 }}>
                       {errors.studentIds}

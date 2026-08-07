@@ -42,6 +42,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import SearchableSelect from '../../components/shared/SearchableSelect';
 import useApiWithTimeout from '../../hooks/useApiWithTimeout';
 
 const NewLeaderboardPage = () => {
@@ -315,12 +316,12 @@ const NewLeaderboardPage = () => {
   };
 
   // Handle filter changes
-  const handleClassFilterChange = (event) => {
-    setFilterClass(event.target.value);
+  const handleClassFilterChange = (value) => {
+    setFilterClass(value || 'all');
   };
 
-  const handleOrganizationFilterChange = (event) => {
-    setFilterOrganization(event.target.value);
+  const handleOrganizationFilterChange = (value) => {
+    setFilterOrganization(value || 'all');
   };
 
   // Reset all filters
@@ -674,42 +675,34 @@ const NewLeaderboardPage = () => {
           <Grid item xs={12} id="advanced-filters">
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
               {/* Class filter */}
-              <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
-                <InputLabel id="class-filter-label">Class</InputLabel>
-                <Select
-                  labelId="class-filter-label"
-                  id="class-filter"
-                  value={filterClass}
-                  onChange={handleClassFilterChange}
-                  label="Class"
-                >
-                  <MenuItem value="all">All Classes</MenuItem>
-                  {availableClasses.map((className) => (
-                    <MenuItem key={`class-option-${className}`} value={className}>
-                      {className}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <SearchableSelect
+                label="Class"
+                value={filterClass}
+                onChange={handleClassFilterChange}
+                emptyValue="all"
+                placeholder="Search classes..."
+                options={[
+                  { value: 'all', label: 'All Classes' },
+                  ...availableClasses.map((className) => ({ value: className, label: className }))
+                ]}
+                fullWidth={false}
+                sx={{ minWidth: 180 }}
+              />
 
               {/* Organization filter */}
-              <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
-                <InputLabel id="organization-filter-label">Organization</InputLabel>
-                <Select
-                  labelId="organization-filter-label"
-                  id="organization-filter"
-                  value={filterOrganization}
-                  onChange={handleOrganizationFilterChange}
-                  label="Organization"
-                >
-                  <MenuItem value="all">All Organizations</MenuItem>
-                  {availableOrganizations.map((org) => (
-                    <MenuItem key={`org-option-${org}`} value={org}>
-                      {org}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <SearchableSelect
+                label="Organization"
+                value={filterOrganization}
+                onChange={handleOrganizationFilterChange}
+                emptyValue="all"
+                placeholder="Search organizations..."
+                options={[
+                  { value: 'all', label: 'All Organizations' },
+                  ...availableOrganizations.map((org) => ({ value: org, label: org }))
+                ]}
+                fullWidth={false}
+                sx={{ minWidth: 200 }}
+              />
 
               {/* Sort indicators */}
               <Box sx={{ display: 'flex', alignItems: 'center', ml: 'auto' }}>

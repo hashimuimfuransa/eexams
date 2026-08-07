@@ -4,6 +4,7 @@ const SharedExam = require('../models/SharedExam');
 const User = require('../models/User');
 const Result = require('../models/Result');
 const Subscription = require('../models/Subscription');
+const Level = require('../models/Level');
 const emailService = require('../utils/emailService');
 const { freeExamMatchesUserSubLevel, subscriptionCoversExam } = require('../utils/subLevelAccess');
 
@@ -25,16 +26,52 @@ const hasActiveSubscriptionForExam = async (userId, exam) => {
   return subscriptionCoversExam(subscription, exam);
 };
 
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Build the search half of the marketplace query. Each whitespace-separated
+// token must match somewhere on the exam ("s6 chemistry" finds S6 Chemistry
+// exams, not everything S6), but a single token may match the title, either
+// description, the sub-level, or the level's name — students search by level
+// ("secondary school", "S3") as often as by subject, and level lives on a
+// referenced document, so matching names are resolved to ids first.
+const buildSearchQuery = async (search) => {
+  const tokens = String(search).trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+
+  return {
+    $and: await Promise.all(tokens.map(async (token) => {
+      const rx = new RegExp(escapeRegex(token), 'i');
+      const matchingLevels = await Level.find({ name: rx }).select('_id').lean();
+
+      const or = [
+        { title: rx },
+        { description: rx },
+        { publicDescription: rx },
+        { targetAudience: rx },
+        { subLevel: rx }
+      ];
+      if (matchingLevels.length > 0) {
+        or.push({ level: { $in: matchingLevels.map(l => l._id) } });
+      }
+      return { $or: or };
+    }))
+  };
+};
+
 // @desc    Get all marketplace exams
 // @route   GET /api/marketplace/exams
 // @access  Public
 const getMarketplaceExams = async (req, res) => {
   try {
-    const { page = 1, limit = 50 } = req.query;
+    const { page = 1, limit = 50, search = '' } = req.query;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
-    const exams = await Exam.find({ isPubliclyListed: true, isLocked: false })
+    const query = { isPubliclyListed: true, isLocked: false };
+    const searchQuery = await buildSearchQuery(search);
+    if (searchQuery) Object.assign(query, searchQuery);
+
+    const exams = await Exam.find(query)
       .populate('createdBy', 'fullName')
       .populate('level', 'name description subLevels')
       .select('title description timeLimit publicPrice retakePrice publicDescription targetAudience level subLevel createdAt createdBy sections.name sections.questions sections.questionCount isPubliclyListed isLocked status accessType')
@@ -709,8 +746,6 @@ const rejectExamRequest = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
-
-const Level = require('../models/Level');
 
 // @desc    Update exam marketplace listing settings
 // @route   PUT /api/marketplace/exams/:id/settings

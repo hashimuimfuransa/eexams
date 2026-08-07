@@ -44,6 +44,7 @@ import {
 } from '@mui/icons-material';
 import { Checkbox } from '@mui/material';
 import api from '../../services/api';
+import SearchableSelect from '../shared/SearchableSelect';
 
 const StudentManagement = () => {
   const [studentLists, setStudentLists] = useState([]);
@@ -425,22 +426,21 @@ const StudentManagement = () => {
               <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>
                 All Organization Students ({orgStudents.length})
               </Typography>
-              <FormControl size="small" fullWidth sx={{ mb: 1 }}>
-                <InputLabel>Filter by Class</InputLabel>
-                <Select
-                  value={classFilter}
-                  onChange={(e) => {
-                    setClassFilter(e.target.value);
-                    fetchOrgStudents();
-                  }}
-                  label="Filter by Class"
-                >
-                  <MenuItem value="all">All Classes</MenuItem>
-                  {uniqueClasses.map(cls => (
-                    <MenuItem key={cls} value={cls}>{cls}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <SearchableSelect
+                label="Filter by Class"
+                value={classFilter}
+                onChange={(value) => {
+                  setClassFilter(value || 'all');
+                  fetchOrgStudents();
+                }}
+                emptyValue="all"
+                placeholder="Search classes..."
+                options={[
+                  { value: 'all', label: 'All Classes' },
+                  ...uniqueClasses.map(cls => ({ value: cls, label: cls }))
+                ]}
+                sx={{ mb: 1 }}
+              />
             </Box>
 
             <Box sx={{ maxHeight: 600, overflow: 'auto' }}>

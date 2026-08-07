@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Card, CardContent, Button, Chip, CircularProgress, Alert, TextField, Grid, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails, Collapse } from '@mui/material';
-import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp, ArrowBack, WorkspacePremium, Lock, ArrowForward } from '@mui/icons-material';
+import { Search, School, AccessTime, AttachMoney, FilterList, ExpandMore, Share, Sort, AccessTime as TimeIcon, KeyboardArrowDown, KeyboardArrowUp, ArrowBack, WorkspacePremium, Lock, ArrowForward, PlayArrow } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
 import SEO from '../components/SEO';
 import api from '../services/api';
+import SearchableSelect from '../components/shared/SearchableSelect';
 
 const Marketplace = () => {
   const [exams, setExams] = useState([]);
@@ -44,6 +45,10 @@ const Marketplace = () => {
     return () => observerRef.current?.disconnect();
   }, [hasMore, loading, loadingMore]);
   const [searchTerm, setSearchTerm] = useState('');
+  // Debounced copy of searchTerm — the exam bank is paginated (50 at a time),
+  // so searching only what is loaded would hide most of the catalog. The
+  // server does the matching; this is what gets sent to it.
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [targetAudienceFilter, setTargetAudienceFilter] = useState('all');
   const [priceFilter, setPriceFilter] = useState('all');
   const [sortBy, setSortBy] = useState('free-first');
@@ -72,7 +77,6 @@ const Marketplace = () => {
   };
 
   useEffect(() => {
-    fetchMarketplaceExams();
     fetchLevels();
     if (isStudent) {
       fetchExamCompletionStatus();
@@ -97,9 +101,23 @@ const Marketplace = () => {
   // Fetch next page when page increments
   useEffect(() => {
     if (page > 1) {
-      fetchMarketplaceExams(page);
+      fetchMarketplaceExams(page, appliedSearch);
     }
   }, [page]);
+
+  // Debounce typing so each keystroke doesn't hit the server
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(searchTerm.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Load page 1 on mount, and re-query whenever the search changes or the
+  // signed-in user changes (the server tailors access flags per student).
+  useEffect(() => {
+    setPage(1);
+    setHasMore(true);
+    fetchMarketplaceExams(1, appliedSearch);
+  }, [appliedSearch, isAuthenticated, user]);
 
   const fetchLevels = async () => {
     try {
@@ -119,12 +137,12 @@ const Marketplace = () => {
     return selectedLevel?.subLevels?.filter(s => s.isActive) || [];
   };
 
-  const fetchMarketplaceExams = async (pageNum = 1) => {
+  const fetchMarketplaceExams = async (pageNum = 1, search = '') => {
     try {
       if (pageNum === 1) setLoading(true);
       else setLoadingMore(true);
       const response = await api.get('/marketplace/exams', {
-        params: { page: pageNum, limit: 50 }
+        params: { page: pageNum, limit: 50, ...(search ? { search } : {}) }
       });
       const newExams = response.data;
       setExams(prev => pageNum === 1 ? newExams : [...prev, ...newExams]);
@@ -237,12 +255,24 @@ const Marketplace = () => {
   // Get unique target audiences from exams
   const uniqueAudiences = [...new Set(exams.map(exam => exam.targetAudience).filter(Boolean))];
 
+  // Same token-AND / multi-field rule the server applies, so results don't
+  // shift when the debounced server query lands.
+  const searchTokens = searchTerm.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
   const filteredExams = exams.filter(exam => {
-    // Search filter
-    const matchesSearch = 
-      exam.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      exam.publicDescription?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+    // Search filter — matches title, either description, level or sub-level,
+    // so "S3", "secondary school" or "s6 chemistry" all find their exams.
+    const haystack = [
+      exam.title,
+      exam.publicDescription,
+      exam.description,
+      exam.level?.name,
+      exam.subLevel,
+      exam.targetAudience
+    ].filter(Boolean).join(' ').toLowerCase();
+    const matchesSearch = searchTokens.every(token => haystack.includes(token));
+
+
     // Level filter - handles both level ID and level name matching
     let matchesLevel = levelFilter === 'all';
     if (!matchesLevel && levelFilter !== 'all') {
@@ -555,7 +585,7 @@ const Marketplace = () => {
                   <TextField
                     fullWidth
                     size="small"
-                    placeholder="Search exams..."
+                    placeholder="Search by subject or level (e.g. S3, chemistry)"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     InputProps={{
@@ -570,32 +600,26 @@ const Marketplace = () => {
 
                 {/* Level Filter - Primary */}
                 <Grid item xs={12} sm={3} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel sx={{ fontSize: 13 }}>Level</InputLabel>
-                    <Select
-                      value={levelFilter}
-                      onChange={(e) => handleLevelChange(e.target.value)}
-                      label="Level"
-                      sx={{ borderRadius: 1.5, fontSize: 14 }}
-                    >
-                      <MenuItem value="all">All</MenuItem>
-                      {levels.map(level => (
-                        <MenuItem key={level._id} value={level._id}>
-                          {level.name}
-                          {level.subLevels?.filter(s => s.isActive).length > 0 && (
-                            <Typography component="span" variant="caption" sx={{ ml: 1, color: '#0CBD73', fontSize: 10 }}>
-                              ({level.subLevels.filter(s => s.isActive).length} sub)
-                            </Typography>
-                          )}
-                        </MenuItem>
-                      ))}
-                      {levels.length === 0 && uniqueAudiences.length > 0 && (
-                        uniqueAudiences.map(audience => (
-                          <MenuItem key={audience} value={audience}>{audience}</MenuItem>
-                        ))
-                      )}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect
+                    label="Level"
+                    value={levelFilter}
+                    onChange={(value) => handleLevelChange(value || 'all')}
+                    emptyValue="all"
+                    placeholder="Search levels..."
+                    options={[
+                      { value: 'all', label: 'All' },
+                      ...(levels.length > 0
+                        ? levels.map(level => {
+                            const subCount = level.subLevels?.filter(s => s.isActive).length || 0;
+                            return {
+                              value: level._id,
+                              label: subCount > 0 ? `${level.name} (${subCount} sub)` : level.name
+                            };
+                          })
+                        : uniqueAudiences.map(audience => ({ value: audience, label: audience })))
+                    ]}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 14 } }}
+                  />
                 </Grid>
 
                 {/* Sub-Level Filter - Secondary (only shown if level has sub-levels) */}
@@ -680,6 +704,7 @@ const Marketplace = () => {
               {recommendations.slice(0, 3).map((exam) => {
                 const totalQuestions = calculateTotalQuestions(exam);
                 const isCompleted = completedExamIds.includes(exam._id);
+                const isFreeExam = exam.accessType !== 'subscription';
                 return (
                   <Grid item xs={12} sm={6} md={4} key={`rec-${exam._id}`}>
                     <Card
@@ -690,13 +715,16 @@ const Marketplace = () => {
                         bgcolor: mode === 'dark' ? '#1E293B' : 'white',
                         transition: 'all 0.15s ease',
                         cursor: 'pointer',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
                         '&:hover': {
                           transform: 'translateY(-2px)',
                           boxShadow: '0 2px 8px rgba(12,189,115,0.15)'
                         }
                       }}
                     >
-                      <CardContent sx={{ p: { xs: 1.5, sm: 2.5 }, '&:last-child': { pb: { xs: 1.5, sm: 2.5 } } }}>
+                      <CardContent sx={{ p: { xs: 1.5, sm: 2.5 }, '&:last-child': { pb: { xs: 1.5, sm: 2.5 } }, display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
                           <Chip
                             label="Recommended"
@@ -723,7 +751,17 @@ const Marketplace = () => {
                             />
                           )}
                         </Box>
-                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1, color: mode === 'dark' ? '#F8FAFC' : '#0F172A', fontSize: 16, lineHeight: 1.3 }}>
+                        <Typography variant="subtitle1" fontWeight={600} sx={{
+                          mb: 1,
+                          color: mode === 'dark' ? '#F8FAFC' : '#0F172A',
+                          fontSize: 16,
+                          lineHeight: 1.3,
+                          minHeight: 42,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}>
                           {exam.title}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
@@ -744,18 +782,25 @@ const Marketplace = () => {
                           fullWidth
                           variant="contained"
                           size="small"
+                          startIcon={!isCompleted && isFreeExam ? <PlayArrow /> : undefined}
                           onClick={() => handleRequestAccess(exam._id, isCompleted)}
                           sx={{
+                            mt: 'auto',
                             borderRadius: 2,
                             textTransform: 'none',
-                            fontWeight: 500,
+                            fontWeight: !isCompleted && isFreeExam ? 700 : 500,
                             background: isCompleted
                               ? '#8B5CF6'
-                              : '#0D406C',
-                            fontSize: 12
+                              : (isFreeExam ? '#0CBD73' : '#0D406C'),
+                            fontSize: 12,
+                            '&:hover': {
+                              background: isCompleted
+                                ? '#7C3AED'
+                                : (isFreeExam ? '#0AA865' : '#0A3355')
+                            }
                           }}
                         >
-                          {isCompleted ? 'Retake' : 'Request Access'}
+                          {isCompleted ? 'Retake' : (isFreeExam ? 'Start Exam' : 'Request Access')}
                         </Button>
                       </CardContent>
                     </Card>
@@ -811,20 +856,23 @@ const Marketplace = () => {
                 )}
               <Grid item xs={12} sm={6} md={4}>
                 <Card
-                  elevation={0} 
-                  sx={{ 
-                    borderRadius: 2, 
+                  elevation={0}
+                  sx={{
+                    borderRadius: 2,
                     border: mode === 'dark' ? '1px solid #334155' : '1px solid #E2E8F0',
                     bgcolor: mode === 'dark' ? '#1E293B' : 'white',
                     transition: 'all 0.15s ease',
                     cursor: 'pointer',
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
                     '&:hover': {
                       transform: 'translateY(-2px)',
                       boxShadow: mode === 'dark' ? '0 2px 8px rgba(0,0,0,0.2)' : '0 1px 3px rgba(15,23,42,0.08)'
                     }
                   }}
                 >
-                  <CardContent sx={{ p: { xs: 2, sm: 3 }, '&:last-child': { pb: { xs: 2, sm: 3 } } }}>
+                  <CardContent sx={{ p: { xs: 2, sm: 3 }, '&:last-child': { pb: { xs: 2, sm: 3 } }, display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
                     {/* Header with badges */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5, gap: 1 }}>
                       <Chip 
@@ -865,7 +913,17 @@ const Marketplace = () => {
                     </Box>
 
                     {/* Title */}
-                    <Typography variant="h6" fontWeight={600} sx={{ mb: 1, color: mode === 'dark' ? '#F8FAFC' : '#0F172A', lineHeight: 1.3, fontSize: { xs: 15, sm: 17, md: 18 } }}>
+                    <Typography variant="h6" fontWeight={600} sx={{
+                      mb: 1,
+                      color: mode === 'dark' ? '#F8FAFC' : '#0F172A',
+                      lineHeight: 1.3,
+                      fontSize: { xs: 15, sm: 17, md: 18 },
+                      minHeight: { xs: 39, sm: 45, md: 47 },
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden'
+                    }}>
                       {exam.title}
                     </Typography>
                     
@@ -880,7 +938,8 @@ const Marketplace = () => {
                         WebkitBoxOrient: 'vertical',
                         overflow: 'hidden',
                         lineHeight: 1.5,
-                        fontSize: { xs: 12, sm: 13 }
+                        fontSize: { xs: 12, sm: 13 },
+                        minHeight: { xs: 36, sm: 39 }
                       }}
                     >
                       {exam.publicDescription || exam.description}
@@ -926,6 +985,7 @@ const Marketplace = () => {
                         borderRadius: 2,
                         background: 'rgba(99,102,241,0.08)',
                         border: '1px solid rgba(99,102,241,0.2)',
+                        mt: 'auto',
                         mb: 1.5
                       }}>
                         <Typography sx={{ fontSize: { xs: 13, sm: 15 }, fontWeight: 700, color: '#6366F1' }}>
@@ -942,6 +1002,7 @@ const Marketplace = () => {
                         borderRadius: 2,
                         background: 'rgba(12,189,115,0.08)',
                         border: '1px solid rgba(12,189,115,0.2)',
+                        mt: 'auto',
                         mb: 1.5
                       }}>
                         <Typography sx={{ fontSize: { xs: 13, sm: 15 }, fontWeight: 700, color: '#0CBD73' }}>
@@ -955,7 +1016,8 @@ const Marketplace = () => {
                         const isCompleted = completedExamIds.includes(exam._id);
                         const isApproved = approvedExamIds.includes(exam._id);
                         const hasPendingRetake = pendingRetakeExamIds.includes(exam._id);
-                        
+                        const isFreeExam = exam.accessType !== 'subscription';
+
                         if (isCompleted) {
                           if (hasPendingRetake) {
                             return (
@@ -1013,16 +1075,23 @@ const Marketplace = () => {
                             <Button
                               fullWidth
                               variant="contained"
+                              startIcon={isFreeExam ? <PlayArrow /> : undefined}
                               onClick={() => handleRequestAccess(exam._id, false)}
                               sx={{
                                 borderRadius: 2,
                                 textTransform: 'none',
-                                fontWeight: 500,
-                                background: '#0D406C',
-                                boxShadow: '0 1px 3px rgba(13,64,108,0.15)'
+                                fontWeight: isFreeExam ? 700 : 500,
+                                fontSize: isFreeExam ? 15 : 'inherit',
+                                background: isFreeExam ? '#0CBD73' : '#0D406C',
+                                boxShadow: isFreeExam
+                                  ? '0 2px 6px rgba(12,189,115,0.3)'
+                                  : '0 1px 3px rgba(13,64,108,0.15)',
+                                '&:hover': {
+                                  background: isFreeExam ? '#0AA865' : '#0A3355'
+                                }
                               }}
                             >
-                              Request Access
+                              {isFreeExam ? 'Start Exam' : 'Request Access'}
                             </Button>
                           );
                         }

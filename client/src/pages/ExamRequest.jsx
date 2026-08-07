@@ -67,6 +67,18 @@ const ExamRequest = () => {
     }
   };
 
+  // Carry the blocked exam over to the subscription page so the student lands
+  // on the plan that unlocks it instead of hunting for it: the exam itself if
+  // it can be bought on its own, otherwise its level's plans.
+  const buildSubscribeUrl = () => {
+    if (!exam) return '/student/subscriptions';
+    const params = new URLSearchParams({ examId: exam._id });
+    const levelId = exam.level?._id || exam.level;
+    if (levelId) params.set('levelId', levelId);
+    if (exam.subLevel) params.set('subLevel', exam.subLevel);
+    return `/student/subscriptions?${params.toString()}`;
+  };
+
   const handleInputChange = (e) => {
     setFormData({
       ...formData,
@@ -341,7 +353,7 @@ const ExamRequest = () => {
                         <Button
                           variant="contained"
                           startIcon={<WorkspacePremium />}
-                          onClick={() => navigate(isAuthenticated ? '/student/subscriptions' : '/student-register')}
+                          onClick={() => navigate(isAuthenticated ? buildSubscribeUrl() : '/student-register')}
                           sx={{
                             borderRadius: 2,
                             textTransform: 'none',

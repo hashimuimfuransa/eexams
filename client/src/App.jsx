@@ -525,12 +525,16 @@ function MarketplaceShowcase({ mode }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24, marginBottom: 40 }}>
           {exams.map((exam, i) => (
-              <div style={{
+              <div key={exam._id || i} style={{
                 padding: 24, borderRadius: 12,
                 background: cardBg,
                 border: `1px solid ${border}`,
                 transition: 'all 0.15s ease',
                 cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                boxSizing: 'border-box',
               }}
                 onClick={() => handleExamClick(exam._id)}
                 onMouseEnter={e => {
@@ -557,12 +561,12 @@ function MarketplaceShowcase({ mode }) {
                 </div>
                 
                 {/* Title */}
-                <h3 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 18, color: text, marginBottom: 12, lineHeight: 1.3 }}>
+                <h3 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 18, color: text, marginBottom: 12, lineHeight: 1.3, minHeight: 47, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {exam.title}
                 </h3>
-                
+
                 {/* Description */}
-                <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, lineHeight: 1.6, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 20, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, lineHeight: 1.6, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 20, minHeight: 45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {exam.publicDescription || exam.description}
                 </p>
                 
@@ -588,13 +592,13 @@ function MarketplaceShowcase({ mode }) {
 
                 {/* Access type indicator */}
                 {exam.accessType === 'subscription' ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)', border: `1px solid ${isDark ? 'rgba(99,102,241,0.35)' : 'rgba(99,102,241,0.2)'}` }}>
+                  <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)', border: `1px solid ${isDark ? 'rgba(99,102,241,0.35)' : 'rgba(99,102,241,0.2)'}` }}>
                   <span style={{ fontSize: 16, fontWeight: 700, color: '#6366F1' }}>
                     🔒 Subscription Required
                   </span>
                 </div>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}` }}>
+                  <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', borderRadius: 10, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.3)' : 'rgba(12,189,115,0.2)'}` }}>
                   <span style={{ fontSize: 16, fontWeight: 700, color: '#0CBD73' }}>
                     Free
                   </span>

@@ -40,6 +40,7 @@ import {
   People
 } from '@mui/icons-material';
 import api from '../../services/api';
+import SearchableSelect from '../shared/SearchableSelect';
 import { formatPlanDuration } from '../../utils/planUtils';
 
 // Duration units a plan's pricing options can be sold in.
@@ -383,21 +384,14 @@ const SubscriptionPlanManagement = () => {
               {formData.planType === 'level' ? (
                 <>
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth sx={{ mb: 2 }}>
-                      <InputLabel>Level</InputLabel>
-                      <Select
-                        value={formData.levelId}
-                        onChange={(e) => setFormData({ ...formData, levelId: e.target.value, subLevel: '' })}
-                        label="Level"
-                        required
-                      >
-                        {levels.map((level) => (
-                          <MenuItem key={level._id} value={level._id}>
-                            {level.name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <SearchableSelect
+                      label="Level"
+                      value={formData.levelId}
+                      onChange={(value) => setFormData({ ...formData, levelId: value, subLevel: '' })}
+                      options={levels.map((level) => ({ value: level._id, label: level.name }))}
+                      placeholder="Search levels..."
+                      sx={{ mb: 2 }}
+                    />
                   </Grid>
                   {availableSubLevels.length > 0 && (
                     <Grid item xs={12} sm={6}>
@@ -423,21 +417,14 @@ const SubscriptionPlanManagement = () => {
                 </>
               ) : (
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Exam</InputLabel>
-                    <Select
-                      value={formData.examId}
-                      onChange={(e) => setFormData({ ...formData, examId: e.target.value })}
-                      label="Exam"
-                      required
-                    >
-                      {exams.map((exam) => (
-                        <MenuItem key={exam._id} value={exam._id}>
-                          {exam.title}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect
+                    label="Exam"
+                    value={formData.examId}
+                    onChange={(value) => setFormData({ ...formData, examId: value })}
+                    options={exams.map((exam) => ({ value: exam._id, label: exam.title }))}
+                    placeholder="Type an exam name..."
+                    sx={{ mb: 2 }}
+                  />
                 </Grid>
               )}
               <Grid item xs={12} sm={6}>

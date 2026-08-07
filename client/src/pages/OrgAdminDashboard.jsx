@@ -15,6 +15,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import SearchableSelect from '../components/shared/SearchableSelect';
 import { tokens, gradients } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
 import SubscriptionWarning from '../components/SubscriptionWarning';
@@ -694,10 +695,18 @@ function StudentsSection() {
           <MenuItem value="blocked">Blocked</MenuItem>
         </Select>
         {classes.length > 0 && (
-          <Select size="small" value={classFilter} onChange={e => setClassFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 110, fontSize: 13 }}>
-            <MenuItem value="">All Classes</MenuItem>
-            {classes.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-          </Select>
+          <SearchableSelect
+            label="Class"
+            value={classFilter}
+            onChange={value => setClassFilter(value)}
+            placeholder="Search classes..."
+            options={[
+              { value: '', label: 'All Classes' },
+              ...classes.map(c => ({ value: c, label: c }))
+            ]}
+            fullWidth={false}
+            sx={{ minWidth: 150 }}
+          />
         )}
         {registeredByOptions.length > 1 && (
           <Select size="small" value={registeredByFilter} onChange={e => setRegisteredByFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 140, fontSize: 13 }}>
@@ -1131,10 +1140,18 @@ function ResultsSection({ results, resultsTotal, resultsPage, setResultsPage }) 
           {['A', 'B', 'C', 'D', 'F'].map(g => <MenuItem key={g} value={g}>Grade {g}</MenuItem>)}
         </Select>
         {examTitles.length > 0 && (
-          <Select size="small" value={examFilter} onChange={e => setExamFilter(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 160, fontSize: 13 }}>
-            <MenuItem value="">All Exams</MenuItem>
-            {examTitles.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-          </Select>
+          <SearchableSelect
+            label="Exam"
+            value={examFilter}
+            onChange={value => setExamFilter(value)}
+            placeholder="Type an exam name..."
+            options={[
+              { value: '', label: 'All Exams' },
+              ...examTitles.map(t => ({ value: t, label: t }))
+            ]}
+            fullWidth={false}
+            sx={{ minWidth: 220 }}
+          />
         )}
         <Select size="small" value={sortBy} onChange={e => setSortBy(e.target.value)} displayEmpty sx={{ borderRadius: 2, minWidth: 150, fontSize: 13 }}>
           <MenuItem value="newest">Sort: Newest First</MenuItem>

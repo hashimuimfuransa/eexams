@@ -216,18 +216,6 @@ const Register = () => {
     }, 500);
   };
 
-  // Handle student registration from purpose modal
-  const handleStudentRegisterFromModal = () => {
-    setSnackbar({ 
-      open: true, 
-      message: 'Redirecting to student registration...', 
-      severity: 'info' 
-    });
-    setTimeout(() => {
-      navigate('/student-register');
-    }, 500);
-  };
-
   const isDark = mode === 'dark';
 
   const validateStep = (step) => {
@@ -904,22 +892,20 @@ const Register = () => {
               textAlign: 'center',
               marginBottom: 24,
             }}>
-              <div style={{
-                width: 56,
-                height: 56,
-                borderRadius: 16,
-                background: 'linear-gradient(135deg, #0D406C 0%, #0CBD73 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px',
-              }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
-                </svg>
-              </div>
+              <img
+                src="/logo.png"
+                alt="eexams"
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 12,
+                  objectFit: 'cover',
+                  display: 'block',
+                  margin: '0 auto 16px',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'transparent',
+                  padding: isDark ? '4px' : '0',
+                }}
+              />
               <h2 style={{
                 fontSize: 22,
                 fontWeight: 800,
@@ -1001,65 +987,6 @@ const Register = () => {
                   </div>
                 </div>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={isDark ? tokens.dark.textSecondary : tokens.textSecondary} strokeWidth="2">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </button>
-
-              <button
-                onClick={handleStudentRegisterFromModal}
-                style={{
-                  padding: '16px 20px',
-                  borderRadius: 12,
-                  border: `2px solid ${tokens.accent}`,
-                  background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                  transition: 'all 0.2s ease',
-                  fontFamily: "'DM Sans', sans-serif",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = tokens.accent;
-                  e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.15)' : 'rgba(12,189,115,0.12)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = tokens.accent;
-                  e.currentTarget.style.background = isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)';
-                }}
-              >
-                <div style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 10,
-                  background: tokens.accent,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                    <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-                    <path d="M6 12v5c3 3 9 3 12 0v-5" />
-                  </svg>
-                </div>
-                <div style={{ textAlign: 'left', flex: 1 }}>
-                  <div style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: isDark ? tokens.dark.textPrimary : tokens.textPrimary,
-                    marginBottom: 2,
-                  }}>
-                    Student Registration
-                  </div>
-                  <div style={{
-                    fontSize: 12,
-                    color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
-                  }}>
-                    Sign up to take exams and track progress
-                  </div>
-                </div>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={tokens.accent} strokeWidth="2">
                   <path d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
               </button>

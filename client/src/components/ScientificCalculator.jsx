@@ -315,7 +315,16 @@ export const formatNumber = (value) => {
 /* -------------------------------------------------------------------------- */
 
 const STORAGE_KEY = 'examScientificCalculator';
-const DEFAULT_STATE = { angleMode: 'DEG', memory: null, ans: null, saved: [], history: [] };
+const DEFAULT_STATE = {
+  angleMode: 'DEG',
+  memory: null,
+  ans: null,
+  saved: [],
+  history: [],
+  // Kept here rather than in the component so minimising, closing or
+  // switching question types never throws away what is on the display.
+  expression: ''
+};
 
 let sharedState = null;
 const subscribers = new Set();
@@ -376,9 +385,9 @@ const VARIANT_KEYS = {
 const CalculatorPanel = ({ compact = false, autoFocus = true }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
-  const { angleMode, memory, ans, saved, history } = useCalculatorState();
+  const { angleMode, memory, ans, saved, history, expression } = useCalculatorState();
 
-  const [expression, setExpression] = useState('');
+  const setExpression = useCallback((value) => updateState({ expression: value }), []);
   const [error, setError] = useState('');
   const [secondary, setSecondary] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -406,7 +415,7 @@ const CalculatorPanel = ({ compact = false, autoFocus = true }) => {
       const position = Math.max(0, Math.min(caretPosition, nextExpression.length));
       el.setSelectionRange(position, position);
     });
-  }, []);
+  }, [setExpression]);
 
   const insert = useCallback((text) => {
     const { start, end } = caret();
@@ -444,7 +453,7 @@ const CalculatorPanel = ({ compact = false, autoFocus = true }) => {
     setExpression('');
     setError('');
     if (inputRef.current) inputRef.current.focus();
-  }, []);
+  }, [setExpression]);
 
   /** Toggles the sign of the number at the caret: 25 -> (-25) -> 25 */
   const toggleSign = useCallback(() => {
@@ -497,10 +506,10 @@ const CalculatorPanel = ({ compact = false, autoFocus = true }) => {
       const text = formatNumber(value);
       updateState({
         ans: value,
+        expression: text,
         history: [{ id: `${Date.now()}`, expression: trimmed, result: text }, ...(history || [])].slice(0, 30)
       });
       setError('');
-      setExpression(text);
       const el = inputRef.current;
       if (el) {
         window.requestAnimationFrame(() => {
@@ -637,10 +646,8 @@ const CalculatorPanel = ({ compact = false, autoFocus = true }) => {
       calculate();
       return;
     }
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      clearAll();
-    }
+    // Escape is deliberately left alone so it still closes the calculator
+    // dialog. Use the C key on the pad to clear.
   };
 
   const handleChange = (event) => {
@@ -905,9 +912,45 @@ export const DraggableCalculator = ({ open, onClose }) => {
   const boxRef = useRef(null);
   const dragRef = useRef(null);
 
+  // Always come back as a full calculator, never as a leftover bubble.
+  useEffect(() => {
+    if (open) setMinimized(false);
+  }, [open]);
+
+  // A window resize (or rotating a tablet) must not strand the calculator
+  // off-screen, where it could be neither used nor closed.
+  useEffect(() => {
+    if (!open || minimized) return undefined;
+
+    const clampToViewport = () => {
+      const node = boxRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const maxX = Math.max(0, window.innerWidth - rect.width);
+      const maxY = Math.max(0, window.innerHeight - rect.height);
+      setPosition((current) => {
+        if (!current) return current;
+        const x = Math.min(Math.max(0, current.x), maxX);
+        const y = Math.min(Math.max(0, current.y), maxY);
+        return x === current.x && y === current.y ? current : { x, y };
+      });
+    };
+
+    clampToViewport();
+    window.addEventListener('resize', clampToViewport);
+    window.addEventListener('orientationchange', clampToViewport);
+    return () => {
+      window.removeEventListener('resize', clampToViewport);
+      window.removeEventListener('orientationchange', clampToViewport);
+    };
+  }, [open, minimized]);
+
   const handlePointerDown = (event) => {
     const node = boxRef.current;
     if (!node || event.button === 2) return;
+    // Never start a drag on the minimise / close buttons: capturing the
+    // pointer here would swallow their click.
+    if (event.target.closest('button, [role="button"]')) return;
     const rect = node.getBoundingClientRect();
     dragRef.current = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
     setPosition({ x: rect.left, y: rect.top });
@@ -941,33 +984,65 @@ export const DraggableCalculator = ({ open, onClose }) => {
     }
   };
 
+  const handleClose = () => {
+    dragRef.current = null;
+    setMinimized(false);
+    if (onClose) onClose();
+  };
+
   if (!open) return null;
 
+  // Minimized: a bubble that restores the calculator, with its own close
+  // button so a student is never left with something they cannot dismiss.
   if (minimized) {
     return (
-      <Box
-        onClick={() => setMinimized(false)}
-        role="button"
-        aria-label="Open calculator"
-        sx={{
-          position: 'fixed',
-          bottom: 20,
-          right: 20,
-          zIndex: 9999,
-          bgcolor: 'primary.main',
-          borderRadius: '50%',
-          width: 56,
-          height: 56,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: 4,
-          cursor: 'pointer',
-          transition: 'all 0.3s ease',
-          '&:hover': { transform: 'scale(1.1)', boxShadow: 6 }
-        }}
-      >
-        <Calculate sx={{ color: 'white', fontSize: 28 }} />
+      <Box sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999 }}>
+        <Tooltip title="Open calculator" placement="left">
+          <Box
+            onClick={() => setMinimized(false)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') setMinimized(false);
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Open calculator"
+            sx={{
+              bgcolor: 'primary.main',
+              borderRadius: '50%',
+              width: 56,
+              height: 56,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: 4,
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              '&:hover': { transform: 'scale(1.1)', boxShadow: 6 }
+            }}
+          >
+            <Calculate sx={{ color: 'white', fontSize: 28 }} />
+          </Box>
+        </Tooltip>
+        <Tooltip title="Close calculator" placement="left">
+          <IconButton
+            onClick={handleClose}
+            size="small"
+            aria-label="Close calculator"
+            sx={{
+              position: 'absolute',
+              top: -6,
+              right: -6,
+              width: 22,
+              height: 22,
+              bgcolor: 'error.main',
+              color: 'common.white',
+              boxShadow: 2,
+              '&:hover': { bgcolor: 'error.dark' }
+            }}
+          >
+            <Close sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
       </Box>
     );
   }
@@ -1018,22 +1093,26 @@ export const DraggableCalculator = ({ open, onClose }) => {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 0.25 }}>
-          <IconButton
-            onClick={() => setMinimized(true)}
-            size="small"
-            sx={{ color: 'inherit', p: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
-            title="Minimize"
-          >
-            <ExpandLess sx={{ fontSize: 18 }} />
-          </IconButton>
-          <IconButton
-            onClick={onClose}
-            size="small"
-            sx={{ color: 'inherit', p: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
-            title="Close"
-          >
-            <Close sx={{ fontSize: 18 }} />
-          </IconButton>
+          <Tooltip title="Minimize - your numbers are kept">
+            <IconButton
+              onClick={() => setMinimized(true)}
+              size="small"
+              aria-label="Minimize calculator"
+              sx={{ color: 'inherit', p: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}
+            >
+              <ExpandLess sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Close calculator">
+            <IconButton
+              onClick={handleClose}
+              size="small"
+              aria-label="Close calculator"
+              sx={{ color: 'inherit', p: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}
+            >
+              <Close sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
 

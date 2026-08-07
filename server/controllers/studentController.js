@@ -5,7 +5,14 @@ const SharedExam = require('../models/SharedExam');
 const ExamRequest = require('../models/ExamRequest');
 const Subscription = require('../models/Subscription');
 const emailService = require('../utils/emailService');
-const { freeExamMatchesUserSubLevel, subscriptionCoversExam, syncUserLevelFromSubscription } = require('../utils/subLevelAccess');
+const {
+  freeExamMatchesUserSubLevel,
+  subscriptionCoversExam,
+  syncUserLevelFromSubscription,
+  getActiveLevelSubscriptions,
+  findSubscriptionCoveringExam,
+  subscriptionExamQuery
+} = require('../utils/subLevelAccess');
 const { generateOverallRecommendation } = require('../utils/resultRecommendation');
 const { SPREADSHEET_QUESTION_FIELDS } = require('../utils/resultQuestionFields');
 
@@ -41,8 +48,16 @@ const getAvailableExams = async (req, res) => {
       .filter(r => !r.isRetake || !r.accessCodeUsed)
       .map(r => r.exam.toString());
 
+    // Every active level subscription the student holds — not just one for the
+    // level they currently have selected. A student can be subscribed to a
+    // different level (or sub-level) than the one selected, and that plan's
+    // exams are the ones they paid for, so they belong in the bank (and at the
+    // top of it) regardless of the current selection.
+    const levelSubscriptions = await getActiveLevelSubscriptions(req.user._id);
+
     // Exam bank = exams belonging to the student's selected level AND
     // matching their sub-level (or sub-level-agnostic, level-wide exams),
+    // PLUS everything covered by an active subscription on any level,
     // PLUS any exam explicitly granted via a legacy assignment/approved
     // request (regardless of level/sub-level), so teacher-shared exams keep
     // working. Without the sub-level filter, a student would see every other
@@ -58,15 +73,21 @@ const getAvailableExams = async (req, res) => {
       ]
     } : null;
 
+    const subscriptionScopes = levelSubscriptions
+      .map(subscriptionExamQuery)
+      .filter(Boolean);
+
     const exams = await Exam.find({
       $or: [
         ...(levelWithSubLevelMatch ? [levelWithSubLevelMatch] : []),
+        ...subscriptionScopes,
         { assignedTo: req.user._id },
         { _id: { $in: approvedExamIds } }
       ],
       status: 'active'
     })
       .populate('createdBy', 'firstName lastName')
+      .populate('level', 'name')
       .populate('sections.questions')
       .select('title description timeLimit isLocked accessType level subLevel scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections');
 
@@ -83,12 +104,6 @@ const getAvailableExams = async (req, res) => {
     const inProgressExams = results
       .filter(result => !result.isCompleted)
       .map(result => result.exam.toString());
-
-    // Active subscription (if any) for the student's current level
-    const activeSubscription = user.level
-      ? await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id)
-      : null;
-    const hasActiveSubscription = !!(activeSubscription && activeSubscription.isValid());
 
     // Exam-scoped subscriptions (bought for one specific exam rather than
     // the whole level) — each one unlocks just its own exam.
@@ -131,22 +146,34 @@ const getAvailableExams = async (req, res) => {
       // (assignedTo/approved request) always unlocks the exam regardless of
       // access type, since the teacher/admin already granted it directly.
       const hasLegacyGrant = approvedAccessExamIds.includes(exam._id.toString());
+      // Keyed on the exam's own level, so a plan bought for a level other than
+      // the selected one still unlocks its exams.
+      const coveringSubscription = findSubscriptionCoveringExam(levelSubscriptions, exam);
+      const hasExamSubscription = examSubscribedIds.has(exam._id.toString());
       let accessUnlocked;
       if (hasLegacyGrant) {
         accessUnlocked = true;
-      } else if (examSubscribedIds.has(exam._id.toString())) {
+      } else if (hasExamSubscription || coveringSubscription) {
         accessUnlocked = true;
       } else if (exam.accessType === 'free') {
         // A free exam grants exactly one attempt to non-subscribers — once
         // completed, retaking it requires an active subscription just like
-        // any other subscription-gated content.
+        // any other subscription-gated content (handled above).
         const isCompletedFree = completedExams.includes(exam._id.toString());
-        accessUnlocked = freeExamMatchesUserSubLevel(exam, user) &&
-          (!isCompletedFree || (hasActiveSubscription && subscriptionCoversExam(activeSubscription, exam)));
+        accessUnlocked = freeExamMatchesUserSubLevel(exam, user) && !isCompletedFree;
       } else {
-        accessUnlocked = hasActiveSubscription && subscriptionCoversExam(activeSubscription, exam);
+        accessUnlocked = false;
       }
       examObj.accessUnlocked = accessUnlocked;
+
+      // Surfaced to the client so subscription content can lead the list and
+      // be labelled with the level it was paid for — a student subscribed to a
+      // level other than the one they selected otherwise has no way to tell
+      // why an unfamiliar level's exams are in their bank.
+      examObj.subscriptionUnlocked = !!coveringSubscription || hasExamSubscription;
+      examObj.levelName = exam.level?.name || null;
+      examObj.isSelectedLevel = !!user.level && !!exam.level &&
+        (exam.level._id || exam.level).toString() === user.level._id.toString();
 
       // Teacher's manual isLocked flag combines with subscription/free-exam access
       if (exam.isLocked && hasLegacyGrant) {
@@ -172,6 +199,19 @@ const getAvailableExams = async (req, res) => {
 
       return examObj;
     });
+
+    // Order the bank the way a student reads it: exams their subscription pays
+    // for first, then anything else they can start right now, then locked
+    // content — newest first within each tier. Clients re-sort for their own
+    // filters, but this keeps any consumer that just renders the array (and
+    // anything that truncates it) showing the paid-for exams on top.
+    const accessRank = (examObj) => {
+      if (examObj.subscriptionUnlocked) return 0;
+      if (examObj.accessUnlocked) return 1;
+      return 2;
+    };
+    examsWithStatus.sort((a, b) =>
+      accessRank(a) - accessRank(b) || new Date(b.createdAt) - new Date(a.createdAt));
 
     res.json(examsWithStatus);
   } catch (error) {
@@ -268,12 +308,21 @@ const getExamById = async (req, res) => {
       const isAssigned = await Exam.exists({ _id: req.params.examId, assignedTo: req.user._id });
       hasLegacyGrant = !!approvedRequest || !!isAssigned;
 
+      // Any level the student holds an active subscription for is reachable
+      // here, not just the selected one — the exam bank lists those exams, so
+      // opening one has to work too.
+      const levelSubscriptions = await getActiveLevelSubscriptions(req.user._id);
+      const subscribedLevelIds = levelSubscriptions
+        .map(sub => sub.level?._id || sub.level)
+        .filter(Boolean);
+
       exam = await Exam.findOne({
         _id: req.params.examId,
         $or: [
           { assignedTo: req.user._id },
           { _id: { $in: approvedRequest ? [approvedRequest.exam] : [] } },
-          ...(user?.level ? [{ level: user.level._id }] : [])
+          ...(user?.level ? [{ level: user.level._id }] : []),
+          ...(subscribedLevelIds.length ? [{ level: { $in: subscribedLevelIds } }] : [])
         ]
       })
         .populate('createdBy', 'firstName lastName')
@@ -284,33 +333,33 @@ const getExamById = async (req, res) => {
       // grant), gate it by subscription/free-exam status just like the exam
       // bank listing does, so this endpoint stays consistent with it.
       if (exam && !hasLegacyGrant) {
-        if (exam.accessType === 'free') {
-          if (!freeExamMatchesUserSubLevel(exam, user)) {
-            return res.json({
-              _id: exam._id,
-              title: exam.title,
-              description: exam.description,
-              timeLimit: exam.timeLimit,
-              isLocked: true,
-              message: 'This free exam is not available for your sub-level'
-            });
-          }
-        } else {
-          const examSubscription = await Subscription.getActiveSubscriptionForExam(req.user._id, exam._id);
-          const hasExamSubscription = !!(examSubscription && examSubscription.isValid());
-          if (!hasExamSubscription) {
-            const activeSubscription = await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id);
-            const hasActiveSubscription = !!(activeSubscription && activeSubscription.isValid());
-            if (!hasActiveSubscription || !subscriptionCoversExam(activeSubscription, exam)) {
+        // A subscription covering this exam's own level unlocks it whatever
+        // its access type and whatever level the student has selected.
+        const examSubscription = await Subscription.getActiveSubscriptionForExam(req.user._id, exam._id);
+        const subscriptionUnlocked = !!findSubscriptionCoveringExam(levelSubscriptions, exam) ||
+          !!(examSubscription && examSubscription.isValid());
+
+        if (!subscriptionUnlocked) {
+          if (exam.accessType === 'free') {
+            if (!freeExamMatchesUserSubLevel(exam, user)) {
               return res.json({
                 _id: exam._id,
                 title: exam.title,
                 description: exam.description,
                 timeLimit: exam.timeLimit,
                 isLocked: true,
-                message: 'This exam requires an active subscription'
+                message: 'This free exam is not available for your sub-level'
               });
             }
+          } else {
+            return res.json({
+              _id: exam._id,
+              title: exam.title,
+              description: exam.description,
+              timeLimit: exam.timeLimit,
+              isLocked: true,
+              message: 'This exam requires an active subscription'
+            });
           }
         }
       }
@@ -527,9 +576,15 @@ const buildRetakeInfo = async (exam, userId) => {
 
   const hasDirectGrant = hasLegacyGrant || hasShareGrant;
 
-  // A student whose level moved on since taking this exam is refused by
-  // validateExamAccess before any subscription is even considered.
-  const levelMismatch = !!user.level && !!exam.level &&
+  // Keyed on the exam's level rather than the selected one: a subscription
+  // bought for another level still unlocks its own exams, exactly as
+  // validateExamAccess decides it.
+  const levelSubscriptions = await getActiveLevelSubscriptions(userId);
+  const coveringSubscription = findSubscriptionCoveringExam(levelSubscriptions, exam);
+
+  // A student whose level moved on since taking this exam, and who holds no
+  // subscription covering it, is refused by validateExamAccess.
+  const levelMismatch = !coveringSubscription && !!user.level && !!exam.level &&
     exam.level.toString() !== user.level._id.toString();
 
   if (hasDirectGrant) {
@@ -541,17 +596,9 @@ const buildRetakeInfo = async (exam, userId) => {
     if (examSubscription && examSubscription.isValid()) {
       info.accessUnlocked = true;
     } else {
-      const levelSubscription = user.level
-        ? await Subscription.getActiveSubscriptionForLevel(userId, user.level._id)
-        : null;
-      const hasLevelSubscription = !!(levelSubscription && levelSubscription.isValid() &&
-        subscriptionCoversExam(levelSubscription, exam));
-
       // A free exam grants one attempt only — the student has already spent it
       // on the result they're looking at, so a retake needs a subscription too.
-      info.accessUnlocked = exam.accessType === 'free'
-        ? freeExamMatchesUserSubLevel(exam, user) && hasLevelSubscription
-        : hasLevelSubscription;
+      info.accessUnlocked = !!coveringSubscription;
     }
   }
 

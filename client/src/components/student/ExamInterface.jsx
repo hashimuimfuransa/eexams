@@ -4025,11 +4025,11 @@ const ExamInterface = () => {
                           {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
                         </Typography>
                         {exam?.calculatorEnabled === true && (
-                          <Tooltip title="Open Calculator">
+                          <Tooltip title={calculatorOpen ? 'Close Calculator' : 'Open Calculator'}>
                             <Button
                               variant="contained"
                               startIcon={<Calculate />}
-                              onClick={() => setCalculatorOpen(true)}
+                              onClick={() => setCalculatorOpen(prev => !prev)}
                               sx={{
                                 bgcolor: 'primary.main',
                                 color: 'white',

@@ -68,6 +68,10 @@ function parseSheets(raw) {
   }
 }
 
+const CURRENCY_CODE = 'frw|rwf|ksh|kes|usd|eur|gbp|ugx|tzs|zar|ngn|rs';
+const LEADING_CURRENCY_RE  = new RegExp(`^(?:${CURRENCY_CODE})\\s*(?=[\\d.+-])`, 'i');
+const TRAILING_CURRENCY_RE = new RegExp(`([\\d.])\\s*(?:${CURRENCY_CODE})$`, 'i');
+
 function cellsEqual(studentVal, modelVal) {
   const studentStr = (studentVal ?? '').toString().trim();
   const modelStr = (modelVal ?? '').toString().trim();
@@ -77,12 +81,29 @@ function cellsEqual(studentVal, modelVal) {
 
   if (studentStr.toLowerCase() === modelStr.toLowerCase()) return true;
 
-  // Numeric comparison with tolerance for rounding / formatting differences
-  // (e.g. "1,234.00" vs 1234, or currency symbols)
+  // Numeric comparison with tolerance for rounding / formatting differences, e.g. "1,234.00" vs
+  // 1234. Two accounting conventions have to be understood or correct work is marked wrong:
+  //   - a bracketed figure is negative — "(500)" means -500, and it is how every marking guide
+  //     and the sheet's own accounting format render a negative;
+  //   - a figure may carry its currency inline — "Frw 2,638,000", "KSh 4,000", "£120".
+  // Both previously produced NaN, and a NaN on either side fell through to `return false`, so a
+  // student who wrote "(500)" against a model answer of "-500" scored zero for that cell.
+  // Kept in step with toNumber() in client/src/components/FinancialSpreadsheet.jsx — the sheet's
+  // status bar and number formatting use the same rules, so what a student sees adding up is what
+  // gets marked. Currency words are matched against a fixed list rather than "any short word":
+  // stripping any short word would make a ratio-analysis "45 days" equal a bare "45", and a
+  // ledger date like "July 6" (present in these questions) parse as the number 6.
   const toNumber = (s) => {
-    const cleaned = s.replace(/[,$%\s]/g, '');
-    const n = Number(cleaned);
-    return Number.isFinite(n) ? n : NaN;
+    let str = s.trim();
+    const bracketed = /^\(.*\)$/.test(str);
+    if (bracketed) str = str.slice(1, -1);
+    str = str
+      .replace(LEADING_CURRENCY_RE, '')             // "Frw 5,400,000"
+      .replace(TRAILING_CURRENCY_RE, '$1')          // "5,400,000 Frw"
+      .replace(/[,$€£¥₹₦%\s]/g, '');                // separators, percent and currency symbols
+    const n = Number(str);
+    if (!Number.isFinite(n)) return NaN;
+    return bracketed ? -n : n;
   };
   const studentNum = toNumber(studentStr);
   const modelNum = toNumber(modelStr);

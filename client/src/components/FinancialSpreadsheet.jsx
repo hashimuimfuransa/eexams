@@ -24,7 +24,7 @@ import {
   Box, Tabs, Tab, Chip, Typography, Alert, Button,
   IconButton, Tooltip, TextField, Stack, CircularProgress, Collapse,
   Checkbox, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions,
-  InputAdornment, ListItemButton
+  InputAdornment, ListItemButton, Menu, MenuItem
 } from '@mui/material';
 import {
   Lock, LockOpen, TableChart,
@@ -118,15 +118,28 @@ function escapeHtml(value) {
 }
 
 // Parses the money-ish strings that show up in accounting answers — "1,234.50", "(500)" for a
-// negative, "Frw 5,400,000", "12.5%" — mirroring the tolerance of the server-side grader's
-// cellsEqual() so the status bar's Sum agrees with what will actually be marked.
+// negative, "Frw 5,400,000", "5,400,000 Frw", "€120", "12.5%". Kept deliberately in step with the
+// server grader's cellsEqual() so the status bar's Sum, the right-alignment cue and the number
+// formatting all agree with what will actually be marked.
+//
+// A currency WORD is matched against a fixed list of codes rather than "any short word", at both
+// ends. Stripping any short word would misread real cell values: a ratio-analysis "45 days" would
+// compare equal to a bare "45", and a ledger date like "July 6" — which exists in these questions
+// — would parse as the number 6 and match a student who simply wrote "6".
+const CURRENCY_CODE = 'frw|rwf|ksh|kes|usd|eur|gbp|ugx|tzs|zar|ngn|rs';
+const LEADING_CURRENCY_RE  = new RegExp(`^(?:${CURRENCY_CODE})\\s*(?=[\\d.+-])`, 'i');
+const TRAILING_CURRENCY_RE = new RegExp(`([\\d.])\\s*(?:${CURRENCY_CODE})$`, 'i');
+
 function toNumber(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
   let s = String(value ?? '').trim();
   if (s === '') return NaN;
   const bracketed = /^\(.*\)$/.test(s);
   if (bracketed) s = s.slice(1, -1);
-  s = s.replace(/[,$%\s]/g, '').replace(/^[A-Za-z]{1,4}(?=[\d.-])/, '');
+  s = s
+    .replace(LEADING_CURRENCY_RE, '')             // "Frw 5,400,000"
+    .replace(TRAILING_CURRENCY_RE, '$1')          // "5,400,000 Frw"
+    .replace(/[,$€£¥₹₦%\s]/g, '');                // separators, percent and currency symbols
   const n = Number(s);
   if (!Number.isFinite(n)) return NaN;
   return bracketed ? -n : n;
@@ -136,6 +149,43 @@ const looksNumeric = (value) => !Number.isNaN(toNumber(value));
 
 const formatStat = (n) =>
   Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—';
+
+// ── Number formatting ─────────────────────────────────────────────────────────
+// Done here rather than through Handsontable's numeric cell type, which could not work for these
+// sheets. That path formats only values its own isNumeric() accepts — plain digits — so every
+// figure already carrying a thousands separator, a currency prefix or accounting brackets
+// ("5,400,000", "Frw 5,400,000", "(500)") was returned untouched and the button appeared dead.
+// It also required flipping cells to type:'numeric', which fought the grid's own renderer and
+// flagged string cells invalid, and its `numericFormat.pattern` API is deprecated in v17.
+//
+// Formatting is presentation only: the cell keeps the text the student typed, exactly as in
+// Excel, so what gets graded never changes with the format applied.
+const CURRENCY_OPTIONS = [
+  { label: 'No symbol', symbol: '' },
+  { label: 'Frw',       symbol: 'Frw ' },
+  { label: 'USD  $',    symbol: '$' },
+  { label: 'EUR  €',    symbol: '€' },
+  { label: 'GBP  £',    symbol: '£' },
+  { label: 'KES  KSh',  symbol: 'KSh ' },
+];
+
+function formatCellForDisplay(raw, fmt) {
+  if (!fmt || !fmt.kind) return raw; // no format, or formatting explicitly cleared
+  const n = toNumber(raw);
+  if (Number.isNaN(n)) return raw; // row labels and notes pass through untouched
+
+  const decimals = Math.max(0, Math.min(6, fmt.decimals ?? 2));
+  const body = Math.abs(n).toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+
+  if (fmt.kind === 'percent') return `${n < 0 ? '-' : ''}${body}%`;
+
+  // Accounting convention: negatives in brackets rather than with a minus sign.
+  const symbol = fmt.symbol || '';
+  return n < 0 ? `(${symbol}${body})` : `${symbol}${body}`;
+}
 
 let tableIdSeq = 0;
 function nextTableKey() {
@@ -476,15 +526,16 @@ function toggleClassOnSelection(hot, cls) {
   hot.render();
 }
 
-function applyNumericFormat(hot, format) {
-  const sel = hot.getSelectedRange();
-  if (!sel) return;
-  sel.forEach(range => {
-    const { from, to } = range;
-    for (let r = from.row; r <= to.row; r++) {
-      for (let c = from.col; c <= to.col; c++) {
-        hot.setCellMeta(r, c, 'type', 'numeric');
-        hot.setCellMeta(r, c, 'numericFormat', { pattern: format });
+// Merges a format patch into the selected cells' own `finFormat` meta, so "increase decimals"
+// keeps whatever currency symbol is already applied instead of replacing the whole format.
+function applyCellFormat(hot, patch) {
+  const sel = hot?.getSelectedRange();
+  if (!hot || !sel) return;
+  sel.forEach(({ from, to }) => {
+    for (let r = Math.min(from.row, to.row); r <= Math.max(from.row, to.row); r++) {
+      for (let c = Math.min(from.col, to.col); c <= Math.max(from.col, to.col); c++) {
+        const current = hot.getCellMeta(r, c).finFormat || {};
+        hot.setCellMeta(r, c, 'finFormat', { kind: 'accounting', decimals: 2, ...current, ...patch });
       }
     }
   });
@@ -499,7 +550,8 @@ const baseTextRenderer =
   Handsontable.renderers?.TextRenderer;
 
 function finTextRenderer(instance, td, row, col, prop, value, cellProperties) {
-  baseTextRenderer.call(this, instance, td, row, col, prop, value, cellProperties);
+  const display = formatCellForDisplay(value, cellProperties.finFormat);
+  baseTextRenderer.call(this, instance, td, row, col, prop, display, cellProperties);
   td.classList.toggle('fin-numeric-cell', looksNumeric(value));
 }
 
@@ -804,6 +856,7 @@ function EditableGrid({
   const baseColCountRef = useRef(initialHeaders?.length ?? 0);
   const pendingColNameRef = useRef(null);
   const [addColOpen, setAddColOpen] = useState(false);
+  const [currencyAnchor, setCurrencyAnchor] = useState(null);
 
   useEffect(() => { headersRef.current = headers; }, [headers]);
 
@@ -1134,8 +1187,8 @@ function EditableGrid({
   const markTotalRow  = () => { const h = hot(); if (h) applyClassToSelection(h, 'fin-total-row',  ['fin-header-row','fin-subtotal']); };
   const markSubtotal  = () => { const h = hot(); if (h) applyClassToSelection(h, 'fin-subtotal',   ['fin-header-row','fin-total-row']); };
 
-  // Excel's "Increase / Decrease Decimal" buttons: step the pattern of the selected cells rather
-  // than replacing it, so a figure formatted as currency stays currency.
+  // Excel's "Increase / Decrease Decimal": steps each selected cell's own decimal count, keeping
+  // whatever currency symbol and kind it already carries.
   const stepDecimals = (delta) => {
     const h = hot();
     const sel = h?.getSelectedRange();
@@ -1143,12 +1196,9 @@ function EditableGrid({
     sel.forEach(({ from, to }) => {
       for (let r = Math.min(from.row, to.row); r <= Math.max(from.row, to.row); r++) {
         for (let c = Math.min(from.col, to.col); c <= Math.max(from.col, to.col); c++) {
-          const meta = h.getCellMeta(r, c);
-          const pattern = meta.numericFormat?.pattern || '0,0';
-          const [whole, decimals = ''] = pattern.split('.');
-          const next = Math.max(0, Math.min(6, decimals.length + delta));
-          h.setCellMeta(r, c, 'type', 'numeric');
-          h.setCellMeta(r, c, 'numericFormat', { pattern: next ? `${whole}.${'0'.repeat(next)}` : whole });
+          const current = h.getCellMeta(r, c).finFormat || { kind: 'accounting', decimals: 2 };
+          const next = Math.max(0, Math.min(6, (current.decimals ?? 2) + delta));
+          h.setCellMeta(r, c, 'finFormat', { ...current, decimals: next });
         }
       }
     });
@@ -1339,13 +1389,19 @@ function EditableGrid({
         </RibbonGroup>
 
         <RibbonGroup label="Number">
-          <RibbonBtn title="Accounting format — 1,234.00" onClick={() => applyNumericFormat(hot(), '0,0.00')}>
+          <RibbonBtn
+            title="Accounting format — 1,234.00, with negatives in brackets. Click the arrow to add a currency symbol."
+            onClick={() => applyCellFormat(hot(), { kind: 'accounting', symbol: '', decimals: 2 })}
+          >
             <span style={{ fontWeight: 700 }}>$</span>
           </RibbonBtn>
-          <RibbonBtn title="Percent format — 12.50%" onClick={() => applyNumericFormat(hot(), '0.00%')}>
+          <RibbonBtn title="Choose a currency symbol" onClick={(e) => setCurrencyAnchor(e.currentTarget)}>
+            <span style={{ fontSize: 9 }}>▾</span>
+          </RibbonBtn>
+          <RibbonBtn title="Percent — shows the figure with a % sign" onClick={() => applyCellFormat(hot(), { kind: 'percent', decimals: 2 })}>
             <span style={{ fontWeight: 700 }}>%</span>
           </RibbonBtn>
-          <RibbonBtn title="Comma style — 1,234" onClick={() => applyNumericFormat(hot(), '0,0')}>
+          <RibbonBtn title="Comma style — 1,234, no decimals" onClick={() => applyCellFormat(hot(), { kind: 'accounting', symbol: '', decimals: 0 })}>
             <span style={{ fontWeight: 700 }}>,</span>
           </RibbonBtn>
           <RibbonBtn title="Increase decimal places" onClick={() => stepDecimals(1)}>
@@ -1353,6 +1409,9 @@ function EditableGrid({
           </RibbonBtn>
           <RibbonBtn title="Decrease decimal places" onClick={() => stepDecimals(-1)}>
             <span style={{ fontSize: 11, letterSpacing: '-0.5px' }}>←.0</span>
+          </RibbonBtn>
+          <RibbonBtn title="Remove formatting — show the figure exactly as typed" onClick={() => applyCellFormat(hot(), { kind: null, symbol: '' })}>
+            <span style={{ fontSize: 10 }}>✕</span>
           </RibbonBtn>
         </RibbonGroup>
 
@@ -1515,6 +1574,28 @@ function EditableGrid({
       <Box sx={{ overflowX: 'auto', colorScheme: 'light' }}>
         <div ref={containerRef} />
       </Box>
+
+      <Menu
+        anchorEl={currencyAnchor}
+        open={Boolean(currencyAnchor)}
+        onClose={() => setCurrencyAnchor(null)}
+      >
+        {CURRENCY_OPTIONS.map(({ label, symbol }) => (
+          <MenuItem
+            key={label}
+            onClick={() => {
+              applyCellFormat(hot(), { kind: 'accounting', symbol, decimals: 2 });
+              setCurrencyAnchor(null);
+            }}
+            sx={{ fontSize: 12.5, fontFamily: EXCEL.font, py: 0.5 }}
+          >
+            {label}
+            <Box component="span" sx={{ ml: 'auto', pl: 2, color: EXCEL.muted, fontSize: 11.5 }}>
+              {symbol ? `${symbol}1,234.00` : '1,234.00'}
+            </Box>
+          </MenuItem>
+        ))}
+      </Menu>
 
       <InsertFunctionDialog open={fxOpen} onClose={() => setFxOpen(false)} onInsert={insertFunction} />
       <AddColumnDialog

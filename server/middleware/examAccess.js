@@ -5,7 +5,13 @@ const Level = require('../models/Level');
 const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
 const Result = require('../models/Result');
-const { freeExamMatchesUserSubLevel, subscriptionCoversExam, syncUserLevelFromSubscription } = require('../utils/subLevelAccess');
+const {
+  freeExamMatchesUserSubLevel,
+  subscriptionCoversExam,
+  syncUserLevelFromSubscription,
+  getActiveLevelSubscriptions,
+  findSubscriptionCoveringExam
+} = require('../utils/subLevelAccess');
 
 /**
  * Middleware to validate exam access based on level, subscription status, and free exam usage
@@ -27,9 +33,10 @@ const validateExamAccess = async (req, res, next) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Keep the student's level in sync with an active subscription before
-    // gating on it below — see syncUserLevelFromSubscription for why this
-    // can drift (e.g. a legacy admin grant predating the auto-sync).
+    // Fill in a missing level from an active subscription before gating on it
+    // below. A level the student *has* chosen is left alone even when their
+    // plan covers a different one — the subscription check further down grants
+    // that plan's exams without touching the selection.
     const synced = await syncUserLevelFromSubscription(userId, user.level?._id, user.subLevel);
     if (synced) {
       user.level = synced.level;
@@ -74,6 +81,35 @@ const validateExamAccess = async (req, res, next) => {
       return next();
     }
 
+    // An exam-scoped subscription (bought for this exam specifically) unlocks
+    // it whatever its access type, level, or sub-level.
+    const examSubscription = await Subscription.getActiveSubscriptionForExam(userId, exam._id);
+    if (examSubscription && examSubscription.isValid()) {
+      req.examAccess = {
+        type: 'subscription-exam',
+        canAccess: true,
+        subscription: examSubscription
+      };
+      return next();
+    }
+
+    // A level subscription unlocks its own level's exams regardless of which
+    // level the student currently has selected — students can hold a plan on
+    // one level while browsing another, and the exam bank lists that plan's
+    // exams (first, in fact), so starting them has to work too. Checked ahead
+    // of the level-mismatch and free-exam rules below, since both of those key
+    // off the *selected* level and would otherwise refuse paid-for content.
+    const levelSubscriptions = await getActiveLevelSubscriptions(userId);
+    const coveringSubscription = findSubscriptionCoveringExam(levelSubscriptions, exam);
+    if (coveringSubscription) {
+      req.examAccess = {
+        type: 'subscription',
+        canAccess: true,
+        subscription: coveringSubscription
+      };
+      return next();
+    }
+
     // Check if exam belongs to user's level (only enforced once a level is selected)
     if (user.level && exam.level && exam.level.toString() !== user.level._id.toString()) {
       return res.status(403).json({
@@ -103,22 +139,13 @@ const validateExamAccess = async (req, res, next) => {
         isCompleted: true
       });
 
+      // Reaching here means neither an exam-scoped nor a level subscription
+      // covers this exam — both were checked (and would have returned) above.
       if (alreadyCompleted) {
-        const examSubscription = await Subscription.getActiveSubscriptionForExam(userId, exam._id);
-        const hasExamSubscription = !!(examSubscription && examSubscription.isValid());
-
-        const levelSubscription = user.level
-          ? await Subscription.getActiveSubscriptionForLevel(userId, user.level._id)
-          : null;
-        const hasLevelSubscription = !!(levelSubscription && levelSubscription.isValid() &&
-          levelSubscription.expiresAt >= new Date() && subscriptionCoversExam(levelSubscription, exam));
-
-        if (!hasExamSubscription && !hasLevelSubscription) {
-          return res.status(403).json({
-            message: 'This exam requires an active subscription to retake. Subscribe to unlock unlimited retakes.',
-            requiresSubscription: true
-          });
-        }
+        return res.status(403).json({
+          message: 'This exam requires an active subscription to retake. Subscribe to unlock unlimited retakes.',
+          requiresSubscription: true
+        });
       }
 
       req.examAccess = {
@@ -128,59 +155,45 @@ const validateExamAccess = async (req, res, next) => {
       return next();
     }
 
-    // If exam requires subscription, check subscription status
+    // If exam requires subscription, every path that could have granted it ran
+    // above — all that's left is reporting the right reason for the refusal.
     if (exam.accessType === 'subscription') {
-      // An exam-scoped subscription (bought for this exam specifically)
-      // unlocks it regardless of whether the student also has a level plan.
-      const examSubscription = await Subscription.getActiveSubscriptionForExam(userId, exam._id);
-      if (examSubscription && examSubscription.isValid()) {
-        req.examAccess = {
-          type: 'subscription-exam',
-          canAccess: true,
-          subscription: examSubscription
-        };
-        return next();
-      }
+      // An active plan on this exam's own level can only have failed the
+      // coverage test on sub-level scope.
+      const activeSameLevel = levelSubscriptions.find(sub =>
+        !!exam.level && (sub.level?._id || sub.level)?.toString() === exam.level.toString());
 
-      const subscription = user.level
-        ? await Subscription.getActiveSubscriptionForLevel(userId, user.level._id)
-        : null;
-
-      if (!subscription || !subscription.isValid()) {
+      if (activeSameLevel) {
+        // A sub-level-specific subscription only covers exams in that
+        // sub-level (or untagged, general exams); it does not unlock other
+        // sub-levels' content.
         return res.status(403).json({
-          message: 'This exam requires an active subscription',
-          requiresSubscription: true,
-          currentLevel: user.level?.name
+          message: 'Your subscription does not cover this sub-level. Upgrade to a full-level plan or the matching sub-level plan.',
+          requiresSubLevelMatch: true,
+          subscriptionSubLevel: activeSameLevel.subLevel,
+          examSubLevel: exam.subLevel
         });
       }
 
-      // Check if subscription has expired
-      if (subscription.expiresAt < new Date()) {
+      // Distinguish "never subscribed" from "lapsed" so the student is told to
+      // renew rather than to shop for a plan they already bought.
+      const lapsedSameLevel = exam.level
+        ? await Subscription.findOne({ user: userId, level: exam.level, exam: null })
+            .sort({ expiresAt: -1 })
+        : null;
+
+      if (lapsedSameLevel && subscriptionCoversExam(lapsedSameLevel, exam)) {
         return res.status(403).json({
           message: 'Your subscription has expired. Please renew to continue.',
           subscriptionExpired: true
         });
       }
 
-      // A sub-level-specific subscription only covers exams in that
-      // sub-level (or untagged, general exams); it does not unlock other
-      // sub-levels' content.
-      if (!subscriptionCoversExam(subscription, exam)) {
-        return res.status(403).json({
-          message: 'Your subscription does not cover this sub-level. Upgrade to a full-level plan or the matching sub-level plan.',
-          requiresSubLevelMatch: true,
-          subscriptionSubLevel: subscription.subLevel,
-          examSubLevel: exam.subLevel
-        });
-      }
-
-      // Allow access with subscription
-      req.examAccess = {
-        type: 'subscription',
-        canAccess: true,
-        subscription: subscription
-      };
-      return next();
+      return res.status(403).json({
+        message: 'This exam requires an active subscription',
+        requiresSubscription: true,
+        currentLevel: user.level?.name
+      });
     }
 
     // Default: allow access for teachers, admins, and superadmins

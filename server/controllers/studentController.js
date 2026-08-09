@@ -7,7 +7,6 @@ const Subscription = require('../models/Subscription');
 const emailService = require('../utils/emailService');
 const {
   freeExamMatchesUserSubLevel,
-  subscriptionCoversExam,
   syncUserLevelFromSubscription,
   getActiveLevelSubscriptions,
   findSubscriptionCoveringExam,
@@ -23,9 +22,10 @@ const getAvailableExams = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate('level');
 
-    // Runs independently of getMyActiveSubscription's own sync since the
-    // dashboard fetches both endpoints in parallel — this can't assume the
-    // other one already fixed the drift first.
+    // Fills in a missing level only (see syncUserLevelFromSubscription); a
+    // level the student picked is never overwritten by their plan's level.
+    // Runs independently of getMyActiveSubscription's own call since the
+    // dashboard fetches both endpoints in parallel.
     const synced = await syncUserLevelFromSubscription(req.user._id, user.level?._id, user.subLevel);
     if (synced) {
       user.level = synced.level;
@@ -55,6 +55,16 @@ const getAvailableExams = async (req, res) => {
     // top of it) regardless of the current selection.
     const levelSubscriptions = await getActiveLevelSubscriptions(req.user._id);
 
+    // Exam-scoped subscriptions (bought for one specific exam rather than
+    // the whole level) — each one unlocks just its own exam.
+    const examSubscriptions = await Subscription.find({
+      user: req.user._id,
+      exam: { $ne: null },
+      status: 'active',
+      expiresAt: { $gt: new Date() }
+    }).select('exam');
+    const examSubscribedIds = new Set(examSubscriptions.map(s => s.exam.toString()));
+
     // Exam bank = exams belonging to the student's selected level AND
     // matching their sub-level (or sub-level-agnostic, level-wide exams),
     // PLUS everything covered by an active subscription on any level,
@@ -81,6 +91,7 @@ const getAvailableExams = async (req, res) => {
       $or: [
         ...(levelWithSubLevelMatch ? [levelWithSubLevelMatch] : []),
         ...subscriptionScopes,
+        { _id: { $in: [...examSubscribedIds] } },
         { assignedTo: req.user._id },
         { _id: { $in: approvedExamIds } }
       ],
@@ -104,16 +115,6 @@ const getAvailableExams = async (req, res) => {
     const inProgressExams = results
       .filter(result => !result.isCompleted)
       .map(result => result.exam.toString());
-
-    // Exam-scoped subscriptions (bought for one specific exam rather than
-    // the whole level) — each one unlocks just its own exam.
-    const examSubscriptions = await Subscription.find({
-      user: req.user._id,
-      exam: { $ne: null },
-      status: 'active',
-      expiresAt: { $gt: new Date() }
-    }).select('exam');
-    const examSubscribedIds = new Set(examSubscriptions.map(s => s.exam.toString()));
 
     // Current time for availability check
     const now = new Date();
@@ -288,8 +289,9 @@ const getExamById = async (req, res) => {
     if (!exam) {
       const user = await User.findById(req.user._id).populate('level');
 
-      // See syncUserLevelFromSubscription — keeps the level query below
-      // consistent with the exam bank listing and live access checks.
+      // Fills in a missing level only — see syncUserLevelFromSubscription.
+      // Keeps the level query below consistent with the exam bank listing
+      // and live access checks.
       const synced = await syncUserLevelFromSubscription(req.user._id, user?.level?._id, user?.subLevel);
       if (synced && user) {
         user.level = synced.level;
@@ -535,8 +537,8 @@ const buildRetakeInfo = async (exam, userId) => {
   const user = await User.findById(userId).populate('level');
   if (!user) return info;
 
-  // Correct any drift between the student's selected level and their active
-  // subscription before gating on it, same as the exam-bank/start paths do.
+  // Fill in a missing level from the active subscription before gating on it,
+  // same as the exam-bank/start paths do.
   const synced = await syncUserLevelFromSubscription(userId, user.level?._id, user.subLevel);
   if (synced) {
     user.level = synced.level;

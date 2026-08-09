@@ -181,7 +181,13 @@ const Exams = () => {
       return true;
     })
     .sort((a, b) => {
-      // Unlocked exams first (accessUnlocked !== false)
+      // Exams the student's active subscription pays for lead the list — they
+      // are the content that was actually bought, whatever level is currently
+      // selected — then anything else startable, then locked exams.
+      if (!!a.subscriptionUnlocked !== !!b.subscriptionUnlocked) {
+        return a.subscriptionUnlocked ? -1 : 1;
+      }
+
       const aUnlocked = a.accessUnlocked !== false;
       const bUnlocked = b.accessUnlocked !== false;
       if (aUnlocked !== bUnlocked) return aUnlocked ? -1 : 1;
@@ -200,6 +206,16 @@ const Exams = () => {
       return 0;
     });
 
+
+  // Exams covered by an active plan, and the levels those plans cover when
+  // they differ from the level the student has selected — named in the header
+  // so another level's exams read as paid-for content, not as a stray listing.
+  const subscriptionExamCount = exams.filter(exam => exam.subscriptionUnlocked).length;
+  const subscriptionLevelNames = [...new Set(
+    exams
+      .filter(exam => exam.subscriptionUnlocked && !exam.isSelectedLevel && exam.levelName)
+      .map(exam => exam.levelName)
+  )];
 
   // Pagination
   const totalPages = Math.ceil(filteredExams.length / examsPerPage);
@@ -268,6 +284,7 @@ const Exams = () => {
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.25 }}>
                 Showing exams for your level: {user?.level?.name || 'Not selected'}{user?.subLevel ? ` — ${user.subLevel}` : ''}
+                {subscriptionLevelNames.length > 0 && ` + your subscription: ${subscriptionLevelNames.join(', ')}`}
               </Typography>
             </Box>
           </Box>
@@ -291,7 +308,9 @@ const Exams = () => {
                 {hasActiveSubscription ? <WorkspacePremium fontSize="small" /> : <CardMembership fontSize="small" />}
                 <Typography variant="body2" sx={{ fontWeight: 500 }}>
                   {hasActiveSubscription
-                    ? 'Your plan is active — every exam in your level is unlocked.'
+                    ? subscriptionExamCount > 0
+                      ? `Your plan is active — ${subscriptionExamCount} exam${subscriptionExamCount === 1 ? '' : 's'} unlocked and listed first.`
+                      : 'Your plan is active — every exam it covers is unlocked.'
                     : 'Free exams are open to everyone. Subscribe to unlock the full library.'}
                 </Typography>
               </Box>
@@ -637,6 +656,25 @@ const Exams = () => {
 
                       {/* Enhanced Info Chips */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+                        {exam.subscriptionUnlocked && (
+                          <Chip
+                            icon={<WorkspacePremium fontSize="small" />}
+                            label={exam.isSelectedLevel === false && exam.levelName
+                              ? `Subscription · ${exam.levelName}`
+                              : 'Subscription'}
+                            size="small"
+                            sx={{
+                              borderRadius: '12px',
+                              fontWeight: 'bold',
+                              bgcolor: alpha(theme.palette.secondary.main, 0.15),
+                              color: mode === 'dark' ? theme.palette.secondary.light : theme.palette.secondary.dark,
+                              border: `1px solid ${alpha(theme.palette.secondary.main, 0.4)}`,
+                              '& .MuiChip-icon': {
+                                color: mode === 'dark' ? theme.palette.secondary.light : theme.palette.secondary.dark
+                              }
+                            }}
+                          />
+                        )}
                         {exam.subLevel && (
                           <Chip
                             label={exam.subLevel}

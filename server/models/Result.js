@@ -99,10 +99,28 @@ const ResultSchema = new mongoose.Schema({
       textAnswer: String,
       questionType: String,
       // Written/explanatory answer alongside a financial-spreadsheet sub-question's grid — see
-      // the top-level writtenAnswer field above. Per-sub-question score/feedback isn't tracked
-      // individually here (matching how sub-question scores generally aren't persisted per-part
-      // today); it's folded into the parent answer's combined score/feedback instead.
+      // the top-level writtenAnswer field above.
       writtenAnswer: String
+    }],
+    // Per-part marks. The graders have always produced this, but it was never declared here, so
+    // Mongoose's strict mode dropped it on save and results views had nothing to show beside each
+    // part — only the parent's combined score.
+    subQuestionResults: [{
+      subIndex: Number,
+      score: Number,
+      maxPoints: Number,
+      feedback: String,
+      isCorrect: Boolean,
+      correctedAnswer: String,
+      // How a financial-spreadsheet part's marks were split, so a student or marker can see that
+      // the grid and the written explanation were assessed separately rather than guessing from
+      // one combined number.
+      spreadsheetScore: Number,
+      spreadsheetPoints: Number,
+      spreadsheetFeedback: String,
+      writtenScore: Number,
+      writtenPoints: Number,
+      writtenFeedback: String
     }],
     hasSubQuestionAnswers: {
       type: Boolean,

@@ -16,7 +16,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../components/shared/FinancialAnswerReview';
+import AnswerDetail from '../components/shared/AnswerDetail';
 import SearchableSelect from '../components/shared/SearchableSelect';
 import { tokens, gradients, planColors as PLAN_COLORS } from './dashboardTokens';
 import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } from './DashboardShell';
@@ -4380,28 +4380,21 @@ function StudentResultsSection({ searchQuery }) {
               {/* Questions and Answers */}
               <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Questions & Answers</Typography>
               {resultDetails.answers?.map((answer, index) => {
+                // AnswerDetail reads everything else off `answer` itself; only the marks header
+                // below still needs the question.
                 const question = answer.question;
-                const questionText = question?.text || answer.questionText || 'Question text not available';
-                const questionType = question?.type || answer.questionType || 'multiple-choice';
-                const options = question?.options || answer.options || [];
-                const correctAnswer = question?.correctAnswer || answer.correctAnswer;
-                const selectedAnswer = answer.selectedAnswer;
 
                 return (
                   <Paper key={index} elevation={0} sx={{ p: 3, mb: 2, borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}` }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, gap: 1 }}>
                       <Typography variant="body1" fontWeight={600} sx={{ flex: 1 }}>
-                        Q{index + 1}. {questionText}
+                        Q{index + 1}
                       </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
                         <Chip
-                          label={`${answer.score || 0} pts`}
+                          label={`${answer.score ?? 0} / ${question?.points ?? question?.marks ?? 0} pts`}
                           size="small"
-                          sx={{
-                            fontWeight: 600,
-                            bgcolor: 'rgba(59,130,246,0.1)',
-                            color: '#3B82F6'
-                          }}
+                          sx={{ fontWeight: 600, bgcolor: 'rgba(59,130,246,0.1)', color: '#3B82F6' }}
                         />
                         <Chip
                           label={answer.isCorrect ? 'Correct' : 'Incorrect'}
@@ -4415,229 +4408,9 @@ function StudentResultsSection({ searchQuery }) {
                       </Box>
                     </Box>
 
-                  {questionType === 'financial-spreadsheet' && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Spreadsheet answer:</Typography>
-                      <FinancialAnswerReview question={question} answer={answer} height={300} />
-                    </Box>
-                  )}
-
-                  {questionType === 'multiple-choice' && options.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Options:</Typography>
-                      {options.map((option, optIndex) => {
-                        const isSelected = isOptionSelected(option, selectedAnswer);
-                        const isCorrect = isOptionCorrect(option, correctAnswer);
-                        const optionText = getOptionText(option);
-                        const optionLetter = String.fromCharCode(65 + optIndex);
-                        return (
-                          <Box
-                            key={optIndex}
-                            sx={{
-                              p: 1.5,
-                              mb: 1,
-                              borderRadius: 1,
-                              bgcolor: isSelected
-                                ? (answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)')
-                                : isCorrect
-                                ? 'rgba(12,189,115,0.05)'
-                                : '#F8FAFC',
-                              border: isSelected
-                                ? `1px solid ${answer.isCorrect ? tokens.accent : '#EF4444'}`
-                                : isCorrect
-                                ? `1px solid ${tokens.accent}33`
-                                : '1px solid transparent',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1
-                            }}
-                          >
-                            {isSelected && <CheckCircle fontSize="small" sx={{ color: answer.isCorrect ? tokens.accent : '#EF4444' }} />}
-                            {isCorrect && !isSelected && <CheckCircle fontSize="small" sx={{ color: tokens.accent, opacity: 0.5 }} />}
-                            <Typography variant="body2" fontWeight="600" sx={{ minWidth: 20 }}>{optionLetter}.</Typography>
-                            <Typography variant="body2">{optionText}</Typography>
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  )}
-
-                  {questionType === 'true-false' && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
-                      <Chip
-                        label={selectedAnswer}
-                        size="small"
-                        sx={{
-                          bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
-                          color: answer.isCorrect ? tokens.accent : '#EF4444',
-                          fontWeight: 600
-                        }}
-                      />
-                    </Box>
-                  )}
-
-                  {questionType === 'short-answer' && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
-                      <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
-                        <Typography variant="body2">{selectedAnswer || 'No answer provided'}</Typography>
-                      </Paper>
-                      {correctAnswer && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 0.5 }}>Correct Answer:</Typography>
-                          <Typography variant="body2" sx={{ color: tokens.accent }}>{correctAnswer}</Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  )}
-
-                  {questionType === 'matching' && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
-                      <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
-                        {answer?.matchingAnswers && answer.matchingAnswers.length > 0 ? (
-                          <Typography variant="body2">
-                            {answer.matchingAnswers.map((match, idx) => (
-                              <span key={idx}>Match {idx + 1}: Item {match.left + 1} → Item {match.right + 1}<br /></span>
-                            ))}
-                          </Typography>
-                        ) : (
-                          <Typography variant="body2">No matching answer provided</Typography>
-                        )}
-                      </Paper>
-                    </Box>
-                  )}
-
-                  {questionType === 'fill-in-blank' && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
-                      <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
-                        <Typography variant="body2">{selectedAnswer || 'No answer provided'}</Typography>
-                      </Paper>
-                      {correctAnswer && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 0.5 }}>Correct Answer:</Typography>
-                          <Typography variant="body2" sx={{ color: tokens.accent }}>{correctAnswer}</Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  )}
-
-                  {questionType === 'open-ended' && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Your Answer:</Typography>
-                      <Paper elevation={0} sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
-                        <Typography variant="body2">{selectedAnswer || 'No answer provided'}</Typography>
-                      </Paper>
-                      {answer?.feedback && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>AI Feedback:</Typography>
-                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'rgba(59,130,246,0.05)', borderRadius: 1 }}>
-                            <Typography variant="body2">{answer.feedback}</Typography>
-                          </Paper>
-                        </Box>
-                      )}
-                      {answer?.conceptsPresent && answer.conceptsPresent.length > 0 && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Key Concepts Covered:</Typography>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {answer.conceptsPresent.map((concept, idx) => (
-                              <Chip key={idx} label={concept} size="small" sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent }} />
-                            ))}
-                          </Box>
-                        </Box>
-                      )}
-                      {answer?.conceptsMissing && answer.conceptsMissing.length > 0 && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Concepts to Improve:</Typography>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {answer.conceptsMissing.map((concept, idx) => (
-                              <Chip key={idx} label={concept} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.1)', color: '#EF4444' }} />
-                            ))}
-                          </Box>
-                        </Box>
-                      )}
-                    </Box>
-                  )}
-
-                  {answer?.feedback && questionType !== 'open-ended' && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Feedback:</Typography>
-                      <Paper elevation={0} sx={{ p: 2, bgcolor: answer.isCorrect ? 'rgba(12,189,115,0.05)' : 'rgba(59,130,246,0.05)', borderRadius: 1 }}>
-                        <Typography variant="body2">{answer.feedback}</Typography>
-                      </Paper>
-                    </Box>
-                  )}
-
-                  {(answer?.subQuestionAnswers && answer.subQuestionAnswers.length > 0) && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted, fontWeight: 600, mb: 1 }}>Sub-Questions:</Typography>
-                      {answer.subQuestionAnswers.map((subAnswer, subIdx) => {
-                        const subResult = answer.subQuestionResults?.[subIdx];
-                        const isCorrect = subResult?.isCorrect;
-                        return (
-                          <Box key={subIdx} sx={{ p: 1.5, mb: 1, bgcolor: 'white', borderRadius: 1, borderLeft: '3px solid', borderColor: isCorrect ? tokens.accent : '#EF4444' }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                              <Typography variant="body2" fontWeight="600" sx={{ flex: 1 }}>
-                                Part {subIdx + 1}
-                              </Typography>
-                              {subResult && (
-                                <Chip
-                                  label={`${subResult.score}/${subResult.maxPoints || 1}`}
-                                  size="small"
-                                  sx={{
-                                    fontWeight: 600,
-                                    bgcolor: isCorrect ? 'rgba(12,189,115,0.1)' : 'rgba(239,68,68,0.1)',
-                                    color: isCorrect ? tokens.accent : '#EF4444'
-                                  }}
-                                />
-                              )}
-                            </Box>
-                            {subAnswer?.answered ? (
-                              <Box sx={{ mt: 1 }}>
-                                {isFinancialSpreadsheetQuestion(question?.subQuestions?.[subIdx]) ? (
-                                  <FinancialAnswerReview
-                                    question={question.subQuestions[subIdx]}
-                                    answer={subAnswer}
-                                    height={260}
-                                  />
-                                ) : (
-                                  <Typography variant="body2" sx={{ color: tokens.textMuted }}>
-                                    Your answer: {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
-                                  </Typography>
-                                )}
-                                {subResult && !isCorrect && subResult.correctedAnswer
-                                  && !isFinancialSpreadsheetQuestion(question?.subQuestions?.[subIdx]) && (
-                                  <Typography variant="body2" sx={{ color: tokens.accent, mt: 0.5 }}>
-                                    Correct answer: {subResult.correctedAnswer}
-                                  </Typography>
-                                )}
-                                {subResult && subResult.feedback && (
-                                  <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic' }}>
-                                    {subResult.feedback}
-                                  </Typography>
-                                )}
-                              </Box>
-                            ) : (
-                              <Typography variant="body2" sx={{ color: '#EF4444', mt: 1 }}>
-                                Not answered
-                              </Typography>
-                            )}
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  )}
-
-                  {answer.marksObtained !== undefined && (
-                    <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${tokens.surfaceBorder}` }}>
-                      <Typography variant="body2" sx={{ color: tokens.textMuted }}>
-                        Marks: <strong>{answer.marksObtained}</strong> / {question?.marks || 0}
-                      </Typography>
-                    </Box>
-                  )}
-                </Paper>
+                    {/* Same breakdown the student is shown, so staff review the identical view. */}
+                    <AnswerDetail answer={answer} />
+                  </Paper>
                 );
               })}
             </Box>

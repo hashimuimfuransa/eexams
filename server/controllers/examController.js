@@ -564,7 +564,11 @@ const getExamById = async (req, res) => {
           const Subscription = require('../models/Subscription');
           const User = require('../models/User');
           const Level = require('../models/Level');
-          const { subscriptionCoversExam, freeExamMatchesUserSubLevel } = require('../utils/subLevelAccess');
+          const {
+            freeExamMatchesUserSubLevel,
+            getActiveLevelSubscriptions,
+            findSubscriptionCoveringExam
+          } = require('../utils/subLevelAccess');
 
           const user = await User.findById(req.user._id).populate('level');
           if (!user) {
@@ -574,7 +578,20 @@ const getExamById = async (req, res) => {
           // If exam is locked by admin, preserve existing behavior below
           if (!exam) return { isLocked: true, message: 'Exam not found' };
 
-          // Subscription/free access checks
+          // Subscription/free access checks. A plan covering this exam — bought
+          // for the exam itself, or for its own level, which need not be the
+          // level the student currently has selected — unlocks it whatever its
+          // access type, so it is checked before the sub-level rules below.
+          const examSubscription = await Subscription.getActiveSubscriptionForExam(req.user._id, exam._id);
+          if (examSubscription && examSubscription.isValid()) {
+            return null;
+          }
+
+          const levelSubscriptions = await getActiveLevelSubscriptions(req.user._id);
+          if (findSubscriptionCoveringExam(levelSubscriptions, exam)) {
+            return null;
+          }
+
           if (exam.accessType === 'free') {
             const canMatch = freeExamMatchesUserSubLevel(exam, user);
             if (!canMatch) {
@@ -583,23 +600,12 @@ const getExamById = async (req, res) => {
           }
 
           if (exam.accessType === 'subscription') {
-            const examSubscription = await Subscription.getActiveSubscriptionForExam(req.user._id, exam._id);
-            if (examSubscription && examSubscription.isValid()) {
-              return null;
-            }
-
-            const subscription = user.level
-              ? await Subscription.getActiveSubscriptionForLevel(req.user._id, user.level._id)
-              : null;
-            if (!subscription || !subscription.isValid()) {
-              return { isLocked: true, message: 'This exam requires an active subscription' };
-            }
-            if (subscription.expiresAt < new Date()) {
-              return { isLocked: true, message: 'Your subscription has expired. Please renew to continue.' };
-            }
-            if (!subscriptionCoversExam(subscription, exam)) {
+            const sameLevelSubscription = levelSubscriptions.find(sub =>
+              !!exam.level && (sub.level?._id || sub.level)?.toString() === exam.level.toString());
+            if (sameLevelSubscription) {
               return { isLocked: true, message: 'Your subscription does not cover this exam level' };
             }
+            return { isLocked: true, message: 'This exam requires an active subscription' };
           }
 
           return null;

@@ -1,6 +1,8 @@
 const groqClient = require('./groqClient');
 const { verifyGradingWithAI } = require('./enhancedGrading');
 const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading');
+const { resolveSubQuestionPoints } = require('./subQuestionPoints');
+const { withOverrides } = require('./toPlainDoc');
 
 /**
  * Normalize answer for flexible comparison
@@ -42,6 +44,7 @@ const globalAIAnswerCache = new Map();
  * @param {string} modelAnswer - The correct answer (for parent)
  * @returns {Promise<Object>} - Grading result for all sub-questions
  */
+
 async function gradeSubQuestionsFast(question, answer, modelAnswer) {
   console.log(`📝 Grading ${answer.subQuestionAnswers.length} sub-questions for question ${question._id}`);
 
@@ -54,20 +57,24 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
 
   // Iterate over sub-answers (if question.subQuestions is empty, use subAnswers length)
   const iterationCount = subQuestions.length > 0 ? subQuestions.length : subAnswers.length;
+  const subPoints = resolveSubQuestionPoints(question, iterationCount);
 
   for (let i = 0; i < iterationCount; i++) {
-    const subQ = subQuestions[i] || question; // Fall back to parent question if no sub-questions defined
+    // Grade against the scaled mark allocation, not the stored default.
+    const maxPoints = subPoints[i];
+    const baseSubQ = subQuestions[i] || question; // Fall back to parent question if no sub-questions defined
+    const subQ = withOverrides(baseSubQ, { points: maxPoints });
     const subAnswer = subAnswers[i];
 
     if (!subAnswer || !subAnswer.answered) {
       subQuestionResults.push({
         subIndex: i,
         score: 0,
-        maxPoints: subQ.points || 1,
+        maxPoints,
         feedback: 'No answer provided',
         isCorrect: false
       });
-      totalMaxPoints += (subQ.points || 1);
+      totalMaxPoints += maxPoints;
       continue;
     }
 
@@ -75,6 +82,7 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
     let isCorrect = false;
     let feedback = '';
     let correctedAnswer = '';
+    let breakdown = null; // spreadsheet/written split, when the part has one
 
     // If question has subQuestions defined, use normal grading
     if (subQuestions.length > 0) {
@@ -91,6 +99,20 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
       isCorrect = subGrading.isCorrect;
       feedback = subGrading.feedback;
       correctedAnswer = subGrading.correctedAnswer;
+
+      // Carry the two halves through so results views can show how each was marked.
+      const written = subGrading.details?.written;
+      const sheet = subGrading.details?.spreadsheet;
+      if (written) {
+        breakdown = {
+          spreadsheetScore: Math.round(((subGrading.score || 0) - (written.score || 0)) * 100) / 100,
+          spreadsheetPoints: Math.round((maxPoints - (written.points || 0)) * 100) / 100,
+          spreadsheetFeedback: sheet ? `${sheet.correctCells}/${sheet.gradableCells} filled cells are correct.` : '',
+          writtenScore: written.score || 0,
+          writtenPoints: written.points || 0,
+          writtenFeedback: written.feedback || ''
+        };
+      }
     } else {
       // Otherwise, grade based on parent question's options/wordBank
       if (subAnswer.questionType === 'multiple-choice' || subAnswer.questionType === 'true-false') {
@@ -175,15 +197,20 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
     subQuestionResults.push({
       subIndex: i,
       score: subScore,
-      maxPoints: subQ.points || 1,
+      maxPoints,
       feedback,
       isCorrect,
-      correctedAnswer
+      correctedAnswer,
+      ...(breakdown || {})
     });
 
     totalScore += subScore;
-    totalMaxPoints += (subQ.points || 1);
+    totalMaxPoints += maxPoints;
   }
+
+  // Guard against floating-point drift from the scaling above (e.g. 3.33 × 3 = 9.99).
+  totalScore = Math.round(totalScore * 100) / 100;
+  totalMaxPoints = Math.round(totalMaxPoints * 100) / 100;
 
   const overallFeedback = subQuestionResults.map(r =>
     `Sub-question ${r.subIndex + 1}: ${r.score}/${r.maxPoints} - ${r.feedback}`

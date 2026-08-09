@@ -3,6 +3,8 @@ const { gradeOpenEndedAnswer: standardGradeEssay } = require('./aiGrading');
 const { gradeOpenEndedAnswer: chunkedGradeEssay } = require('./chunkedAiGrading');
 const { gradeQuestionByType } = require('./enhancedGrading');
 const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading');
+const { resolveSubQuestionPoints } = require('./subQuestionPoints');
+const { withOverrides } = require('./toPlainDoc');
 const { parseAnswerFile } = require('./fileParser');
 const fs = require('fs');
 const path = require('path');
@@ -223,10 +225,21 @@ const gradeSubQuestions = async (question, answer) => {
     let correctCount = 0;
     let feedbackParts = [];
     
+    // In choose-n only the selected parts are marked, so the question's marks are spread across
+    // the number the student was required to attempt, not across every part on offer.
+    // `subQ.points || ...` never reached its fallback because the stored default of 1 is truthy.
+    const chooseNPoints = resolveSubQuestionPoints(
+      withOverrides(question, { points: question.points }),
+      subQuestions.length
+    );
+    const perSelected = requiredCount > 0
+      ? Math.round(((Number(question.points) || 0) / requiredCount) * 100) / 100
+      : 0;
+
     for (const idx of selectedIndices) {
       const subQ = subQuestions[idx];
       const subQAnswer = subQuestionAnswers[idx];
-      const subQPoints = subQ.points || Math.round((question.points || 1) / requiredCount);
+      const subQPoints = perSelected > 0 ? perSelected : chooseNPoints[idx];
       maxPossibleScore += subQPoints;
       
       if (!subQ) {
@@ -260,7 +273,7 @@ const gradeSubQuestions = async (question, answer) => {
       } else if (subQType === 'financial-spreadsheet') {
         // Points must match subQPoints (which may fall back to a share of the parent's points),
         // not subQ.points directly, so the score returned here stays in scale with maxPossibleScore.
-        const spreadsheetGrading = await gradeFinancialSpreadsheetWithWritten({ ...subQ, points: subQPoints }, subQAnswer, subQ.spreadsheetModelAnswer);
+        const spreadsheetGrading = await gradeFinancialSpreadsheetWithWritten(withOverrides(subQ, { points: subQPoints }), subQAnswer, subQ.spreadsheetModelAnswer);
         subQScore = spreadsheetGrading.score;
         isSubCorrect = spreadsheetGrading.isCorrect;
       } else {
@@ -320,22 +333,35 @@ const gradeSubQuestions = async (question, answer) => {
   let maxPossibleScore = 0;
   let feedbackParts = [];
   let allAnswered = true;
-  
+  // Per-part results, so a regrade refreshes the score chips beside each part in the results
+  // views rather than leaving the ones written at submission time.
+  const subQuestionResults = [];
+
+  // Scaled so the parts add up to what the question is worth — `subQ.points` is almost always the
+  // stored default of 1, which capped a 10-mark question at 1 mark however well it was answered.
+  const resolvedPoints = resolveSubQuestionPoints(question, subQuestions.length);
+
   for (let i = 0; i < subQuestions.length; i++) {
     const subQ = subQuestions[i];
     const subQAnswer = subQuestionAnswers[i];
-    const subQPoints = subQ.points || 1;
+    const subQPoints = resolvedPoints[i];
     maxPossibleScore += subQPoints;
     
     if (!subQAnswer || !subQAnswer.answered) {
       allAnswered = false;
       feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: Not answered`);
+      subQuestionResults.push({
+        subIndex: i, score: 0, maxPoints: subQPoints,
+        feedback: 'Not answered', isCorrect: false
+      });
       continue;
     }
-    
+
     const subQType = subQ.type || 'open-ended';
     let subQScore = 0;
-    
+    let subQFeedback = '';
+    let subQBreakdown = null; // spreadsheet/written split, when the part has one
+
     if (subQType === 'multiple-choice' || subQType === 'true-false') {
       // Check both selectedOption and textAnswer as answer may be stored in either field
       const studentAnswer = subQAnswer.selectedOption || subQAnswer.textAnswer || '';
@@ -349,36 +375,64 @@ const gradeSubQuestions = async (question, answer) => {
                           selectedOptionObj?.letter === correctAnswer;
 
       subQScore = isSubCorrect ? subQPoints : 0;
+      subQFeedback = isSubCorrect ? 'Correct' : 'Incorrect';
       feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${isSubCorrect ? '✅' : '❌'} (${subQScore}/${subQPoints})`);
     } else if (subQType === 'financial-spreadsheet') {
-      // subQPoints already defaults to subQ.points || 1 above, so this stays in scale.
-      const spreadsheetGrading = await gradeFinancialSpreadsheetWithWritten({ ...subQ, points: subQPoints }, subQAnswer, subQ.spreadsheetModelAnswer);
+      // subQPoints is the scaled allocation resolved above, so this stays in scale.
+      const spreadsheetGrading = await gradeFinancialSpreadsheetWithWritten(withOverrides(subQ, { points: subQPoints }), subQAnswer, subQ.spreadsheetModelAnswer);
       subQScore = spreadsheetGrading.score;
+      subQFeedback = spreadsheetGrading.feedback;
+      const sheet = spreadsheetGrading.details?.spreadsheet;
+      const written = spreadsheetGrading.details?.written;
+      if (written) {
+        subQBreakdown = {
+          spreadsheetScore: Math.round(((spreadsheetGrading.score || 0) - (written.score || 0)) * 100) / 100,
+          spreadsheetPoints: Math.round((subQPoints - (written.points || 0)) * 100) / 100,
+          spreadsheetFeedback: sheet
+            ? `${sheet.correctCells}/${sheet.gradableCells} filled cells are correct.`
+            : '',
+          writtenScore: written.score || 0,
+          writtenPoints: written.points || 0,
+          writtenFeedback: written.feedback || ''
+        };
+      }
       feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${spreadsheetGrading.feedback} (${subQScore}/${subQPoints})`);
     } else {
       // Open-ended - check if answered, AI will grade later
       const hasAnswer = subQAnswer.textAnswer && subQAnswer.textAnswer.trim().length > 0;
       subQScore = hasAnswer ? subQPoints : 0;
+      subQFeedback = hasAnswer ? 'Answered' : 'Not answered';
       feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${hasAnswer ? '✅ Answered' : '❌ Not answered'} (${subQScore}/${subQPoints})`);
     }
-    
+
+    subQuestionResults.push({
+      subIndex: i,
+      score: Math.round(subQScore * 100) / 100,
+      maxPoints: subQPoints,
+      feedback: subQFeedback,
+      isCorrect: subQScore >= subQPoints,
+      correctedAnswer: subQ.spreadsheetModelAnswer || subQ.correctAnswer || '',
+      ...(subQBreakdown || {})
+    });
+
     totalScore += subQScore;
   }
   
   const questionPoints = question.points || maxPossibleScore;
-  const score = totalScore;
+  const score = Math.round(totalScore * 100) / 100;
   const isCorrect = score >= questionPoints * 0.7; // 70% threshold
-  
+
   let feedback = `Sub-question scores:\n${feedbackParts.join('\n')}`;
   if (!allAnswered) {
     feedback += '\n\n⚠️ Some sub-questions were not answered.';
   }
-  
+
   return {
     score,
     feedback,
     isCorrect,
     mode: 'all',
+    subQuestionResults,
     totalSubQuestions: subQuestions.length,
     answeredSubQuestions: feedbackParts.filter(f => f.includes('✅')).length
   };
@@ -1942,12 +1996,20 @@ Only respond with the letter of the correct option (A, B, C, or D).`;
     // Separate MC/TF questions from open-ended questions for parallel processing
     const mcQuestions = [];
     const openEndedQuestions = [];
+    // Multi-part questions are graded through gradeSubQuestions(), not the open-ended path. They
+    // used to fall into openEndedQuestions and were then dropped by its "skip empty answer" guard,
+    // because a parent question holds no textAnswer of its own — the work is in subQuestionAnswers.
+    // Every multi-part question therefore scored 0 on every regrade, no matter what was written.
+    const subQuestionQuestions = [];
 
     for (let i = 0; i < result.answers.length; i++) {
       const answer = result.answers[i];
       const question = answer.question;
 
-      if (question.type === 'multiple-choice' || question.type === 'true-false') {
+      if (question.subQuestions && question.subQuestions.length > 0 &&
+          answer.subQuestionAnswers && answer.subQuestionAnswers.length > 0) {
+        subQuestionQuestions.push({ answer, question, index: i });
+      } else if (question.type === 'multiple-choice' || question.type === 'true-false') {
         const hasAnswer = answer.selectedOption || answer.textAnswer;
         if (hasAnswer) {
           mcQuestions.push({ answer, question, index: i });
@@ -1959,7 +2021,28 @@ Only respond with the letter of the correct option (A, B, C, or D).`;
       }
     }
 
-    console.log(`\n🚀 PARALLEL GRADING: Processing ${mcQuestions.length} MC/TF questions in parallel, ${openEndedQuestions.length} open-ended sequentially`);
+    console.log(`\n🚀 PARALLEL GRADING: Processing ${mcQuestions.length} MC/TF questions in parallel, ${openEndedQuestions.length} open-ended sequentially, ${subQuestionQuestions.length} multi-part`);
+
+    // ── Multi-part questions ────────────────────────────────────────────────
+    for (const { answer, question, index } of subQuestionQuestions) {
+      try {
+        const grading = await gradeSubQuestions(question, answer);
+        const score = Math.round((grading.score || 0) * 100) / 100;
+
+        result.answers[index].score = score;
+        result.answers[index].isCorrect = !!grading.isCorrect;
+        result.answers[index].feedback = grading.feedback;
+        if (grading.subQuestionResults) {
+          result.answers[index].subQuestionResults = grading.subQuestionResults;
+        }
+        totalScore += score;
+
+        console.log(`Graded multi-part question ${question._id}: ${score}/${question.points || 0}`);
+      } catch (err) {
+        console.error(`Failed to grade multi-part question ${question._id}:`, err.message);
+        totalScore += (result.answers[index].score || 0);
+      }
+    }
 
     // OPTIMIZED: Pre-determine correct answers for MC/TF questions FIRST
     const mcQuestionsList = mcQuestions.map(a => a.question);
@@ -2179,8 +2262,9 @@ Only respond with the letter of the correct option (A, B, C, or D).`;
       }
     }
 
-    // Update the total score
-    result.totalScore = totalScore;
+    // Update the total score. Rounded because sub-question marks are now fractional (a 10-mark
+    // question split three ways gives 3.33 each), and floating-point sums drift otherwise.
+    result.totalScore = Math.round(totalScore * 100) / 100;
 
     // Save the updated result
     await result.save();

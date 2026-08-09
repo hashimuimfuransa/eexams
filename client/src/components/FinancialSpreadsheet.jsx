@@ -843,6 +843,10 @@ function EditableGrid({
   const formulaInputRef   = useRef(null);
   const [fxOpen, setFxOpen] = useState(false);
 
+  // Last selected range, so a ribbon action can restore the selection if anything has cleared it
+  // (a dialog, the currency menu, or a stray click) rather than quietly doing nothing.
+  const lastRangeRef = useRef(null);
+
   // Point mode bookkeeping. `formulaTextRef` mirrors formulaText because Handsontable's hooks are
   // registered once and would otherwise close over the first render's value. `pointRef` holds the
   // in-flight reference insertion: which surface is being edited ('bar' or 'cell'), the text as it
@@ -857,6 +861,16 @@ function EditableGrid({
   const pendingColNameRef = useRef(null);
   const [addColOpen, setAddColOpen] = useState(false);
   const [currencyAnchor, setCurrencyAnchor] = useState(null);
+  // Short-lived message telling the student why a ribbon button did nothing, instead of the
+  // button appearing broken.
+  const [hint, setHintRaw] = useState('');
+  const hintTimerRef = useRef(null);
+  const setHint = (message) => {
+    setHintRaw(message);
+    clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = setTimeout(() => setHintRaw(''), 4000);
+  };
+  useEffect(() => () => clearTimeout(hintTimerRef.current), []);
 
   useEffect(() => { headersRef.current = headers; }, [headers]);
 
@@ -947,6 +961,11 @@ function EditableGrid({
       // Cell types are overridden per-cell via meta (the number-format buttons); this default
       // renderer only adds Excel's numeric right-alignment on top of plain text cells.
       renderer: finTextRenderer,
+
+      // Every ribbon action works on the current selection, and Handsontable clears the selection
+      // on any click outside the grid by default — so clicking $ , % , AutoSum or a format button
+      // wiped the very selection it was meant to act on, and the button silently did nothing.
+      outsideClickDeselects: false,
 
       // ── UX features ─────────────────────────────────────────────────────
       manualColumnResize: true,
@@ -1122,6 +1141,7 @@ function EditableGrid({
 
       // Keep the formula bar and status bar in step with the selection, like Excel.
       afterSelectionEnd(row, col, row2, col2) {
+        lastRangeRef.current = [row, col, row2, col2];
         setStats(computeSelectionStats(this));
         if (pointRef.current?.target === 'bar') {
           applyPointRef(row, col, row2, col2);
@@ -1152,6 +1172,23 @@ function EditableGrid({
   // ── Toolbar helpers ──────────────────────────────────────────────────────────
   const hot = () => hotInstance.current;
 
+  // Returns the grid only when there is a range to act on, restoring the last one if the live
+  // selection has been lost. Formatting buttons apply to "the cells you have selected", so
+  // without this they appear broken exactly when a user has been clicking around the ribbon.
+  const withSelection = (fn) => {
+    const h = hot();
+    if (!h) return;
+    if (!h.getSelectedRange() && lastRangeRef.current) {
+      const [r1, c1, r2, c2] = lastRangeRef.current;
+      h.selectCells([[r1, c1, r2, c2]]);
+    }
+    if (!h.getSelectedRange()) {
+      setHint('Select the cell or cells you want to change first, then click the button.');
+      return;
+    }
+    fn(h);
+  };
+
   const addRow    = () => { const h = hot(); if (h) h.alter('insert_row_below', h.countRows() - 1); };
   const removeRow = () => { const h = hot(); if (h && h.countRows() > 1) h.alter('remove_row', h.countRows() - 1); };
 
@@ -1176,24 +1213,21 @@ function EditableGrid({
   const undo      = () => hot()?.undo();
   const redo      = () => hot()?.redo();
 
-  const bold       = () => { const h = hot(); if (h) toggleClassOnSelection(h, 'fin-bold'); };
-  const italic     = () => { const h = hot(); if (h) toggleClassOnSelection(h, 'fin-italic'); };
-  const underline  = () => { const h = hot(); if (h) toggleClassOnSelection(h, 'fin-underline'); };
-  const alignLeft  = () => { const h = hot(); if (h) applyClassToSelection(h, 'fin-align-left',   ['fin-align-center','fin-align-right']); };
-  const alignCenter= () => { const h = hot(); if (h) applyClassToSelection(h, 'fin-align-center', ['fin-align-left','fin-align-right']); };
-  const alignRight = () => { const h = hot(); if (h) applyClassToSelection(h, 'fin-align-right',  ['fin-align-left','fin-align-center']); };
+  const bold       = () => withSelection(h => toggleClassOnSelection(h, 'fin-bold'));
+  const italic     = () => withSelection(h => toggleClassOnSelection(h, 'fin-italic'));
+  const underline  = () => withSelection(h => toggleClassOnSelection(h, 'fin-underline'));
+  const alignLeft  = () => withSelection(h => applyClassToSelection(h, 'fin-align-left',   ['fin-align-center','fin-align-right']));
+  const alignCenter= () => withSelection(h => applyClassToSelection(h, 'fin-align-center', ['fin-align-left','fin-align-right']));
+  const alignRight = () => withSelection(h => applyClassToSelection(h, 'fin-align-right',  ['fin-align-left','fin-align-center']));
 
-  const markHeaderRow = () => { const h = hot(); if (h) applyClassToSelection(h, 'fin-header-row', ['fin-total-row','fin-subtotal']); };
-  const markTotalRow  = () => { const h = hot(); if (h) applyClassToSelection(h, 'fin-total-row',  ['fin-header-row','fin-subtotal']); };
-  const markSubtotal  = () => { const h = hot(); if (h) applyClassToSelection(h, 'fin-subtotal',   ['fin-header-row','fin-total-row']); };
+  const markHeaderRow = () => withSelection(h => applyClassToSelection(h, 'fin-header-row', ['fin-total-row','fin-subtotal']));
+  const markTotalRow  = () => withSelection(h => applyClassToSelection(h, 'fin-total-row',  ['fin-header-row','fin-subtotal']));
+  const markSubtotal  = () => withSelection(h => applyClassToSelection(h, 'fin-subtotal',   ['fin-header-row','fin-total-row']));
 
   // Excel's "Increase / Decrease Decimal": steps each selected cell's own decimal count, keeping
   // whatever currency symbol and kind it already carries.
-  const stepDecimals = (delta) => {
-    const h = hot();
-    const sel = h?.getSelectedRange();
-    if (!h || !sel) return;
-    sel.forEach(({ from, to }) => {
+  const stepDecimals = (delta) => withSelection((h) => {
+    h.getSelectedRange().forEach(({ from, to }) => {
       for (let r = Math.min(from.row, to.row); r <= Math.max(from.row, to.row); r++) {
         for (let c = Math.min(from.col, to.col); c <= Math.max(from.col, to.col); c++) {
           const current = h.getCellMeta(r, c).finFormat || { kind: 'accounting', decimals: 2 };
@@ -1203,39 +1237,35 @@ function EditableGrid({
       }
     });
     h.render();
-  };
+  });
 
   // Excel's freeze panes: pin everything above and left of the selected cell.
-  const toggleFreeze = () => {
-    const h = hot();
-    const sel = h?.getSelectedLast();
-    if (!h || !sel) return;
-    const [row, col] = sel;
+  const toggleFreeze = () => withSelection((h) => {
+    const [row, col] = h.getSelectedLast();
     const { fixedRowsTop = 0, fixedColumnsStart = 0 } = h.getSettings();
     const alreadyFrozen = fixedRowsTop === row && fixedColumnsStart === col && (row > 0 || col > 0);
     h.updateSettings(alreadyFrozen
       ? { fixedRowsTop: 0, fixedColumnsStart: 0 }
       : { fixedRowsTop: row, fixedColumnsStart: col });
-  };
+  });
 
   // Sums the selected cells into the cell just below the selection, like Excel's AutoSum.
   // (spreadsheetColumnLabel is 0-based, and A1 references are 1-based rows — the previous
   // version passed col+1 and a 0-based row, so it summed the wrong column and skipped a row.)
-  const insertSumFormula = () => {
-    const h = hot();
-    if (!h) return;
-    const sel = h.getSelectedRange();
-    if (!sel || !sel.length) return;
-    const { from, to } = sel[0];
+  const insertSumFormula = () => withSelection((h) => {
+    const { from, to } = h.getSelectedRange()[0];
     const col      = Math.min(from.col, to.col);
     const firstRow = Math.min(from.row, to.row);
     const lastRow  = Math.max(from.row, to.row);
     const letter   = colLabel(col);
     const target   = Math.min(lastRow + 1, h.countRows() - 1);
-    if (target <= lastRow) return; // no room below the selection
+    if (target <= lastRow) {
+      setHint('AutoSum needs an empty row below the figures — add a row, then try again.');
+      return;
+    }
     h.setDataAtCell(target, col, `=SUM(${letter}${firstRow + 1}:${letter}${lastRow + 1})`);
     h.selectCell(target, col);
-  };
+  });
 
   // ── Formula bar ──────────────────────────────────────────────────────────────
   // Pulls the fx bar back in line with whatever cell is selected right now.
@@ -1343,7 +1373,14 @@ function EditableGrid({
   const RibbonBtn = ({ title, onClick, children, disabled }) => (
     <Tooltip title={title} disableInteractive>
       <span>
-        <button type="button" className="fin-ribbon-btn" onClick={onClick} disabled={disabled}
+        <button
+          type="button"
+          className="fin-ribbon-btn"
+          // Keeps the grid's selection and focus intact — a plain click would blur the grid
+          // before onClick ran, leaving the action with nothing to apply to.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onClick}
+          disabled={disabled}
           aria-label={typeof title === 'string' ? title : undefined}>
           {children}
         </button>
@@ -1391,17 +1428,17 @@ function EditableGrid({
         <RibbonGroup label="Number">
           <RibbonBtn
             title="Accounting format — 1,234.00, with negatives in brackets. Click the arrow to add a currency symbol."
-            onClick={() => applyCellFormat(hot(), { kind: 'accounting', symbol: '', decimals: 2 })}
+            onClick={() => withSelection(h => applyCellFormat(h, { kind: 'accounting', symbol: '', decimals: 2 }))}
           >
             <span style={{ fontWeight: 700 }}>$</span>
           </RibbonBtn>
           <RibbonBtn title="Choose a currency symbol" onClick={(e) => setCurrencyAnchor(e.currentTarget)}>
             <span style={{ fontSize: 9 }}>▾</span>
           </RibbonBtn>
-          <RibbonBtn title="Percent — shows the figure with a % sign" onClick={() => applyCellFormat(hot(), { kind: 'percent', decimals: 2 })}>
+          <RibbonBtn title="Percent — shows the figure with a % sign" onClick={() => withSelection(h => applyCellFormat(h, { kind: 'percent', decimals: 2 }))}>
             <span style={{ fontWeight: 700 }}>%</span>
           </RibbonBtn>
-          <RibbonBtn title="Comma style — 1,234, no decimals" onClick={() => applyCellFormat(hot(), { kind: 'accounting', symbol: '', decimals: 0 })}>
+          <RibbonBtn title="Comma style — 1,234, no decimals" onClick={() => withSelection(h => applyCellFormat(h, { kind: 'accounting', symbol: '', decimals: 0 }))}>
             <span style={{ fontWeight: 700 }}>,</span>
           </RibbonBtn>
           <RibbonBtn title="Increase decimal places" onClick={() => stepDecimals(1)}>
@@ -1410,7 +1447,7 @@ function EditableGrid({
           <RibbonBtn title="Decrease decimal places" onClick={() => stepDecimals(-1)}>
             <span style={{ fontSize: 11, letterSpacing: '-0.5px' }}>←.0</span>
           </RibbonBtn>
-          <RibbonBtn title="Remove formatting — show the figure exactly as typed" onClick={() => applyCellFormat(hot(), { kind: null, symbol: '' })}>
+          <RibbonBtn title="Remove formatting — show the figure exactly as typed" onClick={() => withSelection(h => applyCellFormat(h, { kind: null, symbol: '' }))}>
             <span style={{ fontSize: 10 }}>✕</span>
           </RibbonBtn>
         </RibbonGroup>
@@ -1584,7 +1621,7 @@ function EditableGrid({
           <MenuItem
             key={label}
             onClick={() => {
-              applyCellFormat(hot(), { kind: 'accounting', symbol, decimals: 2 });
+              withSelection(h => applyCellFormat(h, { kind: 'accounting', symbol, decimals: 2 }));
               setCurrencyAnchor(null);
             }}
             sx={{ fontSize: 12.5, fontFamily: EXCEL.font, py: 0.5 }}
@@ -1596,6 +1633,12 @@ function EditableGrid({
           </MenuItem>
         ))}
       </Menu>
+
+      {hint && (
+        <Alert severity="info" sx={{ borderRadius: 0, py: 0.25, '& .MuiAlert-message': { fontSize: 11.5 } }}>
+          {hint}
+        </Alert>
+      )}
 
       <InsertFunctionDialog open={fxOpen} onClose={() => setFxOpen(false)} onInsert={insertFunction} />
       <AddColumnDialog
@@ -2263,6 +2306,10 @@ export default function FinancialSpreadsheet({
   onAnswerChange,
   onConfigChange,
   writtenAnswer = '',
+  // Marks and feedback for the written half, shown beside the answer in grading mode.
+  writtenAnswerScore,
+  writtenAnswerPoints,
+  writtenAnswerFeedback,
   onWrittenAnswerChange,
   readOnly = false,
   height = 400,
@@ -2396,12 +2443,43 @@ export default function FinancialSpreadsheet({
               </Alert>
             )}
             <ReadOnlyWorkbook tables={fallbackTables} height={height} />
-            {questionData?.requiresWrittenAnswer && (
-              <Box sx={{ mt: 1.5, p: 1.5, border: '1px solid #E2E8F0', borderRadius: 1.5, bgcolor: 'white' }}>
-                <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#1E40AF', mb: 0.5 }}>✍️ Written Answer</Typography>
-                <Typography sx={{ fontSize: 12, whiteSpace: 'pre-wrap', color: writtenAnswer ? '#1E293B' : '#94A3B8' }}>
-                  {writtenAnswer || 'No written answer submitted.'}
-                </Typography>
+            {(questionData?.requiresWrittenAnswer || writtenAnswer) && (
+              <Box sx={{ mt: 1.5, border: '1px solid #E2E8F0', borderRadius: 1.5, bgcolor: 'white', overflow: 'hidden' }}>
+                <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap"
+                  sx={{ px: 1.5, py: 0.75, bgcolor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                  <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#1E40AF' }}>✍️ Written Answer</Typography>
+                  {/* The mark for the written half, beside the answer it belongs to — a student
+                      could previously see their explanation and the spreadsheet score, but nothing
+                      telling them whether the explanation itself earned anything. */}
+                  {writtenAnswerPoints > 0 && (
+                    <Chip
+                      size="small"
+                      label={`${writtenAnswerScore ?? 0} / ${writtenAnswerPoints}`}
+                      sx={{
+                        height: 20, fontSize: 11, fontWeight: 700,
+                        bgcolor: (writtenAnswerScore ?? 0) >= writtenAnswerPoints ? '#DCFCE7'
+                          : (writtenAnswerScore ?? 0) > 0 ? '#FEF3C7' : '#FEE2E2',
+                        color: (writtenAnswerScore ?? 0) >= writtenAnswerPoints ? '#166534'
+                          : (writtenAnswerScore ?? 0) > 0 ? '#92400E' : '#991B1B',
+                      }}
+                    />
+                  )}
+                </Stack>
+                <Box sx={{ p: 1.5 }}>
+                  <Typography sx={{ fontSize: 12, whiteSpace: 'pre-wrap', color: writtenAnswer ? '#1E293B' : '#94A3B8' }}>
+                    {writtenAnswer || 'No written answer submitted.'}
+                  </Typography>
+                  {writtenAnswerFeedback && (
+                    <Box sx={{ mt: 1, p: 1, bgcolor: '#F5F3FF', borderLeft: '3px solid #7C3AED', borderRadius: 0.5 }}>
+                      <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: '#5B21B6', mb: 0.25 }}>
+                        How this explanation was marked
+                      </Typography>
+                      <Typography sx={{ fontSize: 11.5, color: '#334155', whiteSpace: 'pre-wrap' }}>
+                        {writtenAnswerFeedback}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
               </Box>
             )}
           </Box>

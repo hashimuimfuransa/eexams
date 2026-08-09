@@ -657,7 +657,7 @@ const ExamResult = () => {
                                     {subAnswer?.answered ? (
                                       <Box sx={{ mt: 1 }}>
                                         {isFinancialSpreadsheetQuestion(subQ) ? (
-                                          <FinancialAnswerReview question={subQ} answer={subAnswer} height={280} />
+                                          <FinancialAnswerReview question={subQ} answer={subAnswer} result={subResult} height={280} />
                                         ) : (
                                           <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
                                             <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
@@ -712,14 +712,14 @@ const ExamResult = () => {
                                     </Box>
                                     {subAnswer?.answered ? (
                                       <Box sx={{ mt: 1 }}>
-                                        {isFinancialSpreadsheetQuestion(subQ) ? (
-                                          <FinancialAnswerReview question={subQ} answer={subAnswer} height={280} />
-                                        ) : (
-                                          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                            <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
-                                          </Typography>
-                                        )}
-                                        {subResult && !isCorrect && subResult.correctedAnswer && !isFinancialSpreadsheetQuestion(subQ) && (
+                                        {/* This is the branch for answers whose question has no
+                                            subQuestions defined, so there is no sub-question to
+                                            identify the type or supply a model answer — the
+                                            answer can only be shown as text here. */}
+                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                          <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                        </Typography>
+                                        {subResult && !isCorrect && subResult.correctedAnswer && (
                                           <Typography variant="body2" color="success.main" sx={{ mb: 0.5 }}>
                                             <strong>Correct answer:</strong> {subResult.correctedAnswer}
                                           </Typography>

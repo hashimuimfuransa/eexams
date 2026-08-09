@@ -7,6 +7,8 @@
 // student never touches already match the model answer; only the blank cells the student was
 // meant to fill in actually discriminate the score.
 
+const { withOverrides } = require('./toPlainDoc');
+
 // A single table entry may come from the AI/legacy data in a few shapes:
 //  - { title?, headers: [...], data: [[...]] }               (canonical)
 //  - flat "label: value" object, e.g. {"Revenue":800000}      (AI drift, no headers/data keys)
@@ -217,8 +219,13 @@ function gradeFinancialSpreadsheet(question, answer, modelAnswer) {
   }
 
   const ratio = correctCells / gradableCells;
-  const score = Math.round(ratio * points);
-  const isCorrect = score >= points;
+  // Kept to 2dp rather than rounded to a whole mark. A spreadsheet answer is scored across many
+  // cells but the question may be worth only a handful of marks, so Math.round() threw away all
+  // partial credit: 32 of 126 cells correct on a 1-mark part rounded to 0, and a student who had
+  // genuinely filled in correct figures was told they scored nothing. Anything under half a mark
+  // used to vanish entirely.
+  const score = Math.round(ratio * points * 100) / 100;
+  const isCorrect = correctCells === gradableCells;
   const tableNote = modelSheets.tables.length > 1 ? ` across ${modelSheets.tables.length} tables` : '';
 
   const feedback = ratio === 1
@@ -259,15 +266,49 @@ function gradeFinancialSpreadsheet(question, answer, modelAnswer) {
  * @param {string} modelAnswer - fallback spreadsheet model answer if question.spreadsheetModelAnswer is unset
  * @returns {Promise<Object>} - same shape as gradeFinancialSpreadsheet, plus a `details.written` block when graded
  */
+/**
+ * How many of the question's marks belong to the written half.
+ *
+ * `writtenAnswerPoints` is routinely left unset even when a teacher has ticked "requires a written
+ * answer" and written a full marking guide for it. The old code read `writtenAnswerPoints || 0`,
+ * got 0, and returned early — so the student's written answer was never marked at all and the
+ * whole question rode on the grid. This resolves a share instead of dropping the half:
+ *
+ *   1. the teacher's explicit split, when they set one;
+ *   2. failing that, the marks the marking guide annotates itself — accounting guides are written
+ *      as "PI A = 163,305,000/105,000,000 = 1.5553 (1 mark)", so those add up to the real weight;
+ *   3. failing that, an even split, since a required written answer must be worth something.
+ */
+function resolveWrittenPoints(question, totalPoints) {
+  const explicit = Number(question.writtenAnswerPoints);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.min(explicit, totalPoints);
+
+  const guide = String(question.writtenAnswerModelAnswer || '');
+  let annotated = 0;
+  for (const match of guide.matchAll(/\(\s*(\d+(?:\.\d+)?)\s*marks?\s*\)/gi)) {
+    annotated += Number(match[1]);
+  }
+  // Must leave something for the spreadsheet, or the grid stops counting.
+  if (annotated > 0 && annotated < totalPoints) return annotated;
+
+  return Math.round((totalPoints / 2) * 100) / 100;
+}
+
 async function gradeFinancialSpreadsheetWithWritten(question, answer, modelAnswer) {
   const totalPoints = question.points || 1;
-  const requiresWritten = !!question.requiresWrittenAnswer;
-  const writtenPoints = requiresWritten ? Math.max(0, Math.min(question.writtenAnswerPoints || 0, totalPoints)) : 0;
+  const studentWrote = !!String(answer?.writtenAnswer || '').trim();
+  const hasWrittenGuide = !!String(question.writtenAnswerModelAnswer || '').trim();
+
+  // Mark the written half whenever the teacher asked for one, and also when they supplied a
+  // marking guide for it and the student actually wrote something — a guide exists precisely so
+  // that part can be marked.
+  const gradeWritten = !!question.requiresWrittenAnswer || (hasWrittenGuide && studentWrote);
+  const writtenPoints = gradeWritten ? resolveWrittenPoints(question, totalPoints) : 0;
   const spreadsheetPoints = Math.max(0, totalPoints - writtenPoints);
 
-  const spreadsheetResult = gradeFinancialSpreadsheet({ ...question, points: spreadsheetPoints }, answer, modelAnswer);
+  const spreadsheetResult = gradeFinancialSpreadsheet(withOverrides(question, { points: spreadsheetPoints }), answer, modelAnswer);
 
-  if (!requiresWritten || writtenPoints <= 0) {
+  if (!gradeWritten || writtenPoints <= 0) {
     return spreadsheetResult;
   }
 
@@ -280,32 +321,53 @@ async function gradeFinancialSpreadsheetWithWritten(question, answer, modelAnswe
       correctedAnswer: question.writtenAnswerModelAnswer || ''
     };
   } else {
-    // Lazily required to avoid a require cycle at module load if aiGrading.js ever imports
-    // something from this file in the future.
-    const { gradeOpenEndedAnswer } = require('./aiGrading');
-    const graded = await gradeOpenEndedAnswer(
-      writtenAnswer,
-      question.writtenAnswerModelAnswer || '',
-      writtenPoints,
-      question.writtenAnswerPrompt || question.text || ''
-    );
-    writtenResult = { score: graded.score, feedback: graded.feedback, correctedAnswer: graded.correctedAnswer };
+    // Isolated so a failure in the written half can never discard the spreadsheet half. The
+    // require is lazy (avoiding a cycle if aiGrading ever imports from here) and pulls in
+    // groqClient, which throws outright when GROQ_API_KEY is unset — without this guard that
+    // threw straight past the caller and the whole question kept its previous score, so a
+    // regrade appeared to do nothing.
+    try {
+      const { gradeOpenEndedAnswer } = require('./aiGrading');
+      const graded = await gradeOpenEndedAnswer(
+        writtenAnswer,
+        question.writtenAnswerModelAnswer || '',
+        writtenPoints,
+        question.writtenAnswerPrompt || question.text || ''
+      );
+      writtenResult = {
+        score: Number(graded?.score) || 0,
+        feedback: graded?.feedback || 'Written answer graded.',
+        correctedAnswer: graded?.correctedAnswer || question.writtenAnswerModelAnswer || ''
+      };
+    } catch (err) {
+      console.error('Written-answer grading failed for a financial-spreadsheet question:', err.message);
+      writtenResult = {
+        score: 0,
+        feedback: 'The written answer could not be marked automatically and needs manual review.',
+        correctedAnswer: question.writtenAnswerModelAnswer || '',
+        needsManualReview: true
+      };
+    }
   }
 
-  const combinedScore = (spreadsheetResult.score || 0) + (writtenResult.score || 0);
+  // Both halves are capped at their own allocation before being added, so an over-generous AI
+  // score on the written part can never push the question past what it is worth.
+  const writtenScore = Math.min(Math.max(writtenResult.score || 0, 0), writtenPoints);
+  const combinedScore = Math.round(((spreadsheetResult.score || 0) + writtenScore) * 100) / 100;
 
   return {
     score: combinedScore,
     isCorrect: combinedScore >= totalPoints,
-    feedback: `Spreadsheet: ${spreadsheetResult.feedback}\n\nWritten answer: ${writtenResult.feedback}`,
+    feedback: `Spreadsheet (${spreadsheetResult.score || 0}/${spreadsheetPoints}): ${spreadsheetResult.feedback}`
+      + `\nWritten answer (${writtenScore}/${writtenPoints}): ${writtenResult.feedback}`,
     correctedAnswer: spreadsheetResult.correctedAnswer,
     gradingMethod: 'spreadsheet_and_written_grading',
-    writtenAnswerScore: writtenResult.score,
+    writtenAnswerScore: writtenScore,
     writtenAnswerFeedback: writtenResult.feedback,
     details: {
       answerType: 'financial-spreadsheet',
       spreadsheet: spreadsheetResult.details,
-      written: { points: writtenPoints, ...writtenResult }
+      written: { ...writtenResult, points: writtenPoints, score: writtenScore }
     }
   };
 }

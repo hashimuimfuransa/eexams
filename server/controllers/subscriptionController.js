@@ -130,8 +130,8 @@ const getMyActiveSubscription = async (req, res) => {
   try {
     const subscription = await Subscription.getActiveSubscription(req.user._id);
 
-    // Keep the student's selected level in sync with it — see
-    // syncUserLevelFromSubscription for why this can drift.
+    // Fill in the student's level from it when they have none selected — see
+    // syncUserLevelFromSubscription. An already-chosen level is left alone.
     await syncUserLevelFromSubscription(req.user._id, req.user.level, req.user.subLevel);
 
     res.json(subscription);

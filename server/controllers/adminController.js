@@ -8,6 +8,7 @@ const SharedExam = require('../models/SharedExam');
 const Question = require('../models/Question');
 const ExamRequest = require('../models/ExamRequest');
 const { resolveExamAccessType } = require('../middleware/planRestrictions');
+const { RESULT_QUESTION_SELECT } = require('../utils/resultQuestionFields');
 
 /**
  * Parse subquestions from an object with letter keys (a, b, c, etc.)
@@ -1214,7 +1215,9 @@ const getDetailedResult = async (req, res) => {
       .populate('exam', 'title description totalPoints timeLimit createdBy')
       .populate({
         path: 'answers.question',
-        select: 'text type options correctAnswer points section spreadsheetTemplate spreadsheetModelAnswer'
+        // Was missing `subQuestions`, so a financial-spreadsheet part of a multi-part question had
+        // no template or model answer on the client and rendered as raw JSON.
+        select: RESULT_QUESTION_SELECT
       });
 
     if (!result) {

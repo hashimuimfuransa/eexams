@@ -6,6 +6,7 @@ const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
 const bcrypt = require('bcryptjs');
 const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate } = require('../utils/subscriptionStatus');
+const { RESULT_QUESTION_FIELDS } = require('../utils/resultQuestionFields');
 
 // @desc    Create a new super admin
 // @route   POST /api/superadmin/create-superadmin
@@ -1512,16 +1513,19 @@ const getResultDetails = async (req, res) => {
       // Get the selected answer - check multiple possible field names
       const selectedAnswer = answer.selectedOption || answer.textAnswer || answer.selectedOptionLetter;
 
+      // Carry every field a results view needs rather than a hand-picked six. The old payload
+      // exposed only _id/text/type/options/correctAnswer/marks, so `subQuestions` and the
+      // spreadsheet template/model answer never reached the client — a financial-spreadsheet
+      // answer had nothing to render against and fell back to printing its raw JSON.
+      const questionSource = questionData.toObject ? questionData.toObject() : questionData;
+      const questionPayload = { _id: questionSource._id };
+      for (const field of RESULT_QUESTION_FIELDS) {
+        if (questionSource[field] !== undefined) questionPayload[field] = questionSource[field];
+      }
+
       return {
         ...answer.toObject ? answer.toObject() : answer,
-        question: {
-          _id: questionData._id,
-          text: questionData.text,
-          type: questionData.type,
-          options: questionData.options,
-          correctAnswer: questionData.correctAnswer,
-          marks: questionData.marks
-        },
+        question: questionPayload,
         selectedAnswer: selectedAnswer,
         isCorrect: answer.isCorrect !== undefined ? answer.isCorrect : (
           questionData && questionData.correctAnswer === selectedAnswer

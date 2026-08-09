@@ -1,5 +1,6 @@
 // Import the centralized Groq client
 const groqClient = require('./groqClient');
+const { roundMark, contentWords, isTypoMatch } = require('./gradingRubric');
 
 // Helper functions to avoid circular dependency
 const parseAnswerContent = (answer) => {
@@ -607,12 +608,16 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
     // Check for semantic equivalence using common patterns
     // e.g., "help body to grow" ≈ "helps growth and body building"
     // e.g., "prevent disease" ≈ "protects the body from diseases"
+    // Only meaningful words count, and most of the concept's words have to be present. Counting
+    // raw token overlap let stop words alone ("the", "of", "business") match any concept.
     if (!conceptMatched) {
-      const studentWords = studentAns.split(/\s+/);
-      const phraseWords = phraseLower.split(/\s+/);
-      const wordOverlap = studentWords.filter(w => phraseWords.some(pw => pw.includes(w) || w.includes(pw))).length;
-      if (wordOverlap >= Math.min(2, phraseWords.length)) {
-        conceptMatched = true;
+      const phraseWords = contentWords(phraseLower);
+      const studentWords = contentWords(studentAns);
+      if (phraseWords.length > 0) {
+        const overlap = phraseWords.filter(pw => studentWords.some(sw => isTypoMatch(pw, sw))).length;
+        if (overlap / phraseWords.length >= 0.6 && overlap >= 2) {
+          conceptMatched = true;
+        }
       }
     }
 
@@ -626,13 +631,8 @@ const generateFallbackScore = (studentAnswer, modelAnswer, maxPoints, errorReaso
     const semanticPercentage = semanticMatchScore / conceptCount;
     console.log(`Semantic matching: ${semanticMatchScore}/${conceptCount} concepts matched (${Math.round(semanticPercentage * 100)}%)`);
 
-    // Award points based on semantic coverage
-    let score = Math.round(semanticPercentage * maxPoints);
-
-    // Ensure minimum of 50% if at least 60% of concepts are covered semantically
-    if (semanticPercentage >= 0.6 && score < maxPoints * 0.5) {
-      score = Math.round(maxPoints * 0.5);
-    }
+    // The mark is the share of concepts actually covered - no floor for partial coverage.
+    const score = roundMark(semanticPercentage * maxPoints, maxPoints);
 
     return {
       score: score,

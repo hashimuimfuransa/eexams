@@ -2,6 +2,7 @@
 const { gradeOpenEndedAnswer } = require('./aiGrading');
 const groqClient = require('./groqClient');
 const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading');
+const { roundMark, contentWords, characterSimilarity, isTypoMatch } = require('./gradingRubric');
 
 /**
  * Normalize answer for flexible comparison
@@ -1495,9 +1496,13 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
       const studentNormalized = normalizeAnswer(studentAnswer);
       const correctNormalized = normalizeAnswer(correctAnswer);
       
+      // Substring containment used to count as correct in either direction, so typing a single
+      // letter that happened to appear in the expected answer scored full marks. Containment
+      // only counts when the student wrote at least as much as the expected answer, plus a
+      // spelling-tolerance check for typos.
       let isCorrect = studentNormalized === correctNormalized ||
-                     correctNormalized.includes(studentNormalized) ||
-                     studentNormalized.includes(correctNormalized);
+                     (correctNormalized.length > 0 && studentNormalized.includes(correctNormalized)) ||
+                     characterSimilarity(studentNormalized, correctNormalized) >= 0.85;
 
       // If not exact match, check semantic equivalence
       if (!isCorrect) {
@@ -1530,13 +1535,16 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
             conceptMatched = true;
           }
 
-          // Check for word overlap (semantic equivalence) - more lenient
+          // Word overlap, counting meaningful words only and requiring most of the concept to
+          // be present. A single shared word used to mark the whole concept as covered.
           if (!conceptMatched) {
-            const studentWords = studentLower.split(/\s+/);
-            const phraseWords = phraseLower.split(/\s+/);
-            const wordOverlap = studentWords.filter(w => phraseWords.some(pw => pw.includes(w) || w.includes(pw))).length;
-            if (wordOverlap >= Math.min(1, phraseWords.length)) {
-              conceptMatched = true;
+            const phraseWords = contentWords(phraseLower);
+            const studentWords = contentWords(studentLower);
+            if (phraseWords.length > 0) {
+              const overlap = phraseWords.filter(pw => studentWords.some(sw => isTypoMatch(pw, sw))).length;
+              if (overlap / phraseWords.length >= 0.6 && overlap >= 2) {
+                conceptMatched = true;
+              }
             }
           }
 
@@ -1570,12 +1578,8 @@ const gradeFillInBlank = async (question, answer, modelAnswer) => {
         const matchRatio = totalConcepts > 0 ? conceptsMatched / totalConcepts : 0;
 
         if (matchRatio >= 0.4) {
-          // More generous: partial credit for having at least 40% of concepts
-          score = Math.round(maxPoints * matchRatio);
-          // Ensure minimum of 30% if at least 40% of concepts are covered
-          if (score < maxPoints * 0.3) {
-            score = Math.round(maxPoints * 0.3);
-          }
+          // Partial credit is the share of concepts actually covered, with no minimum.
+          score = roundMark(maxPoints * matchRatio, maxPoints);
           feedback = `Partially correct. You covered ${conceptsMatched} of ${totalConcepts} main concepts. The correct answer is: ${correctAnswer}`;
         } else {
           score = 0;

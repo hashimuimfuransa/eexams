@@ -3,6 +3,16 @@ const { verifyGradingWithAI } = require('./enhancedGrading');
 const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading');
 const { resolveSubQuestionPoints } = require('./subQuestionPoints');
 const { withOverrides } = require('./toPlainDoc');
+const {
+  GRADING_SYSTEM_PROMPT,
+  buildOpenEndedGradingPrompt,
+  reconcileScoreWithCoverage,
+  summariseCoverage,
+  roundMark,
+  contentWords,
+  characterSimilarity,
+  isTypoMatch
+} = require('./gradingRubric');
 
 /**
  * Normalize answer for flexible comparison
@@ -650,33 +660,35 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
     const MAX_LENGTH = 1000;
     const truncatedQuestion = question.text.length > MAX_LENGTH ? question.text.substring(0, MAX_LENGTH) + '...' : question.text;
     const truncatedAnswer = studentAnswer.length > MAX_LENGTH ? studentAnswer.substring(0, MAX_LENGTH) + '...' : studentAnswer;
-    const truncatedModelAnswer = (modelAnswer && modelAnswer.length > MAX_LENGTH) ? modelAnswer.substring(0, MAX_LENGTH) + '...' : modelAnswer || 'Evaluate based on question';
+    const truncatedModelAnswer = (modelAnswer && modelAnswer.length > MAX_LENGTH) ? modelAnswer.substring(0, MAX_LENGTH) + '...' : modelAnswer || '';
 
-    // Simplified, faster prompt for all question types
     // Section A is typically multiple choice, sections B and beyond are typically essay/open-ended
     const isEssayQuestion = question.section !== 'A';
-    const prompt = `Grade (0-${question.points}). Q: ${truncatedQuestion}. A: ${truncatedAnswer}. Model: ${truncatedModelAnswer}. ${isEssayQuestion ? 'Detailed feedback.' : 'Brief feedback.'}
 
-FLEXIBLE GRADING RULES:
-- Award full points for semantically correct answers, even with minor differences in wording, capitalization, or pluralization
-- Award partial credit for answers that demonstrate understanding but are incomplete or have minor errors
-- Award 0 points for meaningless answers like "I don't know", "no idea", "skip", "pass", etc.
-- Award 0 points for answers that show no understanding of the question
-- Focus on semantic correctness over exact wording
-
-Return JSON: {score,feedback,correctedAnswer}`;
-
-    // Fast AI processing with timeout
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('AI timeout')), 10000); // Reduced to 10s for faster grading
+    // Coverage-based rubric: the grader has to justify the mark point by point, and the score is
+    // recomputed from those verdicts below. The old one-line "be flexible" prompt let the model
+    // award most of the marks to answers that covered none of the model answer.
+    const prompt = buildOpenEndedGradingPrompt({
+      questionText: truncatedQuestion,
+      studentAnswer: truncatedAnswer,
+      modelAnswer: truncatedModelAnswer,
+      maxPoints: question.points,
+      questionType: question.type || 'open-ended',
+      section: question.section || 'B'
     });
 
-    // OPTIMIZED: Use fast model for open-ended grading (much faster than smart)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('AI timeout')), 20000);
+    });
+
+    // Written answers are graded with the smart model. The fast 8B model cannot hold a rubric -
+    // it rewards anything on-topic, which is what inflated these marks.
     const aiPromise = groqClient.generateContent(prompt, {
-      model: 'fast',
+      systemPrompt: GRADING_SYSTEM_PROMPT,
+      model: 'smart',
       jsonMode: true,
-      temperature: 0.2,
-      maxTokens: 512
+      temperature: 0.1,
+      maxTokens: 1024
     });
     const response = await Promise.race([aiPromise, timeoutPromise]);
     const text = response.text;
@@ -684,11 +696,20 @@ Return JSON: {score,feedback,correctedAnswer}`;
 
     const result = response.parsedContent || JSON.parse(cleanText);
 
-    let finalScore = Math.min(Math.max(0, result.score || 0), question.points);
+    // The AI's own point-by-point coverage caps its self-reported score.
+    const reconciled = reconcileScoreWithCoverage(result, question.points, {
+      label: `question ${question._id}`
+    });
+    let finalScore = reconciled.score;
 
     // Apply multi-part scaling for proportional marks
     if (multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0) {
       finalScore = applyMultiPartScaling(finalScore, question.points, multiPartInfo, multiPartValidation);
+    }
+
+    let feedback = result.feedback || (isEssayQuestion ? 'AI graded your essay answer' : 'AI graded answer');
+    if (reconciled.adjusted || finalScore < question.points) {
+      feedback += summariseCoverage(reconciled.keyPoints);
     }
 
     // OPTIMIZED: Disabled AI verification for speed
@@ -696,17 +717,19 @@ Return JSON: {score,feedback,correctedAnswer}`;
 
     return {
       score: finalScore,
-      feedback: result.feedback || (isEssayQuestion ? 'AI graded your essay answer' : 'AI graded answer'),
+      feedback,
       correctedAnswer: result.correctedAnswer || modelAnswer,
       gradingMethod: 'enhanced_ai_grading',
       isCorrect: finalScore >= question.points,
       aiVerification: verification,
       // Store enhanced data for sections B & C display
       aiAnalysis: isEssayQuestion ? {
-        detailedFeedback: result.feedback || 'AI provided detailed analysis',
+        detailedFeedback: feedback,
         modelAnswer: result.correctedAnswer || modelAnswer,
         score: finalScore,
-        maxPoints: question.points
+        maxPoints: question.points,
+        keyPoints: reconciled.keyPoints,
+        coverage: reconciled.coverage
       } : null
     };
 
@@ -817,17 +840,37 @@ async function gradeShortAnswerFast(question, answer, modelAnswer) {
     };
   }
 
-  // Quick similarity check (for fill-in-blank and other short answer)
-  // More lenient thresholds to award marks for semantically correct answers
-  const similarity = calculateSimilarity(studentAnswer, correctAnswer);
-  let score = similarity > 0.7 ? question.points :
-                similarity > 0.5 ? Math.round(question.points * 0.8) :
-                similarity > 0.3 ? Math.round(question.points * 0.5) : 0;
+  // A fill-in-blank has one right answer, so it is graded all-or-nothing with tolerance for
+  // typos and word-order differences - not on a sliding similarity scale. The old thresholds
+  // handed out 50% of the marks at 0.3 word overlap, which credited answers that shared only
+  // an incidental word or two with the expected one ("minimise risk" vs "maximise return").
+  const correctWordCount = correctAnswer.split(/\s+/).filter(Boolean).length;
+  const wordSimilarity = calculateSimilarity(studentAnswer, correctAnswer);
+  const charSimilarity = characterSimilarity(studentAnswer, correctAnswer);
+  const similarity = Math.max(wordSimilarity, charSimilarity);
+
+  let score;
+  if (correctWordCount <= 2) {
+    // Single word or short phrase: right or wrong, with spelling tolerance only.
+    score = isTypoMatch(studentAnswer, correctAnswer) || wordSimilarity >= 1 ? question.points : 0;
+  } else {
+    // Longer expected answers can carry genuine partial credit, but it has to be earned by
+    // covering most of the meaningful words, not by incidental overlap.
+    const expectedWords = contentWords(correctAnswer);
+    const givenWords = contentWords(studentAnswer);
+    const covered = expectedWords.filter(word =>
+      givenWords.some(given => isTypoMatch(word, given))
+    ).length;
+    const coverage = expectedWords.length > 0 ? covered / expectedWords.length : similarity;
+
+    score = coverage >= 0.85 ? question.points :
+              coverage >= 0.6 ? roundMark(question.points * 0.5, question.points) : 0;
+  }
 
   let isCorrect = score >= question.points;
   let feedback = score === question.points ? 'Correct!' :
-                   score > 0 ? 'Partially correct' :
-                   'Incorrect';
+                   score > 0 ? `Partially correct. The expected answer is: ${modelAnswer}` :
+                   `Incorrect. The correct answer is: ${modelAnswer}`;
 
   // Run AI verification for true/false questions (fast path)
   if (question.type === 'true-false') {
@@ -1087,14 +1130,18 @@ Return JSON: {score,feedback,correctedAnswer}`;
       conceptMatched = true;
     }
 
-    // Check for word overlap (semantic equivalence) - more lenient
+    // Check for word overlap (semantic equivalence). Only meaningful words count, and the
+    // student has to cover most of the concept's words - a single shared word ("business",
+    // "the") used to be enough to mark any concept as covered, which credited answers that
+    // had nothing to do with the model answer.
     if (!conceptMatched) {
-      const studentWords = student.split(/\s+/);
-      const phraseWords = phraseLower.split(/\s+/);
-      const wordOverlap = studentWords.filter(w => phraseWords.some(pw => pw.includes(w) || w.includes(pw))).length;
-      // Reduced threshold: only need 1 word overlap for shorter phrases, 2 for longer
-      if (wordOverlap >= Math.min(1, phraseWords.length)) {
-        conceptMatched = true;
+      const phraseWords = contentWords(phraseLower);
+      const studentWords = contentWords(student);
+      if (phraseWords.length > 0) {
+        const overlap = phraseWords.filter(pw => studentWords.some(sw => isTypoMatch(pw, sw))).length;
+        if (overlap / phraseWords.length >= 0.6 && overlap >= 2) {
+          conceptMatched = true;
+        }
       }
     }
 
@@ -1129,7 +1176,7 @@ Return JSON: {score,feedback,correctedAnswer}`;
   // Calculate semantic match ratio
   const matchRatio = totalConcepts > 0 ? conceptsMatched / totalConcepts : 0;
 
-  // Be more generous: only give 0 marks for very poor matches (less than 20%)
+  // Nothing meaningful matched - no marks. There is no floor for being on topic.
   if (matchRatio < 0.2) {
     return {
       score: 0,
@@ -1139,21 +1186,9 @@ Return JSON: {score,feedback,correctedAnswer}`;
     };
   }
 
-  // If semantic match is good (60%+), ensure minimum of 50% score
-  if (matchRatio >= 0.6) {
-    const semanticScore = Math.round(matchRatio * maxPoints);
-    const finalScore = Math.max(semanticScore, Math.round(maxPoints * 0.5));
-    return {
-      score: finalScore,
-      feedback: matchRatio >= 0.9
-        ? 'Excellent! Your answer covers all the main concepts correctly.'
-        : `Good! Your answer covers ${conceptsMatched} of ${totalConcepts} main concepts. Shows good understanding.`,
-      correctedAnswer: modelAnswer,
-      gradingMethod: 'fallback_semantic_match'
-    };
-  }
-
-  let score = Math.round(matchRatio * maxPoints);
+  // The mark is the share of concepts actually covered. The old code floored a 60% match at
+  // half the marks, which meant coverage could only ever push the score up, never down.
+  let score = roundMark(matchRatio * maxPoints, maxPoints);
 
   // Apply multi-part scaling if applicable
   if (multiPartInfo && multiPartValidation && multiPartInfo.isMultiPart && multiPartValidation.completeness < 1.0) {

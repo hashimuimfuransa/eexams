@@ -12,6 +12,13 @@ const path = require('path');
 // p-queue is an ESM-only package from v8+; we installed v7 (CJS-compatible)
 const PQueue = require('p-queue').default || require('p-queue');
 
+const {
+  GRADING_SYSTEM_PROMPT,
+  buildOpenEndedGradingPrompt,
+  reconcileScoreWithCoverage,
+  summariseCoverage
+} = require('./gradingRubric');
+
 // Global queue: max 30 AI requests per 60 seconds (Groq has higher limits)
 // Increased concurrency to reduce timeout issues
 const aiQueue = new PQueue({ interval: 60000, intervalCap: 30, concurrency: 10 });
@@ -349,125 +356,34 @@ const createGroqClient = () => {
     const questionType = options.questionType || 'open-ended';
     const section = options.section || 'A';
 
-    // OPTIMIZED: Use fast model for short-answer, fill-in-blank, and short open-ended answers
-    // Use smart model only for long essays (over 200 characters)
-    const isShortAnswer = questionType === 'short-answer' || questionType === 'fill-in-blank';
-    const isShortOpenEnded = questionType === 'open-ended' && answer && answer.length < 200;
-    const modelType = (isShortAnswer || isShortOpenEnded) ? 'fast' : 'smart';
+    // Written answers are graded with the smart model. The fast 8B model cannot hold a rubric -
+    // it rewards anything that sounds on-topic, which inflated marks on short answers badly.
+    const isShortAnswer = questionType === 'fill-in-blank';
+    const modelType = isShortAnswer ? 'fast' : 'smart';
 
-    const systemPrompt = `You are an expert exam grader specializing in academic assessment. You grade fairly and generously, always giving students the benefit of the doubt. Recognize semantic equivalence, abbreviations, synonyms, and partial understanding. Always return valid JSON.`;
+    // Coverage-based rubric shared with the submission-time grader. The score returned here is
+    // reconciled against the model's own per-point verdicts below, so it cannot exceed what
+    // those verdicts justify.
+    const prompt = buildOpenEndedGradingPrompt({
+      questionText: question,
+      studentAnswer: answer,
+      modelAnswer,
+      maxPoints,
+      questionType,
+      section
+    }) + `
 
-    const prompt = `
-You are an expert exam grader. Please grade the following student answer to a question.
-
-Question: ${question}
-Question Type: ${questionType}
-Section: ${section}
-
-${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
-
-Student Answer: ${answer}
-
-Please grade this answer on a scale of 0 to ${maxPoints} points.
-
-FLEXIBLE GRADING GUIDELINES:
-1. USE YOUR UNDERSTANDING: Use your own knowledge to evaluate if the student's answer is correct, not just keyword matching
-2. EXACT MATCH: If the student answer exactly matches the model answer (ignoring case/spacing), award full points
-3. EQUIVALENT MEANINGS: If the student answer means the same as the model answer, award full points
-4. HANDLE ABBREVIATIONS: "WAN" = "WAN (Wide Area Network)" = "Wide Area Network" (all should get full points)
-5. ACCEPT SYNONYMS: "CPU" = "Central Processing Unit" = "Processor" = "Central Processor"
-6. TECHNICAL TERMS: "RAM" = "Random Access Memory" = "Memory" (in appropriate context)
-7. CASE INSENSITIVE: "cpu" = "CPU" = "Cpu" (all equivalent)
-8. PARTIAL EXPANSIONS: "Hard disk" = "Hard disk drive" = "HDD" (all correct)
-9. AWARD PARTIAL CREDIT: Give partial credit for answers that demonstrate understanding, even if incomplete
-10. TYPING ERRORS: Ignore minor spelling mistakes and typos if the meaning is clear
-11. LANGUAGE VARIATIONS: Accept different ways of expressing the same concept
-12. BE GENEROUS: If the student's answer is factually correct even if it differs from the model answer, award full points
-13. AWARD 0 POINTS for meaningless answers like "I don't know", "no idea", "skip", "pass", "don't know it", etc.
-14. AWARD 0 POINTS for answers that show no understanding of the question
-
-SPECIAL GUIDELINES FOR NUMERICAL/CALCULATION QUESTIONS:
-- EXTRACT NUMERICAL VALUES: If the student shows their work (e.g., "400kg * $1.50 = $600"), extract the final numerical result
-- VERIFY FINAL ANSWER: MUST check if the final numerical result matches the model answer exactly
-- IGNORE CALCULATION STEPS: Focus on whether the final numerical answer is correct, not the format
-- CURRENCY SYMBOLS: "$600" = "600" = "600 dollars" (all equivalent if context is monetary)
-- DECIMAL TOLERANCE: Allow small rounding differences (e.g., 3.14 ≈ 3.14159 for π)
-- UNIT VARIATIONS: "600 kg" = "600kg" = "600 kilograms" (all equivalent)
-- CALCULATION SHOWING WORK: If student shows correct calculation steps but wrong final answer, award 30-50% partial credit
-- CORRECT FINAL ANSWER: If the final numerical result is correct regardless of format, award FULL points
-- PATTERN RECOGNITION: Look for patterns like "X + Y = Z" or "X * Y = Z" and extract Z as the answer
-- IGNORE LABELS: Labels like "Depreciation:", "Answer:", "Total:" should be ignored when comparing numerical values
-- CRITICAL: For calculation questions, the FINAL ANSWER MUST BE CORRECT for full points. Correct method with wrong result = partial credit only
--- EXAMPLES:
-  * Model: "$600" | Student: "400kg * $1.50 = $600" → FULL POINTS (correct calculation and result)
-  * Model: "600" | Student: "The answer is 600" → FULL POINTS (correct numerical value)
-  * Model: "$600" | Student: "600 dollars" → FULL POINTS (correct value with different unit format)
-  * Model: "600" | Student: "400 * 1.5 = 600" → FULL POINTS (correct calculation shown)
-  * Model: "$79,000" | Student: "Depreciation:$54000+$25000 =$79000" → FULL POINTS (correct calculation shown)
-  * Model: "$1,040" | Student: "COGS: $1060, Closing inventory: $1160" → 40% PARTIAL CREDIT (correct method shown but wrong final answer)
-  * Model: "600" | Student: "400 * 1.5 = 500" → 40% PARTIAL CREDIT (correct method, wrong result)
-
-SPECIAL GUIDELINES FOR OPEN-ENDED/EXPLANATION QUESTIONS:
-- For questions asking to "describe" or "explain": Look for key concepts and understanding, not exact wording
-- USE YOUR KNOWLEDGE: If the student's answer is factually correct based on your knowledge, award full points even if it differs from the model answer
-- EXTRACT BROAD CONCEPTS: Extract 3-5 main concepts from the model answer, NOT individual words
-  - Example: For "Provides energy, Helps growth and body building, Protects the body from diseases"
-  - Correct concepts: ["energy provision", "growth and body building", "disease protection"]
-  - WRONG: ["provides", "energy", "helps", "growth", "body", "building", "protects", "the", "from", "diseases"]
-- SEMANTIC EQUIVALENCE: "Help body to grow" = "Helps growth and body building" (SAME CONCEPT)
-- SEMANTIC EQUIVALENCE: "Prevent disease" = "Protects the body from diseases" (SAME CONCEPT)
-- AWARD FULL POINTS if the student covers all main concepts, even with different wording
-- AWARD FULL POINTS if the student's answer is factually correct even if it doesn't match the model answer exactly
-- AWARD PARTIAL CREDIT for answers showing correct approach or understanding, even if incomplete
-- Award 20-30% if the student shows some understanding or correct approach but answer is very brief
-- Award 30-40% only if the student has the right general idea but missing most details
-- Award 50-60% if the student has the right general idea but missing some details
-- Award 60-70% if the student understands the concept well but uses different words
-- Award 80-90% if the student understands the concept well but uses different words
-- Award full points if the student demonstrates complete understanding, even if phrasing differs from model answer
-- NEVER award 0 points if the student shows any understanding or correct approach - always give partial credit
-
-FLEXIBLE PARTIAL CREDIT EXAMPLES:
-- Model: "Plants need water, sunlight, and soil to survive"
-- Student: "plants need water and sun" → Award 60-70% (missing soil but shows some understanding)
-- Model: "Photosynthesis converts light energy to chemical energy"
-- Student: "photosynthesis makes energy from sun" → Award 70-80% (correct concept, simplified explanation)
-- Model: "RAM is volatile memory used for temporary storage"
-- Student: "RAM stores data temporarily" → Award 70-80% (correct concept, less detail)
-- Model: "Describe the water cycle: evaporation, condensation, precipitation"
-- Student: "water evaporates, forms clouds, falls as rain" → Award 85-90% (correct understanding, different wording)
-- Model: "Explain adaptation: traits that help organisms survive in their environment"
-- Student: "adaptation is when animals change to survive" → Award 75-80% (correct concept, simplified)
-- Model: "Provides energy, Helps growth and body building, Protects the body from diseases"
-- Student: "Help body to grow Prevent disease" → Award 66-75% (covers 2 of 3 main concepts with different wording, factually correct)
-- Model: "Give three uses of food in the human body"
-- Student: "energy, growth, disease prevention" → Award FULL POINTS (factually correct answer, concise but complete)
-
-IMPORTANT FOR SECTIONS B & C:
-- These sections often have open-ended questions requiring explanations
-- Be FLEXIBLE with grading - award partial credit for demonstrated understanding
-- Answers must demonstrate actual understanding of the question
-- Very short answers (under 10 characters) or irrelevant answers should receive 0 points
-- Mathematical expressions without explanation for non-math questions should receive 0 points
-
-Format your response as valid JSON with this exact structure:
-{
-  "score": [number between 0 and ${maxPoints}],
-  "feedback": "[detailed feedback explaining the score, what was good and what could be improved]",
-  "correctedAnswer": "[model answer showing the expected response]",
-  "keyConceptsPresent": ["concept1", "concept2"],
-  "keyConceptsMissing": ["concept3", "concept4"],
-  "confidenceLevel": "[high|medium|low]"
-}
-
-IMPORTANT: Only return valid JSON, no additional text or explanations outside the JSON.`;
+Also include, alongside the required fields:
+  "keyConceptsPresent": ["<concepts the student did cover>"],
+  "keyConceptsMissing": ["<concepts the student did not cover>"],
+  "confidenceLevel": "high|medium|low"`;
 
     const response = await generateContent(prompt, {
-      systemPrompt,
+      systemPrompt: GRADING_SYSTEM_PROMPT,
       model: modelType,
       jsonMode: true,
-      temperature: 0.2,
-      maxTokens: isShortAnswer ? 512 : 2048
+      temperature: 0.1,
+      maxTokens: isShortAnswer ? 768 : 2048
     });
 
     // Extract parsed content or parse manually
@@ -488,12 +404,22 @@ IMPORTANT: Only return valid JSON, no additional text or explanations outside th
       throw new Error('Failed to get valid grading result from Groq API');
     }
 
+    // The model's own point-by-point verdicts cap its self-reported score.
+    const reconciled = reconcileScoreWithCoverage(grading, maxPoints, { label: questionType });
+
+    let feedback = grading.feedback || 'No feedback provided';
+    if (reconciled.adjusted || reconciled.score < maxPoints) {
+      feedback += summariseCoverage(reconciled.keyPoints);
+    }
+
     return {
-      score: Math.min(Math.max(0, parseFloat(grading.score) || 0), maxPoints),
-      feedback: grading.feedback || 'No feedback provided',
+      score: reconciled.score,
+      feedback,
       correctedAnswer: grading.correctedAnswer || modelAnswer || 'No corrected answer provided',
       keyConceptsPresent: grading.keyConceptsPresent || [],
       keyConceptsMissing: grading.keyConceptsMissing || [],
+      keyPoints: reconciled.keyPoints,
+      coverage: reconciled.coverage,
       confidenceLevel: grading.confidenceLevel || 'medium',
       aiGraded: true
     };

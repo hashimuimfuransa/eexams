@@ -6,6 +6,7 @@ const { withOverrides } = require('./toPlainDoc');
 const {
   GRADING_SYSTEM_PROMPT,
   buildOpenEndedGradingPrompt,
+  solveQuestionIndependently,
   reconcileScoreWithCoverage,
   summariseCoverage,
   roundMark,
@@ -665,6 +666,15 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
     // Section A is typically multiple choice, sections B and beyond are typically essay/open-ended
     const isEssayQuestion = question.section !== 'A';
 
+    // Work the question out first, without the marking guide or this answer in context, so a
+    // wrong guide cannot anchor the grader. Identical for every student on this question, so
+    // it is served from the response cache after the first script.
+    const referenceSolution = await solveQuestionIndependently(groqClient.generateContent, {
+      questionText: truncatedQuestion,
+      maxPoints: question.points,
+      questionType: question.type || 'open-ended'
+    });
+
     // Coverage-based rubric: the grader has to justify the mark point by point, and the score is
     // recomputed from those verdicts below. The old one-line "be flexible" prompt let the model
     // award most of the marks to answers that covered none of the model answer.
@@ -674,7 +684,8 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
       modelAnswer: truncatedModelAnswer,
       maxPoints: question.points,
       questionType: question.type || 'open-ended',
-      section: question.section || 'B'
+      section: question.section || 'B',
+      referenceSolution
     });
 
     const timeoutPromise = new Promise((_, reject) => {
@@ -688,7 +699,8 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
       model: 'smart',
       jsonMode: true,
       temperature: 0.1,
-      maxTokens: 1024
+      // Room for the grader to write out its own solution before it judges the student's.
+      maxTokens: 2048
     });
     const response = await Promise.race([aiPromise, timeoutPromise]);
     const text = response.text;
@@ -722,6 +734,8 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
       gradingMethod: 'enhanced_ai_grading',
       isCorrect: finalScore >= question.points,
       aiVerification: verification,
+      needsReview: reconciled.needsReview,
+      reviewReason: reconciled.reviewReason,
       // Store enhanced data for sections B & C display
       aiAnalysis: isEssayQuestion ? {
         detailedFeedback: feedback,
@@ -1590,6 +1604,13 @@ async function fastChunkedGrading(result, exam) {
         result.answers[index].isCorrect = grading.isCorrect !== undefined ? grading.isCorrect : (cappedScore >= maxPoints);
         result.answers[index].correctedAnswer = grading.correctedAnswer || result.answers[index].question.correctAnswer;
         result.answers[index].gradingMethod = grading.gradingMethod || 'enhanced_grading';
+
+        // Marked against the grader's own working because the marking guide looked wrong -
+        // the teacher should confirm both the mark and the guide.
+        if (grading.needsReview) {
+          result.answers[index].needsReview = true;
+          result.answers[index].reviewReason = grading.reviewReason || '';
+        }
 
         // Store the written-answer portion's own score/feedback when a financial-spreadsheet
         // question required one alongside the grid (see gradeFinancialSpreadsheetWithWritten)

@@ -15,6 +15,7 @@ const PQueue = require('p-queue').default || require('p-queue');
 const {
   GRADING_SYSTEM_PROMPT,
   buildOpenEndedGradingPrompt,
+  solveQuestionIndependently,
   reconcileScoreWithCoverage,
   summariseCoverage
 } = require('./gradingRubric');
@@ -361,6 +362,15 @@ const createGroqClient = () => {
     const isShortAnswer = questionType === 'fill-in-blank';
     const modelType = isShortAnswer ? 'fast' : 'smart';
 
+    // Work the question out first, without the marking guide or this answer in context, so a
+    // wrong guide cannot anchor the grader. Identical for every student on this question, so
+    // it is served from the response cache after the first script.
+    const referenceSolution = await solveQuestionIndependently(generateContent, {
+      questionText: question,
+      maxPoints,
+      questionType
+    });
+
     // Coverage-based rubric shared with the submission-time grader. The score returned here is
     // reconciled against the model's own per-point verdicts below, so it cannot exceed what
     // those verdicts justify.
@@ -370,7 +380,8 @@ const createGroqClient = () => {
       modelAnswer,
       maxPoints,
       questionType,
-      section
+      section,
+      referenceSolution
     }) + `
 
 Also include, alongside the required fields:
@@ -383,7 +394,8 @@ Also include, alongside the required fields:
       model: modelType,
       jsonMode: true,
       temperature: 0.1,
-      maxTokens: isShortAnswer ? 768 : 2048
+      // Room for the grader to write out its own solution before it judges the student's.
+      maxTokens: isShortAnswer ? 1024 : 2560
     });
 
     // Extract parsed content or parse manually
@@ -420,6 +432,8 @@ Also include, alongside the required fields:
       keyConceptsMissing: grading.keyConceptsMissing || [],
       keyPoints: reconciled.keyPoints,
       coverage: reconciled.coverage,
+      needsReview: reconciled.needsReview,
+      reviewReason: reconciled.reviewReason,
       confidenceLevel: grading.confidenceLevel || 'medium',
       aiGraded: true
     };

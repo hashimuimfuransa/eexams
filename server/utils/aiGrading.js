@@ -241,9 +241,12 @@ const gradeOpenEndedAnswer = async (studentAnswer, modelAnswer, maxPoints, quest
         score: Math.round(result.score * 100) / 100,
         feedback: result.feedback,
         correctedAnswer: result.correctedAnswer || modelAnswer || 'Model answer not available',
+        needsReview: result.needsReview || false,
+        reviewReason: result.reviewReason || '',
         details: {
           keyConceptsPresent: result.keyConceptsPresent || [],
           keyConceptsMissing: result.keyConceptsMissing || [],
+          keyPoints: result.keyPoints || [],
           confidenceLevel: result.confidenceLevel || 'medium',
           questionType: questionType,
           gradingMethod: 'groq_ai',

@@ -216,6 +216,10 @@ const ResultSchema = new mongoose.Schema({
         'modelAnswer_comparison',
         'spreadsheet_manual_grading',
         'spreadsheet_grading',
+        // Both were already produced by gradeFinancialSpreadsheetWithWritten but never listed
+        // here, so Mongoose's enum validation would reject the answer on save.
+        'spreadsheet_and_written_grading',
+        'spreadsheet_written_and_ai_review',
         'flexible_normalization'
       ],
       default: 'enhanced_grading'
@@ -243,6 +247,17 @@ const ResultSchema = new mongoose.Schema({
       completeness: { type: Number, default: 0 },
       understanding: { type: Number, default: 0 },
       clarity: { type: Number, default: 0 }
+    },
+    // Set when the grader marked this answer against its own working because the exam's
+    // marking guide looked wrong. The mark stands, but a teacher should confirm it and fix
+    // the guide - a wrong guide affects every student who sat the paper.
+    needsReview: {
+      type: Boolean,
+      default: false
+    },
+    reviewReason: {
+      type: String,
+      default: ''
     }
   }],
   totalScore: {

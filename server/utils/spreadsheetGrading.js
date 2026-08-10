@@ -8,6 +8,7 @@
 // meant to fill in actually discriminate the score.
 
 const { withOverrides } = require('./toPlainDoc');
+const { aiReviewSpreadsheetAnswer } = require('./spreadsheetAiGrading');
 
 // A single table entry may come from the AI/legacy data in a few shapes:
 //  - { title?, headers: [...], data: [[...]] }               (canonical)
@@ -74,6 +75,44 @@ const CURRENCY_CODE = 'frw|rwf|ksh|kes|usd|eur|gbp|ugx|tzs|zar|ngn|rs';
 const LEADING_CURRENCY_RE  = new RegExp(`^(?:${CURRENCY_CODE})\\s*(?=[\\d.+-])`, 'i');
 const TRAILING_CURRENCY_RE = new RegExp(`([\\d.])\\s*(?:${CURRENCY_CODE})$`, 'i');
 
+// Shared by cellsEqual and the layout-tolerant matchers below.
+const toNumber = (s) => {
+  let str = String(s ?? '').trim();
+  if (str === '') return NaN;
+  const bracketed = /^\(.*\)$/.test(str);
+  if (bracketed) str = str.slice(1, -1);
+  str = str
+    .replace(LEADING_CURRENCY_RE, '')             // "Frw 5,400,000"
+    .replace(TRAILING_CURRENCY_RE, '$1')          // "5,400,000 Frw"
+    .replace(/[,$€£¥₹₦%\s]/g, '');                // separators, percent and currency symbols
+  const n = Number(str);
+  if (!Number.isFinite(n)) return NaN;
+  return bracketed ? -n : n;
+};
+
+// Ratio-analysis guides state a value with its unit — "1.5:1", "4.64 times", "28.57%", "45 days" —
+// while a student typically types the bare number the calculator gave them. Splitting the unit off
+// lets the figures be compared, and comparing the units afterwards keeps "45 days" from matching
+// "45 years".
+const UNIT_SUFFIX_RE = /(:\s*1|%|times?|days?|weeks?|months?|years?|x)\s*$/i;
+
+function splitUnit(value) {
+  const str = String(value ?? '').trim();
+  const match = str.match(UNIT_SUFFIX_RE);
+  if (!match) return { body: str, unit: '' };
+  const unit = match[1].replace(/\s+/g, '').toLowerCase().replace(/s$/, '');
+  return {
+    body: str.slice(0, match.index).trim(),
+    unit: unit === ':1' || unit === 'x' ? 'ratio' : unit
+  };
+}
+
+/** Decimal places the marking guide chose to state — the precision it expects. */
+function decimalsOf(value) {
+  const match = String(value ?? '').match(/\.(\d+)\s*$/);
+  return match ? Math.min(match[1].length, 6) : 0;
+}
+
 function cellsEqual(studentVal, modelVal) {
   const studentStr = (studentVal ?? '').toString().trim();
   const modelStr = (modelVal ?? '').toString().trim();
@@ -82,6 +121,23 @@ function cellsEqual(studentVal, modelVal) {
   if (studentStr === '') return false;
 
   if (studentStr.toLowerCase() === modelStr.toLowerCase()) return true;
+
+  // Unit-aware numeric comparison, tried before the plain money comparison below.
+  const s = splitUnit(studentStr);
+  const m = splitUnit(modelStr);
+  if (s.unit || m.unit) {
+    const sNum = toNumber(s.body);
+    const mNum = toNumber(m.body);
+    if (!Number.isNaN(sNum) && !Number.isNaN(mNum)) {
+      // "45 days" is not "45 years"; but a bare "45" against "45 days" is the right figure.
+      if (s.unit && m.unit && s.unit !== m.unit) return false;
+      // Judge at the precision the guide states: a guide of "2.3:1" accepts 2.3333333333.
+      const dp = decimalsOf(m.body);
+      if (Number(sNum.toFixed(dp)) === Number(mNum.toFixed(dp))) return true;
+      const tolerance = Math.max(Math.abs(mNum) * 0.01, 0.01);
+      return Math.abs(sNum - mNum) <= tolerance;
+    }
+  }
 
   // Numeric comparison with tolerance for rounding / formatting differences, e.g. "1,234.00" vs
   // 1234. Two accounting conventions have to be understood or correct work is marked wrong:
@@ -95,18 +151,6 @@ function cellsEqual(studentVal, modelVal) {
   // gets marked. Currency words are matched against a fixed list rather than "any short word":
   // stripping any short word would make a ratio-analysis "45 days" equal a bare "45", and a
   // ledger date like "July 6" (present in these questions) parse as the number 6.
-  const toNumber = (s) => {
-    let str = s.trim();
-    const bracketed = /^\(.*\)$/.test(str);
-    if (bracketed) str = str.slice(1, -1);
-    str = str
-      .replace(LEADING_CURRENCY_RE, '')             // "Frw 5,400,000"
-      .replace(TRAILING_CURRENCY_RE, '$1')          // "5,400,000 Frw"
-      .replace(/[,$€£¥₹₦%\s]/g, '');                // separators, percent and currency symbols
-    const n = Number(str);
-    if (!Number.isFinite(n)) return NaN;
-    return bracketed ? -n : n;
-  };
   const studentNum = toNumber(studentStr);
   const modelNum = toNumber(modelStr);
 
@@ -120,6 +164,107 @@ function cellsEqual(studentVal, modelVal) {
 
 function normalizeTitle(title) {
   return (title || '').toString().trim().toLowerCase();
+}
+
+// ── Layout-tolerant matching ──────────────────────────────────────────────────
+// Strict position matching punishes a student for laying the statement out differently from the
+// marking guide even when every figure is right: insert one row, add a workings column, or put
+// the same line item two rows further down, and everything below shifts and scores zero. These
+// matchers find a model cell's value wherever the student actually put it, so marks follow the
+// accounting, not the geometry.
+
+// The text that names a row — normally the line item ("Cost of Sales"), which is what a marker
+// reads the row by. Skips numeric cells so a row starting with a date or code still resolves.
+function rowLabel(row) {
+  for (const cell of row || []) {
+    const s = String(cell ?? '').trim();
+    if (s && Number.isNaN(toNumber(s))) return s.toLowerCase().replace(/\s+/g, ' ');
+  }
+  return '';
+}
+
+function indexRowsByLabel(table) {
+  const index = new Map();
+  (table?.data || []).forEach((row, r) => {
+    const label = rowLabel(row);
+    if (!label) return;
+    if (!index.has(label)) index.set(label, []);
+    index.get(label).push(r);
+  });
+  return index;
+}
+
+/**
+ * Finds `modelVal` anywhere in the student's answer, trying the strictest match first.
+ *
+ * The principle is the marker's: if the required figure is present and correct, it earns its mark
+ * wherever the student put it. Position is only used to prefer the most likely match when the same
+ * value appears more than once — it is never a requirement.
+ *
+ * Two safeguards keep that from becoming a giveaway:
+ *   - `used` records student cells already credited, so one figure can never satisfy two model
+ *     cells (a statement that legitimately repeats a total still needs it entered twice);
+ *   - `wasGiven` excludes cells the blank template already contained, so a number handed to the
+ *     student in the question can't be credited as though they had worked it out.
+ *
+ * @returns {string|null} how it matched, if at all
+ */
+function locateModelCell({
+  modelVal, modelRow, rowIdx, colIdx, tableIdx,
+  studentTable, studentByLabel, allStudentTables, used, wasGiven
+}) {
+  const data = studentTable?.data || [];
+  const take = (t, r, c) => {
+    const key = `${t}:${r}:${c}`;
+    if (used.has(key)) return false;
+    used.add(key);
+    return true;
+  };
+
+  // 1. Same cell the marking guide uses.
+  if (cellsEqual(data[rowIdx]?.[colIdx], modelVal) && take(tableIdx, rowIdx, colIdx)) return 'position';
+
+  const label = rowLabel(modelRow);
+  const candidateRows = label ? (studentByLabel.get(label) || []) : [];
+
+  // 2. Row moved, but the figure is in the expected column of that row.
+  for (const r of candidateRows) {
+    if (cellsEqual(data[r]?.[colIdx], modelVal) && take(tableIdx, r, colIdx)) return 'row-label';
+  }
+
+  // 3. Row moved and columns shifted — the figure is somewhere on the right line.
+  for (const r of candidateRows) {
+    const row = data[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      if (c === colIdx) continue;
+      if (cellsEqual(row[c], modelVal) && take(tableIdx, r, c)) return 'row-label-any-column';
+    }
+  }
+
+  // 4. The student restructured the statement — find the figure anywhere in this table, ignoring
+  //    cells the template already gave them.
+  for (let r = 0; r < data.length; r++) {
+    const row = data[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      if (wasGiven(tableIdx, r, c)) continue;
+      if (cellsEqual(row[c], modelVal) && take(tableIdx, r, c)) return 'anywhere-in-table';
+    }
+  }
+
+  // 5. Last resort: the student put it on another sheet (e.g. all workings on one tab).
+  for (let t = 0; t < allStudentTables.length; t++) {
+    if (allStudentTables[t] === studentTable) continue;
+    const rows = allStudentTables[t]?.data || [];
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        if (wasGiven(t, r, c)) continue;
+        if (cellsEqual(row[c], modelVal) && take(t, r, c)) return 'another-table';
+      }
+    }
+  }
+
+  return null;
 }
 
 // Pairs each model table with the best-matching student table: by title first (case-insensitive),
@@ -181,24 +326,61 @@ function gradeFinancialSpreadsheet(question, answer, modelAnswer) {
   const mismatches = [];
   const perTable = [];
 
+  // How many cells were credited somewhere other than the marking guide's own position — used
+  // only to explain the score, since a relocated figure is still worth full marks.
+  let relocatedCells = 0;
+
+  // Shared across every table: a figure the student entered once can only ever earn one mark,
+  // even when the search widens to other sheets.
+  const used = new Set();
+  const allStudentTables = studentSheets.tables || [];
+
+  // Cells the blank template already contained are the question's own data, not the student's
+  // work, so the wide searches below must not credit them.
+  const templateTables = parseSheets(question?.spreadsheetTemplate)?.tables || [];
+  const wasGiven = (t, r, c) => {
+    const given = String(templateTables[t]?.data?.[r]?.[c] ?? '').trim();
+    if (!given) return false;
+    return given === String(allStudentTables[t]?.data?.[r]?.[c] ?? '').trim();
+  };
+
+  // Cells the template supplied are also not worth marks. They used to be counted as gradable AND
+  // automatically correct, because the student's sheet starts as a copy of the template — which
+  // put a floor of "50% for a completely blank answer" under every score, and charged a student
+  // who relabelled a line ("Turnover" for "Sales") for a label they were never asked to produce.
+  // Marks now attach only to what the student actually had to work out.
+  const templateSuppliedAt = (t, r, c) =>
+    String(templateTables[t]?.data?.[r]?.[c] ?? '').trim() !== '';
+  const excludeGivenCells = templateTables.length > 0;
+
   pairs.forEach(({ modelTable, studentTable }, tableIdx) => {
     let tableGradable = 0;
     let tableCorrect = 0;
     const rowCount = modelTable.data.length;
+    const studentByLabel = indexRowsByLabel(studentTable);
 
     for (let r = 0; r < rowCount; r++) {
       const modelRow = modelTable.data[r] || [];
-      const studentRow = (studentTable.data || [])[r] || [];
       for (let c = 0; c < modelRow.length; c++) {
         const modelVal = modelRow[c];
         if (modelVal === undefined || modelVal === null || String(modelVal).trim() === '') continue;
+        // Given to the student in the blank sheet — scaffolding, not an answer.
+        if (excludeGivenCells && templateSuppliedAt(tableIdx, r, c)) continue;
 
         tableGradable++;
-        const studentVal = studentRow[c];
-        if (cellsEqual(studentVal, modelVal)) {
+        const how = locateModelCell({
+          modelVal, modelRow, rowIdx: r, colIdx: c, tableIdx,
+          studentTable, studentByLabel, allStudentTables, used, wasGiven
+        });
+        if (how) {
           tableCorrect++;
+          if (how !== 'position') relocatedCells++;
         } else if (mismatches.length < 10) {
-          mismatches.push({ table: modelTable.title || `Table ${tableIdx + 1}`, row: r, col: c, expected: modelVal, got: studentVal ?? '' });
+          mismatches.push({
+            table: modelTable.title || `Table ${tableIdx + 1}`,
+            row: r, col: c, expected: modelVal,
+            got: (studentTable.data || [])[r]?.[c] ?? ''
+          });
         }
       }
     }
@@ -266,6 +448,39 @@ function gradeFinancialSpreadsheet(question, answer, modelAnswer) {
  * @param {string} modelAnswer - fallback spreadsheet model answer if question.spreadsheetModelAnswer is unset
  * @returns {Promise<Object>} - same shape as gradeFinancialSpreadsheet, plus a `details.written` block when graded
  */
+/**
+ * True when the student added something of their own — any cell the blank template did not
+ * already contain, or any written answer. Comparing against the template rather than against
+ * "is the sheet empty" matters because the template pre-fills the row labels, so an untouched
+ * sheet is never actually empty.
+ */
+function hasStudentContribution(question, answer, writtenAnswer) {
+  if (String(writtenAnswer || '').trim()) return true;
+
+  const studentTables = parseSheets(answer?.textAnswer)?.tables || [];
+  if (!studentTables.length) return false;
+
+  const templateTables = parseSheets(question?.spreadsheetTemplate)?.tables || [];
+  const givenAt = (t, r, c) => {
+    const val = templateTables[t]?.data?.[r]?.[c];
+    return String(val ?? '').trim();
+  };
+
+  for (let t = 0; t < studentTables.length; t++) {
+    const rows = studentTables[t]?.data || [];
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        const value = String(row[c] ?? '').trim();
+        if (!value) continue;
+        // Anything not already handed to them in the template counts as their own work.
+        if (value !== givenAt(t, r, c)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * How many of the question's marks belong to the written half.
  *
@@ -355,19 +570,57 @@ async function gradeFinancialSpreadsheetWithWritten(question, answer, modelAnswe
   const writtenScore = Math.min(Math.max(writtenResult.score || 0, 0), writtenPoints);
   const combinedScore = Math.round(((spreadsheetResult.score || 0) + writtenScore) * 100) / 100;
 
+  // ── Holistic AI review ──────────────────────────────────────────────────────
+  // The two halves above are marked in isolation: figures against cells, prose against the
+  // written guide. A student who computed in the grid and justified in words — or who used a
+  // valid alternative method, or carried an early slip through correctly — is short-changed by
+  // that split. This marks both together, and can only raise the score, so a cautious or
+  // unavailable model leaves the cell-matched marks standing.
+  const sheetDetails = spreadsheetResult.details || {};
+  let aiResult = null;
+  // Only worth asking when the student actually put something in. The template hands them the row
+  // labels, so a completely untouched sheet still "matches" those cells — and an examiner model
+  // shown that sheet will read the given labels as the student's own work and award marks for a
+  // blank answer. Deterministic marking already tolerates that floor; the AI must not build on it.
+  if (combinedScore < totalPoints && hasStudentContribution(question, answer, writtenAnswer)) {
+    aiResult = await aiReviewSpreadsheetAnswer({
+      questionText: question.text || question.writtenAnswerPrompt || '',
+      modelTables: parseSheets(question.spreadsheetModelAnswer || modelAnswer)?.tables || [],
+      studentTables: parseSheets(answer?.textAnswer)?.tables || [],
+      writtenModel: question.writtenAnswerModelAnswer || '',
+      writtenAnswer,
+      totalPoints,
+      deterministic: {
+        correctCells: sheetDetails.correctCells || 0,
+        gradableCells: sheetDetails.gradableCells || 0
+      }
+    });
+  }
+
+  // The examiner review is the primary judgement: exact cell matching cannot recognise a correct
+  // answer laid out differently, reached by another valid method, or split between the grid and
+  // the explanation. Cell matching stays as a floor so a literally-perfect answer can never be
+  // marked down by a cautious or unavailable model. Every mark the review awards has already been
+  // checked against something the student actually wrote (see spreadsheetAiGrading.js), which is
+  // what keeps "mark the substance" from becoming "mark whatever the model imagines".
+  const usedAi = !!aiResult && aiResult.score > combinedScore;
+  const finalScore = usedAi ? aiResult.score : combinedScore;
+
   return {
-    score: combinedScore,
-    isCorrect: combinedScore >= totalPoints,
+    score: finalScore,
+    isCorrect: finalScore >= totalPoints,
     feedback: `Spreadsheet (${spreadsheetResult.score || 0}/${spreadsheetPoints}): ${spreadsheetResult.feedback}`
-      + `\nWritten answer (${writtenScore}/${writtenPoints}): ${writtenResult.feedback}`,
+      + `\nWritten answer (${writtenScore}/${writtenPoints}): ${writtenResult.feedback}`
+      + (usedAi ? `\n\nExaminer review (${finalScore}/${totalPoints}): ${aiResult.feedback}` : ''),
     correctedAnswer: spreadsheetResult.correctedAnswer,
-    gradingMethod: 'spreadsheet_and_written_grading',
+    gradingMethod: usedAi ? 'spreadsheet_written_and_ai_review' : 'spreadsheet_and_written_grading',
     writtenAnswerScore: writtenScore,
     writtenAnswerFeedback: writtenResult.feedback,
     details: {
       answerType: 'financial-spreadsheet',
       spreadsheet: spreadsheetResult.details,
-      written: { ...writtenResult, points: writtenPoints, score: writtenScore }
+      written: { ...writtenResult, points: writtenPoints, score: writtenScore },
+      ...(aiResult ? { aiReview: { ...aiResult, applied: usedAi, cellMatchedScore: combinedScore } } : {})
     }
   };
 }

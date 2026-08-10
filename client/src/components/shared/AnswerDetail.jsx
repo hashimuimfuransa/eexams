@@ -416,6 +416,23 @@ export default function AnswerDetail({ answer }) {
           </Box>
         )}
 
+        {/* ── Marking-guide warning — the grader marked this against its own working because
+            the exam's model answer looked wrong. A wrong guide affects every student who sat
+            the paper, so the teacher needs to see it. ── */}
+        {answer.needsReview && (
+          <Box sx={{ mt: 2, p: { xs: 1.5, sm: 2 }, bgcolor: alpha('#e65100', 0.07), borderRadius: 2,
+            borderLeft: '4px solid', borderColor: 'warning.main' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+              <ErrorOutline fontSize="small" sx={{ color: 'warning.main' }} />
+              <Typography variant="body2" fontWeight={700} color="warning.dark">Check the marking guide</Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              {answer.reviewReason ||
+                "This answer was marked against the grader's own working because the model answer looked wrong."}
+            </Typography>
+          </Box>
+        )}
+
         {/* Feedback placeholder when not answered and no feedback — show generic tip */}
         {notAnswered && !answer.feedback && (
           <Box sx={{ mt: 2, p: 1.5, bgcolor: alpha('#e65100', 0.07), borderRadius: 2, borderLeft: '4px solid', borderColor: 'warning.main' }}>

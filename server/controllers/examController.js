@@ -2660,6 +2660,9 @@ const triggerAIGrading = async (req, res) => {
         result.answers[i].feedback = grading.feedback;
         result.answers[i].isCorrect = grading.score >= question.points;
         result.answers[i].correctedAnswer = grading.correctedAnswer || modelAnswer;
+        // Carry the "graded against the grader's own working, marking guide looks wrong" flag.
+        result.answers[i].needsReview = !!grading.needsReview;
+        result.answers[i].reviewReason = grading.reviewReason || '';
 
         console.log(`Successfully regraded question ${question._id}, score: ${grading.score}/${question.points}`);
 

@@ -56,12 +56,24 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // Signed-in users go straight to their own subscription page — students,
+  // individual teachers and organisation admins each buy and review plans in a
+  // different place. Everyone else (visitors, and superadmins, who manage plans
+  // from the Super Admin dashboard rather than subscribing) gets the public
+  // pricing page, which lists all three catalogs without needing an account.
+  const subscriptionsRoute = {
+    student: '/student/subscriptions',
+    teacher: '/individual/subscription',
+    admin: '/organization/subscription',
+  }[user?.role] || '/subscriptions';
+
   const navLinks = [
     { id: 'home', label: 'Home', route: '/' },
     { id: 'how-it-works', label: 'How it works' },
     { id: 'faq', label: 'FAQ' },
     { id: 'contact', label: 'Contact' },
     { id: 'marketplace', label: 'Public Exams', route: '/marketplace' },
+    { id: 'subscriptions', label: 'Subscriptions', route: isAuthenticated ? subscriptionsRoute : '/subscriptions' },
   ];
 
   const navBg = isDark

@@ -16,6 +16,19 @@ const Marketplace = () => {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  // Debounced copy of searchTerm — the exam bank is paginated (50 at a time),
+  // so searching only what is loaded would hide most of the catalog. The
+  // server does the matching; this is what gets sent to it.
+  const [appliedSearch, setAppliedSearch] = useState('');
+  // True only while a search-triggered refetch is in flight. Kept separate from
+  // `loading` so the page (and the focused search box) stays mounted — see the
+  // full-page spinner below, which is reserved for the very first load.
+  const [searching, setSearching] = useState(false);
+  const hasLoadedOnce = useRef(false);
+  // Monotonic request id: a slow response for "chem" must never overwrite the
+  // newer results for "chemistry".
+  const requestIdRef = useRef(0);
 
   // Infinite scroll
   const observerRef = useRef(null);
@@ -33,7 +46,9 @@ const Marketplace = () => {
   useEffect(() => {
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+        // `searching` is included so a pending search refetch isn't raced by
+        // an infinite-scroll page bump appending results for the old query.
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && !searching) {
           setPage(p => p + 1);
         }
       },
@@ -43,12 +58,8 @@ const Marketplace = () => {
       observerRef.current.observe(sentinelRef.current);
     }
     return () => observerRef.current?.disconnect();
-  }, [hasMore, loading, loadingMore]);
-  const [searchTerm, setSearchTerm] = useState('');
-  // Debounced copy of searchTerm — the exam bank is paginated (50 at a time),
-  // so searching only what is loaded would hide most of the catalog. The
-  // server does the matching; this is what gets sent to it.
-  const [appliedSearch, setAppliedSearch] = useState('');
+  }, [hasMore, loading, loadingMore, searching]);
+
   const [targetAudienceFilter, setTargetAudienceFilter] = useState('all');
   const [priceFilter, setPriceFilter] = useState('all');
   const [sortBy, setSortBy] = useState('free-first');
@@ -105,19 +116,26 @@ const Marketplace = () => {
     }
   }, [page]);
 
-  // Debounce typing so each keystroke doesn't hit the server
+  // Debounce typing so each keystroke doesn't hit the server. The timer resets
+  // on every keystroke, so the query only fires once the user pauses — long
+  // enough (600ms) that a slow typist isn't cut off mid-word.
   useEffect(() => {
-    const timer = setTimeout(() => setAppliedSearch(searchTerm.trim()), 350);
+    const next = searchTerm.trim();
+    // Nothing new to ask the server (e.g. the user only added trailing spaces).
+    if (next === appliedSearch) return;
+    const timer = setTimeout(() => setAppliedSearch(next), 600);
     return () => clearTimeout(timer);
-  }, [searchTerm]);
+  }, [searchTerm, appliedSearch]);
 
   // Load page 1 on mount, and re-query whenever the search changes or the
   // signed-in user changes (the server tailors access flags per student).
+  // Depends on user?._id rather than the user object so an unrelated profile
+  // refresh doesn't re-run the query.
   useEffect(() => {
     setPage(1);
     setHasMore(true);
     fetchMarketplaceExams(1, appliedSearch);
-  }, [appliedSearch, isAuthenticated, user]);
+  }, [appliedSearch, isAuthenticated, user?._id]);
 
   const fetchLevels = async () => {
     try {
@@ -138,16 +156,29 @@ const Marketplace = () => {
   };
 
   const fetchMarketplaceExams = async (pageNum = 1, search = '') => {
+    const requestId = ++requestIdRef.current;
+    // Only the very first load blanks the page. Every later refetch (a new
+    // search, a user change) keeps the current results on screen and shows a
+    // small inline spinner instead, so the search box never unmounts and the
+    // user can keep typing.
+    if (pageNum === 1) {
+      if (hasLoadedOnce.current) setSearching(true);
+      else setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     try {
-      if (pageNum === 1) setLoading(true);
-      else setLoadingMore(true);
       const response = await api.get('/marketplace/exams', {
         params: { page: pageNum, limit: 50, ...(search ? { search } : {}) }
       });
+      // A newer request was fired while this one was in flight — discard it.
+      if (requestId !== requestIdRef.current) return;
       const newExams = response.data;
       setExams(prev => pageNum === 1 ? newExams : [...prev, ...newExams]);
       setHasMore(newExams.length >= 50);
+      setError(null);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       console.error('Error fetching marketplace exams:', err);
       setError('Failed to load marketplace exams. Please try again later.');
       // Stop infinite-scroll retries — otherwise the sentinel stays visible
@@ -155,8 +186,12 @@ const Marketplace = () => {
       // hammering the server with an unbounded retry loop.
       setHasMore(false);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (requestId === requestIdRef.current) {
+        hasLoadedOnce.current = true;
+        setLoading(false);
+        setSearching(false);
+        setLoadingMore(false);
+      }
     }
   };
 
@@ -256,8 +291,15 @@ const Marketplace = () => {
   const uniqueAudiences = [...new Set(exams.map(exam => exam.targetAudience).filter(Boolean))];
 
   // Same token-AND / multi-field rule the server applies, so results don't
-  // shift when the debounced server query lands.
+  // shift when the debounced server query lands. Filtering on the live
+  // `searchTerm` (not the debounced one) narrows what is already loaded on
+  // every keystroke, so typing feels instant while the server call waits.
   const searchTokens = searchTerm.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+  // The typed term hasn't reached the server yet, or its response is still in
+  // flight. Used to say "Searching…" instead of "No exams found" — the wider
+  // catalog may well contain a match that simply isn't loaded yet.
+  const searchPending = searchTerm.trim() !== appliedSearch || searching;
 
   const filteredExams = exams.filter(exam => {
     // Search filter — matches title, either description, level or sub-level,
@@ -322,6 +364,46 @@ const Marketplace = () => {
     }
   });
 
+  // Section banners are tied to what actually survived the filters: filtering
+  // down to subscription-only results must not leave a stray "Free Exams"
+  // header sitting above a list with no free exam in it, and vice versa.
+  const hasFreeResults = filteredExams.some(exam => exam.accessType !== 'subscription');
+  const hasSubscriptionResults = filteredExams.some(exam => exam.accessType === 'subscription');
+  // Only "free-first" sorts the two kinds into contiguous blocks. Under any
+  // other sort they interleave, so an inline group header would be wrong (and
+  // would repeat at every switch between the two) — those sorts get a single
+  // banner above the grid instead.
+  const groupedByAccess = sortBy === 'free-first';
+  const firstFreeIdx = groupedByAccess
+    ? filteredExams.findIndex(exam => exam.accessType !== 'subscription')
+    : -1;
+  const firstSubscriptionIdx = groupedByAccess
+    ? filteredExams.findIndex(exam => exam.accessType === 'subscription')
+    : -1;
+
+  // Defined once so the grouped (inline) and ungrouped (top of grid) layouts
+  // below render the exact same notice.
+  const freeSectionNotice = (
+    <Alert severity="success" sx={{ borderRadius: 2 }}>
+      <strong>Free Exams</strong> — try one exam per level at no cost, no account needed for these. Once used, subscribe to unlock unlimited exams.
+    </Alert>
+  );
+
+  const subscriptionSectionNotice = (
+    <Alert
+      severity="info"
+      sx={{ borderRadius: 2 }}
+      icon={<WorkspacePremium />}
+      action={
+        <Button color="inherit" size="small" onClick={() => navigate(isAuthenticated ? '/student/subscriptions' : '/student-register')} sx={{ fontWeight: 'bold' }}>
+          {isAuthenticated ? 'Subscribe' : 'Sign Up'}
+        </Button>
+      }
+    >
+      <strong>Subscription Exams</strong> — these require an active subscription for your level to unlock.
+    </Alert>
+  );
+
   const calculateTotalQuestions = (exam) => {
     return exam.totalQuestions || exam.sections?.reduce((sum, section) => sum + (section.questionCount || section.questions?.length || 0), 0) || 0;
   };
@@ -357,6 +439,8 @@ const Marketplace = () => {
     return `${Math.floor(diffInSeconds / 31536000)} years ago`;
   };
 
+  // First load only — `loading` is never set again once the page has rendered
+  // results, so a search can't blank the screen out from under the user.
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: mode === 'dark' ? '#0F172A' : '#F1F5F9' }}>
@@ -590,6 +674,11 @@ const Marketplace = () => {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     InputProps={{
                       startAdornment: <Search sx={{ color: mode === 'dark' ? '#64748B' : '#94A3B8', mr: 0.5, fontSize: 18 }} />,
+                      // Progress lives inside the field so the results below stay
+                      // put — nothing jumps or unmounts while the user types.
+                      endAdornment: searchPending && searchTerm.trim() ? (
+                        <CircularProgress size={16} sx={{ color: mode === 'dark' ? '#64748B' : '#94A3B8' }} />
+                      ) : null,
                       sx: { borderRadius: 1.5, fontSize: 14, bgcolor: mode === 'dark' ? '#0F172A' : 'white' }
                     }}
                     sx={{
@@ -814,45 +903,52 @@ const Marketplace = () => {
         {/* Exam Grid */}
         {filteredExams.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: { xs: 5, sm: 8 } }}>
-            <School sx={{ fontSize: { xs: 48, sm: 64 }, color: mode === 'dark' ? '#475569' : '#CBD5E1', mb: 2 }} />
-            <Typography variant="h6" sx={{ color: mode === 'dark' ? '#94A3B8' : '#64748B', mb: 1 }}>
-              {searchTerm ? 'No exams found matching your search' : 'No exams available in the exam bank yet'}
-            </Typography>
-            <Typography sx={{ color: mode === 'dark' ? '#64748B' : '#94A3B8' }}>
-              {searchTerm ? 'Try different keywords' : 'Check back later for new exams'}
-            </Typography>
+            {searchPending ? (
+              <>
+                <CircularProgress size={32} sx={{ mb: 2, color: mode === 'dark' ? '#475569' : '#CBD5E1' }} />
+                <Typography variant="h6" sx={{ color: mode === 'dark' ? '#94A3B8' : '#64748B' }}>
+                  Searching the exam bank…
+                </Typography>
+              </>
+            ) : (
+              <>
+                <School sx={{ fontSize: { xs: 48, sm: 64 }, color: mode === 'dark' ? '#475569' : '#CBD5E1', mb: 2 }} />
+                <Typography variant="h6" sx={{ color: mode === 'dark' ? '#94A3B8' : '#64748B', mb: 1 }}>
+                  {searchTerm ? 'No exams found matching your search' : 'No exams available in the exam bank yet'}
+                </Typography>
+                <Typography sx={{ color: mode === 'dark' ? '#64748B' : '#94A3B8' }}>
+                  {searchTerm ? 'Try different keywords' : 'Check back later for new exams'}
+                </Typography>
+              </>
+            )}
           </Box>
         ) : (
-          <Grid container spacing={{ xs: 2, sm: 3 }}>
+          <Grid
+            container
+            spacing={{ xs: 2, sm: 3 }}
+            sx={{ opacity: searching ? 0.55 : 1, transition: 'opacity 0.2s ease' }}
+          >
+            {/* Ungrouped sorts interleave the two kinds, so their banners go
+                once at the top rather than inline between the cards. */}
+            {!groupedByAccess && hasFreeResults && (
+              <Grid item xs={12}>{freeSectionNotice}</Grid>
+            )}
+            {!groupedByAccess && hasSubscriptionResults && (
+              <Grid item xs={12}>{subscriptionSectionNotice}</Grid>
+            )}
             {filteredExams.map((exam, idx) => {
-              const isFirstFree = idx === 0 && exam.accessType !== 'subscription';
-              const isFirstSubscription = exam.accessType === 'subscription' &&
-                (idx === 0 || filteredExams[idx - 1].accessType !== 'subscription');
+              // Each banner renders at most once, and only when its section is
+              // non-empty after filtering.
+              const isFirstFree = idx === firstFreeIdx;
+              const isFirstSubscription = idx === firstSubscriptionIdx;
 
               return (
               <React.Fragment key={exam._id}>
                 {isFirstFree && (
-                  <Grid item xs={12}>
-                    <Alert severity="success" sx={{ borderRadius: 2 }}>
-                      <strong>Free Exams</strong> — try one exam per level at no cost, no account needed for these. Once used, subscribe to unlock unlimited exams.
-                    </Alert>
-                  </Grid>
+                  <Grid item xs={12}>{freeSectionNotice}</Grid>
                 )}
                 {isFirstSubscription && (
-                  <Grid item xs={12}>
-                    <Alert
-                      severity="info"
-                      sx={{ borderRadius: 2 }}
-                      icon={<WorkspacePremium />}
-                      action={
-                        <Button color="inherit" size="small" onClick={() => navigate(isAuthenticated ? '/student/subscriptions' : '/student-register')} sx={{ fontWeight: 'bold' }}>
-                          {isAuthenticated ? 'Subscribe' : 'Sign Up'}
-                        </Button>
-                      }
-                    >
-                      <strong>Subscription Exams</strong> — these require an active subscription for your level to unlock.
-                    </Alert>
-                  </Grid>
+                  <Grid item xs={12}>{subscriptionSectionNotice}</Grid>
                 )}
               <Grid item xs={12} sm={6} md={4}>
                 <Card

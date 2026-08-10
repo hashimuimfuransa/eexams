@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getSubscriptionPlans,
+  getPublicSubscriptionPlans,
   getSubscriptionPlanById,
   getActivePlansForLevel,
   getActivePlansForExam,
@@ -13,10 +14,16 @@ const {
 const auth = require('../middleware/auth');
 const { isSuperAdmin } = require('../middleware/role');
 
+// Public — the pricing page has to show level plans to visitors who have no
+// account yet, mirroring the /active endpoints on organization-plans and
+// individual-plans. Registered before router.use(auth) so it stays anonymous,
+// and before '/:id' so "public" isn't parsed as a plan id.
+router.get('/public', getPublicSubscriptionPlans);
+
 // Apply auth middleware to all routes
 router.use(auth);
 
-// Public routes (for viewing plans)
+// Authenticated routes (for viewing plans)
 router.get('/', getSubscriptionPlans);
 router.get('/:id', getSubscriptionPlanById);
 router.get('/level/:levelId/active', getActivePlansForLevel);

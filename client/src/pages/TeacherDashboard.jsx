@@ -21,7 +21,7 @@ import {
   Quiz, ListAlt, NoteAlt, Edit, ContentCopy, Download,
   Search, FilterList, Refresh, CheckCircleOutline,
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
-  ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox,
+  ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox, Check,
   DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info, Article,
   EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll, ReportProblem
 } from '@mui/icons-material';
@@ -40,6 +40,8 @@ import SubscriptionWarning from '../components/SubscriptionWarning';
 import PlanUsageCard from '../components/PlanUsageCard';
 import LeaderboardSection from '../components/admin/LeaderboardSection';
 import { QuestionEditor as GeneratedQuestionEditor } from '../components/shared/QuestionEditor';
+import MultipleAnswerSettings from '../components/shared/MultipleAnswerSettings';
+import { isMultiAnswerQuestion, toggleCorrectOption } from '../utils/multipleAnswer';
 
 // Memoized StudentRow component to prevent unnecessary re-renders
 const StudentRow = memo(({ row, index, fields, onUpdate, onRemove, disabled, canRemove }) => {
@@ -905,6 +907,10 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           difficulty: q.difficulty || 'medium',
           correctAnswer: q.correctAnswer || '',
           options: q.options || [],
+          // "Select all that apply" settings — whitelisted payload, so these must be listed
+          // explicitly or the multi-answer configuration is lost on save.
+          allowMultipleAnswers: q.allowMultipleAnswers === true,
+          multipleAnswerScoring: q.multipleAnswerScoring || 'partial',
           explanation: q.explanation || q.answerKey || '',
           answerKey: q.answerKey || q.explanation || '',
           gradingCriteria: q.gradingCriteria || q.keyPoints || [],
@@ -1013,6 +1019,10 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
           difficulty: q.difficulty || 'medium',
           correctAnswer: q.correctAnswer || '',
           options: q.options || [],
+          // "Select all that apply" settings — this payload whitelists fields, so without these
+          // the multi-answer configuration would be dropped on save.
+          allowMultipleAnswers: q.allowMultipleAnswers === true,
+          multipleAnswerScoring: q.multipleAnswerScoring || 'partial',
           section: q.section || 'A',
           leftItems: q.leftItems,
           rightItems: q.rightItems,
@@ -2793,13 +2803,14 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
     setNewQuestion({ ...newQuestion, options: updatedOptions });
   };
 
-  // Handle correct answer selection for new question
+  // Handle correct answer selection for new question. Routed through the shared helper so a
+  // "select all that apply" question keeps every tick instead of clearing the previous one, and
+  // correctAnswer stays in step with the flags.
   const handleNewCorrectAnswerChange = (index) => {
-    const updatedOptions = newQuestion.options.map((opt, i) => ({
-      ...opt,
-      isCorrect: i === index
+    setNewQuestion(prev => ({
+      ...prev,
+      ...toggleCorrectOption(prev.options, index, isMultiAnswerQuestion(prev))
     }));
-    setNewQuestion({ ...newQuestion, options: updatedOptions });
   };
 
   // Add new option for new question
@@ -3634,6 +3645,11 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
           {editingQuestion?.type === 'multiple-choice' && editingQuestion?.options && (
             <Box>
               <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Options</Typography>
+              <MultipleAnswerSettings
+                question={editingQuestion}
+                marks={editingQuestion.points || editingQuestion.marks || 1}
+                onChange={(patch) => setEditingQuestion(prev => ({ ...prev, ...patch }))}
+              />
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {editingQuestion.options.map((opt, idx) => (
                   <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -3649,22 +3665,25 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                       }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
-                    <Checkbox
-                      checked={opt.isCorrect || false}
-                      onChange={(e) => {
-                        let newOptions = [...editingQuestion.options];
-                        newOptions = newOptions.map((o, i) => ({
-                          ...o,
-                          isCorrect: i === idx ? e.target.checked : false
-                        }));
-                        const correctLetter = e.target.checked ? String.fromCharCode(65 + idx) : '';
-                        setEditingQuestion({
-                          ...editingQuestion,
-                          options: newOptions,
-                          correctAnswer: correctLetter
-                        });
-                      }}
-                    />
+                    {/* Checkbox when several options can be correct, radio when only one can.
+                        Both patch options and correctAnswer together via the shared helper. */}
+                    {isMultiAnswerQuestion(editingQuestion) ? (
+                      <Checkbox
+                        checked={opt.isCorrect || false}
+                        onChange={() => setEditingQuestion(prev => ({
+                          ...prev,
+                          ...toggleCorrectOption(prev.options, idx, true)
+                        }))}
+                      />
+                    ) : (
+                      <Radio
+                        checked={opt.isCorrect || false}
+                        onChange={() => setEditingQuestion(prev => ({
+                          ...prev,
+                          ...toggleCorrectOption(prev.options, idx, false)
+                        }))}
+                      />
+                    )}
                   </Box>
                 ))}
               </Box>
@@ -4059,6 +4078,12 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                     />
                     {subQ.type === 'multiple-choice' && (
                       <Box sx={{ pl: 1, borderLeft: '2px solid #BAE6FD' }}>
+                        <MultipleAnswerSettings
+                          question={subQ}
+                          compact
+                          marks={subQ.points || 1}
+                          onChange={(patch) => updateSubQ(patch)}
+                        />
                         {(subQ.options || []).map((opt, optIdx) => (
                           <Box key={optIdx} sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 0.5 }}>
                             <TextField
@@ -4087,16 +4112,21 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                                 setEditingQuestion({ ...editingQuestion, subQuestions: updated });
                               }}
                             />
-                            <Checkbox
-                              size="small"
-                              checked={opt.isCorrect || false}
-                              onChange={() => {
-                                const updated = [...editingQuestion.subQuestions];
-                                const updatedOptions = (subQ.options || []).map((o, i) => ({ ...o, isCorrect: i === optIdx }));
-                                updated[idx] = { ...subQ, options: updatedOptions, correctAnswer: opt.letter || '' };
-                                setEditingQuestion({ ...editingQuestion, subQuestions: updated });
-                              }}
-                            />
+                            {/* Checkbox when the part accepts several answers, radio when it
+                                accepts one. Both patch options and correctAnswer together. */}
+                            {isMultiAnswerQuestion(subQ) ? (
+                              <Checkbox
+                                size="small"
+                                checked={opt.isCorrect || false}
+                                onChange={() => updateSubQ(toggleCorrectOption(subQ.options, optIdx, true))}
+                              />
+                            ) : (
+                              <Radio
+                                size="small"
+                                checked={opt.isCorrect || false}
+                                onChange={() => updateSubQ(toggleCorrectOption(subQ.options, optIdx, false))}
+                              />
+                            )}
                           </Box>
                         ))}
                         <Button
@@ -4306,7 +4336,16 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
 
           {newQuestion.type === 'multiple-choice' && (
             <Box>
-              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Options (click checkbox to select correct answer)</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>
+                {isMultiAnswerQuestion(newQuestion)
+                  ? 'Options (tick every correct answer)'
+                  : 'Options (click checkbox to select correct answer)'}
+              </Typography>
+              <MultipleAnswerSettings
+                question={newQuestion}
+                marks={newQuestion.points || 1}
+                onChange={(patch) => setNewQuestion(prev => ({ ...prev, ...patch }))}
+              />
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {newQuestion.options.map((opt, idx) => (
                   <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -4318,10 +4357,17 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                       onChange={(e) => handleNewOptionChange(idx, e.target.value)}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
-                    <Checkbox
-                      checked={opt.isCorrect || false}
-                      onChange={() => handleNewCorrectAnswerChange(idx)}
-                    />
+                    {isMultiAnswerQuestion(newQuestion) ? (
+                      <Checkbox
+                        checked={opt.isCorrect || false}
+                        onChange={() => handleNewCorrectAnswerChange(idx)}
+                      />
+                    ) : (
+                      <Radio
+                        checked={opt.isCorrect || false}
+                        onChange={() => handleNewCorrectAnswerChange(idx)}
+                      />
+                    )}
                     {newQuestion.options.length > 2 && (
                       <IconButton size="small" onClick={() => handleRemoveNewOption(idx)} sx={{ color: tokens.error }}>
                         <Delete fontSize="small" />
@@ -4488,12 +4534,13 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
 
   const updateOption = (idx, field, val) => {
     setQuestion(p => {
-      const opts = p.options.map((o, i) => {
-        if (field === 'isCorrect') return { ...o, isCorrect: i === idx };
-        return i === idx ? { ...o, [field]: val } : o;
-      });
-      const correct = field === 'isCorrect' ? LETTERS[idx] : p.correctAnswer;
-      return { ...p, options: opts, correctAnswer: correct };
+      // Marking-key edits go through the shared helper so multi-answer questions toggle each
+      // option independently while single-answer ones still clear the others.
+      if (field === 'isCorrect') {
+        return { ...p, ...toggleCorrectOption(p.options, idx, isMultiAnswerQuestion(p)) };
+      }
+      const opts = p.options.map((o, i) => (i === idx ? { ...o, [field]: val } : o));
+      return { ...p, options: opts };
     });
   };
 
@@ -4748,27 +4795,45 @@ function ManualExamBuilder({ exam, setExam, sectionIdx, setSectionIdx, question,
         </Box>
 
         {/* Multiple choice options - hide when sub-questions exist */}
-        {question.type === 'multiple-choice' && (!question.subQuestions || question.subQuestions.length === 0) && (
-          <Grid container spacing={1} sx={{ mb: 1.5 }}>
-            {question.options.map((opt, i) => (
-              <Grid item xs={12} sm={6} key={i}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Box onClick={() => updateOption(i, 'isCorrect', true)}
-                    sx={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${opt.isCorrect ? tokens.accent : tokens.surfaceBorder}`, bgcolor: opt.isCorrect ? tokens.accent : 'white', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {opt.isCorrect && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'white' }} />}
+        {question.type === 'multiple-choice' && (!question.subQuestions || question.subQuestions.length === 0) && (() => {
+          const allowMultiple = isMultiAnswerQuestion(question);
+          return (
+          <Box sx={{ mb: 1.5 }}>
+            <MultipleAnswerSettings
+              question={question}
+              marks={question.points || question.marks || 1}
+              onChange={(patch) => setQuestion(p => ({ ...p, ...patch }))}
+            />
+            <Grid container spacing={1}>
+              {question.options.map((opt, i) => (
+                <Grid item xs={12} sm={6} key={i}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {/* Square for multi-answer, circle for single - so the shape itself says
+                        whether more than one option can be ticked. */}
+                    <Box onClick={() => updateOption(i, 'isCorrect', true)}
+                      sx={{ width: 22, height: 22, borderRadius: allowMultiple ? '4px' : '50%', border: `2px solid ${opt.isCorrect ? tokens.accent : tokens.surfaceBorder}`, bgcolor: opt.isCorrect ? tokens.accent : 'white', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {opt.isCorrect && (allowMultiple
+                        ? <Check sx={{ fontSize: 15, color: 'white' }} />
+                        : <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'white' }} />)}
+                    </Box>
+                    <Chip label={LETTERS[i]} size="small" sx={{ fontWeight: 700, bgcolor: opt.isCorrect ? 'rgba(12,189,115,0.12)' : '#F1F5F9', color: opt.isCorrect ? tokens.accentDark : tokens.textSecondary, minWidth: 28 }} />
+                    <TextField fullWidth size="small" placeholder={`Option ${LETTERS[i]}`} value={opt.text}
+                      onChange={e => updateOption(i, 'text', e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white', fontSize: 13 } }} />
                   </Box>
-                  <Chip label={LETTERS[i]} size="small" sx={{ fontWeight: 700, bgcolor: opt.isCorrect ? 'rgba(12,189,115,0.12)' : '#F1F5F9', color: opt.isCorrect ? tokens.accentDark : tokens.textSecondary, minWidth: 28 }} />
-                  <TextField fullWidth size="small" placeholder={`Option ${LETTERS[i]}`} value={opt.text}
-                    onChange={e => updateOption(i, 'text', e.target.value)}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white', fontSize: 13 } }} />
-                </Box>
+                </Grid>
+              ))}
+              <Grid item xs={12}>
+                <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>
+                  {allowMultiple
+                    ? 'Tick every box that is a correct answer'
+                    : 'Click the circle to mark the correct answer'}
+                </Typography>
               </Grid>
-            ))}
-            <Grid item xs={12}>
-              <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>Click the circle to mark the correct answer</Typography>
             </Grid>
-          </Grid>
-        )}
+          </Box>
+          );
+        })()}
 
         {/* True / False - hide when sub-questions exist */}
         {question.type === 'true-false' && (!question.subQuestions || question.subQuestions.length === 0) && (

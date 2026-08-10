@@ -52,3 +52,50 @@ export const correctAnswerFromOptions = (options = []) => {
     .filter(Boolean);
   return letters.join(', ');
 };
+
+/** Options normalized to objects with a letter, so correctness can be toggled on any of them. */
+export const normalizeOptions = (options = []) =>
+  options.map((opt, idx) => (
+    typeof opt === 'object' && opt !== null
+      ? { ...opt, letter: opt.letter || getOptionLetter(opt, idx) }
+      : { text: String(opt ?? ''), isCorrect: false, letter: getOptionLetter(null, idx) }
+  ));
+
+/**
+ * Tick/untick option `idx` as part of the marking key.
+ *
+ * In multi-answer mode each option toggles independently; in single-answer mode selecting one
+ * clears the rest (radio behaviour). Returns `{ options, correctAnswer }` so callers can patch
+ * both at once — the graders fall back to `correctAnswer` when no option carries a flag, so the
+ * two must never drift apart.
+ */
+export const toggleCorrectOption = (options, idx, allowMultiple) => {
+  const normalized = normalizeOptions(options);
+  const next = normalized.map((opt, i) => {
+    if (allowMultiple) return i === idx ? { ...opt, isCorrect: !isOptionCorrect(opt) } : opt;
+    return { ...opt, isCorrect: i === idx };
+  });
+  return { options: next, correctAnswer: correctAnswerFromOptions(next) };
+};
+
+/**
+ * Turn multi-answer mode on or off for a question.
+ *
+ * Switching off collapses the key to the first ticked option — several options left flagged would
+ * still be read as a multi-answer key by the grader, so the question would not actually revert to
+ * single-answer. Returns the full patch to apply to the question.
+ */
+export const applyAllowMultiple = (question, enabled) => {
+  const normalized = normalizeOptions(question?.options || []);
+  let options = normalized;
+  if (!enabled) {
+    const firstCorrect = normalized.findIndex(isOptionCorrect);
+    options = normalized.map((opt, i) => ({ ...opt, isCorrect: i === firstCorrect }));
+  }
+  return {
+    allowMultipleAnswers: enabled,
+    multipleAnswerScoring: question?.multipleAnswerScoring || 'partial',
+    options,
+    correctAnswer: correctAnswerFromOptions(options)
+  };
+};

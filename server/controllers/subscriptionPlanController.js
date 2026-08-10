@@ -37,6 +37,26 @@ const getSubscriptionPlans = async (req, res) => {
   }
 };
 
+// @desc    Get active level plans for the public pricing page
+// @route   GET /api/subscription-plans/public
+// @access  Public
+// Only active, level-scoped plans: exam-scoped plans are bought from the exam
+// they belong to, and would list one entry per exam here. createdBy is dropped
+// so no staff names leak to anonymous visitors.
+const getPublicSubscriptionPlans = async (req, res) => {
+  try {
+    const plans = await SubscriptionPlan.find({ status: 'active', planType: 'level' })
+      .select('name price currency durationDays durationValue durationUnit features discountPercentage level subLevel planType')
+      .populate('level', 'name description')
+      .sort({ price: 1 });
+
+    res.json(plans);
+  } catch (error) {
+    console.error('Get public subscription plans error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get subscription plan by ID
 // @route   GET /api/subscription-plans/:id
 // @access  Private
@@ -344,6 +364,7 @@ const updatePlanStatus = async (req, res) => {
 
 module.exports = {
   getSubscriptionPlans,
+  getPublicSubscriptionPlans,
   getSubscriptionPlanById,
   getActivePlansForLevel,
   getActivePlansForExam,

@@ -11,7 +11,11 @@ import {
   RadioButtonChecked, CheckBox, DragIndicator, SwapVert, Visibility,
   Article, ShortText, FormatListNumbered, DoneAll
 } from '@mui/icons-material';
-import { isMultiAnswerQuestion, correctAnswerFromOptions, isOptionCorrect } from '../../utils/multipleAnswer';
+import {
+  isMultiAnswerQuestion, correctAnswerFromOptions, isOptionCorrect,
+  normalizeOptions, toggleCorrectOption
+} from '../../utils/multipleAnswer';
+import MultipleAnswerSettings from './MultipleAnswerSettings';
 import { tokens } from '../../pages/dashboardTokens';
 import { FinancialSpreadsheetQuestion } from '../FinancialSpreadsheet';
 import AIQuestionAssist from './AIQuestionAssist';
@@ -107,12 +111,7 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
 
   // Options are stored as plain strings by some import paths; marking one correct needs the object
   // shape, so upgrade the whole list whenever options are edited.
-  const normalizeOptionObjects = (options) =>
-    (options || []).map((opt, idx) => (
-      typeof opt === 'object' && opt !== null
-        ? { ...opt, letter: opt.letter || String.fromCharCode(65 + idx) }
-        : { text: String(opt ?? ''), isCorrect: false, letter: String.fromCharCode(65 + idx) }
-    ));
+  const normalizeOptionObjects = (options) => normalizeOptions(options || []);
 
   const updateOption = (idx, value) => {
     // Normalized rather than written back as a bare string so editing an option's text never drops
@@ -147,31 +146,7 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
   // others (radio behaviour); in multi-answer mode each option toggles independently.
   // `correctAnswer` is kept in step because the graders fall back to it when no option is flagged.
   const toggleOptionCorrect = (idx) => {
-    const options = normalizeOptionObjects(localQ.options);
-    const newOptions = options.map((opt, i) => {
-      if (allowMultiple) return i === idx ? { ...opt, isCorrect: !isOptionCorrect(opt) } : opt;
-      return { ...opt, isCorrect: i === idx };
-    });
-    setLocalQ({ ...localQ, options: newOptions, correctAnswer: correctAnswerFromOptions(newOptions) });
-    setEdited(true);
-  };
-
-  // Turning multi-answer off would otherwise leave several options ticked, which the grader still
-  // reads as a multi-answer key - so collapse the key to the first ticked option.
-  const setAllowMultiple = (enabled) => {
-    const options = normalizeOptionObjects(localQ.options);
-    let newOptions = options;
-    if (!enabled) {
-      const firstCorrect = options.findIndex(isOptionCorrect);
-      newOptions = options.map((opt, i) => ({ ...opt, isCorrect: i === firstCorrect }));
-    }
-    setLocalQ({
-      ...localQ,
-      allowMultipleAnswers: enabled,
-      multipleAnswerScoring: localQ.multipleAnswerScoring || 'partial',
-      options: newOptions,
-      correctAnswer: correctAnswerFromOptions(newOptions)
-    });
+    setLocalQ({ ...localQ, ...toggleCorrectOption(localQ.options, idx, allowMultiple) });
     setEdited(true);
   };
 
@@ -568,60 +543,14 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                     </Box>
                   </Box>
 
-                  {/* Single vs multiple correct answers */}
-                  <Box sx={{ mb: isMobile ? 1.5 : 2, p: isMobile ? 1.25 : 1.5, bgcolor: allowMultiple ? '#EFF6FF' : '#FAFBFC', borderRadius: 1.5, border: `1px solid ${allowMultiple ? '#BFDBFE' : tokens.surfaceBorder}` }}>
-                    <FormControlLabel
-                      sx={{ m: 0 }}
-                      control={
-                        <Switch
-                          size="small"
-                          checked={allowMultiple}
-                          onChange={(e) => setAllowMultiple(e.target.checked)}
-                        />
-                      }
-                      label={
-                        <Box>
-                          <Typography sx={{ fontSize: isMobile ? 11 : 12, fontWeight: 700, color: tokens.textPrimary }}>
-                            Allow multiple correct answers
-                          </Typography>
-                          <Typography sx={{ fontSize: isMobile ? 10 : 11, color: tokens.textMuted }}>
-                            Students tick every option that applies instead of picking just one.
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                    {allowMultiple && (
-                      <Box sx={{ mt: 1.25, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 1.25, alignItems: isMobile ? 'stretch' : 'center' }}>
-                        <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 260 }}>
-                          <InputLabel sx={{ fontSize: 11 }}>Marking</InputLabel>
-                          <Select
-                            label="Marking"
-                            value={localQ.multipleAnswerScoring || 'partial'}
-                            onChange={(e) => { setLocalQ({ ...localQ, multipleAnswerScoring: e.target.value }); setEdited(true); }}
-                            sx={{ fontSize: isMobile ? 11 : 12, bgcolor: 'white' }}
-                          >
-                            <MenuItem value="partial" sx={{ fontSize: 12 }}>Partial credit (per correct option)</MenuItem>
-                            <MenuItem value="all-or-nothing" sx={{ fontSize: 12 }}>All-or-nothing (exact match only)</MenuItem>
-                          </Select>
-                        </FormControl>
-                        <Typography sx={{ fontSize: isMobile ? 10 : 11, color: tokens.textMuted, flex: 1 }}>
-                          {localQ.multipleAnswerScoring === 'all-or-nothing'
-                            ? `Full ${localQ.marks || 1} mark${(localQ.marks || 1) !== 1 ? 's' : ''} only if the student ticks exactly the ${correctCount || 0} correct option${correctCount !== 1 ? 's' : ''} and nothing else.`
-                            : `Each correct tick earns a share of the marks and each wrong tick loses the same share, never below 0 — so guessing by ticking everything is penalised.`}
-                        </Typography>
-                      </Box>
-                    )}
-                    {allowMultiple && correctCount < 2 && (
-                      <Alert severity="warning" sx={{ mt: 1.25, py: 0.25, '& .MuiAlert-message': { fontSize: 11 } }}>
-                        Mark at least two options correct — use the checkboxes below.
-                      </Alert>
-                    )}
-                    {!allowMultiple && correctCount === 0 && (localQ.options || []).length > 0 && (
-                      <Alert severity="info" sx={{ mt: 1.25, py: 0.25, '& .MuiAlert-message': { fontSize: 11 } }}>
-                        No correct option marked yet — select the correct answer below so this question can be graded.
-                      </Alert>
-                    )}
-                  </Box>
+                  {/* Single vs multiple correct answers — shared with the teacher dashboard's
+                      manual builder and its Add/Edit Question dialogs so the same question is
+                      configured the same way wherever it is opened. */}
+                  <MultipleAnswerSettings
+                    question={localQ}
+                    marks={localQ.marks || localQ.points || 1}
+                    onChange={(patch) => { setLocalQ({ ...localQ, ...patch }); setEdited(true); }}
+                  />
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 1.25 }}>
                     {(localQ.options || ['Option A', 'Option B', 'Option C', 'Option D']).map((opt, idx) => {
                       const isCorrect = isOptionCorrect(opt);
@@ -1210,72 +1139,23 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                       {/* MCQ Options for subquestion */}
                       {subQ.type === 'multiple-choice' && (() => {
                       const subAllowMultiple = isMultiAnswerQuestion(subQ);
-                      const subCorrectCount = (subQ.options || []).filter(isOptionCorrect).length;
                       // Keeps subQ.correctAnswer in step with the ticked options, the same way the
                       // parent question does - the graders read it when no option carries a flag.
                       const applySubOptions = (updatedOptions) => {
-                        const letters = updatedOptions
-                          .map((o, i) => (isOptionCorrect(o) ? (o.letter || String.fromCharCode(65 + i)) : null))
-                          .filter(Boolean);
-                        updateSubQ({ options: updatedOptions, correctAnswer: letters.join(', ') });
+                        updateSubQ({
+                          options: updatedOptions,
+                          correctAnswer: correctAnswerFromOptions(updatedOptions)
+                        });
                       };
                       return (
                         <Box sx={{ mb: 1, pl: 1, borderLeft: '2px solid #BAE6FD' }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
-                            <Typography sx={{ fontSize: 10, color: '#0369A1' }}>Options:</Typography>
-                            <FormControlLabel
-                              sx={{ m: 0 }}
-                              control={
-                                <Switch
-                                  size="small"
-                                  checked={subAllowMultiple}
-                                  onChange={(e) => {
-                                    const enabled = e.target.checked;
-                                    const options = (subQ.options || []).map((o, i) => ({
-                                      ...o,
-                                      letter: o.letter || String.fromCharCode(65 + i)
-                                    }));
-                                    let updatedOptions = options;
-                                    if (!enabled) {
-                                      // Collapse to a single key, else the grader still reads this
-                                      // as a multi-answer question.
-                                      const firstCorrect = options.findIndex(isOptionCorrect);
-                                      updatedOptions = options.map((o, i) => ({ ...o, isCorrect: i === firstCorrect }));
-                                    }
-                                    const letters = updatedOptions
-                                      .map((o, i) => (isOptionCorrect(o) ? (o.letter || String.fromCharCode(65 + i)) : null))
-                                      .filter(Boolean);
-                                    updateSubQ({
-                                      allowMultipleAnswers: enabled,
-                                      multipleAnswerScoring: subQ.multipleAnswerScoring || 'partial',
-                                      options: updatedOptions,
-                                      correctAnswer: letters.join(', ')
-                                    });
-                                  }}
-                                />
-                              }
-                              label={<Typography sx={{ fontSize: 9, fontWeight: 600 }}>Allow multiple answers</Typography>}
-                            />
-                          </Box>
-                          {subAllowMultiple && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75, flexWrap: 'wrap' }}>
-                              <FormControl size="small" sx={{ minWidth: 190 }}>
-                                <Select
-                                  value={subQ.multipleAnswerScoring || 'partial'}
-                                  onChange={(e) => updateSubQ({ multipleAnswerScoring: e.target.value })}
-                                  sx={{ fontSize: 10, height: 26, bgcolor: 'white' }}
-                                >
-                                  <MenuItem value="partial" sx={{ fontSize: 11 }}>Partial credit</MenuItem>
-                                  <MenuItem value="all-or-nothing" sx={{ fontSize: 11 }}>All-or-nothing</MenuItem>
-                                </Select>
-                              </FormControl>
-                              <Typography sx={{ fontSize: 9, color: subCorrectCount < 2 ? '#B45309' : '#0369A1' }}>
-                                {subCorrectCount < 2
-                                  ? 'Tick at least two correct options'
-                                  : `${subCorrectCount} correct options`}
-                              </Typography>
-                            </Box>
-                          )}
+                          <Typography sx={{ fontSize: 10, color: '#0369A1', mb: 0.5 }}>Options:</Typography>
+                          <MultipleAnswerSettings
+                            question={subQ}
+                            compact
+                            marks={subQ.points || 1}
+                            onChange={(patch) => updateSubQ(patch)}
+                          />
                           {(subQ.options || []).map((opt, optIdx) => (
                             <Box key={optIdx} sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 0.5 }}>
                               <TextField

@@ -16,6 +16,7 @@ import ExamResult from './pages/ExamResult';
 import PendingApproval from './pages/PendingApproval';
 import CompleteRegistration from './pages/CompleteRegistration';
 import Marketplace from './pages/Marketplace';
+import Pricing from './pages/Pricing';
 import ExamRequest from './pages/ExamRequest';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
@@ -99,6 +100,11 @@ const AppRoutes = () => {
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/public-exams" element={<Navigate to="/marketplace" replace />} />
       <Route path="/marketplace" element={<Marketplace />} />
+      {/* Public pricing — visitors must be able to see every plan before
+          creating an account, so this is deliberately outside ProtectedRoute.
+          The purchase flows it links to stay protected. */}
+      <Route path="/subscriptions" element={<Pricing />} />
+      <Route path="/pricing" element={<Navigate to="/subscriptions" replace />} />
       <Route path="/marketplace/exams/:examId/request" element={<ExamRequest />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />

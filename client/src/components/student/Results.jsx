@@ -201,7 +201,14 @@ const Results = () => {
 
         // Fixed API endpoint
         const res = await api.get('/student/results');
-        setResults(res.data);
+
+        // Newest attempt first — some older records have no endTime, so fall
+        // back to createdAt/startTime before giving up on a date.
+        const resultDate = (r) => new Date(r.endTime || r.createdAt || r.startTime || 0).getTime();
+        const sorted = Array.isArray(res.data)
+          ? [...res.data].sort((a, b) => resultDate(b) - resultDate(a))
+          : res.data;
+        setResults(sorted);
 
         // If resultId is provided, fetch detailed result
         if (resultId) {

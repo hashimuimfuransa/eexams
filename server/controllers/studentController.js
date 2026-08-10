@@ -461,6 +461,7 @@ const getStudentResults = async (req, res) => {
       student: req.user._id,
       isCompleted: true
     })
+      .sort({ endTime: -1, createdAt: -1 }) // Most recent attempt first
       .populate('exam', 'title description timeLimit passingScore sections')
       .select('-answers');
 

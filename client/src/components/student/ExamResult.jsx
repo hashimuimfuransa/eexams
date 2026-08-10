@@ -493,13 +493,26 @@ const ExamResult = () => {
                               typography: 'body1'
                             }}
                           >
-                            {/* Display option letter if available */}
-                            {answer?.selectedOptionLetter ? (
+                            {/* "Select all that apply": list every ticked option. The singular
+                                selectedOptionLetter only holds the first, so pairing it with the
+                                joined selectedOption string would mislabel the rest. */}
+                            {answer?.selectedOptions?.length > 1 ? (
+                              answer.selectedOptions.map((optText, oi) => (
+                                <Box key={oi} sx={{ display: 'flex', gap: 0.75, mb: 0.5 }}>
+                                  <Typography component="span" fontWeight="bold" color="primary.main">
+                                    {answer.selectedOptionLetters?.[oi]
+                                      ? `${answer.selectedOptionLetters[oi]}.`
+                                      : '•'}
+                                  </Typography>
+                                  <Typography component="span">{optText}</Typography>
+                                </Box>
+                              ))
+                            ) : answer?.selectedOptionLetter ? (
                               <>
                                 <Typography component="span" fontWeight="bold" color="primary.main">
                                   {answer.selectedOptionLetter}.{' '}
                                 </Typography>
-                                {answer.selectedOption || answer?.textAnswer || 'No answer provided'}
+                                {answer.selectedOptions?.[0] || answer.selectedOption || answer?.textAnswer || 'No answer provided'}
                               </>
                             ) : (
                               answer?.selectedOption || answer?.textAnswer || 'No answer provided'
@@ -660,7 +673,7 @@ const ExamResult = () => {
                                           <FinancialAnswerReview question={subQ} answer={subAnswer} result={subResult} height={280} />
                                         ) : (
                                           <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                            <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                            <strong>Your answer:</strong> {(subAnswer.selectedOptions?.length ? subAnswer.selectedOptions.join(', ') : subAnswer.selectedOption) || subAnswer.textAnswer || 'Answered'}
                                           </Typography>
                                         )}
                                         {subResult && !subResult.isCorrect && subResult.correctedAnswer && !isFinancialSpreadsheetQuestion(subQ) && (
@@ -717,7 +730,7 @@ const ExamResult = () => {
                                             identify the type or supply a model answer — the
                                             answer can only be shown as text here. */}
                                         <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                          <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || 'Answered'}
+                                          <strong>Your answer:</strong> {(subAnswer.selectedOptions?.length ? subAnswer.selectedOptions.join(', ') : subAnswer.selectedOption) || subAnswer.textAnswer || 'Answered'}
                                         </Typography>
                                         {subResult && !isCorrect && subResult.correctedAnswer && (
                                           <Typography variant="body2" color="success.main" sx={{ mb: 0.5 }}>

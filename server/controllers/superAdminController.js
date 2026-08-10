@@ -2670,7 +2670,11 @@ const updateMarketplaceExamQuestions = async (req, res) => {
                 instructions: q.instructions,
                 wordBank: q.wordBank,
                 spreadsheetTemplate: q.spreadsheetTemplate,
-                spreadsheetModelAnswer: q.spreadsheetModelAnswer
+                spreadsheetModelAnswer: q.spreadsheetModelAnswer,
+                // "Select all that apply" configuration. Only written when the payload carries it,
+                // so a caller that omits these keys doesn't reset a multi-answer question.
+                ...(q.allowMultipleAnswers !== undefined ? { allowMultipleAnswers: q.allowMultipleAnswers === true } : {}),
+                ...(q.multipleAnswerScoring !== undefined ? { multipleAnswerScoring: q.multipleAnswerScoring } : {})
               }
             }
           });

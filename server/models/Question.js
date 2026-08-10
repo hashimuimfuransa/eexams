@@ -61,6 +61,23 @@ const QuestionSchema = new mongoose.Schema({
     type: String, // For open-ended questions, this is the model answer
     default: 'Not provided' // Make it not required with a default value
   },
+  // "Select all that apply" multiple-choice: more than one option is correct and the student
+  // ticks every one they think belongs. Off by default so existing single-answer questions keep
+  // their radio-button behaviour. Detection at grading time also treats any question with two or
+  // more options flagged isCorrect as a multi-answer question, so papers imported/extracted with
+  // several correct options are graded properly even without this flag set.
+  allowMultipleAnswers: {
+    type: Boolean,
+    default: false
+  },
+  // How a multi-answer question is marked:
+  //  'partial'        - credit per correct option ticked, minus one option's worth per wrong tick
+  //  'all-or-nothing' - full marks only when the selection matches the key exactly
+  multipleAnswerScoring: {
+    type: String,
+    enum: ['partial', 'all-or-nothing'],
+    default: 'partial'
+  },
   points: {
     type: Number,
     required: true,
@@ -141,6 +158,12 @@ const QuestionSchema = new mongoose.Schema({
       isCorrect: Boolean,
       letter: String
     }],
+    // Same "select all that apply" support as the top-level fields above, per sub-question.
+    allowMultipleAnswers: Boolean,
+    multipleAnswerScoring: {
+      type: String,
+      enum: ['partial', 'all-or-nothing']
+    },
     correctAnswer: String,
     points: Number,
     imageUrl: String, // For image-based sub-questions (legacy single-image field)

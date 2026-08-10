@@ -41,6 +41,9 @@ const validateExamSubmission = (result, exam) => {
     // Check for any type of answer content
     const hasTextAnswer = answer.textAnswer && answer.textAnswer.trim().length > 0;
     const hasSelectedOption = answer.selectedOption && answer.selectedOption.trim().length > 0;
+    // "Select all that apply" answers - selectedOption also carries a joined display string, but
+    // don't depend on that here.
+    const hasSelectedOptions = Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0;
     const hasMatchingAnswers = answer.matchingAnswers &&
       (Array.isArray(answer.matchingAnswers) ? answer.matchingAnswers.length > 0 :
        typeof answer.matchingAnswers === 'object' && Object.keys(answer.matchingAnswers).length > 0);
@@ -55,7 +58,7 @@ const validateExamSubmission = (result, exam) => {
       answer.subQuestionAnswers.length > 0 &&
       answer.subQuestionAnswers.some(sub => sub.answered);
 
-    return hasTextAnswer || hasSelectedOption || hasMatchingAnswers || hasOrderingAnswer || hasDragDropAnswer || hasSubQuestionAnswers;
+    return hasTextAnswer || hasSelectedOption || hasSelectedOptions || hasMatchingAnswers || hasOrderingAnswer || hasDragDropAnswer || hasSubQuestionAnswers;
   });
 
   console.log(`📊 Submission validation: ${answeredQuestions.length}/${result.answers.length} questions have valid answers`);
@@ -134,7 +137,7 @@ const validateAnswerSubmission = (answerData, question) => {
     return { success: false, errors, warnings };
   }
 
-  const { questionId, selectedOption, textAnswer, writtenAnswer, questionType, matchingAnswers, orderingAnswer, dragDropAnswer } = answerData;
+  const { questionId, selectedOption, selectedOptions, textAnswer, writtenAnswer, questionType, matchingAnswers, orderingAnswer, dragDropAnswer } = answerData;
 
   // Validate question ID
   if (!questionId) {
@@ -146,14 +149,21 @@ const validateAnswerSubmission = (answerData, question) => {
 
   switch (actualQuestionType) {
     case 'multiple-choice':
-    case 'true-false':
-      // Accept either selectedOption or textAnswer as valid answer
+    case 'true-false': {
+      // Accept selectedOptions (select-all-that-apply), selectedOption or textAnswer
       const hasSelectedOption = selectedOption && selectedOption.toString().trim().length > 0;
       const hasTextAnswer = textAnswer && textAnswer.toString().trim().length > 0;
-      if (!hasSelectedOption && !hasTextAnswer) {
+      const hasSelectedOptions = Array.isArray(selectedOptions) &&
+        selectedOptions.some(opt => opt !== null && opt !== undefined && String(opt).trim().length > 0);
+      // A multi-answer question is the one case where clearing every box is a deliberate action
+      // (the student is un-ticking what they no longer want), so an empty array must be allowed
+      // through to be saved rather than rejected as a missing answer.
+      const isClearingMultiSelection = Array.isArray(selectedOptions) && !hasSelectedOptions;
+      if (!hasSelectedOption && !hasTextAnswer && !hasSelectedOptions && !isClearingMultiSelection) {
         errors.push(`Selected option is required for ${actualQuestionType} questions`);
       }
       break;
+    }
 
     case 'matching':
       if (!matchingAnswers || typeof matchingAnswers !== 'object') {
@@ -237,6 +247,14 @@ const sanitizeAnswerData = (answerData) => {
 
   if (answerData.selectedOption !== undefined) {
     sanitized.selectedOption = String(answerData.selectedOption).trim();
+  }
+
+  // "Select all that apply" multiple-choice sends every ticked option. Empty entries are dropped
+  // so an untouched checkbox group arrives as [] rather than ['']
+  if (Array.isArray(answerData.selectedOptions)) {
+    sanitized.selectedOptions = answerData.selectedOptions
+      .map(opt => String(opt === null || opt === undefined ? '' : opt).trim())
+      .filter(Boolean);
   }
 
   if (answerData.textAnswer) {

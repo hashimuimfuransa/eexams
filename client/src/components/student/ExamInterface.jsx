@@ -39,8 +39,10 @@ import {
   ListItemText,
   useTheme,
   useMediaQuery,
-  Checkbox
+  Checkbox,
+  FormGroup
 } from '@mui/material';
+import { isMultiAnswerQuestion } from '../../utils/multipleAnswer';
 import EnhancedOpenAnswer from './EnhancedOpenAnswer';
 import ImageAnswer from './ImageAnswer';
 import {
@@ -520,8 +522,11 @@ const ExamInterface = () => {
 
             initialAnswers[answer.question._id] = {
               selectedOption: answer.selectedOption || '',
+              // Restored so a reloaded exam shows every box the student had already ticked on a
+              // "select all that apply" question, not just the joined display string.
+              selectedOptions: Array.isArray(answer.selectedOptions) ? answer.selectedOptions : [],
               textAnswer: answer.textAnswer || '',
-              answered: !!(answer.selectedOption || answer.textAnswer),
+              answered: !!(answer.selectedOption || answer.textAnswer || answer.selectedOptions?.length),
               section: questionSection
             };
 
@@ -590,6 +595,7 @@ const ExamInterface = () => {
 
               initialAnswers[answer.question._id] = {
                 selectedOption: '',
+                selectedOptions: [],
                 textAnswer: '',
                 answered: false,
                 section: questionSection
@@ -1438,9 +1444,15 @@ const ExamInterface = () => {
           severity: 'error'
         });
       }
-    } else if (currentAnswer && currentAnswer.selectedOption) {
+    } else if (currentAnswer && (currentAnswer.selectedOption || currentAnswer.selectedOptions?.length)) {
       try {
-        await saveAnswerToServer(currentQuestion._id, currentAnswer.selectedOption, questionType);
+        // "Select all that apply" sends the array; everything else the single option text.
+        const isMultiAnswer = Array.isArray(currentAnswer.selectedOptions) && currentAnswer.selectedOptions.length > 0;
+        await saveAnswerToServer(
+          currentQuestion._id,
+          isMultiAnswer ? currentAnswer.selectedOptions : currentAnswer.selectedOption,
+          isMultiAnswer ? 'multiple-answer' : questionType
+        );
         setLastQuestionSaved(true);
         setSnackbar({
           open: true,
@@ -1892,7 +1904,9 @@ const ExamInterface = () => {
 
     // Only apply restriction to multiple-choice and true-false questions
     // Interactive questions (matching, ordering, drag-drop) can be changed
-    if ((type === 'multiple-choice' || type === 'true-false') && 
+    // 'multiple-answer' is deliberately excluded: building up a set of ticks means every box after
+    // the first would be locked out by this guard.
+    if ((type === 'multiple-choice' || type === 'true-false') &&
         answers[questionId]?.answered && answers[questionId]?.savedToServer) {
       return;
     }
@@ -1914,6 +1928,31 @@ const ExamInterface = () => {
 
     // Handle different question types appropriately
     switch (type) {
+      case 'multiple-answer': {
+        // "Select all that apply" - `value` is the option text that was just ticked or unticked,
+        // so toggle it within the set the student has built up so far. Saved on every toggle (like
+        // single-answer MCQs) so a dropped connection or an expiring timer can't lose the answer.
+        const current = Array.isArray(newAnswer.selectedOptions) ? newAnswer.selectedOptions : [];
+        const nextSelected = current.includes(value)
+          ? current.filter(opt => opt !== value)
+          : [...current, value];
+
+        newAnswer.selectedOptions = nextSelected;
+        // Mirrored into selectedOption so the progress indicators and pre-submit sweep, which all
+        // look at the singular field, still see this question as answered.
+        newAnswer.selectedOption = nextSelected.join(' | ');
+        newAnswer.answered = nextSelected.length > 0;
+        newAnswer.savedToServer = false;
+
+        setAnswers(prev => ({
+          ...prev,
+          [questionId]: newAnswer
+        }));
+
+        saveAnswerToServer(questionId, nextSelected, type, options);
+        return;
+      }
+
       case 'multiple-choice':
       case 'true-false':
         newAnswer.selectedOption = value;
@@ -2050,7 +2089,9 @@ const ExamInterface = () => {
         : '';
 
       // Validate value based on question type
-      if (!value && actualType !== 'multiple-choice' && actualType !== 'true-false') {
+      // 'multiple-answer' is excluded because clearing every box is a legitimate save (an empty
+      // array), not a missing answer.
+      if (!value && actualType !== 'multiple-choice' && actualType !== 'true-false' && actualType !== 'multiple-answer') {
         // For non-multiple choice questions, require some content
         if (typeof value === 'string' && value.trim().length === 0 && !writtenForSpreadsheet) {
           throw new Error('Answer cannot be empty');
@@ -2116,6 +2157,15 @@ const ExamInterface = () => {
           }
 
           switch (actualType) {
+            case 'multiple-answer':
+              // The server grades from selectedOptions; selectedOption carries a joined display
+              // string for the views and legacy graders that only know the singular field.
+              payload.selectedOptions = Array.isArray(value) ? value.map(v => String(v)) : [];
+              payload.selectedOption = payload.selectedOptions.join(' | ');
+              // Reported as plain multiple-choice so the server's question-type handling (and its
+              // true/false misdetection guard) behaves exactly as it does for single-answer MCQs.
+              payload.questionType = 'multiple-choice';
+              break;
             case 'multiple-choice':
             case 'true-false':
               payload.selectedOption = cleanValue;
@@ -2408,6 +2458,11 @@ const ExamInterface = () => {
             } else if (answer.textAnswer?.trim()) {
               valueToSave = answer.textAnswer.trim();
               questionType = questionType || 'open-ended';
+            } else if (Array.isArray(answer.selectedOptions) && answer.selectedOptions.length > 0) {
+              // "Select all that apply" - send the array so the server never has to re-parse the
+              // joined display string in selectedOption.
+              valueToSave = answer.selectedOptions;
+              questionType = 'multiple-answer';
             } else if (answer.selectedOption) {
               valueToSave = answer.selectedOption;
               questionType = questionType || 'multiple-choice';
@@ -4060,6 +4115,99 @@ const ExamInterface = () => {
                           return null;
                         }
 
+                        // "Select all that apply" - rendered as checkboxes so the student can tick
+                        // every option that applies. Detected the same way the grader detects it.
+                        if (questionType === 'multiple-choice' && isMultiAnswerQuestion(currentQuestion)) {
+                          const selectedList = answers[currentQuestion._id]?.selectedOptions || [];
+                          const requiredCount = (currentQuestion.options || []).filter(o => o?.isCorrect || o?.correct).length;
+                          return (
+                            <FormControl component="fieldset" fullWidth>
+                              <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 1 }}>
+                                <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <HelpOutline sx={{ mr: 1, fontSize: 20, color: 'secondary.main' }} />
+                                  Select <strong>&nbsp;all&nbsp;</strong> answers that apply:
+                                </Box>
+                              </Typography>
+
+                              <Alert severity="info" sx={{ mb: 2, py: 0.5 }}>
+                                This question has more than one correct answer
+                                {requiredCount > 1 ? ` (${requiredCount} of ${(currentQuestion.options || []).length})` : ''}.
+                                {currentQuestion.multipleAnswerScoring === 'all-or-nothing'
+                                  ? ' You must tick every correct option to earn the marks.'
+                                  : ' You earn marks for each correct option and lose marks for each incorrect one, so avoid guessing.'}
+                              </Alert>
+
+                              <FormGroup>
+                                {currentQuestion.options.map((option, index) => {
+                                  const isChecked = selectedList.includes(option.text);
+                                  return (
+                                    <FormControlLabel
+                                      key={index}
+                                      control={
+                                        <Checkbox
+                                          checked={isChecked}
+                                          onChange={() => handleAnswerChange(
+                                            currentQuestion._id,
+                                            option.text,
+                                            'multiple-answer'
+                                          )}
+                                          sx={{ '&.Mui-checked': { color: 'secondary.main' } }}
+                                        />
+                                      }
+                                      label={
+                                        <Box component="span" sx={{
+                                          whiteSpace: 'pre-wrap',
+                                          fontWeight: isChecked ? 'bold' : 'normal',
+                                        }}>
+                                          <Typography component="span" fontWeight="bold" color="secondary.main">
+                                            {option.letter || String.fromCharCode(65 + index)}. {' '}
+                                          </Typography>
+                                          {option.text}
+                                        </Box>
+                                      }
+                                      sx={{
+                                        mb: 2,
+                                        p: 2,
+                                        borderRadius: 2,
+                                        width: '100%',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                                        '&:hover': {
+                                          bgcolor: 'action.hover',
+                                          transform: 'translateY(-2px)',
+                                          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                        },
+                                        ...(isChecked && {
+                                          bgcolor: alpha(theme.palette.secondary.main, 0.08),
+                                          border: '1px solid',
+                                          borderColor: 'secondary.main',
+                                          transform: 'translateY(-2px)',
+                                          boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
+                                        })
+                                      }}
+                                    />
+                                  );
+                                })}
+                              </FormGroup>
+
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                                <Chip
+                                  size="small"
+                                  label={`${selectedList.length} selected`}
+                                  color={selectedList.length > 0 ? 'secondary' : 'default'}
+                                  variant={selectedList.length > 0 ? 'filled' : 'outlined'}
+                                />
+                                {answers[currentQuestion._id]?.savedToServer && (
+                                  <Box sx={{ display: 'flex', alignItems: 'center', color: 'success.main' }}>
+                                    <Check fontSize="small" sx={{ mr: 0.5 }} />
+                                    <Typography variant="caption">Answer saved</Typography>
+                                  </Box>
+                                )}
+                              </Box>
+                            </FormControl>
+                          );
+                        }
+
                         if (questionType === 'multiple-choice') {
                           return (
                         <FormControl component="fieldset" fullWidth>
@@ -4447,6 +4595,79 @@ const ExamInterface = () => {
                               switch (subType) {
                                 case 'multiple-choice':
                                 case 'mcq':
+                                  if (subQ.options && subQ.options.length > 0 && isMultiAnswerQuestion(subQ)) {
+                                    // "Select all that apply" sub-question
+                                    const subSelected = subAnswer?.selectedOptions || [];
+                                    return (
+                                      <FormControl component="fieldset" fullWidth sx={{ width: '100%' }}>
+                                        <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                                          Select <strong>all</strong> answers that apply
+                                          {subQ.multipleAnswerScoring === 'all-or-nothing' ? ' (all must be correct for marks)' : ''}:
+                                        </Typography>
+                                        <FormGroup sx={{ width: '100%' }}>
+                                          <Grid container spacing={{ xs: 1, sm: 2 }}>
+                                            {subQ.options.map((option, optIdx) => {
+                                              const subChecked = subSelected.includes(option.text);
+                                              return (
+                                                <Grid item xs={12} sm={6} md={12} lg={6} key={optIdx}>
+                                                  <FormControlLabel
+                                                    control={
+                                                      <Checkbox
+                                                        checked={subChecked}
+                                                        onChange={() => handleAnswerChange(
+                                                          subAnswerKey,
+                                                          option.text,
+                                                          'multiple-answer',
+                                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
+                                                        )}
+                                                        sx={{
+                                                          '&.Mui-checked': { color: 'secondary.main' },
+                                                          p: { xs: 0.5, sm: 1 }
+                                                        }}
+                                                      />
+                                                    }
+                                                    label={
+                                                      <Box component="span" sx={{
+                                                        whiteSpace: 'pre-wrap',
+                                                        fontWeight: subChecked ? 'bold' : 'normal',
+                                                        fontSize: { xs: '0.875rem', sm: '1rem' }
+                                                      }}>
+                                                        <Typography component="span" fontWeight="bold" color="secondary.main" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+                                                          {option.letter || String.fromCharCode(105 + optIdx)}. {' '}
+                                                        </Typography>
+                                                        {option.text}
+                                                      </Box>
+                                                    }
+                                                    sx={{
+                                                      width: '100%',
+                                                      m: 0,
+                                                      p: { xs: 1, sm: 1.5 },
+                                                      borderRadius: 1,
+                                                      transition: 'all 0.2s ease',
+                                                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                                      '&:hover': { bgcolor: 'action.hover' },
+                                                      ...(subChecked && {
+                                                        bgcolor: alpha(theme.palette.secondary.main, 0.08),
+                                                        border: '1px solid',
+                                                        borderColor: 'secondary.main',
+                                                      })
+                                                    }}
+                                                  />
+                                                </Grid>
+                                              );
+                                            })}
+                                          </Grid>
+                                        </FormGroup>
+                                        <Chip
+                                          size="small"
+                                          label={`${subSelected.length} selected`}
+                                          color={subSelected.length > 0 ? 'secondary' : 'default'}
+                                          variant={subSelected.length > 0 ? 'filled' : 'outlined'}
+                                          sx={{ mt: 1, alignSelf: 'flex-start' }}
+                                        />
+                                      </FormControl>
+                                    );
+                                  }
                                   return subQ.options && subQ.options.length > 0 ? (
                                     <FormControl component="fieldset" fullWidth sx={{ width: '100%' }}>
                                       <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>

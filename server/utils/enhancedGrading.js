@@ -3,6 +3,7 @@ const { gradeOpenEndedAnswer } = require('./aiGrading');
 const groqClient = require('./groqClient');
 const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading');
 const { roundMark, contentWords, characterSimilarity, isTypoMatch } = require('./gradingRubric');
+const { isMultipleAnswerQuestion, gradeMultipleAnswer } = require('./multipleAnswerGrading');
 
 /**
  * Normalize answer for flexible comparison
@@ -669,6 +670,28 @@ const gradeQuestionByType = async (question, answer, modelAnswer = '') => {
 const gradeMultipleChoice = async (question, answer, modelAnswer) => {
   try {
     console.log(`Grading multiple-choice question: ${question._id}`);
+
+    // "Select all that apply" questions need set comparison with partial credit - the
+    // single-letter matching and AI fallbacks below can only pick one correct option.
+    if (isMultipleAnswerQuestion(question)) {
+      const grading = gradeMultipleAnswer(question, answer);
+      if (!grading.needsMarkingKey) {
+        return {
+          score: grading.score,
+          feedback: grading.feedback,
+          correctedAnswer: grading.correctedAnswer,
+          gradingMethod: grading.gradingMethod,
+          isCorrect: grading.isCorrect,
+          details: {
+            answerType: 'multiple-answer',
+            selectedOptionLetters: grading.selectedOptionLetters,
+            correctOptionLetters: grading.correctOptionLetters,
+            ...grading.breakdown
+          }
+        };
+      }
+      console.log(`⚠️ Multi-answer question ${question._id} has no marking key, falling back to single-answer grading`);
+    }
 
     // Extract the selected option, handling various formats
     let selectedOption = answer.selectedOption || answer.selectedOptionLetter || answer.textAnswer || '';

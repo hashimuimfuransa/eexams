@@ -19,6 +19,7 @@ import {
   Lightbulb, BarChart, FormatListNumbered
 } from '@mui/icons-material';
 import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from './FinancialAnswerReview';
+import { isMultiAnswerQuestion, getOptionLetter, isOptionCorrect } from '../../utils/multipleAnswer';
 
 export default function AnswerDetail({ answer }) {
   const theme = useTheme();
@@ -46,8 +47,16 @@ export default function AnswerDetail({ answer }) {
   // ─── Per-answer detail renderer ───────────────────────────────────────────
   const qType = answer.question?.type || 'open-ended';
     const notAnswered = !answer.selectedOption && !answer.textAnswer &&
+      (!answer.selectedOptions || answer.selectedOptions.length === 0) &&
       (!answer.matchingAnswers || answer.matchingAnswers.length === 0) &&
       (!answer.subQuestionAnswers || answer.subQuestionAnswers.length === 0);
+
+    // "Select all that apply" answers are scored against a set of options, so the row-by-row
+    // comparison below has to consider every ticked and every correct option rather than one each.
+    const isMultiAnswer = qType === 'multiple-choice' && isMultiAnswerQuestion(answer.question);
+    const selectedLetterSet = new Set(answer.selectedOptionLetters || []);
+    const correctLetterSet = new Set(answer.correctOptionLetters || []);
+    const selectedTextSet = new Set(answer.selectedOptions || []);
 
     const labelStyle = {
       fontWeight: 700, fontSize: 10, textTransform: 'uppercase',
@@ -87,16 +96,24 @@ export default function AnswerDetail({ answer }) {
           <Box sx={{ mb: 2 }}>
             {answer.question?.options && answer.question.options.length > 0 ? (
               <>
-                <Typography sx={labelStyle}>Answer Options</Typography>
+                <Typography sx={labelStyle}>
+                  Answer Options
+                  {isMultiAnswer && ' — select all that apply'}
+                </Typography>
                 {answer.question.options.map((opt, oi) => {
                   const optText = typeof opt === 'object' ? opt.text : String(opt);
-                  const letter = String.fromCharCode(65 + oi);
-                  const isStudentAnswer = answer.selectedOptionLetter === letter ||
-                    answer.selectedOption === optText ||
-                    (!answer.selectedOptionLetter && !answer.selectedOption && false);
-                  const isCorrectOpt = answer.correctOptionLetter === letter ||
-                    answer.question?.correctAnswer === optText ||
-                    answer.correctedAnswer === optText;
+                  const letter = getOptionLetter(opt, oi);
+                  const isStudentAnswer = isMultiAnswer
+                    ? (selectedLetterSet.has(letter) || selectedTextSet.has(optText))
+                    : (answer.selectedOptionLetter === letter ||
+                       answer.selectedOption === optText);
+                  const isCorrectOpt = isMultiAnswer
+                    // The question's own flags are the marking key; correctOptionLetters is the
+                    // copy the grader recorded on the answer.
+                    ? (correctLetterSet.has(letter) || isOptionCorrect(opt))
+                    : (answer.correctOptionLetter === letter ||
+                       answer.question?.correctAnswer === optText ||
+                       answer.correctedAnswer === optText);
                   const highlight = isCorrectOpt || isStudentAnswer;
                   return (
                     <Box key={oi} sx={{
@@ -127,11 +144,17 @@ export default function AnswerDetail({ answer }) {
                             sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
                         )}
                         {isStudentAnswer && !isCorrectOpt && (
-                          <Chip label="✗ Your answer" size="small" color="error"
+                          <Chip label={isMultiAnswer ? '✗ Ticked in error' : '✗ Your answer'} size="small" color="error"
                             sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
                         )}
                         {isStudentAnswer && isCorrectOpt && (
-                          <Chip label="✓ Your answer" size="small" color="success"
+                          <Chip label={isMultiAnswer ? '✓ You ticked this' : '✓ Your answer'} size="small" color="success"
+                            sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
+                        )}
+                        {/* A correct option left unticked costs marks on a multi-answer question,
+                            so it needs calling out as much as a wrong tick does. */}
+                        {isMultiAnswer && isCorrectOpt && !isStudentAnswer && (
+                          <Chip label="Missed" size="small" color="warning"
                             sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
                         )}
                       </Box>
@@ -146,11 +169,52 @@ export default function AnswerDetail({ answer }) {
                     display: 'flex', alignItems: 'center', gap: 1 }}>
                     <TaskAlt fontSize="small" sx={{ color: 'success.main', flexShrink: 0 }} />
                     <Typography variant="body2" fontWeight={700} color="success.dark">
-                      Correct answer: {answer.correctOptionLetter ? `${answer.correctOptionLetter}. ` : ''}
-                      {String(answer.question?.correctAnswer || answer.correctedAnswer || 'See highlighted option above')}
+                      {isMultiAnswer ? (
+                        <>
+                          Correct answers:{' '}
+                          {(answer.correctOptionLetters?.length
+                            ? answer.correctOptionLetters.join(', ')
+                            : String(answer.correctedAnswer || answer.question?.correctAnswer || 'See highlighted options above'))}
+                        </>
+                      ) : (
+                        <>
+                          Correct answer: {answer.correctOptionLetter ? `${answer.correctOptionLetter}. ` : ''}
+                          {String(answer.question?.correctAnswer || answer.correctedAnswer || 'See highlighted option above')}
+                        </>
+                      )}
                     </Typography>
                   </Box>
                 )}
+
+                {/* Partial-credit summary — on a multi-answer question a mark between 0 and full
+                    is normal, so show how it was arrived at rather than just "incorrect". */}
+                {isMultiAnswer && (() => {
+                  const options = answer.question?.options || [];
+                  const correctLetters = correctLetterSet.size
+                    ? [...correctLetterSet]
+                    : options.map((o, i) => (isOptionCorrect(o) ? getOptionLetter(o, i) : null)).filter(Boolean);
+                  const isSelectedAt = (o, i) =>
+                    selectedLetterSet.has(getOptionLetter(o, i)) ||
+                    selectedTextSet.has(typeof o === 'object' ? o.text : String(o));
+                  const hits = options.filter((o, i) => correctLetters.includes(getOptionLetter(o, i)) && isSelectedAt(o, i)).length;
+                  const wrongTicks = options.filter((o, i) => !correctLetters.includes(getOptionLetter(o, i)) && isSelectedAt(o, i)).length;
+                  return (
+                    <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
+                      <Chip size="small" variant="outlined" color={hits === correctLetters.length ? 'success' : 'default'}
+                        label={`${hits} of ${correctLetters.length} correct option${correctLetters.length !== 1 ? 's' : ''} ticked`}
+                        sx={{ fontSize: 10, height: 20 }} />
+                      {wrongTicks > 0 && (
+                        <Chip size="small" variant="outlined" color="error"
+                          label={`${wrongTicks} incorrect tick${wrongTicks !== 1 ? 's' : ''}`}
+                          sx={{ fontSize: 10, height: 20 }} />
+                      )}
+                      {answer.question?.multipleAnswerScoring === 'all-or-nothing' && (
+                        <Chip size="small" color="warning" variant="outlined" label="All-or-nothing marking"
+                          sx={{ fontSize: 10, height: 20 }} />
+                      )}
+                    </Box>
+                  );
+                })()}
               </>
             ) : (
               /* No options stored — show plain text fields */
@@ -379,7 +443,12 @@ export default function AnswerDetail({ answer }) {
                   ) : (
                     <Box>
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                        <strong>Your answer:</strong> {subAnswer.selectedOption || subAnswer.textAnswer || '—'}
+                        <strong>Your answer:</strong>{' '}
+                        {/* selectedOptions first: on a "select all that apply" part it holds every
+                            ticked option, where selectedOption is only a joined display string. */}
+                        {(subAnswer.selectedOptions?.length
+                          ? subAnswer.selectedOptions.join(', ')
+                          : subAnswer.selectedOption) || subAnswer.textAnswer || '—'}
                       </Typography>
                       {(subQ.correctAnswer || subResult?.correctedAnswer) && (
                         <Typography variant="body2" color="success.dark" sx={{ mt: 0.5, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>

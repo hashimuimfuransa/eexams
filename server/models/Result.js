@@ -38,6 +38,18 @@ const ResultSchema = new mongoose.Schema({
     correctOptionLetter: {
       type: String // For multiple choice - stores the letter of the correct option
     },
+    // "Select all that apply" multiple-choice (question.allowMultipleAnswers). The two singular
+    // fields above still hold a joined display string / the first letter so every existing view
+    // and grader keeps working; these hold the real selection the grader marks against.
+    selectedOptions: [{
+      type: String // Texts of every option the student ticked
+    }],
+    selectedOptionLetters: [{
+      type: String // Letters of every option the student ticked
+    }],
+    correctOptionLetters: [{
+      type: String // Letters of every option that should have been ticked
+    }],
     textAnswer: {
       type: String // For open-ended
     },
@@ -96,6 +108,9 @@ const ResultSchema = new mongoose.Schema({
       answered: Boolean,
       answeredAt: Date,
       selectedOption: String,
+      // Every option ticked on a "select all that apply" sub-question - see the top-level
+      // selectedOptions field above.
+      selectedOptions: [String],
       textAnswer: String,
       questionType: String,
       // Written/explanatory answer alongside a financial-spreadsheet sub-question's grid — see
@@ -220,7 +235,9 @@ const ResultSchema = new mongoose.Schema({
         // here, so Mongoose's enum validation would reject the answer on save.
         'spreadsheet_and_written_grading',
         'spreadsheet_written_and_ai_review',
-        'flexible_normalization'
+        'flexible_normalization',
+        // "Select all that apply" multiple-choice, marked against the full set of correct options
+        'multiple_answer_grading'
       ],
       default: 'enhanced_grading'
     },

@@ -12,6 +12,7 @@ const { gradeQuestionByType } = require('../utils/enhancedGrading');
 const cacheService = require('../utils/cacheService');
 const ExamRequest = require('../models/ExamRequest');
 const { batchUpdateAnswers, batchGradeAnswers, bulkFetchQuestions } = require('../utils/batchOperations');
+const { isMultipleAnswerQuestion, gradeMultipleAnswer } = require('../utils/multipleAnswerGrading');
 
 /**
  * Check if an exam has extracted content
@@ -329,10 +330,18 @@ const createExam = async (req, res) => {
               { text: 'False', isCorrect: qd.correctAnswer === 'False', letter: 'B' },
             ];
           }
+          // A "select all that apply" question's key is every correct option, not just the first.
+          const allowMultipleAnswers = qd.allowMultipleAnswers === true ||
+            options.filter(o => o && o.isCorrect).length > 1;
           let correctAnswer = qd.correctAnswer || '';
           if (!correctAnswer && qType === 'multiple-choice') {
-            const correct = options.find(o => o.isCorrect);
-            correctAnswer = correct ? (correct.letter || correct.text) : 'Not provided';
+            const correctOpts = options.filter(o => o.isCorrect);
+            if (allowMultipleAnswers && correctOpts.length > 0) {
+              correctAnswer = correctOpts.map(o => o.letter || o.text).join(', ');
+            } else {
+              const correct = correctOpts[0];
+              correctAnswer = correct ? (correct.letter || correct.text) : 'Not provided';
+            }
           }
           if (!correctAnswer) correctAnswer = 'Not provided';
 
@@ -342,6 +351,8 @@ const createExam = async (req, res) => {
             type: qType,
             options,
             correctAnswer,
+            allowMultipleAnswers,
+            multipleAnswerScoring: qd.multipleAnswerScoring === 'all-or-nothing' ? 'all-or-nothing' : 'partial',
             points: qd.points || 1,
             difficulty: qd.difficulty || 'medium',
             exam: exam._id,
@@ -1720,11 +1731,12 @@ const startExam = async (req, res) => {
 // @access  Private/Student
 const submitAnswer = async (req, res) => {
   try {
-    const { questionId, selectedOption, textAnswer, writtenAnswer, questionType, matchingAnswers, orderingAnswer, dragDropAnswer } = req.body;
+    const { questionId, selectedOption, selectedOptions, textAnswer, writtenAnswer, questionType, matchingAnswers, orderingAnswer, dragDropAnswer } = req.body;
 
     console.log('Received answer submission:', {
       questionId,
       selectedOption,
+      selectedOptions,
       textAnswer,
       questionType,
       hasMatchingAnswers: !!matchingAnswers,
@@ -1752,6 +1764,8 @@ const submitAnswer = async (req, res) => {
     const sanitizedData = sanitizeAnswerData({
       questionId: parentQuestionId,
       selectedOption,
+      // Every ticked option on a "select all that apply" question
+      selectedOptions,
       textAnswer,
       writtenAnswer,
       questionType,
@@ -1841,6 +1855,7 @@ const submitAnswer = async (req, res) => {
     // Use sanitized data for processing
     const {
       selectedOption: cleanSelectedOption,
+      selectedOptions: cleanSelectedOptions,
       textAnswer: cleanTextAnswer,
       writtenAnswer: cleanWrittenAnswer,
       matchingAnswers: cleanMatchingAnswers,
@@ -1870,12 +1885,21 @@ const submitAnswer = async (req, res) => {
       };
       
       if (questionType === 'multiple-choice' || questionType === 'true-false') {
-        subAnswerData.selectedOption = cleanSelectedOption;
         subAnswerData.questionType = questionType;
+        if (Array.isArray(cleanSelectedOptions)) {
+          // "Select all that apply" sub-question. selectedOption keeps a joined display string so
+          // existing views that read the singular field still show something sensible.
+          subAnswerData.selectedOptions = cleanSelectedOptions;
+          subAnswerData.selectedOption = cleanSelectedOptions.join(' | ');
+          subAnswerData.answered = cleanSelectedOptions.length > 0;
+        } else {
+          subAnswerData.selectedOption = cleanSelectedOption;
+        }
       } else if (questionType === 'clear') {
         // Clear this sub-question answer
         subAnswerData.answered = false;
         subAnswerData.selectedOption = null;
+        subAnswerData.selectedOptions = [];
         subAnswerData.textAnswer = null;
       } else {
         subAnswerData.textAnswer = cleanTextAnswer;
@@ -1935,7 +1959,34 @@ const submitAnswer = async (req, res) => {
     }
 
     // Update the answer based on the actual question type
-    if (actualQuestionType === 'multiple-choice' && !actualQuestionType.includes('fill-in')) {
+    if (actualQuestionType === 'multiple-choice' && !actualQuestionType.includes('fill-in') &&
+        isMultipleAnswerQuestion(question)) {
+      // "Select all that apply": set comparison with partial credit, not a single letter match.
+      // Shared with every other grading path so the mark shown here matches the final one.
+      const answerForGrading = {
+        selectedOptions: Array.isArray(cleanSelectedOptions) ? cleanSelectedOptions : undefined,
+        selectedOption: cleanSelectedOption
+      };
+      const grading = gradeMultipleAnswer(question, answerForGrading);
+
+      result.answers[answerIndex].selectedOptions = grading.selectedOptions;
+      result.answers[answerIndex].selectedOptionLetters = grading.selectedOptionLetters;
+      result.answers[answerIndex].correctOptionLetters = grading.correctOptionLetters;
+      // Keep the singular fields populated for the views and legacy graders that read them.
+      result.answers[answerIndex].selectedOption = grading.selectedOptions.join(' | ');
+      result.answers[answerIndex].selectedOptionLetter = grading.selectedOptionLetters[0] || '';
+      result.answers[answerIndex].correctOptionLetter = grading.correctOptionLetters[0] || '';
+      result.answers[answerIndex].isCorrect = grading.isCorrect;
+      result.answers[answerIndex].score = grading.score;
+      result.answers[answerIndex].correctedAnswer = grading.correctedAnswer;
+      result.answers[answerIndex].feedback = grading.feedback;
+      result.answers[answerIndex].answered = grading.selectedOptions.length > 0;
+      if (!grading.needsMarkingKey) {
+        result.answers[answerIndex].gradingMethod = 'multiple_answer_grading';
+      }
+
+      console.log(`Multiple-answer question ${sanitizedData.questionId}: selected [${grading.selectedOptionLetters.join(', ')}], correct [${grading.correctOptionLetters.join(', ')}], score ${grading.score}`);
+    } else if (actualQuestionType === 'multiple-choice' && !actualQuestionType.includes('fill-in')) {
       // For multiple choice, check if the selected option is correct
       let isCorrect = false;
       let correctOptionText = '';
@@ -2433,7 +2484,8 @@ const completeExam = async (req, res) => {
         'incomplete_multipart', 'incomplete_multipart_fallback',
         'answer_validation_failed', 'letter_based', 'isCorrect_flag', 'modelAnswer_comparison',
         'sub_question_grading', 'groq_ai', 'subquestion_all', 'subquestion_choose-n',
-        'spreadsheet_grading', 'spreadsheet_manual_grading'
+        'spreadsheet_grading', 'spreadsheet_manual_grading',
+        'multiple_answer_grading'
       ];
 
       // Ensure all grading methods are valid

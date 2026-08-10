@@ -6,6 +6,7 @@ const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading')
 const { resolveSubQuestionPoints } = require('./subQuestionPoints');
 const { withOverrides } = require('./toPlainDoc');
 const { parseAnswerFile } = require('./fileParser');
+const { isMultipleAnswerQuestion, gradeMultipleAnswer } = require('./multipleAnswerGrading');
 const fs = require('fs');
 const path = require('path');
 
@@ -256,7 +257,12 @@ const gradeSubQuestions = async (question, answer) => {
       let isSubCorrect = false;
       let subQScore = 0;
       
-      if (subQType === 'multiple-choice' || subQType === 'true-false') {
+      if ((subQType === 'multiple-choice' || subQType === 'true-false') && isMultipleAnswerQuestion(subQ)) {
+        // "Select all that apply" sub-question - graded on the whole ticked set with partial credit
+        const grading = gradeMultipleAnswer(subQ, subQAnswer, { points: subQPoints });
+        subQScore = grading.score;
+        isSubCorrect = grading.isCorrect;
+      } else if (subQType === 'multiple-choice' || subQType === 'true-false') {
         // Check both selectedOption and textAnswer as answer may be stored in either field
         const studentAnswer = subQAnswer.selectedOption || subQAnswer.textAnswer || '';
         const correctAnswer = subQ.correctAnswer;
@@ -362,7 +368,13 @@ const gradeSubQuestions = async (question, answer) => {
     let subQFeedback = '';
     let subQBreakdown = null; // spreadsheet/written split, when the part has one
 
-    if (subQType === 'multiple-choice' || subQType === 'true-false') {
+    if ((subQType === 'multiple-choice' || subQType === 'true-false') && isMultipleAnswerQuestion(subQ)) {
+      // "Select all that apply" sub-question - graded on the whole ticked set with partial credit
+      const grading = gradeMultipleAnswer(subQ, subQAnswer, { points: subQPoints });
+      subQScore = grading.score;
+      subQFeedback = grading.feedback;
+      feedbackParts.push(`${subQ.label || 'Part ' + (i + 1)}: ${grading.isCorrect ? '✅' : '❌'} (${subQScore}/${subQPoints})`);
+    } else if (subQType === 'multiple-choice' || subQType === 'true-false') {
       // Check both selectedOption and textAnswer as answer may be stored in either field
       const studentAnswer = subQAnswer.selectedOption || subQAnswer.textAnswer || '';
       const correctAnswer = subQ.correctAnswer;
@@ -672,6 +684,35 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
         } else {
           console.log(`Adding minimal delay before grading next question...`);
           await delay(100); // Reduced from 500ms to 100ms
+        }
+      }
+
+      // Handle "select all that apply" multiple-choice before the single-letter logic below,
+      // which resolves the key to one letter and cannot express a partially correct selection.
+      if (question.type === 'multiple-choice' && isMultipleAnswerQuestion(question)) {
+        const hasAnswer = (answer.selectedOptions && answer.selectedOptions.length > 0) ||
+                          answer.selectedOption || answer.textAnswer;
+        if (hasAnswer) {
+          const grading = gradeMultipleAnswer(question, answer);
+          if (!grading.needsMarkingKey) {
+            result.answers[i].isCorrect = grading.isCorrect;
+            result.answers[i].score = grading.score;
+            result.answers[i].feedback = grading.feedback;
+            result.answers[i].correctedAnswer = grading.correctedAnswer;
+            result.answers[i].gradingMethod = 'multiple_answer_grading';
+            result.answers[i].selectedOptions = grading.selectedOptions;
+            result.answers[i].selectedOptionLetters = grading.selectedOptionLetters;
+            result.answers[i].correctOptionLetters = grading.correctOptionLetters;
+            result.answers[i].selectedOptionLetter = grading.selectedOptionLetters[0] || '';
+            result.answers[i].correctOptionLetter = grading.correctOptionLetters[0] || '';
+            totalScore += grading.score;
+
+            console.log(`Multi-answer question ${question._id}: selected [${grading.selectedOptionLetters.join(', ')}], correct [${grading.correctOptionLetters.join(', ')}], score ${grading.score}/${grading.maxPoints}`);
+            continue;
+          }
+          console.log(`⚠️ Multi-answer question ${question._id} has no marking key, falling back to single-answer grading`);
+        } else {
+          continue;
         }
       }
 
@@ -1704,6 +1745,28 @@ Only respond with the letter (A, B, C, or D). No explanation.`;
       const i = index;
       // Get the question number from the question text or use the index
       const questionNumber = extractQuestionNumber(question.text, i);
+
+      // "Select all that apply" - marked on the whole ticked set with partial credit, since the
+      // letter matching below resolves the key to a single option.
+      if (question.type === 'multiple-choice' && isMultipleAnswerQuestion(question)) {
+        const grading = gradeMultipleAnswer(question, answer);
+        if (!grading.needsMarkingKey) {
+          result.answers[i].isCorrect = grading.isCorrect;
+          result.answers[i].score = grading.score;
+          result.answers[i].feedback = grading.feedback;
+          result.answers[i].correctedAnswer = grading.correctedAnswer;
+          result.answers[i].gradingMethod = 'multiple_answer_grading';
+          result.answers[i].selectedOptions = grading.selectedOptions;
+          result.answers[i].selectedOptionLetters = grading.selectedOptionLetters;
+          result.answers[i].correctOptionLetters = grading.correctOptionLetters;
+          result.answers[i].selectedOptionLetter = grading.selectedOptionLetters[0] || '';
+          result.answers[i].correctOptionLetter = grading.correctOptionLetters[0] || '';
+          totalScore += grading.score;
+          console.log(`Multi-answer question ${questionNumber}: selected [${grading.selectedOptionLetters.join(', ')}], correct [${grading.correctOptionLetters.join(', ')}], score ${grading.score}/${grading.maxPoints}`);
+          return;
+        }
+        console.log(`⚠️ Multi-answer question ${questionNumber} has no marking key, falling back to single-answer grading`);
+      }
 
       // Log whether we're grading for the first time or regrading
       const questionTypeLabel = question.type === 'true-false' ? 'true/false' : 'multiple choice';

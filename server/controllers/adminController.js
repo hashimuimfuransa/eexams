@@ -2281,6 +2281,9 @@ const createExam = async (req, res) => {
             difficulty: q.difficulty || 'medium',
             correctAnswer: q.correctAnswer || '',
             options: q.options || [],
+            // "Select all that apply" configuration
+            allowMultipleAnswers: q.allowMultipleAnswers === true,
+            multipleAnswerScoring: q.multipleAnswerScoring === 'all-or-nothing' ? 'all-or-nothing' : 'partial',
             explanation: q.explanation || '',
             answerKey: q.answerKey || q.explanation || '',
             gradingCriteria: normalizedGradingCriteria,
@@ -2528,6 +2531,16 @@ const createExam = async (req, res) => {
                   if (questionData.wordBank && questionData.wordBank.length > 0) questionDataToSave.wordBank = questionData.wordBank;
                   if (questionData.instructions) questionDataToSave.instructions = questionData.instructions;
                   if (questionData.subQuestionConfig) questionDataToSave.subQuestionConfig = questionData.subQuestionConfig;
+                  // "Select all that apply" - also inferred below when the extractor flagged more
+                  // than one option correct without setting the flag itself.
+                  if (questionData.allowMultipleAnswers !== undefined) {
+                    questionDataToSave.allowMultipleAnswers = questionData.allowMultipleAnswers === true;
+                  } else if (Array.isArray(options) && options.filter(o => o && o.isCorrect).length > 1) {
+                    questionDataToSave.allowMultipleAnswers = true;
+                  }
+                  if (questionData.multipleAnswerScoring) {
+                    questionDataToSave.multipleAnswerScoring = questionData.multipleAnswerScoring === 'all-or-nothing' ? 'all-or-nothing' : 'partial';
+                  }
 
                   // Preserve matching question structure if already provided
                   if (questionType === 'matching') {
@@ -4476,13 +4489,15 @@ const updateQuestion = async (req, res) => {
     if (!q) return res.status(404).json({ message: 'Question not found' });
     if (q.exam.createdBy.toString() !== req.orgAdminId.toString())
       return res.status(403).json({ message: 'Not authorized' });
-    const { text, type, points, difficulty, correctAnswer, options, subQuestions, subQuestionConfig, subQuestionMode, explanation, answerKey, passage, instructions, wordBank, spreadsheetTemplate, spreadsheetModelAnswer } = req.body;
+    const { text, type, points, difficulty, correctAnswer, options, allowMultipleAnswers, multipleAnswerScoring, subQuestions, subQuestionConfig, subQuestionMode, explanation, answerKey, passage, instructions, wordBank, spreadsheetTemplate, spreadsheetModelAnswer } = req.body;
     if (text !== undefined) q.text = text;
     if (type !== undefined) q.type = type;
     if (points !== undefined) q.points = points;
     if (difficulty !== undefined) q.difficulty = difficulty;
     if (correctAnswer !== undefined) q.correctAnswer = correctAnswer;
     if (options !== undefined) q.options = options;
+    if (allowMultipleAnswers !== undefined) q.allowMultipleAnswers = allowMultipleAnswers === true;
+    if (multipleAnswerScoring !== undefined) q.multipleAnswerScoring = multipleAnswerScoring;
     if (subQuestions !== undefined) q.subQuestions = subQuestions;
     if (subQuestionConfig !== undefined) q.subQuestionConfig = subQuestionConfig;
     if (subQuestionMode !== undefined) q.subQuestionMode = subQuestionMode; // Backward compatibility
@@ -5299,6 +5314,13 @@ const updateExam = async (req, res) => {
         if (q.options !== undefined) {
           updateData.options = q.options;
         }
+        // "Select all that apply" configuration
+        if (q.allowMultipleAnswers !== undefined) {
+          updateData.allowMultipleAnswers = q.allowMultipleAnswers === true;
+        }
+        if (q.multipleAnswerScoring !== undefined) {
+          updateData.multipleAnswerScoring = q.multipleAnswerScoring;
+        }
 
         // Update sub-questions
         if (q.subQuestions !== undefined) {
@@ -5368,7 +5390,12 @@ const updateExam = async (req, res) => {
                   subQuestionConfig: q.subQuestionConfig,
                   passage: q.passage,
                   instructions: q.instructions,
-                  wordBank: q.wordBank
+                  wordBank: q.wordBank,
+                  // "Select all that apply" configuration. Only written when the payload carries
+                  // it, so a caller that sends a question without these keys doesn't silently
+                  // reset a question the teacher had configured as multi-answer.
+                  ...(q.allowMultipleAnswers !== undefined ? { allowMultipleAnswers: q.allowMultipleAnswers === true } : {}),
+                  ...(q.multipleAnswerScoring !== undefined ? { multipleAnswerScoring: q.multipleAnswerScoring } : {})
                 }
               }
             });

@@ -3,6 +3,7 @@ const { verifyGradingWithAI } = require('./enhancedGrading');
 const { gradeFinancialSpreadsheetWithWritten } = require('./spreadsheetGrading');
 const { resolveSubQuestionPoints } = require('./subQuestionPoints');
 const { withOverrides } = require('./toPlainDoc');
+const { isMultipleAnswerQuestion, gradeMultipleAnswer } = require('./multipleAnswerGrading');
 const {
   GRADING_SYSTEM_PROMPT,
   buildOpenEndedGradingPrompt,
@@ -99,6 +100,9 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
     if (subQuestions.length > 0) {
       const tempAnswer = {
         selectedOption: subAnswer.selectedOption,
+        // Carried through so a "select all that apply" sub-question is marked on the real
+        // selection rather than the joined display string in selectedOption.
+        selectedOptions: subAnswer.selectedOptions,
         textAnswer: subAnswer.textAnswer,
         matchingAnswers: subAnswer.matchingAnswers,
         orderingAnswer: subAnswer.orderingAnswer,
@@ -126,7 +130,16 @@ async function gradeSubQuestionsFast(question, answer, modelAnswer) {
       }
     } else {
       // Otherwise, grade based on parent question's options/wordBank
-      if (subAnswer.questionType === 'multiple-choice' || subAnswer.questionType === 'true-false') {
+      if ((subAnswer.questionType === 'multiple-choice' || subAnswer.questionType === 'true-false') &&
+          isMultipleAnswerQuestion(question)) {
+        // Parent question is "select all that apply" - mark the whole ticked set against the key,
+        // scaled to this part's mark allocation.
+        const grading = gradeMultipleAnswer(question, subAnswer, { points: maxPoints });
+        subScore = grading.score;
+        isCorrect = grading.isCorrect;
+        feedback = grading.feedback;
+        correctedAnswer = grading.correctedAnswer;
+      } else if (subAnswer.questionType === 'multiple-choice' || subAnswer.questionType === 'true-false') {
         // Check if selected option matches any correct option in parent question
         const correctOptions = question.options ? question.options.filter(opt => opt.isCorrect).map(opt => opt.text) : [];
         // Check both selectedOption and textAnswer as answer may be stored in either field
@@ -323,6 +336,28 @@ async function gradeQuestionFast(question, answer, modelAnswer) {
  * OPTIMIZED: Uses cache and skips AI if correct option already marked
  */
 async function gradeMultipleChoiceFast(question, answer, modelAnswer) {
+  // "Select all that apply" questions are graded by set comparison with partial credit. Handled
+  // before anything below because the single-letter matching that follows cannot express "2 of 3
+  // correct options ticked", and the AI fallback would collapse the key to one letter.
+  if (isMultipleAnswerQuestion(question)) {
+    const grading = gradeMultipleAnswer(question, answer);
+    if (!grading.needsMarkingKey) {
+      return {
+        score: grading.score,
+        feedback: grading.feedback,
+        correctedAnswer: grading.correctedAnswer,
+        gradingMethod: grading.gradingMethod,
+        isCorrect: grading.isCorrect,
+        selectedOptionLetters: grading.selectedOptionLetters,
+        correctOptionLetters: grading.correctOptionLetters,
+        multipleAnswerBreakdown: grading.breakdown
+      };
+    }
+    // No option flagged correct and no parsable key - fall through to the existing logic below,
+    // which can ask the AI to work out the answer.
+    console.log(`⚠️ Multi-answer question ${question._id} has no marking key, falling back to single-answer grading`);
+  }
+
   // Check selectedOption, selectedOptionLetter, and textAnswer as answer may be stored in any field
   const selectedOption = answer.selectedOption || answer.selectedOptionLetter || answer.textAnswer;
 

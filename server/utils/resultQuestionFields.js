@@ -29,6 +29,10 @@ const RESULT_QUESTION_FIELDS = [
   'section',
   'correctAnswer',
   'options',
+  // Without these a "select all that apply" answer renders as a single-answer question in the
+  // results views, so a partially correct selection looks simply wrong.
+  'allowMultipleAnswers',
+  'multipleAnswerScoring',
   'passage',
   'explanation',
   'imageUrl',

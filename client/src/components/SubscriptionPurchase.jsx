@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Container,
@@ -158,14 +158,17 @@ const SubscriptionPurchase = () => {
   const [examOptionsLoading, setExamOptionsLoading] = useState(false);
   const [selectedExamId, setSelectedExamId] = useState('');
 
-  // Filters for "Whole Level" scope — plans are fetched once across every
-  // level, then narrowed down client-side so the filters feel instant.
+  // Filters — plans are fetched once (all levels, or all plans for the chosen
+  // exam) and narrowed client-side so changing a filter feels instant. Kept to
+  // the three that actually decide what a student buys: level and sub-level
+  // scope the plan list ("Whole Level") or the exam picker ("Single Exam"), and
+  // sort orders what's left. A level's plan list is a short price ladder, so
+  // search/price-range/duration boxes only added clutter.
   const [allLevelPlans, setAllLevelPlans] = useState([]);
+  const [allExamPlans, setAllExamPlans] = useState([]);
   const [levelsList, setLevelsList] = useState([]);
   const [filterLevelId, setFilterLevelId] = useState('');
   const [filterSubLevel, setFilterSubLevel] = useState('');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
   const [sortBy, setSortBy] = useState('recommended');
   const [paymentMethod, setPaymentMethod] = useState('mobile_money');
   const [countryCode, setCountryCode] = useState('+250');
@@ -232,7 +235,7 @@ const SubscriptionPurchase = () => {
       }
       setPlanScope('exam');
       setSelectedExamId(examId);
-      setPlans(examPlans);
+      setAllExamPlans(examPlans);
     } catch (err) {
       console.error('Error preselecting exam from link:', err);
     }
@@ -310,7 +313,7 @@ const SubscriptionPurchase = () => {
     setError(null);
     if (value === 'exam') {
       if (selectedExamId) fetchExamPlans(selectedExamId);
-      else setPlans([]);
+      else setAllExamPlans([]);
     }
     // Switching to 'level' needs no fetch — the filter effect below
     // recomputes `plans` from the already-fetched `allLevelPlans`.
@@ -320,7 +323,7 @@ const SubscriptionPurchase = () => {
     setSelectedExamId(examId);
     setSelectedPlan('');
     if (examId) fetchExamPlans(examId);
-    else setPlans([]);
+    else setAllExamPlans([]);
   };
 
   const fetchExamPlans = async (examId) => {
@@ -328,7 +331,7 @@ const SubscriptionPurchase = () => {
       setLoading(true);
       setError(null);
       const response = await api.get(`/subscription-plans/exam/${examId}/active`);
-      setPlans(response.data || []);
+      setAllExamPlans(response.data || []);
     } catch (err) {
       console.error('Error fetching exam plans:', err);
       setError('Failed to load subscription plans for this exam. Please try again.');
@@ -479,31 +482,80 @@ const SubscriptionPurchase = () => {
   const filterLevelObj = levelsList.find(l => l._id === filterLevelId);
   const availableFilterSubLevels = (filterLevelObj?.subLevels || []).filter(s => s.isActive);
 
-  // Recompute the visible plan list whenever the level scope is "level" and
-  // any filter (or the raw plan set) changes.
-  useEffect(() => {
-    if (planScope !== 'level') return;
+  // Picking a sub-level asks "what covers this sub-level", not "what is tagged
+  // with it" — an untagged plan is a full-level plan that unlocks every
+  // sub-level, and an untagged exam is level-wide content every sub-level can
+  // sit. That mirrors the server's own coverage rules (subscriptionCoversExam /
+  // freeExamMatchesUserSubLevel), so the filter can't hide a plan that would in
+  // fact unlock the exam the student came here for. "__entire__" is the strict
+  // option for students who only want untagged, whole-level items.
+  const matchesSubLevelFilter = (subLevel) => {
+    if (!filterSubLevel) return true;
+    if (filterSubLevel === '__entire__') return !subLevel;
+    return !subLevel || subLevel === filterSubLevel;
+  };
 
-    const filtered = allLevelPlans
-      .filter(p => !filterLevelId || p.level?._id === filterLevelId)
-      .filter(p => {
-        if (!filterSubLevel) return true;
-        if (filterSubLevel === '__entire__') return !p.subLevel;
-        return p.subLevel === filterSubLevel;
-      })
-      .filter(p => minPrice === '' || p.price >= Number(minPrice))
-      .filter(p => maxPrice === '' || p.price <= Number(maxPrice))
-      .sort((a, b) => {
-        if (sortBy === 'price_asc') return a.price - b.price;
-        if (sortBy === 'price_desc') return b.price - a.price;
-        return a.durationDays - b.durationDays; // recommended: shortest/cheapest plans first
-      });
+  // The plan set for the current tab before the shared search/price/duration
+  // narrowing — level/sub-level only mean something for level-wide plans, since
+  // an exam-scoped plan is already pinned to one exam.
+  const scopePlans = useMemo(() => (
+    planScope === 'level'
+      ? allLevelPlans
+          .filter(p => !filterLevelId || p.level?._id === filterLevelId)
+          .filter(p => matchesSubLevelFilter(p.subLevel))
+      : allExamPlans
+  ), [planScope, allLevelPlans, allExamPlans, filterLevelId, filterSubLevel]);
+
+  // The exam picker honours the level/sub-level filters too — a student can
+  // hold a plan on one level while browsing another, so the exams needing an
+  // unlock aren't necessarily all from their selected level. Options carrying
+  // no level (e.g. one preselected from a deep link) are always kept.
+  const filteredExamOptions = useMemo(() => examOptions.filter(exam => {
+    const examLevelId = exam.level?._id || exam.level;
+    if (filterLevelId && examLevelId && examLevelId !== filterLevelId) return false;
+    if (examLevelId && !matchesSubLevelFilter(exam.subLevel)) return false;
+    return true;
+  }), [examOptions, filterLevelId, filterSubLevel]);
+
+  // Recompute the visible plan list whenever a filter (or the raw plan set)
+  // changes — same pipeline for both tabs.
+  useEffect(() => {
+    const filtered = [...scopePlans].sort((a, b) => {
+      if (sortBy === 'price_asc') return a.price - b.price;
+      if (sortBy === 'price_desc') return b.price - a.price;
+      if (sortBy === 'duration_desc') return b.durationDays - a.durationDays;
+      return a.durationDays - b.durationDays; // recommended: shortest/cheapest plans first
+    });
 
     setPlans(filtered);
     // Deselect a plan that's been filtered out, so Order Summary can't be
     // left pointing at a plan that's no longer in the visible list.
     setSelectedPlan(prev => (filtered.some(p => p._id === prev) ? prev : ''));
-  }, [planScope, allLevelPlans, filterLevelId, filterSubLevel, minPrice, maxPrice, sortBy]);
+  }, [scopePlans, sortBy]);
+
+  // Same idea for the exam picker: a filter that hides the chosen exam must
+  // drop the selection, or the summary would price a plan for an exam that is
+  // no longer on screen. Scoped to exams the filters actually hid — an exam
+  // preselected from a deep link may legitimately not be in the picker list at
+  // all, and clearing that would undo the link the student just followed.
+  useEffect(() => {
+    if (planScope !== 'exam' || !selectedExamId) return;
+    const isListed = examOptions.some(e => e._id === selectedExamId);
+    const isVisible = filteredExamOptions.some(e => e._id === selectedExamId);
+    if (isListed && !isVisible) {
+      setSelectedExamId('');
+      setAllExamPlans([]);
+      setSelectedPlan('');
+    }
+  }, [examOptions, filteredExamOptions, planScope, selectedExamId]);
+
+  const filtersActive = !!filterLevelId || !!filterSubLevel || sortBy !== 'recommended';
+
+  const clearFilters = () => {
+    setFilterLevelId('');
+    setFilterSubLevel('');
+    setSortBy('recommended');
+  };
 
   // A page reload during a mobile-money USSD prompt restores mobilePending
   // from sessionStorage — jump straight back to the summary/pay page so the
@@ -837,6 +889,86 @@ const SubscriptionPurchase = () => {
             </ToggleButtonGroup>
           </Box>
 
+          <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: { xs: 3, sm: 4 }, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+              <FilterList fontSize="small" color="action" />
+              <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">
+                {planScope === 'level' ? 'Filter Plans' : 'Filter Exams & Plans'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                {planScope === 'exam' && !selectedExamId
+                  ? `${filteredExamOptions.length} exam${filteredExamOptions.length === 1 ? '' : 's'} to unlock`
+                  : `${plans.length} plan${plans.length === 1 ? '' : 's'} shown`}
+              </Typography>
+            </Box>
+            {/* One row on tablet and up: level → sub-level → sort, with the
+                reset tucked in beside them. */}
+            <Grid container spacing={1.5} alignItems="center">
+              <Grid item xs={6} sm={3}>
+                <SearchableSelect
+                  label="Level"
+                  value={filterLevelId}
+                  onChange={(value) => { setFilterLevelId(value); setFilterSubLevel(''); }}
+                  options={[
+                    { value: '', label: 'All levels' },
+                    ...levelsList.map((lvl) => ({
+                      value: lvl._id,
+                      label: `${lvl.name}${lvl._id === user?.level?._id ? ' (Your level)' : ''}`
+                    }))
+                  ]}
+                  placeholder="Search levels..."
+                />
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <FormControl fullWidth size="small" disabled={availableFilterSubLevels.length === 0}>
+                  <InputLabel>Sub-level</InputLabel>
+                  <Select
+                    value={filterSubLevel}
+                    label="Sub-level"
+                    onChange={(e) => setFilterSubLevel(e.target.value)}
+                  >
+                    <MenuItem value="">All Sub-levels</MenuItem>
+                    <MenuItem value="__entire__">
+                      {planScope === 'level' ? 'Entire Level Only' : 'No Sub-level Only'}
+                    </MenuItem>
+                    {availableFilterSubLevels.map((sub) => (
+                      <MenuItem key={sub._id || sub.name} value={sub.name}>{sub.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={8} sm={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Sort By</InputLabel>
+                  <Select value={sortBy} label="Sort By" onChange={(e) => setSortBy(e.target.value)}>
+                    <MenuItem value="recommended">Recommended</MenuItem>
+                    <MenuItem value="price_asc">Price: Low to High</MenuItem>
+                    <MenuItem value="price_desc">Price: High to Low</MenuItem>
+                    <MenuItem value="duration_desc">Longest access first</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={4} sm={2}>
+                <Button
+                  size="small"
+                  fullWidth
+                  onClick={clearFilters}
+                  disabled={!filtersActive}
+                  startIcon={<Refresh fontSize="small" />}
+                  sx={{ textTransform: 'none', fontWeight: 600 }}
+                >
+                  Clear
+                </Button>
+              </Grid>
+            </Grid>
+
+            {planScope === 'level' && filterLevelId && filterLevelId !== user?.level?._id && (
+              <Alert severity="info" icon={<Info fontSize="small" />} sx={{ mt: 1.5, py: 0, fontSize: '0.8rem' }}>
+                You're browsing plans for a different level. Purchasing one will switch your account to that level.
+              </Alert>
+            )}
+          </Paper>
+
           {planScope === 'exam' && (
             <Box sx={{ maxWidth: 480, mx: 'auto', mb: { xs: 3, sm: 4 } }}>
               <SearchableSelect
@@ -845,94 +977,20 @@ const SubscriptionPurchase = () => {
                 value={selectedExamId}
                 onChange={handleExamSelect}
                 loading={examOptionsLoading}
-                options={examOptions.map((exam) => ({ value: exam._id, label: exam.title }))}
+                options={filteredExamOptions.map((exam) => ({
+                  value: exam._id,
+                  label: `${exam.title}${exam.levelName && exam.levelName !== user?.level?.name ? ` — ${exam.levelName}` : ''}`
+                }))}
                 placeholder="Type an exam name..."
                 noOptionsText={
                   examOptionsLoading
                     ? 'Loading exams...'
-                    : 'No subscription-only exams available for your level'
+                    : examOptions.length > 0
+                      ? 'No exams match your filters'
+                      : 'No subscription-only exams left to unlock'
                 }
               />
             </Box>
-          )}
-
-          {planScope === 'level' && (
-            <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: { xs: 3, sm: 4 }, borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                <FilterList fontSize="small" color="action" />
-                <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">
-                  Filter Plans
-                </Typography>
-              </Box>
-              <Grid container spacing={1.5}>
-                <Grid item xs={6} sm={3}>
-                  <SearchableSelect
-                    label="Level"
-                    value={filterLevelId}
-                    onChange={(value) => { setFilterLevelId(value); setFilterSubLevel(''); }}
-                    options={levelsList.map((lvl) => ({
-                      value: lvl._id,
-                      label: `${lvl.name}${lvl._id === user?.level?._id ? ' (Your level)' : ''}`
-                    }))}
-                    placeholder="Search levels..."
-                  />
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <FormControl fullWidth size="small" disabled={availableFilterSubLevels.length === 0}>
-                    <InputLabel>Sub-level</InputLabel>
-                    <Select
-                      value={filterSubLevel}
-                      label="Sub-level"
-                      onChange={(e) => setFilterSubLevel(e.target.value)}
-                    >
-                      <MenuItem value="">All Sub-levels</MenuItem>
-                      <MenuItem value="__entire__">Entire Level Only</MenuItem>
-                      {availableFilterSubLevels.map((sub) => (
-                        <MenuItem key={sub._id || sub.name} value={sub.name}>{sub.name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={6} sm={2}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    label="Min Price"
-                    value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
-                    inputProps={{ min: 0 }}
-                  />
-                </Grid>
-                <Grid item xs={6} sm={2}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    label="Max Price"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    inputProps={{ min: 0 }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Sort By</InputLabel>
-                    <Select value={sortBy} label="Sort By" onChange={(e) => setSortBy(e.target.value)}>
-                      <MenuItem value="recommended">Recommended</MenuItem>
-                      <MenuItem value="price_asc">Price: Low to High</MenuItem>
-                      <MenuItem value="price_desc">Price: High to Low</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
-
-              {filterLevelId && filterLevelId !== user?.level?._id && (
-                <Alert severity="info" icon={<Info fontSize="small" />} sx={{ mt: 1.5, py: 0, fontSize: '0.8rem' }}>
-                  You're browsing plans for a different level. Purchasing one will switch your account to that level.
-                </Alert>
-              )}
-            </Paper>
           )}
 
           {planScope === 'exam' && !selectedExamId ? (
@@ -950,9 +1008,19 @@ const SubscriptionPurchase = () => {
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                 {planScope === 'level'
-                  ? 'Try widening your price range or choosing a different level/sub-level.'
+                  ? 'Try a different level or sub-level.'
                   : 'Please contact support for more information.'}
               </Typography>
+              {filtersActive && (
+                <Button
+                  size="small"
+                  onClick={clearFilters}
+                  startIcon={<Refresh fontSize="small" />}
+                  sx={{ mt: 1.5, textTransform: 'none', fontWeight: 600 }}
+                >
+                  Clear filters
+                </Button>
+              )}
             </Paper>
           ) : !loading && (
             <>

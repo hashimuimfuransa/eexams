@@ -37,20 +37,53 @@ const getSubscriptionPlans = async (req, res) => {
   }
 };
 
-// @desc    Get active level plans for the public pricing page
+// @desc    Get active plans for the public pricing page
 // @route   GET /api/subscription-plans/public
 // @access  Public
-// Only active, level-scoped plans: exam-scoped plans are bought from the exam
-// they belong to, and would list one entry per exam here. createdBy is dropped
-// so no staff names leak to anonymous visitors.
+// Both level-scoped and exam-scoped student plans, so the pricing page really is
+// every price in one place — a visitor deciding between a whole level and a
+// single exam can't compare what they can't see. createdBy is dropped so no
+// staff names leak to anonymous visitors.
+//
+// Exam plans are only advertised for exams the marketplace already shows
+// publicly (isPubliclyListed, not locked); otherwise this page would publish the
+// titles of private and school-internal exams to anyone.
 const getPublicSubscriptionPlans = async (req, res) => {
   try {
-    const plans = await SubscriptionPlan.find({ status: 'active', planType: 'level' })
-      .select('name price currency durationDays durationValue durationUnit features discountPercentage level subLevel planType')
+    const plans = await SubscriptionPlan.find({
+      status: 'active',
+      planType: { $in: ['level', 'exam'] }
+    })
+      .select('name price currency durationDays durationValue durationUnit features discountPercentage level subLevel planType exam')
       .populate('level', 'name description')
-      .sort({ price: 1 });
+      .populate({
+        path: 'exam',
+        select: 'title subLevel level isPubliclyListed isLocked',
+        populate: { path: 'level', select: 'name description' }
+      })
+      .sort({ price: 1 })
+      .lean();
 
-    res.json(plans);
+    const publicPlans = plans
+      .filter(plan => plan.planType !== 'exam' ||
+        (plan.exam && plan.exam.isPubliclyListed && !plan.exam.isLocked))
+      .map(plan => (
+        plan.exam
+          ? {
+              ...plan,
+              // Listing flags are an internal visibility decision — the client
+              // only needs to know which exam the plan unlocks.
+              exam: {
+                _id: plan.exam._id,
+                title: plan.exam.title,
+                subLevel: plan.exam.subLevel,
+                level: plan.exam.level
+              }
+            }
+          : plan
+      ));
+
+    res.json(publicPlans);
   } catch (error) {
     console.error('Get public subscription plans error:', error);
     res.status(500).json({ message: 'Server error' });

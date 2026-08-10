@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container,
@@ -49,6 +49,7 @@ import {
   CheckCircle,
   Cancel,
   ArrowBack,
+  ArrowForward,
   EmojiEvents,
   Timeline,
   School,
@@ -65,7 +66,6 @@ import {
   LocalFireDepartment,
   WorkspacePremium,
   Verified,
-  AutoGraph,
   Speed,
   Psychology,
   Lightbulb,
@@ -183,6 +183,7 @@ const Results = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
+  const sectionsRef = useRef(null);
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [claimText, setClaimText] = useState('');
   const [claimCategory, setClaimCategory] = useState('other');
@@ -280,6 +281,15 @@ const Results = () => {
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
+  };
+
+  // Move between section tabs from the footer nav, scrolling back to the tab bar
+  // so the student lands at the top of the section they just opened.
+  const goToSection = (newValue) => {
+    setTabValue(newValue);
+    if (sectionsRef.current) {
+      sectionsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const handleSubmitClaim = async () => {
@@ -842,6 +852,7 @@ const Results = () => {
           </Zoom>
 
           {/* ── Answers by Section ── */}
+          <Box ref={sectionsRef} sx={{ scrollMarginTop: { xs: 72, sm: 88 } }} />
           <Zoom in={true} style={{ transitionDelay: '400ms' }}>
             <Card elevation={2} sx={{ borderRadius: 3 }}>
               <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -945,6 +956,49 @@ const Results = () => {
                           No questions in this section.
                         </Typography>
                       )}
+
+                      {/* ── Section navigation ── */}
+                      <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={index === 0}
+                          onClick={() => goToSection(index - 1)}
+                          startIcon={<ArrowBack sx={{ fontSize: '1rem' }} />}
+                          sx={{ textTransform: 'none', borderRadius: 2, fontSize: { xs: '0.72rem', sm: '0.8rem' },
+                            px: { xs: 1, sm: 1.5 }, minWidth: 0, visibility: index === 0 ? 'hidden' : 'visible' }}
+                        >
+                          Section {examSections[index - 1]?.name || ''}
+                        </Button>
+
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.68rem', sm: '0.75rem' }, whiteSpace: 'nowrap' }}>
+                          {index + 1} of {examSections.length}
+                        </Typography>
+
+                        {index < examSections.length - 1 ? (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() => goToSection(index + 1)}
+                            endIcon={<ArrowForward sx={{ fontSize: '1rem' }} />}
+                            sx={{ textTransform: 'none', borderRadius: 2, fontWeight: 600,
+                              fontSize: { xs: '0.72rem', sm: '0.8rem' }, px: { xs: 1.25, sm: 2 }, minWidth: 0 }}
+                          >
+                            Next: Section {examSections[index + 1]?.name || index + 2}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => navigate('/student/results')}
+                            sx={{ textTransform: 'none', borderRadius: 2, fontSize: { xs: '0.72rem', sm: '0.8rem' },
+                              px: { xs: 1, sm: 1.5 }, minWidth: 0 }}
+                          >
+                            Back to Results
+                          </Button>
+                        )}
+                      </Box>
                     </>
                   )}
                 </Box>
@@ -1074,190 +1128,129 @@ const Results = () => {
   }
 
   // Show list of all results
+  const totalResults = results.length;
+  const passedCount = results.filter((r) => r.passed).length;
+  const averageScore = totalResults
+    ? Math.round(
+        results.reduce((sum, r) => sum + calculatePercentage(r.totalScore, r.maxPossibleScore), 0) / totalResults
+      )
+    : 0;
+
   return (
     <StudentLayout>
-      <Container maxWidth="lg" sx={{ mb: { xs: 4, sm: 6, md: 8 }, mt: { xs: 2, sm: 4, md: 5 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
-        <Grow in={true} timeout={800}>
+      <Container maxWidth="lg" sx={{ mb: { xs: 4, sm: 6, md: 8 }, mt: { xs: 2, sm: 3 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
+        <Fade in={true} timeout={500}>
           <Paper
             elevation={0}
             sx={{
-              p: { xs: 2.5, sm: 5, md: 6 },
-              mb: { xs: 2.5, sm: 4 },
-              borderRadius: { xs: 3, md: 6 },
+              px: { xs: 1.5, sm: 2 },
+              py: { xs: 1.25, sm: 1.5 },
+              mb: { xs: 2, sm: 3 },
+              borderRadius: 2.5,
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 1.25, sm: 2 },
+              flexWrap: 'wrap',
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
               background: `linear-gradient(135deg,
-                ${theme.palette.primary.dark} 0%,
-                ${theme.palette.primary.main} 50%,
-                ${theme.palette.secondary.main} 100%)`,
-              color: 'white',
-              position: 'relative',
-              overflow: 'hidden',
-              boxShadow: `0 25px 50px ${alpha(theme.palette.primary.main, 0.3)}`,
-              transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-              '&:hover': {
-                boxShadow: `0 30px 60px ${alpha(theme.palette.primary.main, 0.4)}`,
-                transform: 'translateY(-4px)'
-              }
+                ${alpha(theme.palette.primary.main, 0.07)} 0%,
+                ${alpha(theme.palette.secondary.main, 0.05)} 100%)`
             }}
           >
-            {/* Enhanced decorative elements */}
             <Box
               sx={{
-                position: 'absolute',
-                top: -50,
-                right: -50,
-                width: { xs: '150px', sm: '200px', md: '250px' },
-                height: { xs: '150px', sm: '200px', md: '250px' },
-                background: 'radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%)',
-                borderRadius: '50%',
-                animation: 'resultsFloat 10s ease-in-out infinite',
-                '@keyframes resultsFloat': {
-                  '0%': { transform: 'translateY(0px) rotate(0deg)' },
-                  '50%': { transform: 'translateY(-20px) rotate(180deg)' },
-                  '100%': { transform: 'translateY(0px) rotate(360deg)' }
-                }
+                width: { xs: 34, sm: 38 },
+                height: { xs: 34, sm: 38 },
+                flexShrink: 0,
+                borderRadius: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.3)}`
               }}
-            />
+            >
+              <EmojiEvents sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }} />
+            </Box>
 
-            {/* Results sparkles */}
-            {[...Array(8)].map((_, i) => (
-              <Box
-                key={i}
-                sx={{
-                  position: 'absolute',
-                  width: { xs: 3, sm: 4 },
-                  height: { xs: 3, sm: 4 },
-                  borderRadius: '50%',
-                  bgcolor: 'rgba(255,255,255,0.8)',
-                  top: `${15 + i * 10}%`,
-                  left: `${10 + i * 10}%`,
-                  animation: `resultsSparkle 4s ease-in-out infinite ${i * 0.3}s`,
-                  '@keyframes resultsSparkle': {
-                    '0%, 100%': { opacity: 0, transform: 'scale(0) rotate(0deg)' },
-                    '50%': { opacity: 1, transform: 'scale(1) rotate(180deg)' }
-                  }
-                }}
-              />
-            ))}
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography
+                variant="subtitle1"
+                component="h1"
+                fontWeight={700}
+                noWrap
+                sx={{ fontSize: { xs: '0.95rem', sm: '1.05rem' }, lineHeight: 1.3 }}
+              >
+                My Results
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                sx={{ display: 'block', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+              >
+                {totalResults > 0
+                  ? `${totalResults} exam${totalResults > 1 ? 's' : ''} · ${averageScore}% avg · ${passedCount} passed`
+                  : 'Track your academic performance'}
+              </Typography>
+            </Box>
 
-            <Box sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: { xs: 'flex-start', sm: 'center' },
-              flexDirection: { xs: 'column', sm: 'row' },
-              gap: { xs: 2, sm: 2 },
-              position: 'relative',
-              zIndex: 1
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
-                <Avatar
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+              {totalResults > 0 && (
+                <Chip
+                  icon={<TrendingUp sx={{ fontSize: '0.9rem' }} />}
+                  label={`${averageScore}%`}
+                  size="small"
                   sx={{
-                    width: { xs: 48, sm: 70 },
-                    height: { xs: 48, sm: 70 },
-                    flexShrink: 0,
-                    bgcolor: 'rgba(255,255,255,0.2)',
-                    border: '3px solid rgba(255,255,255,0.3)',
-                    animation: 'resultsIconFloat 6s ease-in-out infinite',
-                    '@keyframes resultsIconFloat': {
-                      '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
-                      '50%': { transform: 'translateY(-8px) rotate(10deg)' }
-                    }
+                    display: { xs: 'none', sm: 'inline-flex' },
+                    height: 26,
+                    fontWeight: 700,
+                    fontSize: '0.72rem',
+                    bgcolor: alpha(
+                      averageScore >= 80
+                        ? theme.palette.success.main
+                        : averageScore >= 50
+                          ? theme.palette.warning.main
+                          : theme.palette.error.main,
+                      0.12
+                    ),
+                    color:
+                      averageScore >= 80
+                        ? theme.palette.success.main
+                        : averageScore >= 50
+                          ? theme.palette.warning.main
+                          : theme.palette.error.main,
+                    '& .MuiChip-icon': { color: 'inherit' }
                   }}
-                >
-                  <EmojiEvents sx={{ fontSize: { xs: '1.5rem', sm: '2.5rem' }, color: 'white' }} />
-                </Avatar>
-
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography
-                    variant="h3"
-                    component="h1"
-                    fontWeight="bold"
-                    sx={{
-                      fontSize: { xs: '1.4rem', sm: '2.5rem', md: '3rem' },
-                      background: 'linear-gradient(135deg, #ffffff 0%, #f0f0f0 50%, #ffffff 100%)',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      backgroundClip: 'text',
-                      mb: { xs: 0.5, sm: 1 },
-                      letterSpacing: '-0.02em',
-                      position: 'relative',
-                      '&::after': {
-                        content: '""',
-                        position: 'absolute',
-                        bottom: -8,
-                        left: 0,
-                        width: '60%',
-                        height: 4,
-                        background: 'linear-gradient(90deg, rgba(255,255,255,0.8), rgba(255,255,255,0.3))',
-                        borderRadius: 2
-                      }
-                    }}
-                  >
-                    Your Exam Results 📊
-                  </Typography>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      color: 'rgba(255,255,255,0.9)',
-                      fontSize: { xs: '0.8rem', sm: '1.2rem' },
-                      fontWeight: 'medium'
-                    }}
-                  >
-                    Track your academic performance and achievements
-                  </Typography>
-                </Box>
-              </Box>
-
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>
-                <Box sx={{ display: { xs: 'none', sm: 'flex' }, gap: 1, flexWrap: 'wrap' }}>
-                  <Chip
-                    icon={<TrendingUp />}
-                    label="Performance Analytics"
-                    sx={{
-                      bgcolor: 'rgba(255,255,255,0.2)',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      border: '1px solid rgba(255,255,255,0.3)',
-                      '&:hover': {
-                        bgcolor: 'rgba(255,255,255,0.3)'
-                      }
-                    }}
-                  />
-                  <Chip
-                    icon={<AutoGraph />}
-                    label="Detailed Insights"
-                    sx={{
-                      bgcolor: 'rgba(255,255,255,0.2)',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      border: '1px solid rgba(255,255,255,0.3)',
-                      '&:hover': {
-                        bgcolor: 'rgba(255,255,255,0.3)'
-                      }
-                    }}
-                  />
-                </Box>
+                />
+              )}
+              <Tooltip title="My Reclamations">
                 <Button
-                  variant="contained"
+                  variant="outlined"
+                  size="small"
                   onClick={() => { fetchMyReclamations(); setReclamationsDialogOpen(true); }}
-                  startIcon={<ReportProblem />}
-                  fullWidth={isMobile}
-                  size={isMobile ? 'small' : 'medium'}
                   sx={{
-                    bgcolor: 'rgba(255,255,255,0.2)',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.3)'
-                    }
+                    minWidth: { xs: 36, sm: 'auto' },
+                    px: { xs: 1, sm: 1.5 },
+                    height: 32,
+                    borderRadius: 2,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    textTransform: 'none',
+                    borderColor: alpha(theme.palette.primary.main, 0.3),
+                    '& .MuiButton-startIcon': { mr: { xs: 0, sm: 0.75 }, ml: 0 }
                   }}
+                  startIcon={<ReportProblem sx={{ fontSize: '1rem' }} />}
                 >
-                  My Reclamations
+                  <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                    Reclamations
+                  </Box>
                 </Button>
-              </Box>
+              </Tooltip>
             </Box>
           </Paper>
-        </Grow>
+        </Fade>
 
       {results.length > 0 ? (
         <Grid container spacing={{ xs: 2, sm: 3, md: 4 }}>

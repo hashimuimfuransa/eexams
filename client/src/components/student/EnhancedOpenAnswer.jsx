@@ -29,6 +29,7 @@ import {
   Undo,
   Redo,
   DeleteOutline,
+  SpaceBar,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import 'mathlive';
@@ -424,9 +425,19 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
     mf.smartSuperscript = true;
     mf.mathVirtualKeyboardPolicy = 'auto';
 
+    // The spacebar. Left empty, MathLive binds space to "moveAfterParent",
+    // which does nothing at all at the top level - so students press space
+    // and the field looks frozen. A thick space is a real character: it
+    // shows, the arrow keys walk over it and backspace removes it.
+    mf.mathModeSpace = '\\;';
+
     // Restore anything the student wrote earlier without disturbing the
     // cursor while they are typing.
-    if ((mf.value ?? '') !== mathValue) mf.value = mathValue;
+    if ((mf.value ?? '') !== mathValue) {
+      mf.value = mathValue;
+      // Continue writing at the end of the earlier work, not in front of it.
+      if (mathValue) mf.executeCommand('moveToMathfieldEnd');
+    }
 
     const onInput = () => {
       setMathValue(mf.value ?? '');
@@ -562,6 +573,11 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
     };
   }, [activeTab, selectedLanguage]);
 
+  /* Buttons around the math field must never take the caret away from it.
+     Blocking mousedown means the cursor stays exactly where the student put
+     it, so a symbol lands mid-equation instead of jumping to the end. */
+  const keepCaret = (e) => e.preventDefault();
+
   /* Insert a LaTeX snippet at the math-field cursor */
   const insertSymbol = (latex) => {
     const mf = mathfieldRef.current;
@@ -571,6 +587,9 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
     setMathValue(mf.value ?? '');
     // Don't call updateCombined on symbol insert to prevent interruption
   };
+
+  /* Same space the spacebar types, for students working on-screen only */
+  const insertSpace = () => insertSymbol('\\;');
 
   /* Toolbar actions - the same things the keyboard does, but visible */
   const runMathCommand = (command) => {
@@ -725,7 +744,11 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
               >
                 Write your working in the white box below. Press{' '}
                 <Box component="kbd" sx={{ px: 0.6, py: 0.1, borderRadius: '3px', border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', fontFamily: TOKEN.fontMono, fontSize: '0.7rem' }}>Enter</Box>
-                {' '}to start a new line. No keyboard? Tap <strong>On-screen keys</strong>.
+                {' '}for a new line,{' '}
+                <Box component="kbd" sx={{ px: 0.6, py: 0.1, borderRadius: '3px', border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', fontFamily: TOKEN.fontMono, fontSize: '0.7rem' }}>Space</Box>
+                {' '}for a gap and{' '}
+                <Box component="kbd" sx={{ px: 0.6, py: 0.1, borderRadius: '3px', border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', fontFamily: TOKEN.fontMono, fontSize: '0.7rem' }}>Backspace</Box>
+                {' '}to delete. No keyboard? Tap <strong>On-screen keys</strong>.
               </Alert>
 
               {/* Big visible actions */}
@@ -735,9 +758,19 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                   disableElevation
                   disabled={disabled}
                   startIcon={<KeyboardReturn fontSize="small" />}
+                  onMouseDown={keepCaret}
                   onClick={insertNewLine}
                 >
                   New line
+                </ToolBtn>
+                <ToolBtn
+                  variant="outlined"
+                  disabled={disabled}
+                  startIcon={<SpaceBar fontSize="small" />}
+                  onMouseDown={keepCaret}
+                  onClick={insertSpace}
+                >
+                  Space
                 </ToolBtn>
                 <ToolBtn
                   variant={keyboardVisible ? 'contained' : 'outlined'}
@@ -745,6 +778,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                   disabled={disabled}
                   color={keyboardVisible ? 'primary' : 'inherit'}
                   startIcon={<Keyboard fontSize="small" />}
+                  onMouseDown={keepCaret}
                   onClick={toggleKeyboard}
                 >
                   {keyboardVisible ? 'Hide keys' : 'On-screen keys'}
@@ -753,6 +787,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                   variant="outlined"
                   disabled={disabled}
                   startIcon={<Backspace fontSize="small" />}
+                  onMouseDown={keepCaret}
                   onClick={() => runMathCommand('deleteBackward')}
                 >
                   Delete
@@ -761,6 +796,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                   variant="outlined"
                   disabled={disabled}
                   startIcon={<Undo fontSize="small" />}
+                  onMouseDown={keepCaret}
                   onClick={() => runMathCommand('undo')}
                 >
                   Undo
@@ -769,6 +805,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                   variant="outlined"
                   disabled={disabled}
                   startIcon={<Redo fontSize="small" />}
+                  onMouseDown={keepCaret}
                   onClick={() => runMathCommand('redo')}
                 >
                   Redo
@@ -778,6 +815,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                   color="error"
                   disabled={disabled || !mathValue}
                   startIcon={<DeleteOutline fontSize="small" />}
+                  onMouseDown={keepCaret}
                   onClick={clearMath}
                 >
                   Start again
@@ -790,6 +828,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                   id={`math-input-${question._id}`}
                   math-virtual-keyboard-policy="auto"
                   default-mode="math"
+                  math-mode-space="\;"
                 />
               </MathFieldWrapper>
 
@@ -821,6 +860,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                           label={g.label}
                           variant={activeGroup === g.label ? 'filled' : 'outlined'}
                           color={activeGroup === g.label ? 'primary' : 'default'}
+                          onMouseDown={keepCaret}
                           onClick={() => setActiveGroup(g.label)}
                           sx={{
                             fontSize: '0.78rem',
@@ -841,6 +881,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                               type="button"
                               aria-label={s.name}
                               disabled={disabled}
+                              onMouseDown={keepCaret}
                               onClick={() => insertSymbol(s.latex)}
                             >
                               {s.label}
@@ -870,6 +911,8 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                   {[
                     ['Type it like you say it', 'Type  2x+3=11  and it appears as proper maths.'],
                     ['One step per line', 'Press Enter after each step, like writing in an exercise book.'],
+                    ['Spacing out your work', 'Press the spacebar for a gap between characters. Backspace removes it again.'],
+                    ['Moving around', 'Use the ← → arrow keys, or click straight into the spot you want to change.'],
                     ['Fractions and roots', 'Tap  a/b  or  √  in the palette above, then type inside the box that appears.'],
                     ['Powers', 'Tap  x²  or type  ^  then the power.'],
                   ].map(([name, hint]) => (

@@ -48,8 +48,22 @@ const validateExamAccess = async (req, res, next) => {
     // gating entirely — the student was explicitly given this exam, so it
     // shouldn't matter whether they've selected a level yet or whether it
     // matches the exam's level/sub-level.
+    //
+    // The grant only counts while it is still unspent. completeExam consumes
+    // it on submission (pulling the student out of assignedTo and setting
+    // accessCodeUsed on every request for the exam), and a teacher handing out
+    // another attempt mints a fresh unspent one. Without the accessCodeUsed
+    // filter a single approved request became a permanent, unlimited retake
+    // pass: it matched here on every subsequent attempt and returned before
+    // any subscription check ran, so students kept retaking exams for months
+    // after their subscription lapsed.
     const hasLegacyGrant = (exam.assignedTo || []).some(id => id.toString() === userId.toString()) ||
-      !!(await ExamRequest.exists({ exam: exam._id, student: userId, status: 'approved' }));
+      !!(await ExamRequest.exists({
+        exam: exam._id,
+        student: userId,
+        status: 'approved',
+        accessCodeUsed: { $ne: true }
+      }));
 
     if (hasLegacyGrant) {
       req.examAccess = { type: 'legacy-grant', canAccess: true };
@@ -62,11 +76,19 @@ const validateExamAccess = async (req, res, next) => {
     // the same way a direct assignment does. Without this, students who
     // haven't picked a level yet (or whose level doesn't match) get a 403
     // on /exam/:id/start even though they were just allowed to join.
+    //
+    // Spent the same way a legacy grant is: submitting locks the student's
+    // roster entry, and the teacher's unlock (SharedExam.unlockStudent) clears
+    // both flags to hand out another attempt. Matching on bare membership
+    // instead turned a share link into an unlimited retake pass that outlived
+    // the student's subscription.
     const hasShareGrant = !!(await SharedExam.exists({
       exam: exam._id,
       isActive: true,
       students: {
         $elemMatch: {
+          isLocked: { $ne: true },
+          hasCompleted: { $ne: true },
           $or: [
             { student: userId },
             { studentId: userId },

@@ -2,9 +2,9 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 
 const SEO = ({
-  title = 'eexams - Rwanda\'s Leading Online Exam Platform | AI-Powered Grading',
-  description = 'eexams is Rwanda\'s premier online exam management system. AI-powered grading, real-time analytics, secure exams for schools and universities. Join 140+ institutions using eexams.',
-  keywords = 'eexams, online exams, Rwanda, education, AI grading, exam platform, digital assessment, student testing, school management, university exams, Kinyarwanda exams, English exams, Rwanda exams, exams.net, national exams, secondary exams, primary exams',
+  title = 'Online Exams for Schools & Students in Rwanda | eexams',
+  description = 'eexams runs secure online exams for institutions, schools, organisations and individual students in Rwanda and beyond. AI marking, results the same day.',
+  keywords = 'eexams, online exams, online exams Rwanda, online exams for schools, online exams for institutions, online exams for organisations, online exams for students, AI marking, AI grading, secure online exams, same-day results, exam platform, exam management system, digital assessment, student testing, university exams, Kinyarwanda exams, English exams, national exams, secondary exams, primary exams, East Africa online exams',
   ogImage = 'https://www.eexams.net/og-image.png',
   ogUrl = 'https://www.eexams.net/',
   ogType = 'website',

@@ -43,9 +43,13 @@ const getAvailableExams = async (req, res) => {
 
     // Only count retake as active if the access code hasn't been used (i.e. retake not yet completed)
     const approvedRetakeExamIds = approvedRequests.filter(r => r.isRetake && !r.accessCodeUsed).map(r => r.exam.toString());
-    // For unlocking exams: include non-retake requests AND retakes that haven't been used yet
+    // A grant unlocks the exam only while it is unspent — completeExam sets
+    // accessCodeUsed on every request for the exam once the student submits.
+    // Counting spent initial requests here (the old `!r.isRetake ||` arm) left
+    // lapsed subscribers looking permanently unlocked on the dashboard, which
+    // is exactly the access validateExamAccess used to hand them.
     const approvedAccessExamIds = approvedRequests
-      .filter(r => !r.isRetake || !r.accessCodeUsed)
+      .filter(r => !r.accessCodeUsed)
       .map(r => r.exam.toString());
 
     // Every active level subscription the student holds — not just one for the
@@ -298,7 +302,10 @@ const getExamById = async (req, res) => {
         user.subLevel = synced.subLevel;
       }
 
-      // Check if student has an approved request for this exam
+      // Check if student has an approved request for this exam. Kept for the
+      // lookup below (so a granted exam outside the student's level is still
+      // *found* and can report a proper lock reason instead of a bare 404)
+      // even when the grant itself has been spent.
       const approvedRequest = await ExamRequest.findOne({
         exam: req.params.examId,
         student: req.user._id,
@@ -307,8 +314,11 @@ const getExamById = async (req, res) => {
       // A direct assignment (teacher/marketplace grant) is a legacy grant
       // just like an approved request — it bypasses level/subscription
       // gating regardless of whether the student has selected a level.
+      // Only an unspent request grants, matching validateExamAccess: once
+      // completeExam marks it used, access falls back to the subscription
+      // rules rather than staying open forever.
       const isAssigned = await Exam.exists({ _id: req.params.examId, assignedTo: req.user._id });
-      hasLegacyGrant = !!approvedRequest || !!isAssigned;
+      hasLegacyGrant = (!!approvedRequest && !approvedRequest.accessCodeUsed) || !!isAssigned;
 
       // Any level the student holds an active subscription for is reachable
       // here, not just the selected one — the exam bank lists those exams, so
@@ -351,6 +361,27 @@ const getExamById = async (req, res) => {
                 timeLimit: exam.timeLimit,
                 isLocked: true,
                 message: 'This free exam is not available for your sub-level'
+              });
+            }
+
+            // One attempt per free exam for non-subscribers — the same rule
+            // validateExamAccess enforces at /start. Reported here too so a
+            // lapsed subscriber sees the lock instead of a loaded exam that
+            // 403s the moment they try to begin it.
+            const spentFreeAttempt = await Result.exists({
+              student: req.user._id,
+              exam: exam._id,
+              isCompleted: true
+            });
+
+            if (spentFreeAttempt) {
+              return res.json({
+                _id: exam._id,
+                title: exam.title,
+                description: exam.description,
+                timeLimit: exam.timeLimit,
+                isLocked: true,
+                message: 'This exam requires an active subscription to retake. Subscribe to unlock unlimited retakes.'
               });
             }
           } else {
@@ -558,7 +589,10 @@ const buildRetakeInfo = async (exam, userId) => {
   const hasApprovedRetake = approvedRequests.some(r => r.isRetake && !r.accessCodeUsed);
   // Queried rather than populated onto the exam — the client has no business
   // receiving the whole assignedTo roster just to render one button.
-  const hasLegacyGrant = approvedRequests.some(r => !r.isRetake || !r.accessCodeUsed) ||
+  // Spent requests don't count: completeExam marks every request for the exam
+  // used on submission, and validateExamAccess refuses them, so offering the
+  // button off a spent one only produces a 403 on click.
+  const hasLegacyGrant = approvedRequests.some(r => !r.accessCodeUsed) ||
     !!(await Exam.exists({ _id: exam._id, assignedTo: userId }));
 
   // Joining via a teacher's share link is a grant too — validateExamAccess lets
@@ -568,6 +602,8 @@ const buildRetakeInfo = async (exam, userId) => {
     isActive: true,
     students: {
       $elemMatch: {
+        isLocked: { $ne: true },
+        hasCompleted: { $ne: true },
         $or: [
           { student: userId },
           { studentId: userId },

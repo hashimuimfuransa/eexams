@@ -2536,6 +2536,39 @@ const completeExam = async (req, res) => {
         // Continue anyway since the result is already saved
       }
 
+      // Spend the share-link grant too. Submitting through /share/:token/submit
+      // already locks the student's roster entry; a student who joined by link
+      // but submitted here (the authenticated path) left it untouched, so
+      // validateExamAccess kept seeing a live share grant and let them retake
+      // the exam indefinitely — subscription or not. The teacher's unlock
+      // clears both flags when they want to grant another attempt.
+      try {
+        const SharedExam = require('../models/SharedExam');
+        await SharedExam.updateMany(
+          { exam: result.exam },
+          {
+            $set: {
+              'students.$[entry].hasCompleted': true,
+              'students.$[entry].isLocked': true,
+              'students.$[entry].isActiveSession': false
+            }
+          },
+          {
+            arrayFilters: [{
+              $or: [
+                { 'entry.student': req.user._id },
+                { 'entry.studentId': req.user._id },
+                ...(req.user.email ? [{ 'entry.email': req.user.email.toLowerCase().trim() }] : [])
+              ]
+            }]
+          }
+        );
+        console.log(`✅ Locked shared-exam entries for student ${req.user._id}, exam ${result.exam}`);
+      } catch (shareUpdateError) {
+        console.error('⚠️ Error locking shared exam entries:', shareUpdateError);
+        // Continue anyway since the result is already saved
+      }
+
       // Release the lock
       submissionLocks.delete(lockKey);
 

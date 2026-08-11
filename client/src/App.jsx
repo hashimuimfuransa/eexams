@@ -117,157 +117,181 @@ function Hero({ mode, isAuthenticated, user }) {
     return () => { clearTimeout(timeout); cancelAnimationFrame(frame); };
   }, []);
 
+  // Brand palette only — navy #0D406C, emerald #0CBD73, slate text.
+  const heading = isDark ? '#E8F8F1' : '#0F172A';
+  const body = isDark ? '#9DC4D9' : '#64748B';
+  const hairline = isDark ? 'rgba(157,196,217,0.14)' : '#E2E8F0';
+  const panel = isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF';
+
+  // Hand-placed crosshairs on the grid — small, deliberate, brand green.
+  const marks = [
+    { top: '24%', left: '3%' }, { bottom: '20%', left: '7%' },
+    { top: '13%', right: '6%' }, { bottom: '14%', right: '3%' },
+  ];
+
   return (
     <section id="home" className="hero-section" style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center',
-      position: 'relative',
+      position: 'relative', isolation: 'isolate', overflow: 'hidden',
       background: isDark ? '#030712' : '#FFFFFF',
       paddingTop: 'clamp(80px, 15vw, 100px)',
+      paddingBottom: 'clamp(48px, 10vw, 80px)',
     }}>
+      {/* ── Layer 1: two restrained brand washes ────────────────────────────── */}
+      <div aria-hidden="true" style={{ position: 'absolute', inset: 0, zIndex: -3, pointerEvents: 'none' }}>
+        <div className="hero-wash hero-wash-navy" style={{
+          background: isDark
+            ? 'radial-gradient(circle at 50% 50%, rgba(13,64,108,0.55), rgba(13,64,108,0) 70%)'
+            : 'radial-gradient(circle at 50% 50%, rgba(13,64,108,0.10), rgba(13,64,108,0) 70%)',
+        }} />
+        <div className="hero-wash hero-wash-green" style={{
+          background: isDark
+            ? 'radial-gradient(circle at 50% 50%, rgba(12,189,115,0.16), rgba(12,189,115,0) 70%)'
+            : 'radial-gradient(circle at 50% 50%, rgba(12,189,115,0.10), rgba(12,189,115,0) 70%)',
+        }} />
+      </div>
+
+      {/* ── Layer 2: measured grid ──────────────────────────────────────────── */}
+      <div aria-hidden="true" style={{
+        position: 'absolute', inset: 0, zIndex: -2, pointerEvents: 'none',
+        backgroundImage: `linear-gradient(to right, ${isDark ? 'rgba(157,196,217,0.06)' : 'rgba(15,23,42,0.045)'} 1px, transparent 1px), linear-gradient(to bottom, ${isDark ? 'rgba(157,196,217,0.06)' : 'rgba(15,23,42,0.045)'} 1px, transparent 1px)`,
+        backgroundSize: '56px 56px',
+        maskImage: 'radial-gradient(ellipse 85% 62% at 50% 40%, #000 30%, transparent 100%)',
+        WebkitMaskImage: 'radial-gradient(ellipse 85% 62% at 50% 40%, #000 30%, transparent 100%)',
+      }} />
+
+      {/* ── Layer 3: crosshair marks + noise + section seam ─────────────────── */}
+      <div aria-hidden="true" style={{ position: 'absolute', inset: 0, zIndex: -2, pointerEvents: 'none' }}>
+        {marks.map((pos, i) => (
+          <span key={i} className="hero-mark" style={pos}>
+            <span style={{ position: 'absolute', top: '50%', left: 0, width: '100%', height: 1, background: 'rgba(12,189,115,0.45)' }} />
+            <span style={{ position: 'absolute', left: '50%', top: 0, height: '100%', width: 1, background: 'rgba(12,189,115,0.45)' }} />
+          </span>
+        ))}
+      </div>
+      <div aria-hidden="true" className="hero-noise" />
+      <div aria-hidden="true" style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, zIndex: -1, pointerEvents: 'none',
+        background: `linear-gradient(to right, transparent, ${isDark ? 'rgba(157,196,217,0.16)' : '#E2E8F0'} 20%, ${isDark ? 'rgba(157,196,217,0.16)' : '#E2E8F0'} 80%, transparent)`,
+      }} />
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px', position: 'relative', zIndex: 1, width: '100%' }}>
-        <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'clamp(40px, 8vw, 80px)', alignItems: 'center' }}>
+        <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 'clamp(40px, 7vw, 72px)', alignItems: 'center' }}>
           {/* Left */}
           <div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '6px 14px', borderRadius: 100,
-              background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)',
-              border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`,
-              marginBottom: 'clamp(16px, 4vw, 28px)',
+            <div className="hero-rise" style={{
+              display: 'inline-flex', alignItems: 'center', gap: 10,
+              padding: '6px 14px 6px 12px', borderRadius: 100,
+              background: panel,
+              border: `1px solid ${hairline}`,
+              boxShadow: isDark ? 'none' : '0 1px 2px rgba(15,23,42,0.04)',
+              marginBottom: 'clamp(18px, 4vw, 28px)',
             }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#0CBD73', display: 'inline-block' }} />
-              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(11px, 2vw, 13px)', fontWeight: 600, color: '#0CBD73', letterSpacing: '0.02em' }}>
-                Rwanda's leading exam platform
+              <span className="hero-pulse" style={{ position: 'relative', display: 'inline-flex', width: 7, height: 7 }}>
+                <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#0CBD73' }} />
+              </span>
+              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(11px, 2vw, 13px)', fontWeight: 600, color: heading, letterSpacing: '0.01em' }}>
+                Trusted across Rwanda and beyond
               </span>
             </div>
 
-            <h1 style={{
+            <h1 className="hero-rise hero-rise-1" style={{
               fontFamily: "'DM Sans', sans-serif", fontWeight: 800,
-              fontSize: 'clamp(2rem, 6vw, 4rem)', lineHeight: 1.1,
-              letterSpacing: '-0.02em', marginBottom: 'clamp(16px, 4vw, 24px)',
-              color: isDark ? '#E8F8F1' : '#0F172A',
+              fontSize: 'clamp(2.15rem, 6vw, 4rem)', lineHeight: 1.06,
+              letterSpacing: '-0.03em', marginBottom: 'clamp(16px, 4vw, 24px)',
+              color: heading,
             }}>
-              One platform.<br />
-              <span style={{ color: '#0CBD73' }}>Every exam, graded.</span>
+              Online exams,<br />
+              <span style={{ color: '#0CBD73' }}>marked in minutes.</span>
             </h1>
 
-            <p style={{
-              fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(14px, 3vw, 18px)', lineHeight: 1.6,
-              color: isDark ? '#9DC4D9' : '#64748B',
-              marginBottom: 'clamp(24px, 6vw, 40px)', maxWidth: 500,
+            <p className="hero-rise hero-rise-2" style={{
+              fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(15px, 3vw, 18px)', lineHeight: 1.65,
+              color: body,
+              marginBottom: 'clamp(24px, 5vw, 36px)', maxWidth: 520,
             }}>
-              AI grading, real-time analytics, and secure exams — built for Rwanda's schools and universities.
+              For institutions, schools, organisations and individual students in Rwanda and beyond.
+              Create a secure exam, let AI handle the marking, and share results the same day.
             </p>
 
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 'clamp(32px, 8vw, 52px)' }} className="hero-buttons">
+            <div className="hero-buttons hero-rise hero-rise-3" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 'clamp(28px, 6vw, 40px)' }}>
               {isAuthenticated ? (
                 <>
-                  <RouterLink to="/dashboard" style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
-                    background: '#0D406C',
-                    color: 'white', textDecoration: 'none',
-                    boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)',
+                  <RouterLink to="/dashboard" className="hero-cta" style={{
+                    padding: 'clamp(13px, 2.5vw, 15px) clamp(22px, 5vw, 28px)', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    background: '#0D406C', color: 'white', textDecoration: 'none',
+                    boxShadow: '0 8px 20px -10px rgba(13,64,108,0.7)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = '#082545';
-                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(13, 64, 108, 0.25)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = '#0D406C';
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
-                    }}
-                  >
-                    Dashboard
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                  }}>
+                    Go to dashboard
+                    <svg className="hero-cta-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </RouterLink>
-                  <RouterLink to="/marketplace" style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
-                    border: '1.5px solid #E2E8F0',
-                    color: isDark ? '#9DC4D9' : '#64748B',
-                    background: 'transparent',
+                  <RouterLink to="/marketplace" className="hero-ghost" style={{
+                    padding: 'clamp(13px, 2.5vw, 15px) clamp(22px, 5vw, 28px)', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    border: `1.5px solid ${hairline}`,
+                    color: isDark ? '#9DC4D9' : '#0F172A',
+                    background: panel,
                     textDecoration: 'none', whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.borderColor = '#0D406C';
-                      e.currentTarget.style.color = '#0D406C';
-                      e.currentTarget.style.background = 'rgba(13, 64, 108, 0.04)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.borderColor = '#E2E8F0';
-                      e.currentTarget.style.color = isDark ? '#9DC4D9' : '#64748B';
-                      e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    Browse Exams
+                  }}>
+                    Browse exams
                   </RouterLink>
                 </>
               ) : (
                 <>
-                  <RouterLink to="/marketplace" style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
-                    background: '#0D406C',
-                    color: 'white', textDecoration: 'none',
-                    boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)',
+                  <RouterLink to="/marketplace" className="hero-cta" style={{
+                    padding: 'clamp(13px, 2.5vw, 15px) clamp(22px, 5vw, 28px)', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    background: '#0D406C', color: 'white', textDecoration: 'none',
+                    boxShadow: '0 8px 20px -10px rgba(13,64,108,0.7)',
                     display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = '#082545';
-                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(13, 64, 108, 0.25)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = '#0D406C';
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(13, 64, 108, 0.15)';
-                    }}
-                  >
-                    Browse Exams
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.3s ease' }}><path d="M3 3h18v18H3zM9 9h6M9 12h6M9 15h6"/></svg>
+                  }}>
+                    Browse exams
+                    <svg className="hero-cta-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </RouterLink>
-                  <RouterLink to="/login" style={{
-                    padding: 'clamp(12px, 2.5vw, 14px) clamp(20px, 5vw, 28px)', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
-                    border: '1.5px solid #E2E8F0',
-                    color: isDark ? '#9DC4D9' : '#64748B',
-                    background: 'transparent',
+                  <RouterLink to="/login" className="hero-ghost" style={{
+                    padding: 'clamp(13px, 2.5vw, 15px) clamp(22px, 5vw, 28px)', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(14px, 3vw, 16px)',
+                    border: `1.5px solid ${hairline}`,
+                    color: isDark ? '#9DC4D9' : '#0F172A',
+                    background: panel,
                     textDecoration: 'none', whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.borderColor = '#0D406C';
-                      e.currentTarget.style.color = '#0D406C';
-                      e.currentTarget.style.background = 'rgba(13, 64, 108, 0.04)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.borderColor = '#E2E8F0';
-                      e.currentTarget.style.color = isDark ? '#9DC4D9' : '#64748B';
-                      e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    Log In
+                  }}>
+                    Log in
                   </RouterLink>
                 </>
               )}
             </div>
 
-            {/* Stats row */}
-            <div style={{ display: 'flex', gap: 'clamp(16px, 5vw, 32px)', flexWrap: 'wrap' }}>
+            {/* Trust markers */}
+            <div className="hero-rise hero-rise-4" style={{ display: 'flex', alignItems: 'center', gap: 'clamp(12px, 3vw, 22px)', flexWrap: 'wrap', marginBottom: 'clamp(24px, 5vw, 34px)' }}>
               {[
-                { value: `${count.toLocaleString()}+`, label: 'Exams graded' },
-                { value: '140+', label: 'Institutions' },
-                { value: '99.8%', label: 'Uptime' },
+                { label: 'Free to start', icon: <polyline points="20 6 9 17 4 12" /> },
+                { label: 'Secure exam mode', icon: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /> },
+                { label: 'Works on any device', icon: <><rect x="7" y="2" width="10" height="20" rx="2" /><line x1="11" y1="18" x2="13" y2="18" /></> },
+              ].map((t, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0CBD73" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">{t.icon}</svg>
+                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(12px, 2.4vw, 13.5px)', fontWeight: 500, color: body }}>{t.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Stats row */}
+            <div className="hero-stats hero-rise hero-rise-5" style={{
+              display: 'flex', flexWrap: 'wrap',
+              borderTop: `1px solid ${hairline}`, paddingTop: 'clamp(18px, 4vw, 24px)',
+              gap: 0,
+            }}>
+              {[
+                { value: `${count.toLocaleString()}+`, label: 'Exams marked' },
+                { value: '140+', label: 'Institutions served' },
+                { value: '99.8%', label: 'Platform uptime' },
               ].map((s, i) => (
                 <div key={i} style={{
-                  padding: '12px 20px',
-                  borderRadius: 8,
-                  background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)',
-                  border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)'}`,
-                }}
-                >
-                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(20px, 4vw, 26px)', letterSpacing: '-0.02em', color: isDark ? '#94A3B8' : '#0F172A' }}>{s.value}</div>
-                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(11px, 2vw, 13px)', color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{s.label}</div>
+                  paddingRight: 'clamp(18px, 4vw, 32px)',
+                  paddingLeft: i === 0 ? 0 : 'clamp(18px, 4vw, 32px)',
+                  borderLeft: i === 0 ? 'none' : `1px solid ${hairline}`,
+                }}>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 800, fontSize: 'clamp(20px, 4vw, 28px)', letterSpacing: '-0.025em', color: heading, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(11px, 2vw, 13px)', color: body, marginTop: 4 }}>{s.label}</div>
                 </div>
               ))}
             </div>
@@ -275,7 +299,69 @@ function Hero({ mode, isAuthenticated, user }) {
 
           {/* Right: dashboard mockup */}
           <div className="hero-mockup" style={{ position: 'relative' }}>
-            <DashboardMockup isDark={isDark} />
+            {/* Soft brand glow behind the mockup */}
+            <div aria-hidden="true" style={{
+              position: 'absolute', inset: '-10% -6%', zIndex: 0, pointerEvents: 'none',
+              background: isDark
+                ? 'radial-gradient(ellipse at 50% 45%, rgba(12,189,115,0.14), rgba(13,64,108,0.20) 45%, transparent 72%)'
+                : 'radial-gradient(ellipse at 50% 45%, rgba(12,189,115,0.10), rgba(13,64,108,0.08) 45%, transparent 72%)',
+              filter: 'blur(30px)',
+            }} />
+
+            <div className="hero-float" style={{ position: 'relative', zIndex: 1 }}>
+              <DashboardMockup isDark={isDark} />
+
+              {/* Marking throughput */}
+              <div className="hero-chip hero-chip-a" style={{
+                position: 'absolute', bottom: -38, left: -54,
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px', borderRadius: 12,
+                background: isDark ? '#082A45' : '#FFFFFF',
+                border: `1px solid ${isDark ? 'rgba(157,196,217,0.14)' : '#E2E8F0'}`,
+                boxShadow: isDark ? '0 14px 30px -14px rgba(0,0,0,0.9)' : '0 14px 30px -14px rgba(15,23,42,0.35)',
+              }}>
+                <div style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(12,189,115,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0CBD73" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                </div>
+                <div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12.5, fontWeight: 700, color: heading, whiteSpace: 'nowrap' }}>128 scripts marked</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 10.5, color: body, whiteSpace: 'nowrap' }}>in under 3 seconds</div>
+                </div>
+              </div>
+
+              {/* Term-on-term movement */}
+              <div className="hero-chip hero-chip-b" style={{
+                position: 'absolute', bottom: '34%', right: -50,
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px', borderRadius: 12,
+                background: isDark ? '#082A45' : '#FFFFFF',
+                border: `1px solid ${isDark ? 'rgba(157,196,217,0.14)' : '#E2E8F0'}`,
+                boxShadow: isDark ? '0 14px 30px -14px rgba(0,0,0,0.9)' : '0 14px 30px -14px rgba(15,23,42,0.35)',
+              }}>
+                <div style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(13,64,108,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0D406C" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l6-6 4 4 7-7" /><polyline points="14 8 20 8 20 14" /></svg>
+                </div>
+                <div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12.5, fontWeight: 700, color: heading, whiteSpace: 'nowrap' }}>Pass rate up 12%</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 10.5, color: body, whiteSpace: 'nowrap' }}>compared with last term</div>
+                </div>
+              </div>
+
+              {/* What's happening right now */}
+              <div className="hero-chip hero-chip-c" style={{
+                position: 'absolute', top: -18, right: 20,
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 14px', borderRadius: 100,
+                background: isDark ? '#082A45' : '#FFFFFF',
+                border: `1px solid ${isDark ? 'rgba(157,196,217,0.14)' : '#E2E8F0'}`,
+                boxShadow: isDark ? '0 10px 22px -12px rgba(0,0,0,0.85)' : '0 10px 22px -12px rgba(15,23,42,0.3)',
+              }}>
+                <span className="hero-pulse" style={{ position: 'relative', display: 'inline-flex', width: 7, height: 7 }}>
+                  <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#0CBD73' }} />
+                </span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11.5, fontWeight: 600, color: heading }}>Exam in progress</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -283,6 +369,92 @@ function Hero({ mode, isAuthenticated, user }) {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* ── Hero background elements ──────────────────────────────────────── */
+        .hero-wash { position: absolute; border-radius: 50%; filter: blur(70px); will-change: transform; }
+        .hero-wash-navy  { width: min(760px, 80vw); height: min(760px, 80vw); top: -240px; right: -200px; animation: heroDriftA 32s ease-in-out infinite; }
+        .hero-wash-green { width: min(560px, 65vw); height: min(560px, 65vw); bottom: -260px; left: -140px; animation: heroDriftB 38s ease-in-out infinite; }
+
+        .hero-mark { position: absolute; width: 11px; height: 11px; display: block; }
+
+        .hero-noise {
+          position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0.028;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+
+        @keyframes heroDriftA {
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          50%      { transform: translate3d(-50px, 40px, 0); }
+        }
+        @keyframes heroDriftB {
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          50%      { transform: translate3d(45px, -40px, 0); }
+        }
+
+        /* ── Hero entrance ─────────────────────────────────────────────────── */
+        .hero-rise { animation: heroRise 0.85s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .hero-rise-1 { animation-delay: 0.08s; }
+        .hero-rise-2 { animation-delay: 0.16s; }
+        .hero-rise-3 { animation-delay: 0.24s; }
+        .hero-rise-4 { animation-delay: 0.32s; }
+        .hero-rise-5 { animation-delay: 0.4s; }
+        @keyframes heroRise {
+          from { opacity: 0; transform: translateY(22px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Live pulse dot ────────────────────────────────────────────────── */
+        .hero-pulse::after {
+          content: ''; position: absolute; inset: 0; border-radius: 50%;
+          background: #0CBD73; animation: heroPing 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+        @keyframes heroPing {
+          0%        { transform: scale(1); opacity: 0.65; }
+          70%, 100% { transform: scale(2.6); opacity: 0; }
+        }
+
+        /* ── Hero CTAs ─────────────────────────────────────────────────────── */
+        .hero-cta { transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease; }
+        .hero-cta:hover { background: #082545 !important; transform: translateY(-1px); box-shadow: 0 14px 28px -12px rgba(13,64,108,0.8) !important; }
+        .hero-cta-arrow { transition: transform 0.2s ease; }
+        .hero-cta:hover .hero-cta-arrow { transform: translateX(3px); }
+
+        .hero-ghost { transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease; }
+        .hero-ghost:hover { transform: translateY(-1px); border-color: #0CBD73 !important; color: #0CBD73 !important; }
+
+        /* ── Hero mockup ───────────────────────────────────────────────────── */
+        .hero-float { animation: heroFloat 10s ease-in-out infinite; }
+        @keyframes heroFloat {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-12px); }
+        }
+        .hero-chip { animation: heroChipFloat 7s ease-in-out infinite; will-change: transform; }
+        .hero-chip-b { animation-duration: 8s; animation-delay: 0.9s; }
+        .hero-chip-c { animation-duration: 9s; animation-delay: 0.45s; }
+        @keyframes heroChipFloat {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-8px); }
+        }
+
+        @media (max-width: 1024px) {
+          .hero-chip { display: none !important; }
+        }
+
+        @media (max-width: 900px) {
+          .hero-mark { display: none !important; }
+        }
+
+        @media (max-width: 640px) {
+          .hero-stats { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; }
+          .hero-stats > div { padding-left: 12px !important; padding-right: 8px !important; }
+          .hero-stats > div:first-child { padding-left: 0 !important; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .hero-wash, .hero-chip, .hero-float, .hero-pulse::after { animation: none !important; }
+          .hero-rise { animation: none !important; opacity: 1 !important; transform: none !important; }
+        }
+
         .mobile-menu-btn { display: none !important; }
         .desktop-nav-links { display: flex !important; }
         .desktop-auth { display: inline-block !important; }
@@ -357,7 +529,9 @@ function DashboardMockup({ isDark }) {
     <div style={{
       borderRadius: 20, overflow: 'hidden',
       border: `1px solid ${border}`,
-      boxShadow: isDark ? '0 32px 64px rgba(0,0,0,0.5)' : '0 32px 64px rgba(15,23,42,0.15)',
+      boxShadow: isDark
+        ? '0 2px 4px rgba(0,0,0,0.4), 0 12px 24px -8px rgba(0,0,0,0.55), 0 40px 80px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05)'
+        : '0 2px 4px rgba(13,64,108,0.05), 0 12px 24px -8px rgba(13,64,108,0.12), 0 44px 80px -24px rgba(13,64,108,0.28), inset 0 1px 0 rgba(255,255,255,0.9)',
       background: bg, fontFamily: "'DM Sans', sans-serif",
     }}>
       {/* Window bar */}
@@ -370,7 +544,7 @@ function DashboardMockup({ isDark }) {
       </div>
 
       {/* Sidebar + content */}
-      <div style={{ display: 'flex', height: 340 }}>
+      <div style={{ display: 'flex', height: 404 }}>
         {/* Sidebar */}
         <div style={{ width: 56, background: isDark ? '#0D1526' : '#0F172A', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 16, gap: 20, flexShrink: 0 }}>
           {[
@@ -516,10 +690,10 @@ function MarketplaceShowcase({ mode }) {
               <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Marketplace</span>
             </div>
             <h2 style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 600, fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', letterSpacing: '-0.01em', color: text, marginBottom: 16 }}>
-              Browse Public Exams
+              Browse public online exams
             </h2>
             <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 16, color: isDark ? '#94A3B8' : '#64748B', maxWidth: 560, margin: '0 auto', lineHeight: 1.6 }}>
-              Discover exams shared by teachers across Rwanda. Request access and start learning today.
+              Exams shared by teachers and institutions across Rwanda, open to any student. Request access and start today.
             </p>
           </div>
 
@@ -657,7 +831,7 @@ function HowItWorks({ mode }) {
               <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.02em', textTransform: 'uppercase' }}>How it works</span>
             </div>
             <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', letterSpacing: '-0.01em', color: text }}>
-              From zero to graded in minutes
+              How online exams work on eexams
             </h2>
           </div>
 
@@ -702,6 +876,29 @@ function HowItWorks({ mode }) {
 }
 
 // ─── FAQ ─────────────────────────────────────────────────────────────────────
+// Single source of truth: rendered on the page AND emitted as FAQPage JSON-LD.
+// Google requires the two to match, so never add a schema entry that isn't visible here.
+const faqs = [
+  { q: 'Who can use eexams?', a: 'Institutions, schools and universities, training organisations, and individual students looking for online exams. Institutions run their own exams and cohorts. Individual students can browse the public exam marketplace and take exams on their own, in Rwanda and beyond.' },
+  { q: 'How does the AI grading work?', a: 'eexams uses fine-tuned large language models to evaluate open-ended responses against marking rubrics. It considers content accuracy, relevance, and language quality, working in both English and Kinyarwanda.' },
+  { q: 'How quickly do results come back?', a: 'Multiple-choice answers are scored the moment a student submits. Open-ended answers are marked by AI within seconds and queued for teacher review, so a full class is usually marked and ready to share the same day.' },
+  { q: 'Is it secure enough for high-stakes national exams?', a: 'Yes. We implement browser lockdown, randomized question ordering, AI proctoring to flag suspicious behavior, encrypted connections, and full audit logs. eexams meets international standards for high-stakes examinations.' },
+  { q: 'Can I import questions from existing documents?', a: 'Yes. Upload Word, PDF, or Excel files and eexams automatically parses and imports your questions. We support MCQ, essay, true/false, matching, and coded questions.' },
+  { q: 'What devices do students need?', a: 'Any modern browser on a desktop, laptop, tablet, or smartphone. No app installation needed. eexams works offline with automatic sync when connectivity is restored.' },
+  { q: 'How do I integrate with my current LMS?', a: 'eexams provides REST API and LTI 1.3 integrations for Canvas, Moodle, Blackboard, Google Classroom, and custom platforms. Our team assists with setup at no extra cost on Pro and Enterprise plans.' },
+  { q: 'What analytics are available to teachers?', a: 'Per-student score breakdowns, question-level difficulty analysis, grade distribution curves, class-wide trends over time, and exportable reports in PDF, Excel, and CSV.' },
+];
+
+const faqStructuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqs.map(({ q, a }) => ({
+    '@type': 'Question',
+    name: q,
+    acceptedAnswer: { '@type': 'Answer', text: a },
+  })),
+};
+
 function FAQ({ mode }) {
   const isDark = mode === 'dark';
   const bg = isDark ? '#111827' : '#FFFFFF';
@@ -709,15 +906,6 @@ function FAQ({ mode }) {
   const border = isDark ? '#1E293B' : '#E2E8F0';
   const text = isDark ? '#94A3B8' : '#0F172A';
   const [open, setOpen] = useState(null);
-
-  const faqs = [
-    { q: 'How does the AI grading work?', a: 'eexams uses fine-tuned large language models to evaluate open-ended responses against marking rubrics. It considers content accuracy, relevance, and language quality — working in both English and Kinyarwanda.' },
-    { q: 'Is it secure enough for high-stakes national exams?', a: 'Yes. We implement browser lockdown, randomized question ordering, AI proctoring to flag suspicious behavior, encrypted connections, and full audit logs. eexams meets international standards for high-stakes examinations.' },
-    { q: 'Can I import questions from existing documents?', a: 'Absolutely. Upload Word, PDF, or Excel files and eexams automatically parses and imports your questions. We support MCQ, essay, true/false, matching, and coded questions.' },
-    { q: 'What devices do students need?', a: 'Any modern browser on a desktop, laptop, tablet, or smartphone. No app installation needed. eexams works offline with automatic sync when connectivity is restored.' },
-    { q: 'How do I integrate with my current LMS?', a: 'eexams provides REST API and LTI 1.3 integrations for Canvas, Moodle, Blackboard, Google Classroom, and custom platforms. Our team assists with setup at no extra cost on Pro and Enterprise plans.' },
-    { q: 'What analytics are available to teachers?', a: 'Per-student score breakdowns, question-level difficulty analysis, grade distribution curves, class-wide trends over time, and exportable reports in PDF, Excel, and CSV.' },
-  ];
 
   return (
     <section id="faq" style={{ padding: 'clamp(60px, 12vw, 100px) 0', background: bg }}>
@@ -727,7 +915,7 @@ function FAQ({ mode }) {
               <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.02em', textTransform: 'uppercase' }}>FAQ</span>
             </div>
             <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', letterSpacing: '-0.01em', color: text }}>
-              Common questions
+              Frequently asked questions
             </h2>
           </div>
 
@@ -780,10 +968,10 @@ function CTABanner({ mode }) {
           <div className="cta-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 40 }}>
             <div style={{ maxWidth: 600 }}>
               <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(1.5rem, 3.5vw, 2.2rem)', letterSpacing: '-0.01em', color: 'white', marginBottom: 12 }}>
-                Ready to modernise your exams?
+                Ready to move your exams online?
               </h2>
               <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 16, color: 'rgba(255,255,255,0.85)', lineHeight: 1.6 }}>
-                Join 140+ Rwandan institutions. Free 14-day trial. No credit card, no setup fee.
+                Join 140+ institutions in Rwanda and beyond. Free 14-day trial. No credit card, no setup fee.
               </p>
               <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
                 {['14-day free trial', 'Full access', 'Cancel anytime'].map((t, i) => (
@@ -1209,48 +1397,27 @@ function App() {
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif" }}>
       <SEO
-        title="eexams - Rwanda's Leading Online Exam Platform | AI-Powered Grading"
-        description="eexams is Rwanda's premier online exam management system. AI-powered grading, real-time analytics, secure exams for schools and universities. Join 140+ institutions using eexams."
-        keywords="eexams, online exams, Rwanda, education, AI grading, exam platform, digital assessment, student testing, school management, university exams, Kinyarwanda exams, English exams, Rwanda exams, national exams, secondary exams, primary exams"
+        title="Online Exams for Schools & Students in Rwanda | eexams"
+        description="eexams runs secure online exams for institutions, schools, organisations and individual students in Rwanda and beyond. AI marking, results the same day."
+        keywords="eexams, online exams, online exams Rwanda, online exams for schools, online exams for institutions, online exams for organisations, online exams for students, individual students, AI marking, AI grading, marked in minutes, same-day results, secure online exams, exam platform, exam management system, digital assessment, student testing, university exams, Kinyarwanda exams, English exams, national exams, secondary exams, primary exams, East Africa online exams"
         ogUrl="https://www.eexams.net/"
         canonical="https://www.eexams.net/"
         structuredData={[
-          {
-            '@context': 'https://schema.org',
-            '@type': 'Organization',
-            name: 'eexams',
-            url: 'https://www.eexams.net/',
-            logo: 'https://www.eexams.net/logo.png',
-            description: 'Rwanda\'s leading online exam platform with AI-powered grading, real-time analytics, and secure exams for schools and universities.',
-            address: {
-              '@type': 'PostalAddress',
-              addressCountry: 'RW',
-              addressRegion: 'Kigali'
-            },
-            contactPoint: {
-              '@type': 'ContactPoint',
-              telephone: '+250 788 535 156',
-              contactType: 'customer service',
-              email: 'info@excellencecoachinghub.com'
-            },
-            sameAs: [
-              'https://facebook.com/ech.info',
-              'https://tiktok.com/@ech.info',
-              'https://instagram.com/ech.info'
-            ]
-          },
+          // The EducationalOrganization entity lives in index.html so it is served
+          // on every route; don't duplicate it here.
           {
             '@context': 'https://schema.org',
             '@type': 'WebSite',
             name: 'eexams',
             url: 'https://www.eexams.net/',
-            description: 'Rwanda\'s leading online exam platform with AI-powered grading',
+            description: 'Online exams, marked in minutes. For institutions, schools, organisations and individual students in Rwanda and beyond.',
             potentialAction: {
               '@type': 'SearchAction',
               target: 'https://www.eexams.net/marketplace?q={search_term_string}',
               'query-input': 'required name=search_term_string'
             }
-          }
+          },
+          faqStructuredData
         ]}
       />
       <Nav

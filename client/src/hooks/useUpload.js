@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
+// Uploads must go through the shared client, not bare axios: it carries the API
+// base URL and the auth token. Posting with bare axios sent "/exam/upload-reference"
+// to the page origin (the Vite dev server / static host), which only 404s — and even
+// once proxied it would have been rejected as unauthenticated.
+import api from '../services/api';
 
 const useUpload = (options = {}) => {
   const {
@@ -98,7 +103,7 @@ const useUpload = (options = {}) => {
     });
 
     try {
-      const response = await axios.post(url, formData, {
+      const response = await api.post(url, formData, {
         // IMPORTANT: Don't set Content-Type manually - browser will set it with correct boundary
         signal: abortControllerRef.current.signal,
         onUploadProgress: (progressEvent) => {

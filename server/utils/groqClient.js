@@ -46,19 +46,23 @@ if (!fs.existsSync(CACHE_DIR)) {
   }
 }
 
-// Available Groq models with their characteristics
-// Updated May 2026 - removed decommissioned models
+// Available Groq models with their characteristics.
+// Updated August 2026 - the whole llama-3.x family (llama-3.3-70b-versatile,
+// llama-3.1-8b-instant, mixtral-8x7b-32768) is no longer served to this account and
+// returns 404 model_not_found on every call, which took ALL Groq-backed features down
+// (exam generation, grading, question assist, chat). Verified live against
+// `groq.models.list()` before switching. Re-run that listing before changing these again.
 const GROQ_MODELS = {
-  // Best for complex reasoning and grading
-  smart: 'llama-3.3-70b-versatile',
+  // Best for complex reasoning and grading (131k context)
+  smart: 'openai/gpt-oss-120b',
   // Fast model for simple tasks
-  fast: 'llama-3.1-8b-instant',
-  // Balanced model for general use (was llama-3.3-70b-specdec, decommissioned)
-  balanced: 'llama-3.3-70b-versatile',
-  // Long context model
-  longContext: 'mixtral-8x7b-32768',
+  fast: 'openai/gpt-oss-20b',
+  // Balanced model for general use
+  balanced: 'openai/gpt-oss-120b',
+  // Long context model (131k, same family)
+  longContext: 'openai/gpt-oss-120b',
   // Default model
-  default: 'llama-3.3-70b-versatile',
+  default: 'openai/gpt-oss-120b',
   // Multimodal (vision) model — verified live against this account's /models list
   // (input_modalities includes "image"; llama-4-scout/maverick are NOT available on this
   // account despite being Groq's usual vision models elsewhere — always re-check with

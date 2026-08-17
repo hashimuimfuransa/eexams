@@ -1,6 +1,7 @@
 {
   "short_name": "eexams",
-  "name": "eexams - Online Exam Management System",
+  "name": "eexams - Online Exams for Schools, Institutions & Students",
+  "description": "Secure online exams with AI marking for institutions, schools, organisations and individual students in Rwanda and beyond.",
   "icons": [
     {
       "src": "App Icon.png",
@@ -20,6 +21,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#4a148c",
+  "theme_color": "#0D406C",
   "background_color": "#ffffff"
 }

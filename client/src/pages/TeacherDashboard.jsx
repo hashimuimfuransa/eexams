@@ -23,7 +23,7 @@ import {
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox, Check,
   DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info, Article,
-  EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll, ReportProblem
+  EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll, ReportProblem, MenuBook
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -35,6 +35,7 @@ import { FinancialSpreadsheetQuestion } from '../components/FinancialSpreadsheet
 import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../components/shared/FinancialAnswerReview';
 import AIQuestionAssist from '../components/shared/AIQuestionAssist';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
+import LessonPlanner from '../components/teacher/LessonPlanner';
 import usePlan from '../hooks/usePlan';
 import SubscriptionWarning from '../components/SubscriptionWarning';
 import PlanUsageCard from '../components/PlanUsageCard';
@@ -84,6 +85,7 @@ const getNavigationItems = (user, hasTemplatesAccess) => {
   const baseNav = [
     { id: 'home',      label: 'Dashboard',  icon: <DashboardCustomize sx={{ fontSize: 20 }} /> },
     { id: 'exams',     label: 'My Exams',   icon: <Assignment sx={{ fontSize: 20 }} /> },
+    { id: 'lessonPlanner', label: 'Lesson Planner', icon: <MenuBook sx={{ fontSize: 20 }} /> },
     { id: 'students',  label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
     { id: 'results',     label: 'Results',      icon: <ListAlt sx={{ fontSize: 20 }} /> },
     { id: 'reclamations', label: 'Reclamations', icon: <ReportProblem sx={{ fontSize: 20 }} /> },
@@ -91,9 +93,11 @@ const getNavigationItems = (user, hasTemplatesAccess) => {
     { id: 'settings',    label: 'Settings',     icon: <Settings sx={{ fontSize: 20 }} /> },
   ];
 
-  // Only show templates if user has access (Basic plan or higher)
+  // Only show templates if user has access (Basic plan or higher).
+  // Index 6 keeps Templates sitting just before Leaderboard now that Lesson
+  // Planner has been added to the list above.
   if (hasTemplatesAccess) {
-    baseNav.splice(5, 0, { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> });
+    baseNav.splice(6, 0, { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> });
   }
 
   // If not custom enterprise, remove AI-related features from home section
@@ -248,6 +252,7 @@ export default function TeacherDashboard() {
       <SubscriptionWarning user={user} onLogout={logout} />
       {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} user={user} />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
+      {activeSection === 'lessonPlanner' && <LessonPlanner user={user} />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'results'   && <ResultsSection results={results} resultsTotal={resultsTotal} resultsPage={resultsPage} setResultsPage={setResultsPage} exams={exams} />}
       {activeSection === 'reclamations' && <ReclamationsSection />}

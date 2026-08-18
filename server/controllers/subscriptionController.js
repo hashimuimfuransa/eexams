@@ -1241,26 +1241,78 @@ const verifyCashoutPassword = async (req, res) => {
   }
 };
 
-// @desc    Cash out platform revenue by transferring it to the super admin's
-//          mobile money number via iTechPay's /api/transfer payout endpoint
-//          (itecPayment.transferToPhone). A Cashout record is only written
-//          after iTechPay confirms the transfer succeeded, so the recorded
-//          history reflects money that has actually left the platform.
+// @desc    Cash out platform revenue to a mobile money number, a MoMo Pay
+//          code, or a bank account.
+//
+//          Mobile money destinations (phone or code) are sent through
+//          iTechPay's /api/transfer payout endpoint and the record is only
+//          written after iTechPay confirms it, so the history reflects money
+//          that has actually left the platform.
+//
+//          Bank destinations have no gateway equivalent — iTechPay publishes
+//          no bank payout endpoint — so they are always recorded as manual
+//          withdrawals the super admin performs themselves. The caller can
+//          also force a manual record for a momo destination (recordOnly)
+//          when the gateway declines it or the money was already sent by hand.
 // @route   POST /api/subscriptions/cashouts
 // @access  Private/SuperAdmin
 const createCashout = async (req, res) => {
   try {
-    const { amount, phoneNumber, provider, note } = req.body;
+    const {
+      amount,
+      destinationType = 'momo_phone',
+      phoneNumber,
+      momoCode,
+      bankName,
+      bankAccountNumber,
+      bankAccountName,
+      provider,
+      note,
+      recordOnly
+    } = req.body;
 
     const numericAmount = Number(amount);
     if (!numericAmount || numericAmount <= 0) {
       return res.status(400).json({ message: 'Enter a valid amount greater than 0' });
     }
-    if (!phoneNumber || !phoneNumber.trim()) {
-      return res.status(400).json({ message: 'Phone number is required' });
+
+    if (!['momo_phone', 'momo_code', 'bank'].includes(destinationType)) {
+      return res.status(400).json({ message: 'Select a valid destination (mobile money number, MoMo code, or bank account)' });
     }
-    if (!['mtn', 'airtel'].includes(provider)) {
-      return res.status(400).json({ message: 'Select MTN or Airtel as the provider' });
+
+    // Per-destination validation, and the destination fields to persist.
+    const destinationFields = {};
+    if (destinationType === 'momo_phone') {
+      if (!phoneNumber || !phoneNumber.trim()) {
+        return res.status(400).json({ message: 'Phone number is required' });
+      }
+      destinationFields.phoneNumber = phoneNumber.trim();
+    } else if (destinationType === 'momo_code') {
+      if (!momoCode || !momoCode.trim()) {
+        return res.status(400).json({ message: 'MoMo code is required' });
+      }
+      destinationFields.momoCode = momoCode.trim();
+    } else {
+      if (!bankName || !bankName.trim()) {
+        return res.status(400).json({ message: 'Bank name is required' });
+      }
+      if (!bankAccountNumber || !bankAccountNumber.trim()) {
+        return res.status(400).json({ message: 'Bank account number is required' });
+      }
+      if (!bankAccountName || !bankAccountName.trim()) {
+        return res.status(400).json({ message: 'Account holder name is required' });
+      }
+      destinationFields.bankName = bankName.trim();
+      destinationFields.bankAccountNumber = bankAccountNumber.trim();
+      destinationFields.bankAccountName = bankAccountName.trim();
+    }
+
+    // Provider only means something for mobile money.
+    if (destinationType !== 'bank') {
+      if (!['mtn', 'airtel'].includes(provider)) {
+        return res.status(400).json({ message: 'Select MTN or Airtel as the provider' });
+      }
+      destinationFields.provider = provider;
     }
 
     const { availableBalance } = await getAvailableBalance();
@@ -1270,31 +1322,47 @@ const createCashout = async (req, res) => {
       });
     }
 
-    const paymentMethod = provider === 'airtel' ? 'airtel_money' : 'mobile_money';
+    // Bank payouts can't be automated, and recordOnly is the caller opting out
+    // of the gateway for a momo destination. Both just book the withdrawal.
+    const useGateway = destinationType !== 'bank' && !recordOnly;
 
-    let transferResult;
-    try {
-      transferResult = await itecPayment.transferToPhone({
-        amount: numericAmount,
-        phone: phoneNumber.trim(),
-        paymentMethod
-      });
-    } catch (transferErr) {
-      console.error('createCashout: transfer failed:', transferErr.message);
-      return res.status(502).json({
-        message: transferErr.isGatewayError
-          ? `iTechPay declined the transfer: ${transferErr.message}`
-          : 'Transfer failed — no money was moved and nothing was recorded'
-      });
+    let transferResult = null;
+    if (useGateway) {
+      const paymentMethod = provider === 'airtel' ? 'airtel_money' : 'mobile_money';
+      try {
+        transferResult = destinationType === 'momo_code'
+          ? await itecPayment.transferToMomoCode({
+              amount: numericAmount,
+              code: destinationFields.momoCode,
+              paymentMethod
+            })
+          : await itecPayment.transferToPhone({
+              amount: numericAmount,
+              phone: destinationFields.phoneNumber,
+              paymentMethod
+            });
+      } catch (transferErr) {
+        console.error('createCashout: transfer failed:', transferErr.message);
+        return res.status(502).json({
+          message: transferErr.isGatewayError
+            ? `iTechPay declined the transfer: ${transferErr.message}`
+            : 'Transfer failed — no money was moved and nothing was recorded',
+          // Lets the frontend offer "send it yourself and record it" instead of
+          // leaving the admin with no way to log a withdrawal the gateway
+          // won't perform (MoMo code payouts in particular are undocumented).
+          canRecordManually: true
+        });
+      }
     }
 
     const cashout = await Cashout.create({
       amount: numericAmount,
-      phoneNumber: phoneNumber.trim(),
-      provider,
+      destinationType,
+      settlementMode: useGateway ? 'gateway' : 'manual',
+      ...destinationFields,
       note: (note || '').trim(),
-      transactionId: transferResult.transactionId,
-      gatewayResponse: transferResult.raw,
+      transactionId: transferResult?.transactionId || null,
+      gatewayResponse: transferResult?.raw || null,
       requestedBy: req.user._id
     });
 

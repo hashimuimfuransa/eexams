@@ -170,6 +170,27 @@ const AccountPlanSection = ({ title, icon, data }) => {
   );
 };
 
+// Cashout rows written before multiple destination types existed have no
+// destinationType and are all mobile money numbers, hence the phoneNumber
+// fallbacks below.
+const cashoutDestination = (c) => {
+  if (c.destinationType === 'bank') {
+    return `${c.bankName} — ${c.bankAccountNumber} (${c.bankAccountName})`;
+  }
+  if (c.destinationType === 'momo_code') {
+    return `MoMo code ${c.momoCode}`;
+  }
+  return c.phoneNumber || '-';
+};
+
+// How the money moved: which carrier for a gateway transfer, or a plain
+// "bank transfer" for withdrawals made outside iTechPay.
+const cashoutMethod = (c) => {
+  if (c.destinationType === 'bank') return 'Bank transfer';
+  const provider = (c.provider || 'mtn') === 'airtel' ? 'Airtel Money' : 'MTN MoMo';
+  return c.settlementMode === 'manual' ? `${provider} (sent manually)` : provider;
+};
+
 const SubscriptionReports = () => {
   const [stats, setStats] = useState(null);
   const [pendingPayments, setPendingPayments] = useState([]);
@@ -189,13 +210,19 @@ const SubscriptionReports = () => {
   // space since it acts on Subscription documents, not User documents.
   const [subActioningId, setSubActioningId] = useState(null);
 
-  // Cashout log — super admin records withdrawals of platform revenue to
-  // their own mobile money number. There's no iTechPay payout API, so this
-  // is a manual record, not an automated transfer.
+  // Cashout log — super admin withdraws platform revenue to a mobile money
+  // number, a MoMo Pay code, or a bank account. Mobile money goes out through
+  // iTechPay's payout endpoint; bank transfers have no gateway equivalent, so
+  // those are recorded after the admin makes the transfer themselves.
   const [cashouts, setCashouts] = useState([]);
   const [cashoutsLoading, setCashoutsLoading] = useState(true);
   const [cashoutAmount, setCashoutAmount] = useState('');
+  const [cashoutDestType, setCashoutDestType] = useState('momo_phone');
   const [cashoutPhone, setCashoutPhone] = useState('');
+  const [cashoutMomoCode, setCashoutMomoCode] = useState('');
+  const [cashoutBankName, setCashoutBankName] = useState('');
+  const [cashoutBankAccountNumber, setCashoutBankAccountNumber] = useState('');
+  const [cashoutBankAccountName, setCashoutBankAccountName] = useState('');
   const [cashoutProvider, setCashoutProvider] = useState('mtn');
   const [cashoutNote, setCashoutNote] = useState('');
   const [cashoutSubmitting, setCashoutSubmitting] = useState(false);
@@ -447,31 +474,106 @@ const SubscriptionReports = () => {
       setToast({ severity: 'error', message: 'Enter a valid amount' });
       return;
     }
-    if (!cashoutPhone.trim()) {
-      setToast({ severity: 'error', message: 'Enter a phone number' });
-      return;
+
+    // Collect the destination fields for whichever type is selected, plus the
+    // label used in the confirm prompt and the success toast.
+    let destinationFields;
+    let destinationLabel;
+    if (cashoutDestType === 'momo_phone') {
+      if (!cashoutPhone.trim()) {
+        setToast({ severity: 'error', message: 'Enter a phone number' });
+        return;
+      }
+      destinationFields = { phoneNumber: cashoutPhone.trim(), provider: cashoutProvider };
+      destinationLabel = `${cashoutPhone.trim()} (${cashoutProvider.toUpperCase()})`;
+    } else if (cashoutDestType === 'momo_code') {
+      if (!cashoutMomoCode.trim()) {
+        setToast({ severity: 'error', message: 'Enter a MoMo code' });
+        return;
+      }
+      destinationFields = { momoCode: cashoutMomoCode.trim(), provider: cashoutProvider };
+      destinationLabel = `MoMo code ${cashoutMomoCode.trim()} (${cashoutProvider.toUpperCase()})`;
+    } else {
+      if (!cashoutBankName.trim() || !cashoutBankAccountNumber.trim() || !cashoutBankAccountName.trim()) {
+        setToast({ severity: 'error', message: 'Enter the bank name, account number and account holder name' });
+        return;
+      }
+      destinationFields = {
+        bankName: cashoutBankName.trim(),
+        bankAccountNumber: cashoutBankAccountNumber.trim(),
+        bankAccountName: cashoutBankAccountName.trim()
+      };
+      destinationLabel = `${cashoutBankName.trim()} — ${cashoutBankAccountNumber.trim()} (${cashoutBankAccountName.trim()})`;
     }
-    // This fires a real, immediate mobile money transfer — confirm before sending.
+
+    const isBank = cashoutDestType === 'bank';
+
+    // Mobile money fires a real, immediate transfer; a bank cashout only books
+    // the withdrawal, so the two need different confirmations.
     if (!window.confirm(
-      `Send RWF ${amount.toLocaleString()} to ${cashoutPhone.trim()} (${cashoutProvider.toUpperCase()}) right now? This cannot be undone.`
+      isBank
+        ? `Record a RWF ${amount.toLocaleString()} withdrawal to ${destinationLabel}? This deducts from your available balance — make the bank transfer yourself, the platform cannot send it for you.`
+        : `Send RWF ${amount.toLocaleString()} to ${destinationLabel} right now? This cannot be undone.`
     )) {
       return;
     }
+
+    const clearForm = () => {
+      setCashoutAmount('');
+      setCashoutPhone('');
+      setCashoutMomoCode('');
+      setCashoutBankName('');
+      setCashoutBankAccountNumber('');
+      setCashoutBankAccountName('');
+      setCashoutNote('');
+    };
+
     setCashoutSubmitting(true);
     try {
       await api.post('/subscriptions/cashouts', {
         amount,
-        phoneNumber: cashoutPhone.trim(),
-        provider: cashoutProvider,
-        note: cashoutNote.trim()
+        destinationType: cashoutDestType,
+        ...destinationFields,
+        note: cashoutNote.trim(),
+        // Bank payouts are always a manual record — iTechPay has no bank
+        // payout endpoint to call.
+        recordOnly: isBank
       });
-      setToast({ severity: 'success', message: 'Transfer sent and recorded' });
-      setCashoutAmount('');
-      setCashoutPhone('');
-      setCashoutNote('');
+      setToast({
+        severity: 'success',
+        message: isBank ? 'Withdrawal recorded' : 'Transfer sent and recorded'
+      });
+      clearForm();
       await Promise.all([fetchCashouts(), fetchStats()]);
     } catch (err) {
-      setToast({ severity: 'error', message: err.response?.data?.message || 'Transfer failed' });
+      const message = err.response?.data?.message || 'Transfer failed';
+
+      // The gateway refused to send it (MoMo code payouts in particular are
+      // undocumented and may not be supported). Offer to book it as a manual
+      // withdrawal so the admin can still send the money themselves and keep
+      // the balance accurate.
+      if (err.response?.data?.canRecordManually && window.confirm(
+        `${message}
+
+Record this as a manual withdrawal instead? Nothing has been sent — you would send the RWF ${amount.toLocaleString()} to ${destinationLabel} yourself, and this only keeps your balance accurate.`
+      )) {
+        try {
+          await api.post('/subscriptions/cashouts', {
+            amount,
+            destinationType: cashoutDestType,
+            ...destinationFields,
+            note: cashoutNote.trim(),
+            recordOnly: true
+          });
+          setToast({ severity: 'success', message: 'Withdrawal recorded manually' });
+          clearForm();
+          await Promise.all([fetchCashouts(), fetchStats()]);
+        } catch (recordErr) {
+          setToast({ severity: 'error', message: recordErr.response?.data?.message || 'Failed to record withdrawal' });
+        }
+      } else {
+        setToast({ severity: 'error', message });
+      }
     } finally {
       setCashoutSubmitting(false);
     }
@@ -540,8 +642,9 @@ const SubscriptionReports = () => {
           ) : (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-                All subscription revenue belongs to you. Recording a cashout sends that amount to the phone number
-                below via iTechPay immediately — this is a real transfer, not just a log entry.
+                All subscription revenue belongs to you. Cashing out to a mobile money number or MoMo code sends that
+                amount via iTechPay immediately — a real transfer, not just a log entry. Bank accounts have no iTechPay
+                payout, so a bank cashout only records the withdrawal: you make the transfer yourself.
               </Typography>
 
               <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -572,21 +675,69 @@ const SubscriptionReports = () => {
                   onChange={(e) => setCashoutAmount(e.target.value)}
                   sx={{ minWidth: 160 }}
                 />
-                <TextField
-                  size="small"
-                  label="Phone number"
-                  placeholder="+2507XXXXXXXX"
-                  value={cashoutPhone}
-                  onChange={(e) => setCashoutPhone(e.target.value)}
-                  sx={{ minWidth: 200 }}
-                />
-                <FormControl size="small" sx={{ minWidth: 140 }}>
-                  <InputLabel>Provider</InputLabel>
-                  <Select label="Provider" value={cashoutProvider} onChange={(e) => setCashoutProvider(e.target.value)}>
-                    <MenuItem value="mtn">MTN MoMo</MenuItem>
-                    <MenuItem value="airtel">Airtel Money</MenuItem>
+                <FormControl size="small" sx={{ minWidth: 180 }}>
+                  <InputLabel>Send to</InputLabel>
+                  <Select label="Send to" value={cashoutDestType} onChange={(e) => setCashoutDestType(e.target.value)}>
+                    <MenuItem value="momo_phone">Mobile money number</MenuItem>
+                    <MenuItem value="momo_code">MoMo Pay code</MenuItem>
+                    <MenuItem value="bank">Bank account</MenuItem>
                   </Select>
                 </FormControl>
+                {cashoutDestType === 'momo_phone' && (
+                  <TextField
+                    size="small"
+                    label="Phone number"
+                    placeholder="+2507XXXXXXXX"
+                    value={cashoutPhone}
+                    onChange={(e) => setCashoutPhone(e.target.value)}
+                    sx={{ minWidth: 200 }}
+                  />
+                )}
+                {cashoutDestType === 'momo_code' && (
+                  <TextField
+                    size="small"
+                    label="MoMo code"
+                    placeholder="e.g. 123456"
+                    value={cashoutMomoCode}
+                    onChange={(e) => setCashoutMomoCode(e.target.value)}
+                    sx={{ minWidth: 180 }}
+                  />
+                )}
+                {cashoutDestType === 'bank' && (
+                  <>
+                    <TextField
+                      size="small"
+                      label="Bank name"
+                      placeholder="e.g. Bank of Kigali"
+                      value={cashoutBankName}
+                      onChange={(e) => setCashoutBankName(e.target.value)}
+                      sx={{ minWidth: 180 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Account number"
+                      value={cashoutBankAccountNumber}
+                      onChange={(e) => setCashoutBankAccountNumber(e.target.value)}
+                      sx={{ minWidth: 180 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Account holder name"
+                      value={cashoutBankAccountName}
+                      onChange={(e) => setCashoutBankAccountName(e.target.value)}
+                      sx={{ minWidth: 200 }}
+                    />
+                  </>
+                )}
+                {cashoutDestType !== 'bank' && (
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Provider</InputLabel>
+                    <Select label="Provider" value={cashoutProvider} onChange={(e) => setCashoutProvider(e.target.value)}>
+                      <MenuItem value="mtn">MTN MoMo</MenuItem>
+                      <MenuItem value="airtel">Airtel Money</MenuItem>
+                    </Select>
+                  </FormControl>
+                )}
                 <TextField
                   size="small"
                   label="Note (optional)"
@@ -601,9 +752,18 @@ const SubscriptionReports = () => {
                   disabled={cashoutSubmitting}
                   onClick={handleCreateCashout}
                 >
-                  {cashoutSubmitting ? 'Sending…' : 'Send Cashout'}
+                  {cashoutSubmitting
+                    ? (cashoutDestType === 'bank' ? 'Recording…' : 'Sending…')
+                    : (cashoutDestType === 'bank' ? 'Record Withdrawal' : 'Send Cashout')}
                 </Button>
               </Stack>
+
+              {cashoutDestType === 'bank' && (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  iTechPay cannot push money to a bank account, so this records the withdrawal only — make the bank
+                  transfer yourself. The amount is still deducted from your available balance.
+                </Alert>
+              )}
 
               <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Cashout History</Typography>
               {cashoutsLoading ? (
@@ -615,8 +775,8 @@ const SubscriptionReports = () => {
                       <TableRow>
                         <TableCell>Date</TableCell>
                         <TableCell align="right">Amount</TableCell>
-                        <TableCell>Phone Number</TableCell>
-                        <TableCell>Provider</TableCell>
+                        <TableCell>Destination</TableCell>
+                        <TableCell>Method</TableCell>
                         <TableCell>Note</TableCell>
                         <TableCell>Recorded By</TableCell>
                         <TableCell align="right">Actions</TableCell>
@@ -627,8 +787,13 @@ const SubscriptionReports = () => {
                         <TableRow key={c._id}>
                           <TableCell>{new Date(c.createdAt).toLocaleString()}</TableCell>
                           <TableCell align="right">RWF {c.amount?.toLocaleString()}</TableCell>
-                          <TableCell>{c.phoneNumber}</TableCell>
-                          <TableCell sx={{ textTransform: 'capitalize' }}>{c.provider}</TableCell>
+                          <TableCell>
+                            {cashoutDestination(c)}
+                            {c.settlementMode === 'manual' && (
+                              <Chip label="Manual" size="small" sx={{ ml: 1 }} />
+                            )}
+                          </TableCell>
+                          <TableCell>{cashoutMethod(c)}</TableCell>
                           <TableCell>{c.note || '-'}</TableCell>
                           <TableCell>
                             {c.requestedBy?.firstName} {c.requestedBy?.lastName}

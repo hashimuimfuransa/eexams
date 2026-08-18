@@ -126,17 +126,18 @@ class ITECPaymentService {
     };
   }
 
-  // Sends money OUT to a phone number (cashout/payout), as opposed to
-  // createPaymentRequest which collects money FROM a customer. Mirrors the
+  // Shared payout call behind transferToPhone/transferToMomoCode. Mirrors the
   // /api2/pay request/response shape since iTechPay hasn't published payout
   // docs — same { amount, phone, key, req_ref } body, same success heuristic.
+  // `destination` is whatever goes in the body's `phone` field, already in the
+  // exact form the gateway should receive.
   // NOT YET CONFIRMED against a real successful transfer response; the only
   // test so far returned { status: 400, data: { message: "Unauthorized" } }
   // for a placeholder key. Treat the success path as unverified until a real
-  // transfer has been confirmed to actually land on the recipient's phone.
-  async transferToPhone({ amount, phone, paymentMethod, reference }) {
+  // transfer has been confirmed to actually land on the recipient.
+  async sendTransfer({ amount, destination, paymentMethod, reference, destinationKind }) {
     const provider = this.getProvider(paymentMethod || 'mobile_money');
-    console.log(`[iTechPay] transferToPhone: provider=${provider}, amount=${amount}, phone=${this.normalizePhone(phone)}`);
+    console.log(`[iTechPay] sendTransfer: provider=${provider}, amount=${amount}, ${destinationKind}=${destination}`);
 
     const apiKey = this.getApiKey(provider);
     const req_ref = reference || crypto.randomUUID();
@@ -145,7 +146,7 @@ class ITECPaymentService {
       'https://pay.itecpay.rw/api/transfer',
       {
         amount: Number(amount),
-        phone: this.normalizePhone(phone),
+        phone: destination,
         key: apiKey,
         req_ref
       }
@@ -164,13 +165,41 @@ class ITECPaymentService {
     }
 
     const txId = result?.data?.transaction_id || result?.data?.financial_transaction_id || req_ref;
-    console.log(`[iTechPay] Transfer request accepted: txId=${txId}, phone=${this.normalizePhone(phone)}`);
+    console.log(`[iTechPay] Transfer request accepted: txId=${txId}, ${destinationKind}=${destination}`);
     return {
       success: true,
       transactionId: txId,
       reference: req_ref,
       raw: result
     };
+  }
+
+  // Sends money OUT to a phone number (cashout/payout), as opposed to
+  // createPaymentRequest which collects money FROM a customer.
+  async transferToPhone({ amount, phone, paymentMethod, reference }) {
+    return this.sendTransfer({
+      amount,
+      destination: this.normalizePhone(phone),
+      paymentMethod,
+      reference,
+      destinationKind: 'phone'
+    });
+  }
+
+  // Sends money OUT to a MoMo Pay merchant code. The code is passed through
+  // untouched — normalizePhone() would mangle it (it prepends '0' to 9-char
+  // values and strips country codes), and a mangled code could route money to
+  // an unrelated destination. iTechPay has no documented code payout, so this
+  // may simply be declined; callers should be ready to fall back to recording
+  // the withdrawal manually.
+  async transferToMomoCode({ amount, code, paymentMethod, reference }) {
+    return this.sendTransfer({
+      amount,
+      destination: String(code).replace(/[\s\-().]/g, ''),
+      paymentMethod,
+      reference,
+      destinationKind: 'momoCode'
+    });
   }
 
   async verifyPayment(reference, paymentMethod) {

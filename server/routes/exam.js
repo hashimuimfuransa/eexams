@@ -40,6 +40,9 @@ const { cacheExam, cacheExamList, invalidateExamCache } = require('../middleware
 const { validateExamAccess, markFreeExamUsed } = require('../middleware/examAccess');
 const groqClient = require('../utils/groqClient');
 const { coerceToGrid } = require('../utils/spreadsheetGrading');
+const { repairJson, isJsonValidationError } = require('../utils/jsonRepair');
+const { normalizeExamStructure } = require('../utils/examStructure');
+const { VALID_QUESTION_TYPES } = require('../models/Question');
 
 // Normalize a single spreadsheetTemplate/spreadsheetModelAnswer field returned by the AI.
 // Two independent problems to fix:
@@ -231,8 +234,8 @@ const AI_PLAN_LIMITS = {
 // Enhanced with detailed model answers for accurate AI grading
 function buildSectionsInstruction(questionTypes) {
   const typeSchemas = {
-    'multiple-choice': 'MCQ with options[{text,isCorrect,letter}], correctAnswer(letter), explanation',
-    'true-false': 'True/False with options[{text,isCorrect,letter}], correctAnswer("True"/"False"), explanation',
+    'multiple-choice': 'MCQ with options[{text,isCorrect,letter}] - EXACTLY ONE option isCorrect:true, unique letters A/B/C/D, no repeated or blank option text - plus correctAnswer set to the bare letter of that option, and explanation',
+    'true-false': 'True/False with options[{text:"True"/"False",isCorrect,letter}], correctAnswer the WORD "True" or "False" (never a letter), explanation',
     'open-ended': 'Essay with correctAnswer(comprehensive string), marks, gradingCriteria[{criteria,points}]',
     'fill-blank': 'Fill blank with correctAnswer(string), acceptableAnswers[], explanation',
     'fill-in-blank': 'Fill blank with correctAnswer(string), acceptableAnswers[], explanation',
@@ -280,6 +283,11 @@ function buildSectionsInstruction(questionTypes) {
 // Helper to map various question type strings to standardized types
 function mapQuestionType(type) {
   if (!type) return 'multiple-choice';
+  // Already one of the types the schema accepts - keep it. The keyword matching below is for
+  // free-text labels the AI invents ("MCQ", "essay question", "gap fill"); running a canonical
+  // type through it silently rewrote "numerical" and "extended-response" to "multiple-choice".
+  if (VALID_QUESTION_TYPES.includes(type)) return type;
+
   const t = String(type).toLowerCase();
   
   // Multiple choice variations
@@ -1483,20 +1491,35 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
   - If it has "Question X" followed by a)..., b)..., c)... where each has multiple options, it's SUB-QUESTIONS
 - ABSOLUTELY DO NOT INTERPRET OR REORGANIZE MATCHING QUESTIONS - COPY leftItems AND rightItems EXACTLY AS PROVIDED`;
 
+      // The extracted JSON runs roughly one-and-a-half to two times the size of the pasted text
+      // once every question is wrapped in its own object with a model answer, so a long paper
+      // needs more than the old flat 16384 or the tail of the exam is silently dropped.
+      const parseMaxTokens = Math.min(32768, Math.max(16384, Math.ceil(pastedExam.trim().length / 2)));
+
       try {
         const parseResponse = await groqClient.generateContent(parseExamPrompt, {
           model: 'smart',
           jsonMode: true,
           temperature: 0.1,
-          maxTokens: 16384
+          maxTokens: parseMaxTokens
         });
+
+        if (parseResponse.truncated) {
+          console.warn(`Pasted-exam parse hit the ${parseMaxTokens}-token ceiling - the tail of the exam may be missing`);
+        }
         
         let parseText = parseResponse.text || '';
         parseText = parseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
         
         console.log('Parsed exam text length:', parseText.length);
         
-        const parsed = JSON.parse(parseText);
+        // generateContent already parses (and repairs, when the model emits a stray quote or an
+        // extra brace) JSON-mode output, so prefer its result and only fall back to parsing the
+        // raw text ourselves.
+        const parsed = parseResponse.parsedContent || repairJson(parseText);
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('AI returned an unreadable exam structure');
+        }
         console.log('Parsed exam structure:', JSON.stringify(parsed, null, 2).substring(0, 500));
         
         // Sanitize all array fields in the parsed exam to handle stringified arrays from AI
@@ -1540,6 +1563,15 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
         
         sanitizeParsedExam(parsed);
         console.log('Sanitized parsed exam structure');
+
+        // Make the extracted paper actually gradeable before it reaches the teacher: sync each
+        // MCQ's isCorrect flags with its correctAnswer letter, put true-false answers back into
+        // the exact "True"/"False" the grader compares against, key matching/ordering questions,
+        // and coerce marks to real numbers. Whatever cannot be resolved deterministically comes
+        // back as a warning for the teacher rather than being guessed at.
+        const pastedStructure = normalizeExamStructure(parsed, { mapType: mapQuestionType });
+        console.log(`Structure check (pasted): ${pastedStructure.stats.questions} questions, ${pastedStructure.stats.fixed} auto-fixed, ${pastedStructure.stats.needsReview} need review`);
+        pastedStructure.warnings.forEach(w => console.log(`  [${w.severity}] Section ${w.section} Q${w.question} ${w.code}: ${w.detail}`));
         
         // Extract question types from the parsed exam for plan limits
         const extractedTypes = {};
@@ -1622,11 +1654,21 @@ CRITICAL RULES - PRESERVE EXACT STRUCTURE:
         // Return the parsed exam with flattened questions and full structure preserved
         return res.json({
           ...parsed,
-          questions: flattenedQuestions
+          questions: flattenedQuestions,
+          _structureWarnings: pastedStructure.warnings,
+          _structureStats: pastedStructure.stats
         });
       } catch (parseError) {
         console.error('Failed to parse pasted exam:', parseError);
         console.error('Parse error details:', parseError.message);
+        // A malformed-JSON generation is the AI's fault, not the teacher's formatting - say so,
+        // and never echo Groq's raw multi-kilobyte error payload back to the browser.
+        if (isJsonValidationError(parseError) || parseError.message === 'AI returned an unreadable exam structure') {
+          return res.status(422).json({ message: 'AI had trouble structuring that exam. Please try again — if it keeps failing, paste the exam in two smaller parts.' });
+        }
+        if (parseError.status === 429 || parseError.message?.includes('rate limit')) {
+          return res.status(429).json({ message: 'AI quota exceeded. Please wait a moment and try again.' });
+        }
         return res.status(500).json({ message: 'Failed to parse the pasted exam. Please check the format and try again.' });
       }
     } else {
@@ -1899,16 +1941,44 @@ statement in the SAME tables array, do NOT split this into separate questions):
 - Only add more than one entry to "tables" when the question text explicitly asks for more than one statement — do not split a single-statement question into extra empty tables
 - Use financial-spreadsheet for: income statements, balance sheets / statements of financial position, cash flow statements, statements of changes in equity, ledgers, trial balances, ratio analysis tables, budgets
 
+ANSWER KEY INTEGRITY (an exam that breaks these cannot be marked automatically):
+- Every multiple-choice question MUST have exactly ONE option with "isCorrect": true, and its "correctAnswer" MUST be that same option's letter on its own - "B", never "B)", "(B)", "Option B" or the option's text
+- Never leave every option at isCorrect: false, and never flag two options unless the question genuinely asks the student to select all that apply
+- Every option letter within a question must be unique and in sequence (A, B, C, D)
+- No two options in the same question may have the same text, and no option may be blank
+- true-false "correctAnswer" MUST be exactly the word "True" or the word "False" - not a letter, not a boolean, not "T"/"F"
+- Every short-answer, fill-in-blank and open-ended question MUST carry a real model answer in "correctAnswer" - never "", "N/A", "see marking guide" or "Not provided"
+- "points" must be a positive NUMBER (3, not "3 marks"); for a question with subQuestions, the parent's points must equal the sum of its parts' points
+- Every question must have non-empty "text"
+
+JSON SYNTAX (the response is machine-parsed and is discarded if it does not parse):
+- Return exactly ONE JSON object. Every { closed by exactly one }, every [ by exactly one ]
+- Never place a quote in front of an object or an array, and never add a trailing comma
+- Escape every quote that appears inside a string value
+
 IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer must ALWAYS be a string for all question types.`;
+
+    // A question costs roughly 300-500 output tokens once its options, model answer and grading
+    // criteria are written out. The old flat 8192 was enough for about 20 questions, so every
+    // larger exam came back cut off mid-question - which read as "the AI skipped sections" or,
+    // when the cut landed inside a string, as a json_validate_failed. Size the budget to what
+    // was actually requested instead (gpt-oss-120b allows far more than this ceiling).
+    const totalRequestedQuestions = qtConfig.reduce((sum, qt) => sum + (qt.count || 0), 0);
+    const generationMaxTokens = Math.min(32768, Math.max(8192, 2048 + totalRequestedQuestions * 500));
+    console.log(`Requesting ${totalRequestedQuestions} questions with maxTokens=${generationMaxTokens}`);
 
     const aiResponse = await groqClient.generateContent(systemPrompt, {
       model: 'smart',
       jsonMode: true,
       temperature: 0.2, // Lower temperature for more deterministic output
-      maxTokens: 8192, // Increased to give AI more space for all questions
+      maxTokens: generationMaxTokens,
       skipCache: true // Skip cache to ensure new prompt is used
     });
     let text = aiResponse.text || '';
+
+    if (aiResponse.truncated) {
+      console.warn(`AI generation hit the ${generationMaxTokens}-token ceiling - the exam may be missing its last questions`);
+    }
 
     // Strip markdown code fences if present
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
@@ -1999,6 +2069,9 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
       });
     }
 
+    // Sections the AI under-filled, reported to the teacher alongside the structure warnings.
+    const shortSections = [];
+
     // Check if question counts match and trim excess questions
     if (countMismatches.length > 0) {
       console.log('Question count mismatches detected - trimming to match specifications:');
@@ -2016,8 +2089,10 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
           console.log(`  Trimming Section ${section.name} from ${actualCount} to ${expectedCount} questions`);
           section.questions = section.questions.slice(0, expectedCount);
         } else if (actualCount < expectedCount) {
-          // Not enough questions - log warning but continue
+          // Not enough questions. Recorded so the teacher is told the section came up short
+          // instead of silently receiving a 7-question section they asked 10 for.
           console.warn(`  Section ${section.name} has only ${actualCount} questions (expected ${expectedCount})`);
+          shortSections.push({ name: section.name, expected: expectedCount, actual: actualCount });
         }
       });
 
@@ -2154,6 +2229,16 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
       return question;
     }
 
+    // Structural clean-up before the field mapping below. This is what turns "the AI wrote an
+    // exam" into "the exam is gradeable": every MCQ ends up with exactly one option flagged
+    // isCorrect AND a matching bare-letter correctAnswer (without which gradeExam.js spends an
+    // extra AI call per question guessing the key), true-false answers become the literal
+    // "True"/"False" fastGrading.js compares against, and blank/duplicate options, non-numeric
+    // marks and unkeyed matching/ordering questions are fixed or reported.
+    const structure = normalizeExamStructure(examData, { mapType: mapQuestionType });
+    console.log(`Structure check: ${structure.stats.questions} questions, ${structure.stats.fixed} auto-fixed, ${structure.stats.needsReview} need review`);
+    structure.warnings.forEach(w => console.log(`  [${w.severity}] Section ${w.section} Q${w.question} ${w.code}: ${w.detail}`));
+
     // Apply normalization to all questions in sections
     if (examData.sections && Array.isArray(examData.sections)) {
       examData.sections.forEach(section => {
@@ -2220,9 +2305,42 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
               gradingCriteria: q.gradingCriteria || q.keyPoints || q.markingScheme || [],
               keyPoints: q.keyPoints || q.gradingCriteria || [],
               acceptableAnswers: q.acceptableAnswers || q.alternativeAnswers || [],
+              // The publish endpoint (adminController) groups questions by `q.section` and falls
+              // back to 'A' when it is absent - without this every generated exam collapsed into
+              // one section no matter how many the AI actually laid out. sectionIndex is kept for
+              // the client's existing ordering logic.
+              section: section.name || String.fromCharCode(65 + sIdx),
+              sectionTitle: section.title || '',
               sectionIndex: sIdx,
               questionIndex: qIdx
             };
+
+            // Multi-part questions: the parts live on the question itself, and the publish
+            // endpoint reads q.subQuestions / q.subQuestionConfig. Leaving them off the flattened
+            // question threw away every part of a structured question on publish, leaving just
+            // the stem behind.
+            if (Array.isArray(q.subQuestions) && q.subQuestions.length > 0) {
+              baseQuestion.subQuestions = q.subQuestions;
+              baseQuestion.subQuestionConfig = q.subQuestionConfig || { mode: 'all', requiredCount: q.subQuestions.length, scoringType: 'partial' };
+            }
+
+            // Select-all-that-apply flags, set by the structure check when a question genuinely
+            // has more than one correct option. Without them the grader marks it single-answer.
+            if (q.allowMultipleAnswers) {
+              baseQuestion.allowMultipleAnswers = true;
+              baseQuestion.multipleAnswerScoring = q.multipleAnswerScoring || 'partial';
+            }
+
+            // Context the question cannot be answered without - a comprehension passage, the word
+            // box a fill-in-blank draws from, or the section's own instructions.
+            const passage = q.passage || section.passage;
+            if (passage) baseQuestion.passage = passage;
+            const wordBank = (Array.isArray(q.wordBank) && q.wordBank.length) ? q.wordBank : section.wordBank;
+            if (Array.isArray(wordBank) && wordBank.length) baseQuestion.wordBank = wordBank;
+            const instructions = q.instructions || section.instructions;
+            if (instructions) baseQuestion.instructions = instructions;
+            if (q.imageUrl) baseQuestion.imageUrl = q.imageUrl;
+            if (Array.isArray(q.imageUrls) && q.imageUrls.length) baseQuestion.imageUrls = q.imageUrls;
 
             // Add matching-specific fields
             if (questionType === 'matching') {
@@ -2385,6 +2503,23 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
     // Attach plan metadata so the client can display it
     examData._planLimits = limits;
     examData._qtConfig = qtConfig;
+    // Anything the structure check could not resolve on its own - shown to the teacher so they
+    // know which questions to look at before publishing.
+    examData._structureWarnings = [
+      ...shortSections.map(sec => ({
+        section: sec.name,
+        question: null,
+        preview: '',
+        code: 'section-short',
+        detail: `only ${sec.actual} of the ${sec.expected} requested questions were generated`,
+        severity: 'review'
+      })),
+      ...structure.warnings
+    ];
+    examData._structureStats = {
+      ...structure.stats,
+      needsReview: structure.stats.needsReview + shortSections.length
+    };
 
     console.log(`AI Exam Generated: ${examData.title} with ${flattenedQuestions.length} questions`);
 
@@ -3030,7 +3165,7 @@ This is a SECOND request, editing what's already there. The teacher's input belo
     // Never leak Groq's raw error payload (e.g. "Groq API error: 400 {...json...}") to the
     // teacher — translate the one we know about into plain English and fall back to a generic
     // message for anything else unrecognized, rather than showing raw API/JSON internals.
-    const isJsonValidationFailure = err.message?.includes('json_validate_failed') || err.message?.includes('Failed to validate JSON') || err.message?.includes('Failed to generate JSON');
+    const isJsonValidationFailure = isJsonValidationError(err);
     let message;
     if (is429) {
       message = 'AI quota exceeded. Please wait a moment and try again.';

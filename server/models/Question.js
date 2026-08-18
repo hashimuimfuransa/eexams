@@ -279,3 +279,7 @@ QuestionSchema.index({ tags: 1 }); // For tag-based searches
 QuestionSchema.index({ text: 'text' }); // For text search
 
 module.exports = mongoose.model('Question', QuestionSchema);
+// Exported so the AI-generation/extraction paths can recognise a type that is already canonical
+// instead of running it through their keyword mapper (which turns "numerical" and
+// "extended-response" - both perfectly valid here - into "multiple-choice").
+module.exports.VALID_QUESTION_TYPES = VALID_QUESTION_TYPES;

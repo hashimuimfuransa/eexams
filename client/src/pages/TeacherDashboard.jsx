@@ -1668,6 +1668,26 @@ SECTION B: Short Answer (10 marks)
             </Box>
           </Box>
           <Box sx={{ p: isXs ? 2 : 3, bgcolor: 'white' }}>
+            {/* Anything the server's structure check could not resolve on its own - a question
+                with no correct option, a written question with no model answer, a section the AI
+                under-filled. Shown here so it is fixed before publishing rather than discovered
+                when students' scripts come back wrongly marked. */}
+            {(generated?._structureWarnings || []).some(w => w.severity === 'review') && (
+              <Alert severity="warning" sx={{ mb: 2, borderRadius: 2, fontFamily: "DM Sans,sans-serif" }}>
+                <Typography fontWeight={700} sx={{ fontSize: 13, mb: 0.5, fontFamily: "DM Sans,sans-serif" }}>
+                  {generated._structureWarnings.filter(w => w.severity === 'review').length} question(s) need your review before publishing
+                </Typography>
+                <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                  {generated._structureWarnings.filter(w => w.severity === 'review').slice(0, 8).map((w, i) => (
+                    <Typography key={i} component="li" sx={{ fontSize: 12, fontFamily: "DM Sans,sans-serif" }}>
+                      Section {w.section}{w.question ? ` Q${w.question}` : ''}: {w.detail}
+                      {w.preview ? ` - "${w.preview}"` : ''}
+                    </Typography>
+                  ))}
+                </Box>
+              </Alert>
+            )}
+
             {/* Exam Details */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={6}>

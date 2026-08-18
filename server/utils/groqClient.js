@@ -13,6 +13,12 @@ const path = require('path');
 const PQueue = require('p-queue').default || require('p-queue');
 
 const {
+  parseJsonLoose,
+  extractFailedGeneration,
+  isJsonValidationError
+} = require('./jsonRepair');
+
+const {
   GRADING_SYSTEM_PROMPT,
   buildOpenEndedGradingPrompt,
   solveQuestionIndependently,
@@ -183,6 +189,10 @@ const createGroqClient = () => {
       const MAX_RETRIES = 3;
       const RETRY_DELAY_MS = 2000; // 2 seconds between retries
 
+      // Set after Groq rejects the model's own output as invalid JSON, so the retry nudges the
+      // model about syntax instead of replaying the identical request that just failed.
+      let jsonRetryHint = false;
+
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           const modelName = getModel(modelType);
@@ -200,10 +210,17 @@ const createGroqClient = () => {
               ]
             : cleanPrompt;
 
+          const baseSystemPrompt = options.systemPrompt || 'You are a helpful AI assistant specialized in educational assessment and exam grading. Always provide accurate, structured responses.';
+          const systemPrompt = jsonRetryHint
+            ? `${baseSystemPrompt}
+
+CRITICAL JSON SYNTAX: your previous response was rejected because it was not valid JSON. Return exactly ONE JSON object. Every { must be closed by exactly one }, every [ by exactly one ]. Do not put a quote in front of an object or array. Do not add a trailing comma. Escape every quote that appears inside a string value.`
+            : baseSystemPrompt;
+
           const messages = [
             {
               role: 'system',
-              content: options.systemPrompt || 'You are a helpful AI assistant specialized in educational assessment and exam grading. Always provide accurate, structured responses.'
+              content: systemPrompt
             },
             {
               role: 'user',
@@ -214,7 +231,8 @@ const createGroqClient = () => {
           const requestPayload = {
             model: modelName,
             messages: messages,
-            temperature: temperature,
+            // Nudge the sampler off the exact path that produced the broken output last time.
+            temperature: jsonRetryHint ? Math.min(temperature + 0.2, 1) : temperature,
             max_tokens: maxTokens,
             top_p: 0.9,
             stream: false
@@ -260,14 +278,23 @@ const createGroqClient = () => {
             console.warn(`Groq response was TRUNCATED (hit maxTokens=${maxTokens}) - output is likely incomplete/invalid JSON. Increase options.maxTokens or shorten the prompt/input.`);
           }
 
-          // Parse JSON if in JSON mode
+          // Parse JSON if in JSON mode. parseJsonLoose repairs the near-miss output the models
+          // still produce now and then (stray quote before an object, one brace too many, a
+          // trailing comma, or a response cut off by maxTokens) instead of handing callers a
+          // null parsedContent they then fail on.
           let parsedContent = null;
           if (useJsonMode) {
-            try {
-              parsedContent = JSON.parse(responseText);
-              console.log('Successfully parsed JSON response');
-            } catch (parseError) {
-              console.warn('Failed to parse JSON response, returning raw text:', parseError.message);
+            const parsed = parseJsonLoose(responseText);
+            if (parsed) {
+              parsedContent = parsed.value;
+              if (parsed.repaired) {
+                console.warn('Groq returned malformed JSON - repaired it locally');
+                responseText = JSON.stringify(parsedContent);
+              } else {
+                console.log('Successfully parsed JSON response');
+              }
+            } else {
+              console.warn('Failed to parse JSON response even after repair, returning raw text');
             }
           }
 
@@ -275,7 +302,11 @@ const createGroqClient = () => {
             text: responseText,
             parsedContent: parsedContent,
             usage: chatCompletion.usage || null,
-            model: modelName
+            model: modelName,
+            // Lets callers tell "the model finished and this is the whole answer" apart from
+            // "it ran out of budget mid-sentence" - an exam that stops at question 31 parses
+            // perfectly well and would otherwise look complete.
+            truncated: chatCompletion.choices[0].finish_reason === 'length'
           };
 
           // Cache the response
@@ -286,6 +317,44 @@ const createGroqClient = () => {
           return result;
         } catch (error) {
           console.error(`Error generating content with Groq (attempt ${attempt + 1}):`, error);
+
+          // Groq validates JSON-mode output server-side and returns 400 json_validate_failed when
+          // the model's own text does not parse - the whole (often complete) generation is handed
+          // back in `failed_generation`. Losing a full 50-question exam over one stray quote is
+          // not acceptable, so try to repair that text before spending another call on it.
+          if (isJsonValidationError(error)) {
+            const failedGeneration = extractFailedGeneration(error);
+            const salvaged = failedGeneration ? parseJsonLoose(failedGeneration) : null;
+
+            if (salvaged) {
+              console.warn('Groq rejected the model output as invalid JSON - repaired failed_generation locally');
+              const salvagedText = JSON.stringify(salvaged.value);
+              const salvagedResult = {
+                text: salvagedText,
+                parsedContent: salvaged.value,
+                usage: null,
+                model: getModel(modelType)
+              };
+              if (!options.skipCache) {
+                saveToCache(cacheKey, salvagedResult);
+              }
+              return salvagedResult;
+            }
+
+            if (attempt < MAX_RETRIES) {
+              console.warn(`Groq returned unparseable JSON (attempt ${attempt + 1}/${MAX_RETRIES}) and it could not be repaired. Retrying with a stricter JSON instruction...`);
+              jsonRetryHint = true;
+              await sleep(RETRY_DELAY_MS);
+              continue;
+            }
+
+            // Out of retries - surface something callers can branch on instead of the raw
+            // multi-kilobyte Groq payload, which route handlers were string-matching on.
+            const jsonErr = new Error('The AI returned malformed JSON that could not be repaired. Please try again, or simplify/shorten the input.');
+            jsonErr.status = 422;
+            jsonErr.code = 'json_validate_failed';
+            throw jsonErr;
+          }
 
           // Check for rate limit errors (429)
           const is429 = error.status === 429 ||

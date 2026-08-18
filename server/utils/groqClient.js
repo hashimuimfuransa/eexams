@@ -309,9 +309,17 @@ CRITICAL JSON SYNTAX: your previous response was rejected because it was not val
             truncated: chatCompletion.choices[0].finish_reason === 'length'
           };
 
-          // Cache the response
+          // Cache the response. A truncated one is deliberately NOT cached: the cache key is
+          // built from the prompt and model only, so a response cut off by the token budget
+          // would be replayed for every later request with the same prompt - including after
+          // the budget was raised to fix it. One bad generation would otherwise pin a student's
+          // mark permanently.
           if (!options.skipCache) {
-            saveToCache(cacheKey, result);
+            if (result.truncated) {
+              console.warn('Not caching a truncated Groq response - it would be replayed on every retry');
+            } else {
+              saveToCache(cacheKey, result);
+            }
           }
 
           return result;
@@ -468,7 +476,10 @@ Also include, alongside the required fields:
       jsonMode: true,
       temperature: 0.1,
       // Room for the grader to write out its own solution before it judges the student's.
-      maxTokens: isShortAnswer ? 1024 : 2560
+      // These are reasoning models: a large slice of the budget goes on internal thought
+      // before any JSON is emitted, so a tight cap truncates the response mid-object and the
+      // score/feedback fields never get written.
+      maxTokens: isShortAnswer ? 1536 : 4096
     });
 
     // Extract parsed content or parse manually

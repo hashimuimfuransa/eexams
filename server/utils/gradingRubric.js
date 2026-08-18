@@ -278,7 +278,13 @@ function reconcileScoreWithCoverage(result, rawMaxPoints, options = {}) {
   // Questions occasionally reach grading without a mark allocation; never let that turn into NaN.
   const maxPoints = Number.isFinite(Number(rawMaxPoints)) ? Number(rawMaxPoints) : 0;
   const rawScore = Number(result && result.score);
-  let score = Number.isFinite(rawScore) ? Math.min(Math.max(rawScore, 0), maxPoints) : 0;
+  // A grader whose response was cut off by the token budget never gets as far as writing
+  // "score" - the JSON is repaired, the keyPoints it had already written survive, and the
+  // missing score used to become 0. That silently failed students whose own breakdown
+  // credited them: an answer with 1 of 3 points covered was handed 0/3 rather than 1/3.
+  // Track whether a score was actually reported so coverage can stand in when it was not.
+  const hasReportedScore = Number.isFinite(rawScore);
+  let score = hasReportedScore ? Math.min(Math.max(rawScore, 0), maxPoints) : 0;
 
   const verdict = String((result && result.independentVerdict) || '').toLowerCase().trim();
   const guideReliable = !(result && result.markingGuideReliable === false);
@@ -304,7 +310,20 @@ function reconcileScoreWithCoverage(result, rawMaxPoints, options = {}) {
     : { needsReview: false, reviewReason: '' };
 
   if (keyPoints.length === 0) {
-    // No breakdown to check against - keep the model's score, just bounded and rounded.
+    // No breakdown to check against - keep the model's score, just bounded and rounded. With
+    // no score either there is nothing to mark on, so a teacher is asked to look at it rather
+    // than a 0 going out unexamined.
+    if (!hasReportedScore) {
+      return {
+        score: 0,
+        coverage: null,
+        keyPoints: [],
+        adjusted: false,
+        needsReview: true,
+        reviewReason: 'The grader returned neither a score nor a point-by-point breakdown, ' +
+          'most likely because its response was cut off. This answer has not really been marked.'
+      };
+    }
     return { score: roundMark(score, maxPoints), coverage: null, keyPoints: [], adjusted: false, ...review };
   }
 
@@ -325,12 +344,26 @@ function reconcileScoreWithCoverage(result, rawMaxPoints, options = {}) {
   let adjusted = false;
 
   if (guideOverridden) {
+    // No self-reported score to keep here either - fall back to the breakdown rather than 0.
+    const kept = hasReportedScore ? roundMark(score, maxPoints) : coverageScore;
     console.log(`⚠️ Grading: ${label} - marking guide judged unreliable (${guideConcern || 'no reason given'}), ` +
-      `keeping the grader's score of ${score}/${maxPoints} and flagging for teacher review`);
-    return { score: roundMark(score, maxPoints), coverage, keyPoints, adjusted: false, ...review };
+      `keeping the grader's score of ${kept}/${maxPoints} and flagging for teacher review`);
+    return { score: kept, coverage, keyPoints, adjusted: false, ...review };
   }
 
-  if (score > coverageScore) {
+  if (!hasReportedScore) {
+    // The grader wrote its point-by-point verdicts but never reached the score field - almost
+    // always a response cut off by the token budget. Those verdicts are real marking and are
+    // the only evidence there is, so the mark comes from them instead of defaulting to 0.
+    console.log(`🧮 Grading: ${label} returned no score - marking from its own coverage instead ` +
+      `(${earned}/${keyPoints.length} expected points covered -> ${coverageScore}/${maxPoints})`);
+    score = coverageScore;
+    adjusted = true;
+    review.needsReview = true;
+    review.reviewReason = review.reviewReason ||
+      `The grader's response was incomplete (no score returned), so the mark was computed from ` +
+      `its point-by-point breakdown: ${earned} of ${keyPoints.length} expected points covered.`;
+  } else if (score > coverageScore) {
     console.log(`📉 Grading: capping ${label} at coverage - ${score} -> ${coverageScore} ` +
       `(${earned}/${keyPoints.length} expected points covered)`);
     score = coverageScore;

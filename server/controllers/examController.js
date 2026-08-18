@@ -10,6 +10,7 @@ const { parseExamFile } = require('../utils/fileParser');
 const { gradeOpenEndedAnswer, generateModelAnswers } = require('../utils/aiGrading');
 const { gradeQuestionByType } = require('../utils/enhancedGrading');
 const cacheService = require('../utils/cacheService');
+const { sanitizeExamForStudent } = require('../utils/studentExamView');
 const ExamRequest = require('../models/ExamRequest');
 const { batchUpdateAnswers, batchGradeAnswers, bulkFetchQuestions } = require('../utils/batchOperations');
 const { isMultipleAnswerQuestion, gradeMultipleAnswer } = require('../utils/multipleAnswerGrading');
@@ -788,33 +789,15 @@ const getExamById = async (req, res) => {
       return res.json(updatedExam);
     }
 
-    // For students, make sure they can see the questions
+    // For students, make sure they can see the questions - without the marking key. This
+    // used to strip correctAnswer from multiple-choice and open-ended questions only, so a
+    // fill-in-blank, true/false, matching, ordering, drag-drop or spreadsheet question still
+    // carried its answer into the browser.
     if (req.user.role === 'student') {
-      // Hide correct answers for multiple choice questions
-      const examForStudent = JSON.parse(JSON.stringify(exam));
+      const examForStudent = sanitizeExamForStudent(exam);
 
       // Log selective answering info for debugging
       console.log(`Student exam view - allowSelectiveAnswering: ${examForStudent.allowSelectiveAnswering}, sectionB: ${examForStudent.sectionBRequiredQuestions}, sectionC: ${examForStudent.sectionCRequiredQuestions}`);
-
-      for (const section of examForStudent.sections) {
-        for (const question of section.questions) {
-          if (question.type === 'multiple-choice') {
-            // Remove the correctAnswer field and isCorrect flags from options
-            delete question.correctAnswer;
-            if (question.options && Array.isArray(question.options)) {
-              question.options = question.options.map((option, index) => ({
-                text: option.text,
-                letter: option.letter || String.fromCharCode(65 + index), // Ensure letter property is included
-                value: option.value || option.letter?.toLowerCase() || String.fromCharCode(97 + index), // Ensure value property is included
-                _id: option._id
-              }));
-            }
-          } else if (question.type === 'open-ended') {
-            // For open-ended questions, remove the model answer
-            delete question.correctAnswer;
-          }
-        }
-      }
 
       return res.json(examForStudent);
     }

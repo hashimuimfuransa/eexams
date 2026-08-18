@@ -16,6 +16,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Functions,
@@ -31,7 +32,7 @@ import {
   DeleteOutline,
   SpaceBar,
 } from '@mui/icons-material';
-import { styled } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
 import 'mathlive';
 import { EditorView, basicSetup } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
@@ -52,6 +53,19 @@ const TOKEN = {
   fontMono: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
   fontSans: "'IBM Plex Sans', 'Segoe UI', sans-serif",
 };
+
+/* ─── Inline shortcuts MathLive applies that we do not want ────────────
+   MathLive rewrites a handful of ordinary English words into symbols the moment they are
+   typed: "and" becomes ∧, "or" becomes ∨, "not" becomes ¬, "in" becomes ∈, and so on. In
+   an exam answer those are almost always just words - a student writing "x and y are
+   equal" does not mean a logical conjunction - so the word-shaped shortcuts are dropped.
+   Symbol-shaped ones ("->", "!=", "+-") and the maths names ("sqrt", "pi", "frac") stay,
+   because nobody types those by accident.                                              */
+const UNWANTED_WORD_SHORTCUTS = [
+  'and', 'or', 'not', 'in', 'iff', 'forall', 'exists',
+  'sub', 'sup', 'sube', 'supe', 'prop', 'lt', 'gt', 'lt=', 'gt=',
+  'deg', 'del', 'grad', 'mean', 'median', 'square', 'diamond', 'divide', 'setminus',
+];
 
 /* ─── Quick-insert symbol groups ─────────────────────────────
    `#?` becomes an empty box the cursor jumps into, so whatever the
@@ -202,6 +216,22 @@ const TabBar = styled(Tabs)(({ theme }) => ({
     textTransform: 'none',
     fontFamily: TOKEN.fontSans,
     gap: 6,
+  },
+  // On a phone the three labels never fit side by side: they were squeezed into two
+  // cramped lines each and the third tab was easy to miss altogether. Short labels with
+  // the icon stacked above give each tab a full-width, thumb-sized target instead.
+  [theme.breakpoints.down('sm')]: {
+    minHeight: 58,
+    '& .MuiTab-root': {
+      minHeight: 58,
+      minWidth: 0,
+      flex: 1,
+      padding: '6px 4px',
+      fontSize: '0.7rem',
+      gap: 0,
+    },
+    '& .MuiTab-root .MuiSvgIcon-root': { marginBottom: 2, fontSize: '1.15rem' },
+    '& .MuiTabs-indicator': { height: 3 },
   },
 }));
 
@@ -364,7 +394,9 @@ const splitAnswer = (raw) => {
 };
 
 /* ─── Main Component ─────────────────────────────────────── */
-const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answerRef }) => {
+const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answerRef, compact }) => {
+  const theme = useTheme();
+  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
   const initial = splitAnswer(answer?.textAnswer);
   const [activeTab, setActiveTab] = useState(0);
   const [mathValue, setMathValue] = useState(initial.math);
@@ -377,6 +409,9 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
   const mathfieldRef = useRef(null);
   const codeEditorRef = useRef(null);
   const codeEditorContainerRef = useRef(null);
+  // Guards the debounced hand-off below so loading a question's saved answer is never
+  // reported back up as if the student had just typed it.
+  const skipAnswerSync = useRef(true);
 
   // Reset local state when the question changes
   useEffect(() => {
@@ -386,6 +421,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
     setCodeValue(parts.code);
     if (parts.language) setSelectedLanguage(parts.language);
     setActiveTab(0);
+    skipAnswerSync.current = true;
   }, [question._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Expose a method to get the current combined answer
@@ -412,6 +448,30 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
     [question._id, question.type, onAnswerChange, selectedLanguage]
   );
 
+  // Held in a ref, not read as a dependency below: the exam re-renders once a second for its
+  // countdown and hands down a fresh onAnswerChange every time, which would restart the
+  // debounce on every tick and mean the hand-off never fires.
+  const updateCombinedRef = useRef(updateCombined);
+  useEffect(() => { updateCombinedRef.current = updateCombined; });
+
+  /* Hand the answer up to the exam shortly after typing stops.
+
+     Everything above is deliberately kept in local state so a keystroke does not re-render
+     the whole exam - but that also meant the exam never saw a word of it until the student
+     switched tabs or pressed Next, so anyone who wrote an essay and then went straight to
+     Submit submitted nothing. A short debounce keeps typing smooth and still lets the
+     exam's autosave and its pre-submit sweep find the text. */
+  useEffect(() => {
+    if (skipAnswerSync.current) {
+      skipAnswerSync.current = false;
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      updateCombinedRef.current(mathValue, codeValue, textValue);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [mathValue, codeValue, textValue]);
+
   /* Set up the math field every time the Math tab is opened */
   useEffect(() => {
     if (activeTab !== 1) return undefined;
@@ -424,6 +484,27 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
     mf.smartFence = true;
     mf.smartSuperscript = true;
     mf.mathVirtualKeyboardPolicy = 'auto';
+
+    // Stop ordinary words being swallowed into logic symbols as they are typed. Both the
+    // getter and the setter throw until the custom element has finished mounting, which it
+    // may not have done on the very first pass - hence the one retry.
+    const dropWordShortcuts = () => {
+      const shortcuts = { ...mf.inlineShortcuts };
+      UNWANTED_WORD_SHORTCUTS.forEach((word) => { delete shortcuts[word]; });
+      mf.inlineShortcuts = shortcuts;
+    };
+    let shortcutRetry;
+    try {
+      dropWordShortcuts();
+    } catch (err) {
+      shortcutRetry = setTimeout(() => {
+        try {
+          dropWordShortcuts();
+        } catch (retryError) {
+          console.warn('Could not adjust MathLive inline shortcuts:', retryError);
+        }
+      }, 150);
+    }
 
     // The spacebar. Left empty, MathLive binds space to "moveAfterParent",
     // which does nothing at all at the top level - so students press space
@@ -467,6 +548,7 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
     setMathReady(true);
 
     return () => {
+      if (shortcutRetry) clearTimeout(shortcutRetry);
       mf.removeEventListener('input', onInput);
       mf.removeEventListener('keydown', onKeyDown);
     };
@@ -656,18 +738,38 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
   };
 
   const isSection = question?.section;
-  const rows = isSection === 'C' ? 12 : 6;
-  const recommended = isSection === 'C' ? 300 : null;
+  // 'compact' is for the short kinds of answer - a fill-in-the-blank or a sub-question part -
+  // where a full essay box would dwarf the question. The Math and Code tabs are still there;
+  // only the height of the written box changes.
+  const rows = compact ? 2 : (isSection === 'C' ? 12 : 6);
+  const recommended = compact ? null : (isSection === 'C' ? 300 : null);
   const hasContent = mathValue.trim() || textValue.trim() || codeValue.trim();
 
   return (
-    <Box sx={{ mt: 2 }}>
+    <Box sx={{ mt: compact ? 1 : 2 }}>
       <Shell elevation={0}>
         {/* ── Tab bar ── */}
-        <TabBar value={activeTab} onChange={handleTabChange}>
-          <Tab icon={<Edit fontSize="small" />} label="Written Answer" iconPosition="start" />
-          <Tab icon={<Functions fontSize="small" />} label="Math / Equations" iconPosition="start" />
-          <Tab icon={<Code fontSize="small" />} label="Code / Programming" iconPosition="start" />
+        <TabBar
+          value={activeTab}
+          onChange={handleTabChange}
+          variant="fullWidth"
+          aria-label="Answer format"
+        >
+          <Tab
+            icon={<Edit fontSize="small" />}
+            label={isNarrow ? 'Written' : 'Written Answer'}
+            iconPosition={isNarrow ? 'top' : 'start'}
+          />
+          <Tab
+            icon={<Functions fontSize="small" />}
+            label={isNarrow ? 'Math' : 'Math / Equations'}
+            iconPosition={isNarrow ? 'top' : 'start'}
+          />
+          <Tab
+            icon={<Code fontSize="small" />}
+            label={isNarrow ? 'Code' : 'Code / Programming'}
+            iconPosition={isNarrow ? 'top' : 'start'}
+          />
         </TabBar>
 
         {/* ── Tab content ── */}
@@ -679,7 +781,9 @@ const EnhancedOpenAnswer = ({ question, answer, onAnswerChange, disabled, answer
                 fullWidth
                 multiline
                 rows={rows}
-                placeholder="Write your answer here. Show all working clearly and logically."
+                placeholder={compact
+                  ? 'Type your answer here…'
+                  : 'Write your answer here. Show all working clearly and logically.'}
                 value={textValue}
                 onChange={handleTextChange}
                 disabled={disabled}

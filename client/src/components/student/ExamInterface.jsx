@@ -82,7 +82,7 @@ import api from '../../services/api';
 // Import security CSS
 import './ExamSecurity.css';
 import { FinancialSpreadsheetQuestion } from '../FinancialSpreadsheet';
-import { CalculatorDialog, DraggableCalculator } from '../ScientificCalculator';
+import { DraggableCalculator } from '../ScientificCalculator';
 
 // Styled components for gamified UI
 const QuestionCard = styled(Card, {
@@ -233,6 +233,264 @@ const SectionChip = styled(Chip, {
   };
 });
 
+/* ─── Fill-in-the-blank: typing happens inside the sentence ─────────────
+   A blank is written in the question text as a run of underscores, a long run
+   of dots, or a literal [blank]/(blank) marker. Splitting on those lets the
+   student type straight into the gap instead of into a detached box below the
+   question, which is what a printed paper looks like.                        */
+const BLANK_MARKER = /(_{2,}|\.{5,}|…{2,}|\[\s*blanks?\s*\]|\(\s*blanks?\s*\))/gi;
+
+// Separator used only when one question carries several blanks — the server stores a
+// fill-in-blank answer as a single string, so the parts are joined for saving and split
+// back apart when the answer is reloaded.
+const BLANK_JOIN = ' | ';
+
+// Splits question text into alternating text/blank pieces. Returns null when the text has
+// no blank markers at all, so the caller can fall back to the plain single-answer box.
+const splitTextOnBlanks = (text) => {
+  if (!text || typeof text !== 'string') return null;
+  const pieces = text.split(BLANK_MARKER);
+  if (pieces.length < 2) return null;
+
+  const segments = [];
+  let blankIndex = 0;
+  pieces.forEach((piece, i) => {
+    // split() with a capturing group puts the matched delimiters at every odd index
+    if (i % 2 === 1) {
+      segments.push({ type: 'blank', index: blankIndex++ });
+    } else if (piece) {
+      segments.push({ type: 'text', value: piece });
+    }
+  });
+
+  return blankIndex > 0 ? { segments, blankCount: blankIndex } : null;
+};
+
+const blankPartsFromAnswer = (textAnswer, blankCount) => {
+  const parts = new Array(blankCount).fill('');
+  if (!textAnswer) return parts;
+  const stored = String(textAnswer).split(BLANK_JOIN);
+  // A single-blank question never carries the separator, so the whole string is the answer.
+  const source = blankCount === 1 ? [String(textAnswer)] : stored;
+  source.slice(0, blankCount).forEach((value, i) => { parts[i] = value; });
+  return parts;
+};
+
+/* The question text itself, with an editable gap wherever a blank was printed. */
+const QuestionTextWithBlanks = ({ question, answer, onAnswerChange, layout, disabled }) => {
+  const { segments, blankCount } = layout;
+  const [parts, setParts] = useState(() => blankPartsFromAnswer(answer?.textAnswer, blankCount));
+
+  // Reload the saved answer when the student navigates to a different question
+  useEffect(() => {
+    setParts(blankPartsFromAnswer(answer?.textAnswer, blankCount));
+  }, [question._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleBlankChange = (index, value) => {
+    const next = [...parts];
+    next[index] = value;
+    setParts(next);
+    // Blank answers are joined into the one string the grader expects. Trailing empty
+    // blanks are dropped so a half-finished answer isn't padded with separators.
+    const joined = blankCount === 1
+      ? next[0]
+      : next.join(BLANK_JOIN).replace(/(?:\s\|\s)+$/, '');
+    onAnswerChange(question._id, joined, 'fill-in-blank');
+  };
+
+  const filledCount = parts.filter(v => String(v || '').trim()).length;
+
+  return (
+    <>
+    <Box
+      component="h2"
+      sx={{
+        whiteSpace: 'pre-wrap',
+        fontSize: '1.25rem',
+        fontWeight: 700,
+        lineHeight: 2.4,
+        m: 0,
+        mb: 1.5,
+        p: 3,
+        pt: 4,
+        bgcolor: 'background.paper',
+        borderLeft: '4px solid',
+        borderColor: 'primary.main',
+        borderRadius: '4px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      }}
+    >
+      {segments.map((segment, i) => (
+        segment.type === 'text' ? (
+          <Box component="span" key={`t${i}`}>{segment.value}</Box>
+        ) : (
+          <Box
+            component="input"
+            key={`b${segment.index}`}
+            type="text"
+            value={parts[segment.index] || ''}
+            onChange={(e) => handleBlankChange(segment.index, e.target.value)}
+            disabled={disabled}
+            spellCheck={true}
+            autoComplete="off"
+            aria-label={blankCount > 1 ? `Blank ${segment.index + 1} of ${blankCount}` : 'Answer'}
+            placeholder={blankCount > 1 ? String(segment.index + 1) : ''}
+            sx={(theme) => {
+              const isFilled = !!(parts[segment.index] || '').trim();
+              return {
+                // Sized to what has been typed so the sentence keeps its shape as it fills in.
+                // Empty gaps stay wide enough to read as a place an answer goes.
+                width: `${Math.min(40, Math.max(10, (parts[segment.index] || '').length + 2))}ch`,
+                mx: 0.5,
+                px: 0.75,
+                py: 0.25,
+                font: 'inherit',
+                fontWeight: 600,
+                color: 'primary.main',
+                // An empty gap is tinted so it is unmistakably the thing to type into. A bare
+                // underline alone reads as part of the printed sentence.
+                bgcolor: isFilled ? 'transparent' : alpha(theme.palette.primary.main, 0.08),
+                border: 'none',
+                borderBottom: '2px solid',
+                borderColor: isFilled
+                  ? theme.palette.primary.main
+                  : alpha(theme.palette.primary.main, 0.5),
+                borderRadius: '4px 4px 0 0',
+                outline: 'none',
+                textAlign: 'center',
+                transition: 'border-color 0.2s ease, background-color 0.2s ease, width 0.1s ease',
+                '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.12) },
+                '&:focus': {
+                  borderColor: theme.palette.primary.main,
+                  borderBottomWidth: 3,
+                  bgcolor: alpha(theme.palette.primary.main, 0.14)
+                },
+                '&::placeholder': { color: 'text.disabled', fontWeight: 400, opacity: 1 }
+              };
+            }}
+          />
+        )
+      ))}
+    </Box>
+
+    {/* This sentence IS the answer box, so the instruction and the save confirmation belong
+        here - there is no separate input below to carry them. */}
+    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 1, px: 0.5 }}>
+      <Typography variant="caption" color="text.secondary">
+        {blankCount > 1
+          ? `Type your answer into each of the ${blankCount} highlighted gaps above.`
+          : 'Type your answer into the highlighted gap above.'}
+      </Typography>
+      {blankCount > 1 && (
+        <Chip
+          size="small"
+          label={`${filledCount} of ${blankCount} filled`}
+          color={filledCount === blankCount ? 'success' : 'default'}
+          variant={filledCount === blankCount ? 'filled' : 'outlined'}
+          sx={{ height: 20, fontSize: 11 }}
+        />
+      )}
+      {answer?.savedToServer && (
+        <Box sx={{ display: 'flex', alignItems: 'center', color: 'success.main' }}>
+          <Check fontSize="small" sx={{ mr: 0.5 }} />
+          <Typography variant="caption">Answer saved</Typography>
+        </Box>
+      )}
+    </Box>
+    </>
+  );
+};
+
+/* Tracing for this screen. There is a lot of it - it is how the save/restore paths were made
+   debuggable - but it is noise in a student's console during a real exam, and a couple of the
+   lines used to echo the answer text back out. Kept for development builds, silent in
+   production. console.error/console.warn are deliberately untouched: a real failure should
+   still be visible in a deployed exam. */
+const examLog = (...args) => {
+  if (import.meta.env.DEV) console.log(...args);
+};
+
+// How long the student has to stop typing before their answer is written to the server
+const AUTOSAVE_IDLE_MS = 2500;
+
+/* ─── Local draft of the answers ───────────────────────────────────────
+   Answers only existed in React state until a save reached the server. saveAnswerToServer
+   retries three times and then gives up with a warning, so on a connection that drops - or
+   a browser that is closed, or a tab that crashes - an essay could simply be gone. Every
+   change is mirrored into localStorage as well, and anything the server has not accepted is
+   put back when the exam is reopened, where the autosave picks it up and re-sends it. */
+const draftKey = (examId) => `examDraft:${examId}`;
+
+const readDraft = (examId) => {
+  try {
+    const raw = window.localStorage.getItem(draftKey(examId));
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.warn('Could not read the saved answer draft:', err);
+    return null;
+  }
+};
+
+const writeDraft = (examId, answers) => {
+  try {
+    window.localStorage.setItem(draftKey(examId), JSON.stringify({
+      savedAt: new Date().toISOString(),
+      answers
+    }));
+  } catch (err) {
+    // Out of quota, or storage blocked in private browsing - the exam still works, it just
+    // loses this particular safety net.
+    console.warn('Could not write the answer draft:', err);
+  }
+};
+
+const clearDraft = (examId) => {
+  try {
+    window.localStorage.removeItem(draftKey(examId));
+  } catch (err) {
+    console.warn('Could not clear the answer draft:', err);
+  }
+};
+
+/** Does this answer hold anything worth restoring? */
+const answerHasContent = (answer) => !!(
+  answer?.textAnswer?.toString().trim() ||
+  answer?.writtenAnswer?.trim() ||
+  answer?.selectedOption ||
+  answer?.selectedOptions?.length ||
+  answer?.matchingAnswers ||
+  answer?.orderingAnswer ||
+  answer?.dragDropAnswer
+);
+
+/**
+ * Server answers win wherever the server has one, because it is the record that will be
+ * marked. A local answer is only restored where the server has nothing - which is exactly
+ * the case a dropped connection creates - and is flagged unsaved so the autosave resends it.
+ */
+const mergeDraftIntoAnswers = (serverAnswers, examId) => {
+  const draft = readDraft(examId);
+  if (!draft?.answers) return { merged: serverAnswers, restoredCount: 0 };
+
+  const merged = { ...serverAnswers };
+  let restoredCount = 0;
+
+  Object.entries(draft.answers).forEach(([key, localAnswer]) => {
+    if (!answerHasContent(localAnswer)) return;
+    if (answerHasContent(serverAnswers[key])) return;
+
+    merged[key] = {
+      ...localAnswer,
+      answered: true,
+      savedToServer: false,
+      hasChanges: true
+    };
+    restoredCount += 1;
+  });
+
+  return { merged, restoredCount };
+};
+
 // Main component
 const ExamInterface = () => {
   const { id } = useParams();
@@ -241,6 +499,9 @@ const ExamInterface = () => {
   const { toggleTheme, mode } = useThemeMode();
   const { user } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  // Below md the sidebar is no longer a sidebar - it sits above the question as a full-width
+  // strip, which is where the section list has to switch from a column to a row.
+  const isSidebarStacked = useMediaQuery(theme.breakpoints.down('md'));
 
   // Security state variables
   const [securityActive, setSecurityActive] = useState(false);
@@ -273,14 +534,19 @@ const ExamInterface = () => {
   const [confirmNavigation, setConfirmNavigation] = useState(false);
   const [selectiveAnswering, setSelectiveAnswering] = useState(false);
   const [selectedQuestions, setSelectedQuestions] = useState({});
-  const [lastQuestionSaved, setLastQuestionSaved] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [lastActiveTime, setLastActiveTime] = useState(Date.now());
 
-  // Reset lastQuestionSaved when exam loads or when switching questions
-  useEffect(() => {
-    setLastQuestionSaved(false);
-  }, [activeQuestionIndex, activeSection]);
+  // Autosave bookkeeping. 'saveStatus' drives the small indicator next to the Save button so
+  // the student can see their work is being kept without having to press anything.
+  const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  const savingProgressRef = useRef(null);   // in-flight save, so two saves never interleave
+  const autosaveTimerRef = useRef(null);    // idle timer that flushes typing
+  const autosaveSignatureRef = useRef(null); // what the last autosave attempt covered
+  const silentSaveRef = useRef(false);      // suppresses per-answer toasts during an autosave
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
 
 
   // Detect if user is on a mobile device
@@ -322,7 +588,7 @@ const ExamInterface = () => {
                 !document.webkitFullscreenEnabled &&
                 !document.mozFullScreenEnabled &&
                 !document.msFullscreenEnabled) {
-              console.log('Fullscreen not supported or enabled in this browser');
+              examLog('Fullscreen not supported or enabled in this browser');
               // Check if already in fullscreen before showing prompt
               const isDocFullscreen = !!(
                 document.fullscreenElement ||
@@ -347,7 +613,7 @@ const ExamInterface = () => {
               await docEl.msRequestFullscreen();
             }
 
-            console.log('Fullscreen entered successfully');
+            examLog('Fullscreen entered successfully');
             setIsFullscreen(true);
             setShowFullscreenPrompt(false); // Hide prompt if it was showing
           } catch (error) {
@@ -492,7 +758,7 @@ const ExamInterface = () => {
             if (answer.isSelected !== undefined) {
               // Use the saved selection state from the backend
               isSelected = answer.isSelected;
-              console.log(`Using backend selection state for question ${answer.question._id}: ${isSelected}`);
+              examLog(`Using backend selection state for question ${answer.question._id}: ${isSelected}`);
             } else if (examRes.data.allowSelectiveAnswering && (questionSection === 'B' || questionSection === 'C')) {
               // Fallback: calculate selection state using the same logic as backend
               const sectionQuestions = examRes.data.sections
@@ -514,7 +780,7 @@ const ExamInterface = () => {
 
               // Select only the first N questions by default (same logic as backend)
               isSelected = questionIndexInSection < requiredCount;
-              console.log(`Fallback selection for question ${answer.question._id} in section ${questionSection}: index ${questionIndexInSection}/${sortedSectionQuestions.length}, required ${requiredCount}, selected: ${isSelected}`);
+              examLog(`Fallback selection for question ${answer.question._id} in section ${questionSection}: index ${questionIndexInSection}/${sortedSectionQuestions.length}, required ${requiredCount}, selected: ${isSelected}`);
             } else {
               // For section A or when selective answering is disabled, all questions are selected
               isSelected = true;
@@ -533,11 +799,17 @@ const ExamInterface = () => {
             initialSelectedQuestions[answer.question._id] = isSelected;
           });
 
-          setAnswers(initialAnswers);
+          // Put back anything that never made it to the server last time
+          const { merged, restoredCount } = mergeDraftIntoAnswers(initialAnswers, id);
+          setAnswers(merged);
           setSelectedQuestions(initialSelectedQuestions);
-
-          // Log the restored selection state for debugging
-          console.log('Restored selection state:', initialSelectedQuestions);
+          if (restoredCount > 0) {
+            setSnackbar({
+              open: true,
+              message: `Restored ${restoredCount} unsaved answer${restoredCount > 1 ? 's' : ''} from this device.`,
+              severity: 'info'
+            });
+          }
         } else {
           // No session, start a new one
           try {
@@ -565,7 +837,7 @@ const ExamInterface = () => {
               if (answer.isSelected !== undefined) {
                 // Backend has already initialized the selection state
                 isSelected = answer.isSelected;
-                console.log(`New session: Using backend selection state for question ${answer.question._id}: ${isSelected}`);
+                examLog(`New session: Using backend selection state for question ${answer.question._id}: ${isSelected}`);
               } else if (examRes.data.allowSelectiveAnswering && (questionSection === 'B' || questionSection === 'C')) {
                 // Fallback: calculate selection state using the same logic as backend
                 const sectionQuestions = examRes.data.sections
@@ -587,7 +859,7 @@ const ExamInterface = () => {
 
                 // Select only the first N questions by default (same logic as backend)
                 isSelected = questionIndexInSection < requiredCount;
-                console.log(`New session fallback: Auto-selecting question ${answer.question._id} in section ${questionSection}: index ${questionIndexInSection}/${sortedSectionQuestions.length}, required ${requiredCount}, selected: ${isSelected}`);
+                examLog(`New session fallback: Auto-selecting question ${answer.question._id} in section ${questionSection}: index ${questionIndexInSection}/${sortedSectionQuestions.length}, required ${requiredCount}, selected: ${isSelected}`);
               } else {
                 // For section A or when selective answering is disabled, all questions are selected
                 isSelected = true;
@@ -604,11 +876,16 @@ const ExamInterface = () => {
               initialSelectedQuestions[answer.question._id] = isSelected;
             });
 
-            setAnswers(initialAnswers);
+            const { merged, restoredCount } = mergeDraftIntoAnswers(initialAnswers, id);
+            setAnswers(merged);
             setSelectedQuestions(initialSelectedQuestions);
-
-            // Log the initial selection state for debugging
-            console.log('Initial selection state:', initialSelectedQuestions);
+            if (restoredCount > 0) {
+              setSnackbar({
+                open: true,
+                message: `Restored ${restoredCount} unsaved answer${restoredCount > 1 ? 's' : ''} from this device.`,
+                severity: 'info'
+              });
+            }
           } catch (startErr) {
             // Handle locked exam error from start endpoint
             if (startErr.response && startErr.response.status === 403) {
@@ -800,7 +1077,7 @@ const ExamInterface = () => {
         const submitTimer = setTimeout(() => {
           // Check again if we're not already submitting or completed
           if (!submitting && !examCompleted && handleSubmitExamRef.current) {
-            console.log('🔒 Auto-submitting exam due to fullscreen exit');
+            examLog('🔒 Auto-submitting exam due to fullscreen exit');
             handleSubmitExamRef.current();
           }
         }, 10000); // Give them 10 seconds to return to fullscreen
@@ -1062,7 +1339,7 @@ const ExamInterface = () => {
         // Start 30 second timer for auto-submit
         window.visibilityTimer = setTimeout(() => {
           if (!examCompleted && handleSubmitExamRef.current) {
-            console.log('🔒 Auto-submitting exam due to screen absence (30 seconds)');
+            examLog('🔒 Auto-submitting exam due to screen absence (30 seconds)');
             handleSubmitExamRef.current();
           }
         }, 30000); // 30 seconds
@@ -1248,7 +1525,7 @@ const ExamInterface = () => {
 
         // Only auto-correct if not skipping index correction (to prevent infinite loops during submission)
         if (!skipIndexCorrection && questions.length > 0) {
-          console.log('Auto-correcting question index to 0');
+          examLog('Auto-correcting question index to 0');
           setActiveQuestionIndex(0);
           return questions[0];
         }
@@ -1275,9 +1552,12 @@ const ExamInterface = () => {
 
 
   // Handle section change with enhanced error handling
-  const handleSectionChange = (section) => {
+  const handleSectionChange = async (section) => {
     try {
-      console.log(`Changing to section: ${section}`);
+      examLog(`Changing to section: ${section}`);
+
+      // Flush whatever is typed on this question before leaving the section
+      await saveCurrentQuestionProgress();
 
       // Validate exam data
       if (!exam || !exam.sections || exam.sections.length === 0) {
@@ -1323,7 +1603,7 @@ const ExamInterface = () => {
           }
 
           // Successfully change section
-          console.log(`Successfully changing to section ${section} with ${targetSection.questions.length} questions`);
+          examLog(`Successfully changing to section ${section} with ${targetSection.questions.length} questions`);
           setActiveSection(section);
           setActiveQuestionIndex(0);
           setQuestionsLoading(false);
@@ -1358,7 +1638,7 @@ const ExamInterface = () => {
     const isLastSection = sectionIndex === exam.sections.length - 1;
     const isLastQuestionInSection = activeQuestionIndex === questions.length - 1;
     const result = isLastSection && isLastQuestionInSection;
-    console.log('isLastQuestion check:', {
+    examLog('isLastQuestion check:', {
       activeSection,
       sectionIndex,
       totalSections: exam.sections.length,
@@ -1371,219 +1651,327 @@ const ExamInterface = () => {
     return result;
   };
 
-  // Handle saving the last question - uses the same logic as handleNextQuestion
-  const handleSaveLastQuestion = async () => {
-    const currentQuestion = getCurrentQuestion();
-    if (!currentQuestion) return;
-
-    const currentAnswer = answers[currentQuestion._id];
-    const questionType = currentQuestion.type;
-    const questionSection = currentQuestion.section || 'A';
-
-    console.log(`🔍 handleSaveLastQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}`);
-
-    // For open-ended/image questions, get the current answer from ref and save directly (same as handleNextQuestion)
-    if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured' || questionType === 'financial-spreadsheet') {
-      const refAnswer = questionType === 'financial-spreadsheet' ? (currentAnswer?.textAnswer || '') : (openAnswerRef.current ? openAnswerRef.current() : '');
-      const currentTextAnswer = (refAnswer && (typeof refAnswer === 'string' ? refAnswer.trim() : true)) ? refAnswer : (currentAnswer?.textAnswer || '');
-      console.log(`🔍 Last question save: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
-      if (true) {
-        if (currentTextAnswer && currentTextAnswer.trim()) {
-          try {
-            // Save directly using the current answer from ref
-            await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
-            console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
-            // Sync to state after successful save with answered=true and savedToServer=true
-            setAnswers(prev => ({
-              ...prev,
-              [currentQuestion._id]: {
-                ...prev[currentQuestion._id],
-                textAnswer: currentTextAnswer,
-                answered: true,
-                savedToServer: true,
-                hasChanges: false,
-                lastSaved: new Date().toISOString()
-              }
-            }));
-            setLastQuestionSaved(true);
-            setSnackbar({
-              open: true,
-              message: 'Question saved. Click Submit to finish.',
-              severity: 'success'
-            });
-          } catch (saveError) {
-            console.error(`❌ Failed to save ${questionType} answer:`, saveError);
-            setSnackbar({
-              open: true,
-              message: 'Failed to save question. Please try again.',
-              severity: 'error'
-            });
-          }
-        } else {
-          setSnackbar({
-            open: true,
-            message: 'Please answer the question before saving.',
-            severity: 'warning'
-          });
-        }
-      }
-    } else if (currentAnswer && currentAnswer.textAnswer?.trim()) {
-      try {
-        await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), questionType);
-        setLastQuestionSaved(true);
-        setSnackbar({
-          open: true,
-          message: 'Question saved. Click Submit to finish.',
-          severity: 'success'
-        });
-      } catch (error) {
-        console.error('Save last question error:', error);
-        setSnackbar({
-          open: true,
-          message: 'Failed to save question. Please try again.',
-          severity: 'error'
-        });
-      }
-    } else if (currentAnswer && (currentAnswer.selectedOption || currentAnswer.selectedOptions?.length)) {
-      try {
-        // "Select all that apply" sends the array; everything else the single option text.
-        const isMultiAnswer = Array.isArray(currentAnswer.selectedOptions) && currentAnswer.selectedOptions.length > 0;
-        await saveAnswerToServer(
-          currentQuestion._id,
-          isMultiAnswer ? currentAnswer.selectedOptions : currentAnswer.selectedOption,
-          isMultiAnswer ? 'multiple-answer' : questionType
-        );
-        setLastQuestionSaved(true);
-        setSnackbar({
-          open: true,
-          message: 'Question saved. Click Submit to finish.',
-          severity: 'success'
-        });
-      } catch (error) {
-        console.error('Save last question error:', error);
-        setSnackbar({
-          open: true,
-          message: 'Failed to save question. Please try again.',
-          severity: 'error'
-        });
-      }
-    } else if (currentAnswer && (currentAnswer.matchingAnswers || currentAnswer.orderingAnswer || currentAnswer.dragDropAnswer)) {
-      // Save interactive question answers
-      try {
-        let answerValue;
-        if (questionType === 'matching' || questionType === 'structured') {
-          answerValue = currentAnswer.matchingAnswers;
-        } else if (questionType === 'ordering') {
-          answerValue = currentAnswer.orderingAnswer;
-        } else if (questionType === 'drag-drop') {
-          answerValue = currentAnswer.dragDropAnswer;
-        }
-
-        await saveAnswerToServer(currentQuestion._id, answerValue, questionType);
-        setAnswers(prev => ({
-          ...prev,
-          [currentQuestion._id]: {
-            ...prev[currentQuestion._id],
-            savedToServer: true,
-            hasChanges: false,
-            lastSaved: new Date().toISOString()
-          }
-        }));
-        setLastQuestionSaved(true);
-        setSnackbar({
-          open: true,
-          message: 'Question saved. Click Submit to finish.',
-          severity: 'success'
-        });
-      } catch (error) {
-        console.error('Save last question error:', error);
-        setSnackbar({
-          open: true,
-          message: 'Failed to save question. Please try again.',
-          severity: 'error'
-        });
-      }
+  /* ─── One place that flushes whatever the student has typed on the current question ───
+     Every route out of a question goes through here: Next, Previous, jumping from the
+     question palette, switching section, the manual Save button, the idle autosave timer
+     and the submit sweep. It used to live inline in handleNextQuestion alone, which meant
+     an answer was only ever written to the server if the student happened to leave the
+     question with that one button. */
+  const saveCurrentQuestionProgress = async ({ silent = true, force = false } = {}) => {
+    // A save already in flight finishes first, so a Next click can never overtake the idle
+    // autosave timer and leave the two writing the same question out of order.
+    const inFlight = savingProgressRef.current;
+    if (inFlight) {
+      try { await inFlight; } catch (ignored) { /* reported by whoever started it */ }
     }
 
-    // Save sub-question answers when saving the last question
-    if (currentQuestion.subQuestions && Array.isArray(currentQuestion.subQuestions)) {
-      console.log(`🔍 Saving sub-question answers for last question ${currentQuestion._id}`);
-      for (let subIdx = 0; subIdx < currentQuestion.subQuestions.length; subIdx++) {
-        const subAnswerKey = `${currentQuestion._id}_sub_${subIdx}`;
-        const subAnswer = answers[subAnswerKey];
-        const subQ = currentQuestion.subQuestions[subIdx];
-        const subType = subQ.type || 'open-ended';
+    const currentQuestion = getCurrentQuestion();
+    // `force` is for the pre-submit flush, which runs with submitting already set
+    if (!currentQuestion || examCompleted || (submitting && !force)) return false;
 
-        if (subAnswer) {
-          try {
-            let answerValue;
-            if (subAnswer.selectedOption) {
-              answerValue = subAnswer.selectedOption;
-            } else if (subAnswer.textAnswer?.trim()) {
-              answerValue = subAnswer.textAnswer.trim();
-            } else if (subAnswer.matchingAnswers) {
-              answerValue = subAnswer.matchingAnswers;
-            } else if (subAnswer.orderingAnswer) {
-              answerValue = subAnswer.orderingAnswer;
+    const run = (async () => {
+      setSaveStatus('saving');
+      silentSaveRef.current = true;
+      try {
+        const currentAnswer = answers[currentQuestion._id];
+        const questionType = currentQuestion.type;
+        const questionSection = currentQuestion.section || 'A';
+        // A fill-in-blank whose text prints its blanks is typed into in place, so it has no
+        // answer editor behind it and openAnswerRef would still hold a previous question's.
+        const usesInlineBlanks = questionType === 'fill-in-blank' &&
+          !(currentQuestion.subQuestions && currentQuestion.subQuestions.length > 0) &&
+          !!splitTextOnBlanks(currentQuestion.text);
+
+        examLog(`🚀 saveCurrentQuestionProgress: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
+
+        // For open-ended questions, get the current answer from ref and save directly
+        if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured' || questionType === 'financial-spreadsheet') {
+          const refAnswer = questionType === 'financial-spreadsheet' ? (currentAnswer?.textAnswer || '') : (openAnswerRef.current ? openAnswerRef.current() : '');
+          const currentTextAnswer = (refAnswer && (typeof refAnswer === 'string' ? refAnswer.trim() : true)) ? refAnswer : (currentAnswer?.textAnswer || '');
+          examLog(`🔍 Open-ended question: ref length=${String(refAnswer || '').length}, state length=${String(currentAnswer?.textAnswer || '').length}, using ${refAnswer ? 'ref' : 'state'}`);
+          // A financial-spreadsheet question can be answered in the written box alone (the grid is
+          // optional scaffolding for some parts), and that written text rides along on the
+          // spreadsheet payload — so an empty grid must not skip the save.
+          const hasWrittenOnly = questionType === 'financial-spreadsheet'
+            && !currentTextAnswer?.trim()
+            && !!currentAnswer?.writtenAnswer?.trim();
+          if (hasWrittenOnly) {
+            try {
+              await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer || '', 'financial-spreadsheet');
+              examLog(`✅ Saved written-only financial-spreadsheet answer for ${currentQuestion._id}`);
+            } catch (saveError) {
+              console.error('❌ Failed to save written-only spreadsheet answer:', saveError);
             }
-
-            if (answerValue) {
-              await saveAnswerToServer(subAnswerKey, answerValue, subType, {
-                parentQuestionId: currentQuestion._id,
-                subQuestionIndex: subIdx,
-                isSubQuestion: true
-              });
-              console.log(`✅ Saved sub-question ${subIdx} answer for question ${currentQuestion._id}`);
+          } else if (currentTextAnswer && currentTextAnswer.trim()) {
+            try {
+              // Save directly using the current answer from ref or state
+              await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
+              examLog(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
+              // Sync to state after successful save with answered=true and savedToServer=true
               setAnswers(prev => ({
                 ...prev,
-                [subAnswerKey]: {
-                  ...prev[subAnswerKey],
+                [currentQuestion._id]: {
+                  ...prev[currentQuestion._id],
+                  textAnswer: currentTextAnswer,
+                  answered: true,
                   savedToServer: true,
                   hasChanges: false,
                   lastSaved: new Date().toISOString()
                 }
               }));
+            } catch (saveError) {
+              console.error(`❌ Failed to save ${questionType} answer:`, saveError);
             }
-          } catch (saveError) {
-            console.error(`❌ Failed to save sub-question ${subIdx} answer:`, saveError);
+          } else {
+            examLog(`⚠️ Skipping save: no answer found in ref or state`);
           }
         }
-      }
-    }
 
-    // If no main question answer but sub-questions exist, check if any sub-questions were answered
-    if (!currentAnswer || (!currentAnswer.textAnswer?.trim() && !currentAnswer.selectedOption && !currentAnswer.matchingAnswers && !currentAnswer.orderingAnswer && !currentAnswer.dragDropAnswer)) {
-      if (currentQuestion.subQuestions && Array.isArray(currentQuestion.subQuestions)) {
-        const hasSubAnswers = currentQuestion.subQuestions.some((_, subIdx) => {
-          const subAnswerKey = `${currentQuestion._id}_sub_${subIdx}`;
-          const subAnswer = answers[subAnswerKey];
-          return subAnswer && (subAnswer.selectedOption || subAnswer.textAnswer?.trim() || subAnswer.matchingAnswers || subAnswer.orderingAnswer);
-        });
+        // Save fill-in-blank answers. Typed either straight into the sentence (state only) or,
+        // when the text prints no blanks, into the answer editor - whose latest keystrokes are
+        // in the ref before they reach state, so the ref wins when it has something.
+        if (questionType === 'fill-in-blank') {
+          const editorText = !usesInlineBlanks && openAnswerRef.current
+            ? String(openAnswerRef.current() || '')
+            : '';
+          const blankText = editorText.trim() || currentAnswer?.textAnswer?.toString().trim() || '';
+          if (blankText) {
+            try {
+              await saveAnswerToServer(currentQuestion._id, blankText, 'fill-in-blank');
+              examLog(`✅ Saved fill-in-blank answer for question ${currentQuestion._id}`);
+              setAnswers(prev => ({
+                ...prev,
+                [currentQuestion._id]: {
+                  ...prev[currentQuestion._id],
+                  textAnswer: blankText,
+                  answered: true,
+                  savedToServer: true,
+                  hasChanges: false,
+                  lastSaved: new Date().toISOString()
+                }
+              }));
+            } catch (saveError) {
+              console.error(`❌ Failed to save fill-in-blank answer:`, saveError);
+            }
+          }
+        }
 
-        if (hasSubAnswers) {
-          setLastQuestionSaved(true);
+        // Save interactive question answers (matching, ordering, drag-drop) when navigating
+        if (currentAnswer && currentAnswer.hasChanges) {
+          if (questionType === 'matching' && currentAnswer.matchingAnswers) {
+            try {
+              await saveAnswerToServer(currentQuestion._id, currentAnswer.matchingAnswers, 'matching');
+              examLog(`✅ Saved matching answer for question ${currentQuestion._id}`);
+              setAnswers(prev => ({
+                ...prev,
+                [currentQuestion._id]: {
+                  ...prev[currentQuestion._id],
+                  savedToServer: true,
+                  hasChanges: false,
+                  lastSaved: new Date().toISOString()
+                }
+              }));
+            } catch (saveError) {
+              console.error(`❌ Failed to save matching answer:`, saveError);
+            }
+          } else if (questionType === 'ordering' && currentAnswer.orderingAnswer) {
+            try {
+              await saveAnswerToServer(currentQuestion._id, currentAnswer.orderingAnswer, 'ordering');
+              examLog(`✅ Saved ordering answer for question ${currentQuestion._id}`);
+              setAnswers(prev => ({
+                ...prev,
+                [currentQuestion._id]: {
+                  ...prev[currentQuestion._id],
+                  savedToServer: true,
+                  hasChanges: false,
+                  lastSaved: new Date().toISOString()
+                }
+              }));
+            } catch (saveError) {
+              console.error(`❌ Failed to save ordering answer:`, saveError);
+            }
+          } else if (questionType === 'drag-drop' && currentAnswer.dragDropAnswer) {
+            try {
+              await saveAnswerToServer(currentQuestion._id, currentAnswer.dragDropAnswer, 'drag-drop');
+              examLog(`✅ Saved drag-drop answer for question ${currentQuestion._id}`);
+              setAnswers(prev => ({
+                ...prev,
+                [currentQuestion._id]: {
+                  ...prev[currentQuestion._id],
+                  savedToServer: true,
+                  hasChanges: false,
+                  lastSaved: new Date().toISOString()
+                }
+              }));
+            } catch (saveError) {
+              console.error(`❌ Failed to save drag-drop answer:`, saveError);
+            }
+          }
+        }
+
+        // Save sub-question answers when navigating
+        if (currentQuestion.subQuestions && Array.isArray(currentQuestion.subQuestions)) {
+          examLog(`🔍 Saving sub-question answers for question ${currentQuestion._id}`);
+          for (let subIdx = 0; subIdx < currentQuestion.subQuestions.length; subIdx++) {
+            const subAnswerKey = `${currentQuestion._id}_sub_${subIdx}`;
+            const subAnswer = answers[subAnswerKey];
+            const subQ = currentQuestion.subQuestions[subIdx];
+            const subType = subQ.type || 'open-ended';
+
+            if (subAnswer) {
+              try {
+                let answerValue;
+                if (subAnswer.selectedOption) {
+                  answerValue = subAnswer.selectedOption;
+                } else if (subAnswer.textAnswer?.trim()) {
+                  answerValue = subAnswer.textAnswer.trim();
+                } else if (subAnswer.matchingAnswers) {
+                  answerValue = subAnswer.matchingAnswers;
+                } else if (subAnswer.orderingAnswer) {
+                  answerValue = subAnswer.orderingAnswer;
+                }
+
+                if (answerValue) {
+                  await saveAnswerToServer(subAnswerKey, answerValue, subType, {
+                    parentQuestionId: currentQuestion._id,
+                    subQuestionIndex: subIdx,
+                    isSubQuestion: true
+                  });
+                  examLog(`✅ Saved sub-question ${subIdx} answer for question ${currentQuestion._id}`);
+                }
+              } catch (saveError) {
+                console.error(`❌ Failed to save sub-question ${subIdx} answer:`, saveError);
+              }
+            }
+          }
+        }
+
+        setSaveStatus('saved');
+        setLastSavedAt(new Date());
+        if (!silent) {
           setSnackbar({
             open: true,
-            message: 'Sub-questions saved. Click Submit to finish.',
+            message: 'Your answer has been saved.',
             severity: 'success'
           });
-          return;
         }
+        return true;
+      } catch (error) {
+        console.error('Error saving current question progress:', error);
+        setSaveStatus('error');
+        if (!silent) {
+          setSnackbar({
+            open: true,
+            message: 'Could not save your answer. Please try again.',
+            severity: 'error'
+          });
+        }
+        return false;
+      } finally {
+        silentSaveRef.current = false;
       }
+    })();
 
-      setSnackbar({
-        open: true,
-        message: 'Please answer the question before saving.',
-        severity: 'warning'
-      });
+    savingProgressRef.current = run;
+    try {
+      return await run;
+    } finally {
+      if (savingProgressRef.current === run) savingProgressRef.current = null;
     }
   };
 
+  /* ─── Idle autosave ───────────────────────────────────────────────────
+     Answers used to reach the server only when the student pressed Next, so anything typed
+     on the question they were sitting on when the timer ran out - or when they simply hit
+     Submit - was lost. A few seconds after typing stops, whatever is on screen is written
+     out. The signature guard means an unchanged (or repeatedly failing) answer is not
+     re-sent on every tick. */
+  useEffect(() => {
+    // skipIndexCorrection: an effect must not nudge the question index as a side effect
+    const question = getCurrentQuestion(true);
+    if (!question || examCompleted || submitting) return undefined;
+
+    // Everything belonging to this question: the answer itself plus any sub-question parts
+    const pendingEntries = Object.entries(answers).filter(([key, value]) =>
+      value?.hasChanges &&
+      (key === question._id || key.startsWith(`${question._id}_sub_`))
+    );
+    if (pendingEntries.length === 0) return undefined;
+
+    const signature = JSON.stringify(pendingEntries.map(([key, value]) => [
+      key,
+      value.textAnswer || '',
+      value.writtenAnswer || '',
+      value.selectedOption || '',
+      value.matchingAnswers || null,
+      value.orderingAnswer || null,
+      value.dragDropAnswer || null
+    ]));
+    if (signature === autosaveSignatureRef.current) return undefined;
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveSignatureRef.current = signature;
+      saveCurrentQuestionProgress();
+    }, AUTOSAVE_IDLE_MS);
+
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [answers, activeSection, activeQuestionIndex, examCompleted, submitting]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A fresh question starts with a clean autosave slate
+  useEffect(() => {
+    autosaveSignatureRef.current = null;
+    setSaveStatus('idle');
+  }, [activeSection, activeQuestionIndex]);
+
+  // Mirror every answer to this device as it changes, so a dropped connection, a closed tab
+  // or a crashed browser cannot take an answer with it. Cleared once the exam is submitted.
+  useEffect(() => {
+    if (!id || examCompleted || Object.keys(answers).length === 0) return undefined;
+    const timer = setTimeout(() => writeDraft(id, answers), 400);
+    return () => clearTimeout(timer);
+  }, [answers, id, examCompleted]);
+
+  // Registered once, so it has to reach the current save function through a ref - closing over
+  // the first render's would mean saving the empty answer state the exam started with.
+  const saveProgressRef = useRef(null);
+  useEffect(() => { saveProgressRef.current = saveCurrentQuestionProgress; });
+
+  // Coming back from a dead connection, push whatever is on screen straight away rather than
+  // waiting for the student to type again and re-arm the idle timer.
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      setSnackbar({
+        open: true,
+        message: 'Back online — saving your work.',
+        severity: 'success'
+      });
+      saveProgressRef.current?.();
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      setSnackbar({
+        open: true,
+        message: 'You are offline. Your answers are being kept on this device and will be sent when the connection returns.',
+        severity: 'warning'
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle question navigation with enhanced error handling
   const handleNextQuestion = async () => {
     try {
-      console.log(`Navigating to next question from index ${activeQuestionIndex}`);
+      examLog(`Navigating to next question from index ${activeQuestionIndex}`);
 
       // Get current question
       const currentQuestion = getCurrentQuestion();
@@ -1597,160 +1985,8 @@ const ExamInterface = () => {
         return;
       }
 
-      // Save answer before navigating (for sections B and C open-ended questions)
-      const currentAnswer = answers[currentQuestion._id];
-      const questionType = currentQuestion.type;
-      const questionSection = currentQuestion.section || 'A';
-
-      console.log(`🚀 handleNextQuestion: questionId=${currentQuestion._id}, questionType=${questionType}, section=${questionSection}, hasAnswer=${!!currentAnswer}, hasTextAnswer=${!!currentAnswer?.textAnswer?.trim()}`);
-
-      // For open-ended questions, get the current answer from ref and save directly
-      if (questionType === 'open-ended' || questionType === 'essay' || questionType === 'short-answer' || questionType === 'image-based' || questionType === 'image' || questionType === 'structured' || questionType === 'financial-spreadsheet') {
-        const refAnswer = questionType === 'financial-spreadsheet' ? (currentAnswer?.textAnswer || '') : (openAnswerRef.current ? openAnswerRef.current() : '');
-        const currentTextAnswer = (refAnswer && (typeof refAnswer === 'string' ? refAnswer.trim() : true)) ? refAnswer : (currentAnswer?.textAnswer || '');
-        console.log(`🔍 Open-ended question: ref textAnswer=${refAnswer}, state textAnswer=${currentAnswer?.textAnswer}, using=${currentTextAnswer}`);
-        // A financial-spreadsheet question can be answered in the written box alone (the grid is
-        // optional scaffolding for some parts), and that written text rides along on the
-        // spreadsheet payload — so an empty grid must not skip the save.
-        const hasWrittenOnly = questionType === 'financial-spreadsheet'
-          && !currentTextAnswer?.trim()
-          && !!currentAnswer?.writtenAnswer?.trim();
-        if (hasWrittenOnly) {
-          try {
-            await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer || '', 'financial-spreadsheet');
-            console.log(`✅ Saved written-only financial-spreadsheet answer for ${currentQuestion._id}`);
-            if (isLastQuestion()) setLastQuestionSaved(true);
-          } catch (saveError) {
-            console.error('❌ Failed to save written-only spreadsheet answer:', saveError);
-          }
-        } else if (currentTextAnswer && currentTextAnswer.trim()) {
-          try {
-            // Save directly using the current answer from ref or state
-            await saveAnswerToServer(currentQuestion._id, currentTextAnswer.trim(), questionType);
-            console.log(`✅ Saved ${questionType} answer for question ${currentQuestion._id} in section ${questionSection}`);
-            // Sync to state after successful save with answered=true and savedToServer=true
-            setAnswers(prev => ({
-              ...prev,
-              [currentQuestion._id]: {
-                ...prev[currentQuestion._id],
-                textAnswer: currentTextAnswer,
-                answered: true,
-                savedToServer: true,
-                hasChanges: false,
-                lastSaved: new Date().toISOString()
-              }
-            }));
-            // Set lastQuestionSaved to true if this is the last question
-            if (isLastQuestion()) {
-              setLastQuestionSaved(true);
-            }
-          } catch (saveError) {
-            console.error(`❌ Failed to save ${questionType} answer:`, saveError);
-          }
-        } else {
-          console.log(`⚠️ Skipping save: no answer found in ref or state`);
-        }
-      }
-
-      // Save fill-in-blank answers
-      if (currentAnswer && questionType === 'fill-in-blank' && currentAnswer.textAnswer?.trim()) {
-        try {
-          await saveAnswerToServer(currentQuestion._id, currentAnswer.textAnswer.trim(), 'fill-in-blank');
-          console.log(`✅ Saved fill-in-blank answer for question ${currentQuestion._id}`);
-        } catch (saveError) {
-          console.error(`❌ Failed to save fill-in-blank answer:`, saveError);
-        }
-      }
-
-      // Save interactive question answers (matching, ordering, drag-drop) when navigating
-      if (currentAnswer && currentAnswer.hasChanges) {
-        if (questionType === 'matching' && currentAnswer.matchingAnswers) {
-          try {
-            await saveAnswerToServer(currentQuestion._id, currentAnswer.matchingAnswers, 'matching');
-            console.log(`✅ Saved matching answer for question ${currentQuestion._id}`);
-            setAnswers(prev => ({
-              ...prev,
-              [currentQuestion._id]: {
-                ...prev[currentQuestion._id],
-                savedToServer: true,
-                hasChanges: false,
-                lastSaved: new Date().toISOString()
-              }
-            }));
-          } catch (saveError) {
-            console.error(`❌ Failed to save matching answer:`, saveError);
-          }
-        } else if (questionType === 'ordering' && currentAnswer.orderingAnswer) {
-          try {
-            await saveAnswerToServer(currentQuestion._id, currentAnswer.orderingAnswer, 'ordering');
-            console.log(`✅ Saved ordering answer for question ${currentQuestion._id}`);
-            setAnswers(prev => ({
-              ...prev,
-              [currentQuestion._id]: {
-                ...prev[currentQuestion._id],
-                savedToServer: true,
-                hasChanges: false,
-                lastSaved: new Date().toISOString()
-              }
-            }));
-          } catch (saveError) {
-            console.error(`❌ Failed to save ordering answer:`, saveError);
-          }
-        } else if (questionType === 'drag-drop' && currentAnswer.dragDropAnswer) {
-          try {
-            await saveAnswerToServer(currentQuestion._id, currentAnswer.dragDropAnswer, 'drag-drop');
-            console.log(`✅ Saved drag-drop answer for question ${currentQuestion._id}`);
-            setAnswers(prev => ({
-              ...prev,
-              [currentQuestion._id]: {
-                ...prev[currentQuestion._id],
-                savedToServer: true,
-                hasChanges: false,
-                lastSaved: new Date().toISOString()
-              }
-            }));
-          } catch (saveError) {
-            console.error(`❌ Failed to save drag-drop answer:`, saveError);
-          }
-        }
-      }
-
-      // Save sub-question answers when navigating
-      if (currentQuestion.subQuestions && Array.isArray(currentQuestion.subQuestions)) {
-        console.log(`🔍 Saving sub-question answers for question ${currentQuestion._id}`);
-        for (let subIdx = 0; subIdx < currentQuestion.subQuestions.length; subIdx++) {
-          const subAnswerKey = `${currentQuestion._id}_sub_${subIdx}`;
-          const subAnswer = answers[subAnswerKey];
-          const subQ = currentQuestion.subQuestions[subIdx];
-          const subType = subQ.type || 'open-ended';
-
-          if (subAnswer) {
-            try {
-              let answerValue;
-              if (subAnswer.selectedOption) {
-                answerValue = subAnswer.selectedOption;
-              } else if (subAnswer.textAnswer?.trim()) {
-                answerValue = subAnswer.textAnswer.trim();
-              } else if (subAnswer.matchingAnswers) {
-                answerValue = subAnswer.matchingAnswers;
-              } else if (subAnswer.orderingAnswer) {
-                answerValue = subAnswer.orderingAnswer;
-              }
-
-              if (answerValue) {
-                await saveAnswerToServer(subAnswerKey, answerValue, subType, {
-                  parentQuestionId: currentQuestion._id,
-                  subQuestionIndex: subIdx,
-                  isSubQuestion: true
-                });
-                console.log(`✅ Saved sub-question ${subIdx} answer for question ${currentQuestion._id}`);
-              }
-            } catch (saveError) {
-              console.error(`❌ Failed to save sub-question ${subIdx} answer:`, saveError);
-            }
-          }
-        }
-      }
+      // Flush whatever is typed on this question before moving on
+      await saveCurrentQuestionProgress();
 
       const questions = getCurrentSectionQuestions();
       if (!questions || questions.length === 0) {
@@ -1764,10 +2000,8 @@ const ExamInterface = () => {
       }
 
       if (activeQuestionIndex < questions.length - 1) {
-        console.log(`Moving to next question: ${activeQuestionIndex + 1}`);
+        examLog(`Moving to next question: ${activeQuestionIndex + 1}`);
         setActiveQuestionIndex(activeQuestionIndex + 1);
-        // Reset lastQuestionSaved when moving to a new question
-        setLastQuestionSaved(false);
       } else {
         // Move to next section with questions if available
         const sectionIndex = exam.sections.findIndex(s => s.name === activeSection);
@@ -1780,11 +2014,9 @@ const ExamInterface = () => {
             const nextSection = exam.sections[nextSectionIndex];
             if (nextSection.questions && nextSection.questions.length > 0) {
               foundSection = true;
-              console.log(`Moving to next section: ${nextSection.name}`);
+              examLog(`Moving to next section: ${nextSection.name}`);
               setActiveSection(nextSection.name);
               setActiveQuestionIndex(0);
-              // Reset lastQuestionSaved when moving to a new section
-              setLastQuestionSaved(false);
 
               // Show a message about moving to the next section
               setSnackbar({
@@ -1823,12 +2055,15 @@ const ExamInterface = () => {
     }
   };
 
-  const handlePrevQuestion = () => {
+  const handlePrevQuestion = async () => {
     try {
-      console.log(`Navigating to previous question from index ${activeQuestionIndex}`);
+      examLog(`Navigating to previous question from index ${activeQuestionIndex}`);
+
+      // Flush whatever is typed on this question before moving back
+      await saveCurrentQuestionProgress();
 
       if (activeQuestionIndex > 0) {
-        console.log(`Moving to previous question: ${activeQuestionIndex - 1}`);
+        examLog(`Moving to previous question: ${activeQuestionIndex - 1}`);
         setActiveQuestionIndex(activeQuestionIndex - 1);
       } else {
         // Move to previous section with questions if available
@@ -1852,7 +2087,7 @@ const ExamInterface = () => {
             const prevSection = exam.sections[prevSectionIndex];
             if (prevSection.questions && prevSection.questions.length > 0) {
               foundSection = true;
-              console.log(`Moving to previous section: ${prevSection.name}`);
+              examLog(`Moving to previous section: ${prevSection.name}`);
               setActiveSection(prevSection.name);
               const prevSectionQuestions = prevSection.questions || [];
               setActiveQuestionIndex(Math.max(0, prevSectionQuestions.length - 1));
@@ -1898,7 +2133,7 @@ const ExamInterface = () => {
   const handleAnswerChange = (questionId, value, type, options = {}) => {
     // Don't allow changing answers if exam is completed or being submitted
     if (examCompleted || submitting) {
-      console.log('⚠️ Ignoring answer change - exam is completed or being submitted');
+      examLog('⚠️ Ignoring answer change - exam is completed or being submitted');
       return;
     }
 
@@ -2043,7 +2278,7 @@ const ExamInterface = () => {
         newAnswer.savedToServer = false;
         newAnswer.hasChanges = true;
 
-        console.log(`📝 Open-ended answer change for ${questionId}: wasSaved=${wasSaved}, keeping answered=${newAnswer.answered}`);
+        examLog(`📝 Open-ended answer change for ${questionId}: wasSaved=${wasSaved}, keeping answered=${newAnswer.answered}`);
 
         setAnswers(prev => ({
           ...prev,
@@ -2124,7 +2359,7 @@ const ExamInterface = () => {
       }
 
       // Show saving indicator (less intrusive for frequent saves)
-      console.log(`Saving ${actualType} answer for question ${questionId}`);
+      examLog(`Saving ${actualType} answer for question ${questionId}`);
 
       // Enhanced retry logic with exponential backoff
       let retries = 3;
@@ -2228,7 +2463,7 @@ const ExamInterface = () => {
           ]);
 
           success = true;
-          console.log(`Successfully saved ${actualType} answer for question ${questionId}`);
+          examLog(`Successfully saved ${actualType} answer for question ${questionId}`);
         } catch (submitError) {
           lastError = submitError;
           retries--;
@@ -2246,8 +2481,9 @@ const ExamInterface = () => {
         throw lastError || new Error('Failed to save answer after multiple attempts');
       }
 
-      // Show brief success message only for manual saves
-      if (type === 'open-ended' || type === 'essay' || type === 'structured') {
+      // Show brief success message only for manual saves. An autosave, or a save triggered by
+      // navigating, reports itself through the save indicator instead of a toast per answer.
+      if ((type === 'open-ended' || type === 'essay' || type === 'structured') && !silentSaveRef.current) {
         setSnackbar({
           open: true,
           message: 'Answer saved successfully',
@@ -2257,7 +2493,7 @@ const ExamInterface = () => {
 
       // Update local state to mark as saved to server
       setAnswers(prev => {
-        console.log(`🔄 Before state update for ${questionId}:`, prev[questionId]);
+        examLog(`🔄 Before state update for ${questionId}:`, prev[questionId]);
         const updated = {
           ...prev,
           [questionId]: {
@@ -2268,7 +2504,7 @@ const ExamInterface = () => {
             lastSaved: new Date().toISOString()
           }
         };
-        console.log(`🔄 After state update for ${questionId}:`, updated[questionId]);
+        examLog(`🔄 After state update for ${questionId}:`, updated[questionId]);
         return updated;
       });
 
@@ -2316,7 +2552,7 @@ const ExamInterface = () => {
   const handleSubmitExam = useCallback(async () => {
     // Prevent multiple simultaneous submissions
     if (submitting || examCompleted) {
-      console.log('⚠️ Submission already in progress or exam already completed, ignoring duplicate request');
+      examLog('⚠️ Submission already in progress or exam already completed, ignoring duplicate request');
       return;
     }
 
@@ -2347,12 +2583,20 @@ const ExamInterface = () => {
 
       if (currentSectionQuestions.length > 0 &&
           (activeQuestionIndex < 0 || activeQuestionIndex >= currentSectionQuestions.length)) {
-        console.log('Resetting invalid question index before submission');
+        examLog('Resetting invalid question index before submission');
         setActiveQuestionIndex(0);
       }
 
+      // STEP 0: flush the question on screen first. Its text may still only live inside the
+      // answer editor (the student never pressed Next), and the sweep below reads state.
+      try {
+        await saveCurrentQuestionProgress({ force: true });
+      } catch (flushError) {
+        console.error('Failed to flush the current question before submitting:', flushError);
+      }
+
       // STEP 1: Save ALL unsaved answers (including current question)
-      console.log('🔄 Saving all unsaved answers before submission...');
+      examLog('🔄 Saving all unsaved answers before submission...');
 
       // Get all questions from all sections
       const allQuestions = exam.sections.flatMap(section => section.questions || []);
@@ -2442,7 +2686,7 @@ const ExamInterface = () => {
           severity: 'info'
         });
 
-        console.log(`Found ${unsavedAnswers.length} unsaved answers. Saving them now...`);
+        examLog(`Found ${unsavedAnswers.length} unsaved answers. Saving them now...`);
 
         // Save all unsaved answers in parallel for speed
         const savePromises = unsavedAnswers.map(async ([questionId, answer, question, subQuestionOptions]) => {
@@ -2478,9 +2722,9 @@ const ExamInterface = () => {
             }
 
             if (valueToSave !== null) {
-              console.log(`💾 Saving ${questionType} answer for question ${questionId}`);
+              examLog(`💾 Saving ${questionType} answer for question ${questionId}`);
               await saveAnswerToServer(questionId, valueToSave, questionType, subQuestionOptions);
-              console.log(`✅ Successfully saved answer for question ${questionId}`);
+              examLog(`✅ Successfully saved answer for question ${questionId}`);
               return { questionId, success: true };
             } else {
               console.warn(`⚠️ No valid content to save for question ${questionId}`);
@@ -2500,7 +2744,7 @@ const ExamInterface = () => {
           ).length;
           const failed = saveResults.length - successful;
 
-          console.log(`💾 Save results: ${successful} successful, ${failed} failed`);
+          examLog(`💾 Save results: ${successful} successful, ${failed} failed`);
 
           if (failed > 0) {
             console.warn('Some answers failed to save, but continuing with submission...');
@@ -2510,7 +2754,7 @@ const ExamInterface = () => {
               severity: 'warning'
             });
           } else {
-            console.log('✅ All unsaved answers saved successfully');
+            examLog('✅ All unsaved answers saved successfully');
             setSnackbar({
               open: true,
               message: `All ${successful} unsaved answers saved successfully!`,
@@ -2529,11 +2773,11 @@ const ExamInterface = () => {
         // Small delay to ensure saves are processed
         await new Promise(resolve => setTimeout(resolve, 1000));
       } else {
-        console.log('✅ No unsaved answers found, proceeding with submission');
+        examLog('✅ No unsaved answers found, proceeding with submission');
       }
 
       // STEP 2: Validate that we have at least some answers
-      console.log('🔍 Validating answers before submission...');
+      examLog('🔍 Validating answers before submission...');
 
       const totalAnswers = Object.keys(answers).length;
       const answeredQuestions = Object.values(answers).filter(answer =>
@@ -2545,7 +2789,7 @@ const ExamInterface = () => {
         answer.dragDropAnswer
       ).length;
 
-      console.log(`📊 Answer validation: ${answeredQuestions}/${totalAnswers} questions have answers`);
+      examLog(`📊 Answer validation: ${answeredQuestions}/${totalAnswers} questions have answers`);
 
       if (answeredQuestions === 0) {
         throw new Error('No answers found. Please answer at least one question before submitting.');
@@ -2563,11 +2807,11 @@ const ExamInterface = () => {
         }
 
         // Debug: Log current selection state before validation
-        console.log('🔍 Debug: Current selection state before validation:');
-        console.log('  selectedQuestions:', selectedQuestions);
-        console.log('  exam.allowSelectiveAnswering:', exam.allowSelectiveAnswering);
-        console.log('  exam.sectionBRequiredQuestions:', exam.sectionBRequiredQuestions);
-        console.log('  exam.sectionCRequiredQuestions:', exam.sectionCRequiredQuestions);
+        examLog('🔍 Debug: Current selection state before validation:');
+        examLog('  selectedQuestions:', selectedQuestions);
+        examLog('  exam.allowSelectiveAnswering:', exam.allowSelectiveAnswering);
+        examLog('  exam.sectionBRequiredQuestions:', exam.sectionBRequiredQuestions);
+        examLog('  exam.sectionCRequiredQuestions:', exam.sectionCRequiredQuestions);
 
         // Get all questions in sections B and C
         const sectionBQuestions = allQuestions.filter(q => q.section === 'B');
@@ -2580,18 +2824,18 @@ const ExamInterface = () => {
         const requiredB = exam.sectionBRequiredQuestions || 3;
         const requiredC = exam.sectionCRequiredQuestions || 1;
 
-        console.log(`📋 Selective answering validation:`);
-        console.log(`  Section B: ${selectedBQuestions.length}/${requiredB} selected (${sectionBQuestions.length} total)`);
-        console.log(`  Section C: ${selectedCQuestions.length}/${requiredC} selected (${sectionCQuestions.length} total)`);
-        console.log(`  Selected questions state:`, selectedQuestions);
+        examLog(`📋 Selective answering validation:`);
+        examLog(`  Section B: ${selectedBQuestions.length}/${requiredB} selected (${sectionBQuestions.length} total)`);
+        examLog(`  Section C: ${selectedCQuestions.length}/${requiredC} selected (${sectionCQuestions.length} total)`);
+        examLog(`  Selected questions state:`, selectedQuestions);
 
         // Log detailed information for debugging
-        console.log('🔍 Detailed selection analysis:');
+        examLog('🔍 Detailed selection analysis:');
         sectionBQuestions.forEach(q => {
-          console.log(`  Section B Question ${q._id}: selected = ${selectedQuestions[q._id]}`);
+          examLog(`  Section B Question ${q._id}: selected = ${selectedQuestions[q._id]}`);
         });
         sectionCQuestions.forEach(q => {
-          console.log(`  Section C Question ${q._id}: selected = ${selectedQuestions[q._id]}`);
+          examLog(`  Section C Question ${q._id}: selected = ${selectedQuestions[q._id]}`);
         });
 
         // Only validate if there are questions in the section
@@ -2611,7 +2855,7 @@ const ExamInterface = () => {
         severity: 'info'
       });
 
-      console.log(`Submitting exam ${id} for completion (${answeredQuestions}/${totalAnswers} questions answered)`);
+      examLog(`Submitting exam ${id} for completion (${answeredQuestions}/${totalAnswers} questions answered)`);
 
       // Check if this is a shared exam (guest user)
       let shareToken = localStorage.getItem('currentShareToken');
@@ -2628,10 +2872,10 @@ const ExamInterface = () => {
       
       const isSharedExam = !!shareToken;
 
-      console.log(`🔍 Is shared exam: ${isSharedExam}, shareToken: ${shareToken}`);
-      console.log(`🔍 User email: ${user?.email}`);
-      console.log(`🔍 Is guest user: ${user?.email?.includes('@exam.local')}`);
-      console.log(`🔍 Is authenticated: ${!!user}`);
+      examLog(`🔍 Is shared exam: ${isSharedExam}, shareToken: ${shareToken}`);
+      examLog(`🔍 User email: ${user?.email}`);
+      examLog(`🔍 Is guest user: ${user?.email?.includes('@exam.local')}`);
+      examLog(`🔍 Is authenticated: ${!!user}`);
 
       // Also check if user is a guest based on email
       const isGuestUser = user?.email?.includes('@exam.local');
@@ -2640,7 +2884,7 @@ const ExamInterface = () => {
       // Only use share endpoint for actual guest users
       const shouldUseShareEndpoint = isGuestUser;
 
-      console.log(`🔍 Should use share endpoint: ${shouldUseShareEndpoint}`);
+      examLog(`🔍 Should use share endpoint: ${shouldUseShareEndpoint}`);
 
       // Enhanced retry logic with exponential backoff
       let retries = 3;
@@ -2650,7 +2894,7 @@ const ExamInterface = () => {
 
       while (retries > 0 && !success) {
         try {
-          console.log(`🚀 Submission attempt ${4 - retries} of 3...`);
+          examLog(`🚀 Submission attempt ${4 - retries} of 3...`);
 
           // Add timeout to prevent hanging - increased for AI grading
           const timeoutPromise = new Promise((_, reject) => {
@@ -2666,14 +2910,14 @@ const ExamInterface = () => {
               answers: answers,
               studentId: user?._id
             };
-            console.log(`📤 Submitting to: ${submitEndpoint} (shared exam - guest user)`);
+            examLog(`📤 Submitting to: ${submitEndpoint} (shared exam - guest user)`);
           } else {
             // Use regular exam completion endpoint for authenticated users (including marketplace-approved)
             submitEndpoint = `/exam/${id}/complete`;
             submitPayload = {};
-            console.log(`📤 Submitting to: ${submitEndpoint} (regular exam - authenticated user)`);
+            examLog(`📤 Submitting to: ${submitEndpoint} (regular exam - authenticated user)`);
           }
-          console.log(`📊 Submission data: ${answeredQuestions}/${totalAnswers} questions answered`);
+          examLog(`📊 Submission data: ${answeredQuestions}/${totalAnswers} questions answered`);
 
           response = await Promise.race([
             api.post(submitEndpoint, submitPayload),
@@ -2681,7 +2925,7 @@ const ExamInterface = () => {
           ]);
 
           success = true;
-          console.log('✅ Exam submitted successfully:', response.data);
+          examLog('✅ Exam submitted successfully:', response.data);
 
           // Clear shareToken after successful submission
           if (shouldUseShareEndpoint) {
@@ -2704,7 +2948,7 @@ const ExamInterface = () => {
           if (retries > 0) {
             // Exponential backoff: wait longer between retries
             const waitTime = (4 - retries) * 2000; // 2s, 4s, 6s
-            console.log(`⏳ Waiting ${waitTime/1000} seconds before retry...`);
+            examLog(`⏳ Waiting ${waitTime/1000} seconds before retry...`);
 
             setSnackbar({
               open: true,
@@ -2736,6 +2980,8 @@ const ExamInterface = () => {
       setExamCompleted(true);
       setExamResult(response.data);
       setSubmitting(false);
+      // The server has the paper now; the on-device copy has done its job
+      clearDraft(id);
 
       // Store resultId for navigation
       if (response.data.resultId) {
@@ -2804,10 +3050,11 @@ const ExamInterface = () => {
           case 409:
             if (errorData?.alreadyCompleted) {
               // Exam was already completed, treat as success
-              console.log('✅ Exam was already completed, showing results:', errorData);
+              examLog('✅ Exam was already completed, showing results:', errorData);
               setExamCompleted(true);
               setExamResult(errorData);
               setSubmitting(false);
+              clearDraft(id);
 
               // Show success message with score if available
               const successMessage = errorData.percentage !== undefined
@@ -2866,13 +3113,13 @@ const ExamInterface = () => {
 
   // Handle question selection for sections B and C
   const handleQuestionSelection = async (questionId) => {
-    console.log('=== QUESTION SELECTION TRIGGERED ===');
-    console.log('Question ID:', questionId);
-    console.log('Selective answering enabled:', selectiveAnswering);
-    console.log('Current selectedQuestions state:', selectedQuestions);
+    examLog('=== QUESTION SELECTION TRIGGERED ===');
+    examLog('Question ID:', questionId);
+    examLog('Selective answering enabled:', selectiveAnswering);
+    examLog('Current selectedQuestions state:', selectedQuestions);
 
     if (!selectiveAnswering) {
-      console.log('❌ Selective answering is not enabled');
+      examLog('❌ Selective answering is not enabled');
       setSnackbar({
         open: true,
         message: 'Selective answering is not enabled for this exam',
@@ -2945,7 +3192,7 @@ const ExamInterface = () => {
       ? (exam.sectionBRequiredQuestions || 3)
       : (exam.sectionCRequiredQuestions || 1);
 
-    console.log(`Section ${question.section} selection change:`, {
+    examLog(`Section ${question.section} selection change:`, {
       questionId,
       currentIsSelected,
       newIsSelected,
@@ -2973,8 +3220,8 @@ const ExamInterface = () => {
 
     // Update on the server
     try {
-      console.log('🚀 Sending selection request to server...');
-      console.log('Request details:', {
+      examLog('🚀 Sending selection request to server...');
+      examLog('Request details:', {
         url: `/api/exam/${id}/select-question`,
         questionId,
         isSelected: newIsSelected,
@@ -2992,7 +3239,7 @@ const ExamInterface = () => {
         isSelected: newIsSelected
       });
 
-      console.log('✅ Selection update response:', response.data);
+      examLog('✅ Selection update response:', response.data);
 
       // Verify the response indicates success
       if (response.data.success !== false) {
@@ -3009,7 +3256,7 @@ const ExamInterface = () => {
             : `⭕ Question ${activeQuestionIndex + 1} deselected (${selectedAfterChange}/${sectionQuestions.length} selected in Section ${sectionName}, ${requiredCount} required)`,
           severity: 'success'
         });
-        console.log('✅ Question selection updated successfully');
+        examLog('✅ Question selection updated successfully');
       } else {
         throw new Error(response.data.message || 'Server returned unsuccessful response');
       }
@@ -3338,6 +3585,13 @@ const ExamInterface = () => {
   const progress = calculateProgress();
   const timerWarning = getTimerWarning();
 
+  // A fill-in-blank question is typed into inside the sentence whenever its text actually
+  // marks where the blanks are; otherwise it falls back to the single answer box below.
+  const blankLayout = currentQuestion?.type === 'fill-in-blank' &&
+    !(currentQuestion.subQuestions && currentQuestion.subQuestions.length > 0)
+      ? splitTextOnBlanks(currentQuestion.text)
+      : null;
+
   // Security features are implemented in the navigation prevention effect
 
   return (
@@ -3587,12 +3841,35 @@ const ExamInterface = () => {
                 : '0 2px 12px rgba(0,0,0,0.08)'
             }}
           >
-            <Typography variant={{ xs: 'subtitle1', sm: 'h6' }} fontWeight="bold" gutterBottom>
+            <Typography
+              fontWeight="bold"
+              gutterBottom
+              sx={{ fontSize: { xs: '0.95rem', sm: '1.25rem' } }}
+            >
               Sections
             </Typography>
-            <Divider sx={{ mb: 2 }} />
+            <Divider sx={{ mb: { xs: 1, sm: 2 } }} />
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 3 }}>
+            {/* Sections. Stacked in the sidebar on a wide screen; on a phone the sidebar is a
+                full-width strip above the question, so they run along one scrollable row
+                instead - four stacked chips pushed the question itself off the screen. */}
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'row', md: 'column' },
+                gap: 1,
+                mb: { xs: 1.5, md: 3 },
+                overflowX: { xs: 'auto', md: 'visible' },
+                pb: { xs: 0.5, md: 0 },
+                // A thin scrollbar, so it is discoverable that the row scrolls
+                scrollbarWidth: 'thin',
+                '&::-webkit-scrollbar': { height: 4 },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: alpha(theme.palette.text.secondary, 0.3),
+                  borderRadius: 2
+                }
+              }}
+            >
               {/* Only show sections that have questions */}
               {exam.sections
                 .filter(section => section.questions && section.questions.length > 0)
@@ -3600,14 +3877,14 @@ const ExamInterface = () => {
                   <Tooltip
                     key={section.name}
                     title={section.description || `Section ${section.name}`}
-                    placement="right"
+                    placement={isSidebarStacked ? 'top' : 'right'}
                     arrow
                   >
-                    <Box>
+                    <Box sx={{ flexShrink: 0, width: { xs: 'auto', md: '100%' } }}>
                       <SectionChip
                         label={
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                            <Typography component="span" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                            <Typography component="span" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>
                               Section {section.name}
                             </Typography>
                             <Chip
@@ -3621,10 +3898,16 @@ const ExamInterface = () => {
                         onClick={() => handleSectionChange(section.name)}
                         active={activeSection === section.name}
                         clickable
-                        sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
+                        sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, width: { xs: 'auto', md: '100%' } }}
                       />
+                      {/* In the sidebar the description sits under its own chip. In the row it
+                          would break the line, so it is shown once beneath the row instead. */}
                       {activeSection === section.name && (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 1 }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: { xs: 'none', md: 'block' }, mt: 0.5, ml: 1 }}
+                        >
                           {section.description}
                         </Typography>
                       )}
@@ -3633,10 +3916,25 @@ const ExamInterface = () => {
                 ))}
             </Box>
 
-            <Typography variant="h6" fontWeight="bold" gutterBottom>
+            {/* The active section's description, for the row layout above */}
+            {exam.sections.find(s => s.name === activeSection)?.description && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: { xs: 'block', md: 'none' }, mb: 2 }}
+              >
+                {exam.sections.find(s => s.name === activeSection).description}
+              </Typography>
+            )}
+
+            <Typography
+              fontWeight="bold"
+              gutterBottom
+              sx={{ fontSize: { xs: '0.95rem', sm: '1.25rem' } }}
+            >
               Questions
             </Typography>
-            <Divider sx={{ mb: 2 }} />
+            <Divider sx={{ mb: { xs: 1, sm: 2 } }} />
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
               {getCurrentSectionQuestions().map((question, index) => {
@@ -3701,12 +3999,16 @@ const ExamInterface = () => {
                   >
                     <Chip
                       label={index + 1}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         // If shift key is pressed and selective answering is enabled for this section,
                         // toggle selection, otherwise navigate to the question
                         if (e.shiftKey && isSelectiveSection) {
                           handleQuestionSelection(question._id);
                         } else {
+                          if (index !== activeQuestionIndex) {
+                            // Jumping straight to another question still saves this one
+                            await saveCurrentQuestionProgress();
+                          }
                           setActiveQuestionIndex(index);
                         }
                       }}
@@ -3891,11 +4193,6 @@ const ExamInterface = () => {
                             }}
                           />
                         )}
-                        <Chip
-                          label={getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
-                          color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section)}
-                          size="small"
-                        />
                       </Box>
                     </Box>
 
@@ -3922,7 +4219,18 @@ const ExamInterface = () => {
                         {activeQuestionIndex + 1}
                       </Box>
 
-                      {/* Question text */}
+                      {/* Question text. A fill-in-blank question whose text actually contains
+                          blank markers is typed into directly, in the gap, rather than into a
+                          separate box below the sentence. */}
+                      {blankLayout ? (
+                        <QuestionTextWithBlanks
+                          question={currentQuestion}
+                          answer={answers[currentQuestion._id]}
+                          onAnswerChange={handleAnswerChange}
+                          layout={blankLayout}
+                          disabled={false}
+                        />
+                      ) : (
                       <Typography
                         variant="h6"
                         component="h2"
@@ -3944,6 +4252,7 @@ const ExamInterface = () => {
                       >
                         {currentQuestion.text}
                       </Typography>
+                      )}
 
                       {/* Passage display for comprehension questions - only show if different from section passage */}
                       {currentQuestion.passage && (() => {
@@ -4034,74 +4343,61 @@ const ExamInterface = () => {
                         </Box>
                       )}
 
-                      {/* Question metadata */}
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Type: {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
-                        </Typography>
+                      {/* Question metadata - the question type is deliberately not shown; it is
+                          obvious from the answer input and only adds noise above every question */}
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 1 }}>
                         <Typography variant="caption" color="text.secondary">
                           Points: {currentQuestion.points || 1}
                         </Typography>
                       </Box>
                     </Box>
 
-                    {/* Enhanced Question Content Area */}
+                    {/* Enhanced Question Content Area.
+                        A fill-in-blank question that is typed into inside the sentence has no
+                        answer input to put in here and cannot have sub-questions, so this panel
+                        would render as an empty 400px-tall bordered box under the question -
+                        which reads as "something is missing" and draws the eye away from the
+                        gaps that are actually the answer. It collapses to nothing in that case
+                        (bar the calculator, if the exam enables one). */}
                     <Box sx={{
-                      mt: 4,
-                      p: { xs: 2, sm: 3 },
-                      bgcolor: mode === 'dark'
-                        ? alpha(theme.palette.background.default, 0.6)
-                        : 'background.default',
+                      mt: blankLayout ? 0 : 4,
+                      p: blankLayout ? 0 : { xs: 2, sm: 3 },
+                      bgcolor: blankLayout
+                        ? 'transparent'
+                        : (mode === 'dark'
+                          ? alpha(theme.palette.background.default, 0.6)
+                          : 'background.default'),
                       borderRadius: 2,
-                      border: '1px solid',
+                      border: blankLayout ? 'none' : '1px solid',
                       borderColor: mode === 'dark'
                         ? alpha(theme.palette.divider, 0.3)
                         : 'divider',
-                      minHeight: '400px',
+                      minHeight: blankLayout ? 0 : '400px',
                       position: 'relative',
-                      backdropFilter: mode === 'dark' ? 'blur(10px)' : 'none',
-                      boxShadow: mode === 'dark'
-                        ? '0 4px 20px rgba(0,0,0,0.2)'
-                        : '0 2px 8px rgba(0,0,0,0.05)'
+                      backdropFilter: (!blankLayout && mode === 'dark') ? 'blur(10px)' : 'none',
+                      boxShadow: blankLayout
+                        ? 'none'
+                        : (mode === 'dark'
+                          ? '0 4px 20px rgba(0,0,0,0.2)'
+                          : '0 2px 8px rgba(0,0,0,0.05)')
                     }}>
-                      {/* Question Type Header */}
-                      <Box sx={{
-                        mb: 3,
-                        p: 2,
-                        bgcolor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.lighter',
-                        borderRadius: 1,
-                        border: '1px solid',
-                        borderColor: getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <Typography variant="h6" fontWeight="bold" color={getQuestionTypeColor(currentQuestion.type, currentQuestion.section) + '.main'}>
-                          {getQuestionTypeLabel(currentQuestion.type, currentQuestion.section)}
-                        </Typography>
-                        {exam?.calculatorEnabled === true && (
+                      {/* Calculator only. The old banner that named the question type above every
+                          question is gone - it told the student nothing the answer input does not. */}
+                      {exam?.calculatorEnabled === true && (
+                        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
                           <Tooltip title={calculatorOpen ? 'Close Calculator' : 'Open Calculator'}>
                             <Button
-                              variant="contained"
+                              variant="outlined"
+                              size="small"
                               startIcon={<Calculate />}
                               onClick={() => setCalculatorOpen(prev => !prev)}
-                              sx={{
-                                bgcolor: 'primary.main',
-                                color: 'white',
-                                fontWeight: 'bold',
-                                textTransform: 'none',
-                                px: 2,
-                                py: 1,
-                                '&:hover': {
-                                  bgcolor: 'primary.dark'
-                                }
-                              }}
+                              sx={{ textTransform: 'none' }}
                             >
                               Calculator
                             </Button>
                           </Tooltip>
-                        )}
-                      </Box>
+                        </Box>
+                      )}
 
                       {(() => {
                         const questionType = currentQuestion.type;
@@ -4119,7 +4415,9 @@ const ExamInterface = () => {
                         // every option that applies. Detected the same way the grader detects it.
                         if (questionType === 'multiple-choice' && isMultiAnswerQuestion(currentQuestion)) {
                           const selectedList = answers[currentQuestion._id]?.selectedOptions || [];
-                          const requiredCount = (currentQuestion.options || []).filter(o => o?.isCorrect || o?.correct).length;
+                          // The server no longer sends which options are correct, only how many,
+                          // so this can't be counted here any more.
+                          const requiredCount = currentQuestion.correctOptionCount || 0;
                           return (
                             <FormControl component="fieldset" fullWidth>
                               <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 1 }}>
@@ -4357,13 +4655,19 @@ const ExamInterface = () => {
                         </FormControl>
                           );
                         } else if (questionType === 'fill-in-blank') {
+                          // Blanks printed in the sentence are typed into in place; there is
+                          // nothing left to put in a box underneath.
+                          if (blankLayout) return null;
+                          // Otherwise the same editor the written questions use, so an answer
+                          // that needs an equation or a line of code can still be given one.
                           return (
-                            <FillInBlankQuestion
+                            <EnhancedOpenAnswer
                               question={currentQuestion}
                               answer={answers[currentQuestion._id]}
                               onAnswerChange={handleAnswerChange}
-                              exam={exam}
-                              disabled={answers[currentQuestion._id]?.answered}
+                              disabled={false}
+                              answerRef={openAnswerRef}
+                              compact
                             />
                           );
                         } else if (questionType === 'matching') {
@@ -4743,7 +5047,7 @@ const ExamInterface = () => {
                                         'open-ended',
                                         { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
                                       )}
-                                      disabled={subAnswer?.answered}
+                                      disabled={false} // never locked: a saved text answer must stay editable so the student can come back to it
                                       sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.default' } }}
                                     />
                                   );
@@ -4797,96 +5101,6 @@ const ExamInterface = () => {
                                     </FormControl>
                                   );
                                   
-                                case 'fill-in-blank':
-                                case 'fill-blank':
-                                  return (
-                                    <Box>
-                                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                                        Fill in the blank:
-                                      </Typography>
-                                      <TextField
-                                        fullWidth
-                                        variant="outlined"
-                                        placeholder="Type your answer..."
-                                        value={subAnswer?.textAnswer || ''}
-                                        onChange={(e) => handleAnswerChange(
-                                          subAnswerKey,
-                                          e.target.value,
-                                          'fill-in-blank',
-                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
-                                        )}
-                                        disabled={subAnswer?.answered}
-                                        sx={{ 
-                                          '& .MuiOutlinedInput-root': { 
-                                            bgcolor: 'background.default',
-                                            fontSize: { xs: '0.875rem', sm: '1rem' }
-                                          } 
-                                        }}
-                                      />
-                                    </Box>
-                                  );
-                                  
-                                case 'short-answer':
-                                  return (
-                                    <Box>
-                                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                                        Short answer (1-2 sentences):
-                                      </Typography>
-                                      <TextField
-                                        fullWidth
-                                        multiline
-                                        rows={2}
-                                        variant="outlined"
-                                        placeholder={`Enter your answer for ${subQ.label || `part ${String.fromCharCode(97 + subIdx)}`}...`}
-                                        value={subAnswer?.textAnswer || ''}
-                                        onChange={(e) => handleAnswerChange(
-                                          subAnswerKey,
-                                          e.target.value,
-                                          'short-answer',
-                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
-                                        )}
-                                        disabled={subAnswer?.answered}
-                                        sx={{ 
-                                          '& .MuiOutlinedInput-root': { 
-                                            bgcolor: 'background.default',
-                                            fontSize: { xs: '0.875rem', sm: '1rem' }
-                                          } 
-                                        }}
-                                      />
-                                    </Box>
-                                  );
-                                  
-                                case 'essay':
-                                case 'long-answer':
-                                  return (
-                                    <Box>
-                                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                                        Detailed answer:
-                                      </Typography>
-                                      <TextField
-                                        fullWidth
-                                        multiline
-                                        rows={5}
-                                        variant="outlined"
-                                        placeholder={`Enter your detailed answer for ${subQ.label || `part ${String.fromCharCode(97 + subIdx)}`}...`}
-                                        value={subAnswer?.textAnswer || ''}
-                                        onChange={(e) => handleAnswerChange(
-                                          subAnswerKey,
-                                          e.target.value,
-                                          'essay',
-                                          { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
-                                        )}
-                                        disabled={subAnswer?.answered}
-                                        sx={{ 
-                                          '& .MuiOutlinedInput-root': { 
-                                            bgcolor: 'background.default',
-                                            fontSize: { xs: '0.875rem', sm: '1rem' }
-                                          } 
-                                        }}
-                                      />
-                                    </Box>
-                                  );
-                                  
                                 case 'financial-spreadsheet':
                                   return (
                                     <FinancialSpreadsheetQuestion
@@ -4911,29 +5125,29 @@ const ExamInterface = () => {
                                     />
                                   );
 
+                                // Every text-shaped sub-question gets the same editor a full
+                                // written question gets, so a part needing an equation or a
+                                // snippet of code can be answered with one. Never locked after
+                                // saving - the student can come back and add to it.
+                                case 'fill-in-blank':
+                                case 'fill-blank':
+                                case 'short-answer':
+                                case 'essay':
+                                case 'long-answer':
                                 case 'open-ended':
                                 default:
                                   return (
-                                    <TextField
-                                      fullWidth
-                                      multiline
-                                      rows={3}
-                                      variant="outlined"
-                                      placeholder={`Enter your answer for ${subQ.label || `part ${String.fromCharCode(97 + subIdx)}`}...`}
-                                      value={subAnswer?.textAnswer || ''}
-                                      onChange={(e) => handleAnswerChange(
+                                    <EnhancedOpenAnswer
+                                      question={{ ...subQ, _id: subAnswerKey, section: currentQuestion.section }}
+                                      answer={subAnswer}
+                                      onAnswerChange={(_key, value) => handleAnswerChange(
                                         subAnswerKey,
-                                        e.target.value,
-                                        'open-ended',
+                                        value,
+                                        subType,
                                         { parentQuestionId: currentQuestion._id, subQuestionIndex: subIdx, isSubQuestion: true }
                                       )}
-                                      disabled={subAnswer?.answered}
-                                      sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                          bgcolor: 'background.default',
-                                          fontSize: { xs: '0.875rem', sm: '1rem' }
-                                        }
-                                      }}
+                                      disabled={false}
+                                      compact={subType !== 'essay' && subType !== 'long-answer'}
                                     />
                                   );
                               }
@@ -5048,7 +5262,14 @@ const ExamInterface = () => {
                       )}
                     </Box>
 
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+                    <Box sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 2,
+                      mt: 4,
+                      flexWrap: 'wrap'
+                    }}>
                       <Button
                         variant="outlined"
                         onClick={handlePrevQuestion}
@@ -5064,26 +5285,42 @@ const ExamInterface = () => {
                         Previous
                       </Button>
 
+                      {/* Manual save + autosave status. Answers are written out on their own a
+                          couple of seconds after typing stops, but a visible Save gives the
+                          student a way to confirm that for themselves. */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, order: { xs: 3, sm: 0 } }}>
+                        <Button
+                          variant="text"
+                          size="small"
+                          onClick={() => saveCurrentQuestionProgress({ silent: false })}
+                          startIcon={saveStatus === 'saving' ? <CircularProgress size={14} /> : <Save />}
+                          disabled={saveStatus === 'saving' || submitting || examCompleted}
+                          sx={{ borderRadius: 0, textTransform: 'none' }}
+                        >
+                          {saveStatus === 'saving' ? 'Saving…' : 'Save'}
+                        </Button>
+                        {isOffline ? (
+                          <Typography variant="caption" color="warning.main">
+                            Offline — kept on this device
+                          </Typography>
+                        ) : saveStatus !== 'saving' && lastSavedAt && (
+                          <Typography variant="caption" color={saveStatus === 'error' ? 'error.main' : 'text.secondary'}>
+                            {saveStatus === 'error'
+                              ? 'Not saved — try again'
+                              : `Saved ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                          </Typography>
+                        )}
+                      </Box>
+
                       {isLastQuestion() ? (
-                        lastQuestionSaved ? (
-                          <Button
-                            variant="contained"
-                            onClick={() => setConfirmSubmit(true)}
-                            endIcon={<Send />}
-                            sx={{ borderRadius: 0 }} // Remove rounded corners
-                          >
-                            Submit Exam
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="contained"
-                            onClick={handleSaveLastQuestion}
-                            endIcon={<Save />}
-                            sx={{ borderRadius: 0 }} // Remove rounded corners
-                          >
-                            Save Question
-                          </Button>
-                        )
+                        <Button
+                          variant="contained"
+                          onClick={() => setConfirmSubmit(true)}
+                          endIcon={<Send />}
+                          sx={{ borderRadius: 0 }} // Remove rounded corners
+                        >
+                          Submit Exam
+                        </Button>
                       ) : (
                         <Button
                           variant="contained"
@@ -5465,111 +5702,10 @@ const ExamInterface = () => {
   );
 };
 
-// Enhanced Fill-in-the-Blank Question Component
-const FillInBlankQuestion = ({ question, answer, onAnswerChange, disabled, exam }) => {
-  const theme = useTheme();
-  const { mode } = useThemeMode();
-  const [localAnswer, setLocalAnswer] = useState(answer?.textAnswer || '');
-  const [calculatorOpen, setCalculatorOpen] = useState(false);
-
-  const handleInputChange = (event) => {
-    const value = event.target.value;
-    setLocalAnswer(value);
-    onAnswerChange(question._id, value, 'fill-in-blank');
-  };
-
-  const handleKeyDown = (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      // Save the answer when Enter is pressed
-      onAnswerChange(question._id, localAnswer, 'fill-in-blank');
-    }
-  };
-
-  return (
-    <Box>
-      {/* Calculator Button */}
-      {exam?.calculatorEnabled !== false && (
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            variant="contained"
-            startIcon={<Calculate />}
-            onClick={() => setCalculatorOpen(true)}
-            sx={{
-              bgcolor: 'primary.main',
-              color: 'white',
-              fontWeight: 'bold',
-              textTransform: 'none',
-              '&:hover': {
-                bgcolor: 'primary.dark'
-              }
-            }}
-          >
-            Calculator
-          </Button>
-        </Box>
-      )}
-
-      {/* Answer Input */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'warning.main' }}>
-          Your Answer:
-        </Typography>
-        <TextField
-          fullWidth
-          variant="outlined"
-          value={localAnswer}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          disabled={disabled}
-          placeholder="Type your answer here..."
-          autoFocus
-          spellCheck={true}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              fontSize: '1.1rem',
-              bgcolor: mode === 'dark' ? alpha(theme.palette.background.paper, 0.8) : 'background.paper',
-              '&.Mui-focused': {
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'warning.main',
-                  borderWidth: 2
-                }
-              }
-            }
-          }}
-          helperText={
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="caption" color="text.secondary">
-                Press Enter to save quickly
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {localAnswer.length}/200 characters
-              </Typography>
-            </Box>
-          }
-        />
-      </Box>
-
-
-      {/* Status indicator */}
-      {answer?.answered && (
-        <Alert severity="success" sx={{ mt: 2, borderRadius: '12px' }}>
-          <Typography variant="body2" fontWeight="medium">
-            ✓ Answer saved successfully
-          </Typography>
-        </Alert>
-      )}
-
-      <CalculatorDialog open={calculatorOpen} onClose={() => setCalculatorOpen(false)} />
-    </Box>
-  );
-};
-
 // Matching Question Component with Drag and Drop
 const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const theme = useTheme();
   const { mode } = useThemeMode();
-  const [calculatorOpen, setCalculatorOpen] = useState(false);
 
   // Get left items (questions/prompts) and right items (answers/choices)
   // Support multiple data structures for matching questions
@@ -5602,6 +5738,20 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   // Track dragged item
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverSlot, setDragOverSlot] = useState(null);
+
+  // React keeps this component mounted when the student moves between two matching
+  // questions, so the state above has to be reloaded for the question now on screen -
+  // otherwise the second question opens showing the first one's matches, and dragging a
+  // single item saves that whole stale set as the answer.
+  useEffect(() => {
+    const reloaded = {};
+    leftItems.forEach((item, index) => {
+      reloaded[index] = answer?.matchingAnswers?.[index] ?? null;
+    });
+    setMatches(reloaded);
+    setDraggedItem(null);
+    setDragOverSlot(null);
+  }, [question._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDragStart = (rightItemIndex) => {
     if (disabled) return;
@@ -5645,30 +5795,6 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 
   return (
     <Box>
-      {/* Calculator Button */}
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          startIcon={<Calculate />}
-          onClick={() => setCalculatorOpen(true)}
-          sx={{
-            bgcolor: 'primary.main',
-            color: 'white',
-            fontWeight: 'bold',
-            textTransform: 'none',
-            '&:hover': {
-              bgcolor: 'primary.dark'
-            }
-          }}
-        >
-          Calculator
-        </Button>
-      </Box>
-
-      <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 3 }}>
-        Matching Question
-      </Typography>
-
       <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
         <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           <HelpOutline sx={{ mr: 1, fontSize: 20, color: 'info.main' }} />
@@ -5884,7 +6010,6 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
         </Box>
       )}
 
-      <CalculatorDialog open={calculatorOpen} onClose={() => setCalculatorOpen(false)} />
     </Box>
   );
 };
@@ -5893,7 +6018,6 @@ const MatchingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const theme = useTheme();
   const { mode } = useThemeMode();
-  const [calculatorOpen, setCalculatorOpen] = useState(false);
 
   const items = question.items || question.options || [];
 
@@ -5903,6 +6027,12 @@ const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   });
 
   const [draggedIndex, setDraggedIndex] = useState(null);
+
+  // Reload for the question now on screen - see the note in MatchingQuestion
+  useEffect(() => {
+    setCurrentOrder(answer?.orderingAnswer || items.map((_, i) => i));
+    setDraggedIndex(null);
+  }, [question._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDragStart = (index) => {
     if (disabled) return;
@@ -5948,30 +6078,6 @@ const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 
   return (
     <Box>
-      {/* Calculator Button */}
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          startIcon={<Calculate />}
-          onClick={() => setCalculatorOpen(true)}
-          sx={{
-            bgcolor: 'primary.main',
-            color: 'white',
-            fontWeight: 'bold',
-            textTransform: 'none',
-            '&:hover': {
-              bgcolor: 'primary.dark'
-            }
-          }}
-        >
-          Calculator
-        </Button>
-      </Box>
-
-      <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 3 }}>
-        Ordering Question
-      </Typography>
-
       <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
         <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           <SwapVert sx={{ mr: 1, fontSize: 20, color: 'secondary.main' }} />
@@ -6073,7 +6179,6 @@ const OrderingQuestion = ({ question, answer, onAnswerChange, disabled }) => {
         </Box>
       )}
 
-      <CalculatorDialog open={calculatorOpen} onClose={() => setCalculatorOpen(false)} />
     </Box>
   );
 };
@@ -6153,7 +6258,12 @@ const getQuestionTypeColor = (type, section) => {
 const DragDropQuestion = ({ question, answer, onAnswerChange, disabled }) => {
   const [placements, setPlacements] = useState(answer?.dragDropAnswer || []);
   const [selectedItem, setSelectedItem] = useState(null);
-  const [calculatorOpen, setCalculatorOpen] = useState(false);
+
+  // Reload for the question now on screen - see the note in MatchingQuestion
+  useEffect(() => {
+    setPlacements(answer?.dragDropAnswer || []);
+    setSelectedItem(null);
+  }, [question._id]); // eslint-disable-line react-hooks/exhaustive-deps
   const dropZones = question.dragDropData?.dropZones || [];
   const draggableItems = question.dragDropData?.draggableItems || [];
 
@@ -6197,26 +6307,6 @@ const DragDropQuestion = ({ question, answer, onAnswerChange, disabled }) => {
 
   return (
     <Box>
-      {/* Calculator Button */}
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          startIcon={<Calculate />}
-          onClick={() => setCalculatorOpen(true)}
-          sx={{
-            bgcolor: 'primary.main',
-            color: 'white',
-            fontWeight: 'bold',
-            textTransform: 'none',
-            '&:hover': {
-              bgcolor: 'primary.dark'
-            }
-          }}
-        >
-          Calculator
-        </Button>
-      </Box>
-
       <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
         <Box component="span" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           <DragIndicator sx={{ mr: 1, fontSize: 20, color: 'error.main' }} />
@@ -6400,7 +6490,6 @@ const DragDropQuestion = ({ question, answer, onAnswerChange, disabled }) => {
         )}
       </Box>
 
-      <CalculatorDialog open={calculatorOpen} onClose={() => setCalculatorOpen(false)} />
     </Box>
   );
 };

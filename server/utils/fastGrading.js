@@ -724,7 +724,7 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
     });
 
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('AI timeout')), 20000);
+      setTimeout(() => reject(new Error('AI timeout')), 30000);
     });
 
     // Written answers are graded with the smart model. The fast 8B model cannot hold a rubric -
@@ -735,9 +735,17 @@ async function gradeOpenEndedFast(question, answer, modelAnswer) {
       jsonMode: true,
       temperature: 0.1,
       // Room for the grader to write out its own solution before it judges the student's.
-      maxTokens: 2048
+      // 2048 was not enough: gpt-oss-120b is a reasoning model and spent ~1500 of those
+      // tokens thinking, so the JSON was cut off part-way through keyPoints - before it ever
+      // wrote "score" or "feedback". That is how a 3-mark answer that covered a point came
+      // back as 0/3 with the generic "AI graded your essay answer" text.
+      maxTokens: 4096
     });
     const response = await Promise.race([aiPromise, timeoutPromise]);
+    if (response.truncated) {
+      console.warn(`⚠️ Grading: response for question ${question._id} was cut off by the token ` +
+        `budget - the mark falls back to whatever point-by-point coverage survived. Raise maxTokens.`);
+    }
     const text = response.text;
     const cleanText = text.replace(/```json\n?|\n?```/g, '').trim();
 

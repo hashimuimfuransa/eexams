@@ -14,6 +14,7 @@ const {
 } = require('../utils/subLevelAccess');
 const { generateOverallRecommendation } = require('../utils/resultRecommendation');
 const { SPREADSHEET_QUESTION_FIELDS } = require('../utils/resultQuestionFields');
+const { sanitizeExamForStudent, sanitizeSessionForStudent } = require('../utils/studentExamView');
 
 // @desc    Get available exams for student (level-scoped exam bank)
 // @route   GET /api/student/exams
@@ -125,13 +126,21 @@ const getAvailableExams = async (req, res) => {
 
     // Add status to each exam
     const examsWithStatus = exams.map(exam => {
-      const examObj = exam.toObject();
+      // This list populates every question in order to count them, and used to send all of
+      // them - marking key included - to a student who had not even opened the exam yet.
+      const examObj = sanitizeExamForStudent(exam);
 
       // Calculate total questions from all sections
       const totalQuestions = exam.sections?.reduce((sum, section) => {
         return sum + (section.questions?.length || 0);
       }, 0) || 0;
       examObj.questions = totalQuestions;
+
+      // The list only needs the count; nothing that reads it renders question text.
+      examObj.sections = (examObj.sections || []).map(({ questions, ...section }) => ({
+        ...section,
+        questionCount: Array.isArray(questions) ? questions.length : 0
+      }));
 
       // Add completion status
       // If student has an approved retake request for this exam, show as not-started regardless of previous completion
@@ -320,6 +329,43 @@ const getExamById = async (req, res) => {
       const isAssigned = await Exam.exists({ _id: req.params.examId, assignedTo: req.user._id });
       hasLegacyGrant = (!!approvedRequest && !approvedRequest.accessCodeUsed) || !!isAssigned;
 
+      // An exam-scoped subscription (a plan bought for this one exam rather
+      // than a level) unlocks it whatever level it sits in, and joining via a
+      // teacher's share link does the same. validateExamAccess honours both at
+      // /start and getAvailableExams lists exams on both grounds, but neither
+      // was reachable from the lookup below: the exam-subscription check ran
+      // only *after* the exam had been found by level, and the share check only
+      // when a ?shareToken was supplied (ExamInterface never sends one). So a
+      // student who bought a single exam outside their selected level, or who
+      // joined through a share link, saw the exam in their bank and got a bare
+      // 404 the moment they opened it. Resolved here so both can widen the
+      // query and skip the subscription gate afterwards.
+      const examSubscription = await Subscription.getActiveSubscriptionForExam(
+        req.user._id,
+        req.params.examId
+      );
+      const hasExamSubscription = !!(examSubscription && examSubscription.isValid());
+
+      const hasShareGrant = hasLegacyGrant ? false : !!(await SharedExam.exists({
+        exam: req.params.examId,
+        isActive: true,
+        students: {
+          $elemMatch: {
+            isLocked: { $ne: true },
+            hasCompleted: { $ne: true },
+            $or: [
+              { student: req.user._id },
+              { studentId: req.user._id },
+              ...(user?.email ? [{ email: user.email.toLowerCase().trim() }] : [])
+            ]
+          }
+        }
+      }));
+
+      // Every grant that bypasses level/subscription gating, exactly as
+      // validateExamAccess weighs them.
+      const hasDirectGrant = hasLegacyGrant || hasExamSubscription || hasShareGrant;
+
       // Any level the student holds an active subscription for is reachable
       // here, not just the selected one — the exam bank lists those exams, so
       // opening one has to work too.
@@ -333,6 +379,7 @@ const getExamById = async (req, res) => {
         $or: [
           { assignedTo: req.user._id },
           { _id: { $in: approvedRequest ? [approvedRequest.exam] : [] } },
+          ...(hasExamSubscription || hasShareGrant ? [{ _id: req.params.examId }] : []),
           ...(user?.level ? [{ level: user.level._id }] : []),
           ...(subscribedLevelIds.length ? [{ level: { $in: subscribedLevelIds } }] : [])
         ]
@@ -341,15 +388,13 @@ const getExamById = async (req, res) => {
         .populate('sections.questions')
         .select('title description timeLimit isLocked accessType level subLevel scheduledFor startTime endTime createdAt allowSelectiveAnswering allowRetake sectionBRequiredQuestions sectionCRequiredQuestions sections calculatorEnabled');
 
-      // If the exam was only matched via the student's level (not a legacy
+      // If the exam was only matched via the student's level (no direct
       // grant), gate it by subscription/free-exam status just like the exam
       // bank listing does, so this endpoint stays consistent with it.
-      if (exam && !hasLegacyGrant) {
+      if (exam && !hasDirectGrant) {
         // A subscription covering this exam's own level unlocks it whatever
         // its access type and whatever level the student has selected.
-        const examSubscription = await Subscription.getActiveSubscriptionForExam(req.user._id, exam._id);
-        const subscriptionUnlocked = !!findSubscriptionCoveringExam(levelSubscriptions, exam) ||
-          !!(examSubscription && examSubscription.isValid());
+        const subscriptionUnlocked = !!findSubscriptionCoveringExam(levelSubscriptions, exam);
 
         if (!subscriptionUnlocked) {
           if (exam.accessType === 'free') {
@@ -419,7 +464,9 @@ const getExamById = async (req, res) => {
       passageLength: q.passage?.length || 0
     })));
 
-    const examObj = exam.toObject();
+    // The marking key never leaves the server: this is the payload the exam interface
+    // renders from, so anything left on a question here is readable from the network tab.
+    const examObj = sanitizeExamForStudent(exam);
 
     // Calculate total questions from all sections
     const totalQuestions = exam.sections?.reduce((sum, section) => {
@@ -835,8 +882,10 @@ const getCurrentExamSession = async (req, res) => {
     const timeElapsed = currentTime - startTime;
     const timeRemaining = Math.max(0, timeLimit - timeElapsed);
 
+    // Multiple-choice answers are marked as they are saved, so the raw session tells the
+    // student which of their answers were right. Strip the marks before handing it back.
     res.json({
-      ...result.toObject(),
+      ...sanitizeSessionForStudent(result),
       timeRemaining
     });
   } catch (error) {

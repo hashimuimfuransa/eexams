@@ -211,9 +211,10 @@ const SubscriptionReports = () => {
   const [subActioningId, setSubActioningId] = useState(null);
 
   // Cashout log — super admin withdraws platform revenue to a mobile money
-  // number, a MoMo Pay code, or a bank account. Mobile money goes out through
-  // iTechPay's payout endpoint; bank transfers have no gateway equivalent, so
-  // those are recorded after the admin makes the transfer themselves.
+  // number, a MoMo Pay code, or a bank account. Only a phone number goes out
+  // through iTechPay's payout endpoint; MoMo codes and bank accounts have no
+  // working payout, so those are recorded after the admin transfers the money
+  // themselves.
   const [cashouts, setCashouts] = useState([]);
   const [cashoutsLoading, setCashoutsLoading] = useState(true);
   const [cashoutAmount, setCashoutAmount] = useState('');
@@ -227,6 +228,7 @@ const SubscriptionReports = () => {
   const [cashoutNote, setCashoutNote] = useState('');
   const [cashoutSubmitting, setCashoutSubmitting] = useState(false);
   const [cashoutDeletingId, setCashoutDeletingId] = useState(null);
+  const [cashoutReversingId, setCashoutReversingId] = useState(null);
 
   // Cashout panel is hidden behind a password re-entry gate — it can send
   // real money, so it stays locked until the super admin confirms their
@@ -506,13 +508,16 @@ const SubscriptionReports = () => {
       destinationLabel = `${cashoutBankName.trim()} — ${cashoutBankAccountNumber.trim()} (${cashoutBankAccountName.trim()})`;
     }
 
-    const isBank = cashoutDestType === 'bank';
+    // A phone number is the only destination iTechPay can pay out to. The rest
+    // only book the withdrawal, so they need a different confirmation.
+    const isManualOnly = cashoutDestType !== 'momo_phone';
+    const manualAction = cashoutDestType === 'bank'
+      ? 'make the bank transfer yourself'
+      : 'send it yourself from your MoMo app';
 
-    // Mobile money fires a real, immediate transfer; a bank cashout only books
-    // the withdrawal, so the two need different confirmations.
     if (!window.confirm(
-      isBank
-        ? `Record a RWF ${amount.toLocaleString()} withdrawal to ${destinationLabel}? This deducts from your available balance — make the bank transfer yourself, the platform cannot send it for you.`
+      isManualOnly
+        ? `Record a RWF ${amount.toLocaleString()} withdrawal to ${destinationLabel}? This deducts from your available balance — ${manualAction}, the platform cannot send it for you.`
         : `Send RWF ${amount.toLocaleString()} to ${destinationLabel} right now? This cannot be undone.`
     )) {
       return;
@@ -535,28 +540,30 @@ const SubscriptionReports = () => {
         destinationType: cashoutDestType,
         ...destinationFields,
         note: cashoutNote.trim(),
-        // Bank payouts are always a manual record — iTechPay has no bank
-        // payout endpoint to call.
-        recordOnly: isBank
+        // MoMo codes and bank accounts have no iTechPay payout to call.
+        recordOnly: isManualOnly
       });
       setToast({
         severity: 'success',
-        message: isBank ? 'Withdrawal recorded' : 'Transfer sent and recorded'
+        message: isManualOnly ? 'Withdrawal recorded' : 'Transfer sent and recorded'
       });
       clearForm();
       await Promise.all([fetchCashouts(), fetchStats()]);
     } catch (err) {
       const message = err.response?.data?.message || 'Transfer failed';
 
-      // The gateway refused to send it (MoMo code payouts in particular are
-      // undocumented and may not be supported). Offer to book it as a manual
-      // withdrawal so the admin can still send the money themselves and keep
-      // the balance accurate.
-      if (err.response?.data?.canRecordManually && window.confirm(
-        `${message}
+      // Two very different follow-ups. When iTechPay's outcome is unknown the
+      // money may already be gone, so the prompt must not claim otherwise —
+      // recording is for confirming a transfer that happened, not a licence to
+      // send it again. A clean decline means nothing moved and the admin can
+      // safely send it themselves.
+      const unknown = err.response?.data?.outcomeUnknown;
+      const reference = err.response?.data?.reference;
+      const followUp = unknown
+        ? `${message}\n\nOnly click OK if you have CONFIRMED with iTechPay that reference ${reference} was paid out — that records the RWF ${amount.toLocaleString()} against your balance. If you have not checked yet, click Cancel: sending it again could pay ${destinationLabel} twice.`
+        : `${message}\n\nRecord this as a manual withdrawal instead? Nothing has been sent — you would send the RWF ${amount.toLocaleString()} to ${destinationLabel} yourself, and this only keeps your balance accurate.`;
 
-Record this as a manual withdrawal instead? Nothing has been sent — you would send the RWF ${amount.toLocaleString()} to ${destinationLabel} yourself, and this only keeps your balance accurate.`
-      )) {
+      if (err.response?.data?.canRecordManually && window.confirm(followUp)) {
         try {
           await api.post('/subscriptions/cashouts', {
             amount,
@@ -565,7 +572,10 @@ Record this as a manual withdrawal instead? Nothing has been sent — you would 
             note: cashoutNote.trim(),
             recordOnly: true
           });
-          setToast({ severity: 'success', message: 'Withdrawal recorded manually' });
+          setToast({
+            severity: 'success',
+            message: unknown ? 'Confirmed transfer recorded' : 'Withdrawal recorded manually'
+          });
           clearForm();
           await Promise.all([fetchCashouts(), fetchStats()]);
         } catch (recordErr) {
@@ -579,8 +589,33 @@ Record this as a manual withdrawal instead? Nothing has been sent — you would 
     }
   };
 
+  // Un-books a manual record entered by mistake. Only offered for manual rows —
+  // a gateway row is money iTechPay already sent, which no button here can
+  // claw back. The amount returns to the available balance.
+  const handleReverseCashout = async (cashout) => {
+    const reason = window.prompt(
+      `Reverse this RWF ${cashout.amount?.toLocaleString()} withdrawal to ${cashoutDestination(cashout)}?\n\n` +
+      'The amount goes back into your available balance and the row stays in the history marked as reversed. ' +
+      'Only do this if the money was never actually sent, or was sent to the wrong place.\n\n' +
+      'Reason (optional):'
+    );
+    // prompt() returns null on Cancel; an empty string is a deliberate "no reason".
+    if (reason === null) return;
+
+    setCashoutReversingId(cashout._id);
+    try {
+      const res = await api.post(`/subscriptions/cashouts/${cashout._id}/reverse`, { reason: reason.trim() });
+      setToast({ severity: 'success', message: res.data?.message || 'Cashout reversed' });
+      await Promise.all([fetchCashouts(), fetchStats()]);
+    } catch (err) {
+      setToast({ severity: 'error', message: err.response?.data?.message || 'Failed to reverse cashout' });
+    } finally {
+      setCashoutReversingId(null);
+    }
+  };
+
   const handleDeleteCashout = async (cashout) => {
-    if (!window.confirm(`Remove this RWF ${cashout.amount?.toLocaleString()} log entry? This only deletes the record — it does not reverse the transfer.`)) return;
+    if (!window.confirm(`Permanently remove this RWF ${cashout.amount?.toLocaleString()} record? It disappears from the history entirely — reversing instead keeps the correction visible. This does not move any money.`)) return;
     setCashoutDeletingId(cashout._id);
     try {
       await api.delete(`/subscriptions/cashouts/${cashout._id}`);
@@ -642,9 +677,9 @@ Record this as a manual withdrawal instead? Nothing has been sent — you would 
           ) : (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-                All subscription revenue belongs to you. Cashing out to a mobile money number or MoMo code sends that
-                amount via iTechPay immediately — a real transfer, not just a log entry. Bank accounts have no iTechPay
-                payout, so a bank cashout only records the withdrawal: you make the transfer yourself.
+                All subscription revenue belongs to you. Cashing out to a mobile money number sends that amount via
+                iTechPay immediately — a real transfer, not just a log entry. MoMo Pay codes and bank accounts have no
+                iTechPay payout, so those only record the withdrawal: you move the money yourself.
               </Typography>
 
               <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -679,8 +714,8 @@ Record this as a manual withdrawal instead? Nothing has been sent — you would 
                   <InputLabel>Send to</InputLabel>
                   <Select label="Send to" value={cashoutDestType} onChange={(e) => setCashoutDestType(e.target.value)}>
                     <MenuItem value="momo_phone">Mobile money number</MenuItem>
-                    <MenuItem value="momo_code">MoMo Pay code</MenuItem>
-                    <MenuItem value="bank">Bank account</MenuItem>
+                    <MenuItem value="momo_code">MoMo Pay code (manual)</MenuItem>
+                    <MenuItem value="bank">Bank account (manual)</MenuItem>
                   </Select>
                 </FormControl>
                 {cashoutDestType === 'momo_phone' && (
@@ -753,8 +788,8 @@ Record this as a manual withdrawal instead? Nothing has been sent — you would 
                   onClick={handleCreateCashout}
                 >
                   {cashoutSubmitting
-                    ? (cashoutDestType === 'bank' ? 'Recording…' : 'Sending…')
-                    : (cashoutDestType === 'bank' ? 'Record Withdrawal' : 'Send Cashout')}
+                    ? (cashoutDestType === 'momo_phone' ? 'Sending…' : 'Recording…')
+                    : (cashoutDestType === 'momo_phone' ? 'Send Cashout' : 'Record Withdrawal')}
                 </Button>
               </Stack>
 
@@ -762,6 +797,12 @@ Record this as a manual withdrawal instead? Nothing has been sent — you would 
                 <Alert severity="info" sx={{ mb: 3 }}>
                   iTechPay cannot push money to a bank account, so this records the withdrawal only — make the bank
                   transfer yourself. The amount is still deducted from your available balance.
+                </Alert>
+              )}
+              {cashoutDestType === 'momo_code' && (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  iTechPay's payout endpoint does not handle MoMo Pay codes, so this records the withdrawal only — send
+                  it yourself from your MoMo app. The amount is still deducted from your available balance.
                 </Alert>
               )}
 
@@ -786,7 +827,12 @@ Record this as a manual withdrawal instead? Nothing has been sent — you would 
                       {cashouts.map((c) => (
                         <TableRow key={c._id}>
                           <TableCell>{new Date(c.createdAt).toLocaleString()}</TableCell>
-                          <TableCell align="right">RWF {c.amount?.toLocaleString()}</TableCell>
+                          <TableCell
+                            align="right"
+                            sx={c.reversedAt ? { textDecoration: 'line-through', color: 'text.disabled' } : undefined}
+                          >
+                            RWF {c.amount?.toLocaleString()}
+                          </TableCell>
                           <TableCell>
                             {cashoutDestination(c)}
                             {c.settlementMode === 'manual' && (
@@ -794,20 +840,49 @@ Record this as a manual withdrawal instead? Nothing has been sent — you would 
                             )}
                           </TableCell>
                           <TableCell>{cashoutMethod(c)}</TableCell>
-                          <TableCell>{c.note || '-'}</TableCell>
+                          <TableCell>
+                            {c.note || '-'}
+                            {c.reversedAt && (
+                              <Typography variant="caption" color="error" display="block">
+                                Reversed {new Date(c.reversedAt).toLocaleDateString()}
+                                {c.reversalReason ? `: ${c.reversalReason}` : ''}
+                              </Typography>
+                            )}
+                          </TableCell>
                           <TableCell>
                             {c.requestedBy?.firstName} {c.requestedBy?.lastName}
                           </TableCell>
                           <TableCell align="right">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="error"
-                              disabled={cashoutDeletingId === c._id}
-                              onClick={() => handleDeleteCashout(c)}
-                            >
-                              Delete
-                            </Button>
+                            {c.reversedAt ? (
+                              <Chip label="Reversed" size="small" color="error" variant="outlined" />
+                            ) : c.settlementMode === 'manual' ? (
+                              <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="warning"
+                                  disabled={cashoutReversingId === c._id}
+                                  onClick={() => handleReverseCashout(c)}
+                                >
+                                  {cashoutReversingId === c._id ? 'Reversing…' : 'Reverse'}
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="error"
+                                  disabled={cashoutDeletingId === c._id}
+                                  onClick={() => handleDeleteCashout(c)}
+                                >
+                                  Delete
+                                </Button>
+                              </Stack>
+                            ) : (
+                              // Gateway rows: iTechPay already moved this money, so there
+                              // is nothing the platform can undo.
+                              <Typography variant="caption" color="text.secondary">
+                                Sent via iTechPay
+                              </Typography>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}

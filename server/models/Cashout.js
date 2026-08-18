@@ -3,15 +3,15 @@ const mongoose = require('mongoose');
 // A record of revenue withdrawn from the platform to a destination the super
 // admin controls. Three destination types are supported:
 //
-//   momo_phone — a mobile money number. Sent automatically through iTechPay's
-//                /api/transfer payout endpoint (itecPayment.transferToPhone).
-//   momo_code  — a MoMo Pay merchant code. Attempted through the same payout
-//                endpoint with the code sent verbatim (transferToMomoCode);
-//                iTechPay has never confirmed it accepts codes, so this may be
-//                declined and fall back to a manual record.
-//   bank       — a bank account. iTechPay publishes no bank payout endpoint,
-//                so these are always manual: the super admin makes the
-//                transfer themselves and records it here.
+//   momo_phone — a mobile money number. The only destination that can be paid
+//                out automatically, through iTechPay's /api/transfer endpoint
+//                (itecPayment.transferToPhone).
+//   momo_code  — a MoMo Pay merchant code. Always manual: /api/transfer does
+//                not handle Pay codes (a real attempt returned HTTP 200 with
+//                an empty body — an outcome that can't be interpreted), so the
+//                super admin sends it from their own MoMo app and records it.
+//   bank       — a bank account. Always manual: iTechPay publishes no bank
+//                payout endpoint at all.
 //
 // settlementMode says which of those actually happened: 'gateway' means
 // iTechPay confirmed it moved the money, 'manual' means the money was moved
@@ -104,6 +104,28 @@ const CashoutSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
+  },
+  // Reversal of a manual record booked by mistake (wrong amount, wrong
+  // destination, duplicate). Soft rather than a delete so the mistake and its
+  // correction both stay visible in the history. A reversed row no longer
+  // counts against the available balance — see getAvailableBalance().
+  //
+  // Only ever set on settlementMode 'manual' rows: a 'gateway' row documents
+  // money iTechPay actually moved, and un-booking that would overstate the
+  // balance and invite withdrawing money the platform no longer holds.
+  reversedAt: {
+    type: Date,
+    default: null
+  },
+  reversedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  reversalReason: {
+    type: String,
+    trim: true,
+    default: ''
   }
 }, {
   timestamps: true,

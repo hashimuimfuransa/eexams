@@ -23,6 +23,7 @@ const {
   assignAccountPlan,
   createCashout,
   getCashouts,
+  reverseCashout,
   deleteCashout,
   verifyCashoutPassword
 } = require('../controllers/subscriptionController');
@@ -63,11 +64,14 @@ router.get('/account-plans/subscribers', isSuperAdmin, getAccountPlanSubscribers
 router.post('/account-plans/assign', isSuperAdmin, assignAccountPlan);
 router.post('/account-plans/:userId/cancel', isSuperAdmin, cancelAccountPlanSubscription);
 // Cashout — super admin sends platform revenue to their own mobile money
-// number via iTechPay's transfer endpoint. verify-password is a step-up
-// auth gate the frontend calls before revealing the panel.
+// number via iTechPay's transfer endpoint, or records a withdrawal they made
+// themselves to a MoMo code / bank account. verify-password is a step-up
+// auth gate the frontend calls before revealing the panel. reverse un-books a
+// manual record entered by mistake; both it and delete refuse gateway rows.
 router.post('/cashouts/verify-password', isSuperAdmin, verifyCashoutPassword);
 router.get('/cashouts', isSuperAdmin, getCashouts);
 router.post('/cashouts', isSuperAdmin, createCashout);
+router.post('/cashouts/:id/reverse', isSuperAdmin, reverseCashout);
 router.delete('/cashouts/:id', isSuperAdmin, deleteCashout);
 router.post('/', isSuperAdmin, createSubscription);
 router.patch('/:id/renew', isSuperAdmin, renewSubscription);

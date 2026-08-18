@@ -937,7 +937,11 @@ const getAvailableBalance = async () => {
   ]);
   const accountPlanRevenue = accountPlanAgg[0]?.total || 0;
 
+  // Reversed rows were booked by mistake and never left the platform, so they
+  // must not count as cashed out. `reversedAt: null` also matches the rows
+  // written before the field existed, which are by definition not reversed.
   const cashoutAgg = await Cashout.aggregate([
+    { $match: { reversedAt: null } },
     { $group: { _id: null, total: { $sum: '$amount' } } }
   ]);
   const totalCashedOut = cashoutAgg[0]?.total || 0;
@@ -1244,16 +1248,18 @@ const verifyCashoutPassword = async (req, res) => {
 // @desc    Cash out platform revenue to a mobile money number, a MoMo Pay
 //          code, or a bank account.
 //
-//          Mobile money destinations (phone or code) are sent through
-//          iTechPay's /api/transfer payout endpoint and the record is only
-//          written after iTechPay confirms it, so the history reflects money
-//          that has actually left the platform.
+//          Only a mobile money NUMBER can be paid out automatically: it goes
+//          through iTechPay's /api/transfer endpoint and the record is written
+//          only after iTechPay confirms it, so the history reflects money that
+//          actually left the platform.
 //
-//          Bank destinations have no gateway equivalent — iTechPay publishes
-//          no bank payout endpoint — so they are always recorded as manual
-//          withdrawals the super admin performs themselves. The caller can
-//          also force a manual record for a momo destination (recordOnly)
-//          when the gateway declines it or the money was already sent by hand.
+//          MoMo Pay codes and bank accounts are always recorded as manual
+//          withdrawals the super admin performs themselves. iTechPay has no
+//          bank payout endpoint at all, and /api/transfer does not handle Pay
+//          codes — sending one returned HTTP 200 with an empty body, an
+//          outcome we cannot interpret, which is exactly the ambiguity that
+//          risks a double-send. Callers can also force a manual record for a
+//          phone destination (recordOnly) when the money was sent by hand.
 // @route   POST /api/subscriptions/cashouts
 // @access  Private/SuperAdmin
 const createCashout = async (req, res) => {
@@ -1322,34 +1328,44 @@ const createCashout = async (req, res) => {
       });
     }
 
-    // Bank payouts can't be automated, and recordOnly is the caller opting out
-    // of the gateway for a momo destination. Both just book the withdrawal.
-    const useGateway = destinationType !== 'bank' && !recordOnly;
+    // A phone number is the only destination iTechPay can actually pay out to;
+    // everything else just books the withdrawal, as does recordOnly.
+    const useGateway = destinationType === 'momo_phone' && !recordOnly;
 
     let transferResult = null;
     if (useGateway) {
       const paymentMethod = provider === 'airtel' ? 'airtel_money' : 'mobile_money';
       try {
-        transferResult = destinationType === 'momo_code'
-          ? await itecPayment.transferToMomoCode({
-              amount: numericAmount,
-              code: destinationFields.momoCode,
-              paymentMethod
-            })
-          : await itecPayment.transferToPhone({
-              amount: numericAmount,
-              phone: destinationFields.phoneNumber,
-              paymentMethod
-            });
+        transferResult = await itecPayment.transferToPhone({
+          amount: numericAmount,
+          phone: destinationFields.phoneNumber,
+          paymentMethod
+        });
       } catch (transferErr) {
         console.error('createCashout: transfer failed:', transferErr.message);
+
+        // Three distinct outcomes, and conflating them is how money gets sent
+        // twice. Only the first two are safe to describe as "nothing moved".
+        if (transferErr.outcomeUnknown) {
+          // HTTP 2xx with a body we couldn't read: iTechPay processed the
+          // request but told us nothing. The transfer may well have gone
+          // through, so nothing is recorded automatically and the admin is
+          // pointed at the reference instead of invited to retry.
+          return res.status(502).json({
+            message: `iTechPay accepted the request but returned no readable response (${transferErr.message}), so we cannot tell whether the money was sent. Do NOT retry blindly — check reference ${transferErr.reference} with iTechPay first, then record it manually if it went through.`,
+            outcomeUnknown: true,
+            reference: transferErr.reference || null,
+            canRecordManually: true
+          });
+        }
+
         return res.status(502).json({
           message: transferErr.isGatewayError
             ? `iTechPay declined the transfer: ${transferErr.message}`
-            : 'Transfer failed — no money was moved and nothing was recorded',
-          // Lets the frontend offer "send it yourself and record it" instead of
-          // leaving the admin with no way to log a withdrawal the gateway
-          // won't perform (MoMo code payouts in particular are undocumented).
+            : `Transfer failed before iTechPay could process it (${transferErr.message}) — no money was moved and nothing was recorded`,
+          // Lets the frontend offer "send it yourself and record it" instead
+          // of leaving the admin with no way to log a withdrawal the gateway
+          // declined to perform.
           canRecordManually: true
         });
       }
@@ -1389,15 +1405,72 @@ const getCashouts = async (req, res) => {
   }
 };
 
-// @desc    Delete a mistaken cashout record
+// A cashout may only be un-booked if the platform never actually sent the
+// money — i.e. a manual record the super admin typed in themselves. Rows with
+// settlementMode 'gateway' represent a payout iTechPay confirmed, and rows
+// predating the field (settlementMode undefined) were all gateway transfers,
+// so anything that isn't explicitly 'manual' is off limits: removing one would
+// add its amount back to the available balance and invite cashing out money
+// the platform no longer holds.
+const assertReversible = (cashout) => {
+  if (cashout.settlementMode !== 'manual') {
+    return 'This cashout was sent through iTechPay, so it cannot be undone here — the money has already left. Deleting it would overstate your available balance.';
+  }
+  return null;
+};
+
+// @desc    Reverse a manually-recorded cashout booked by mistake (wrong
+//          amount, wrong destination, or a duplicate). Soft reversal: the row
+//          stays in the history marked as reversed, and its amount is added
+//          back to the available balance.
+// @route   POST /api/subscriptions/cashouts/:id/reverse
+// @access  Private/SuperAdmin
+const reverseCashout = async (req, res) => {
+  try {
+    const cashout = await Cashout.findById(req.params.id);
+    if (!cashout) {
+      return res.status(404).json({ message: 'Cashout record not found' });
+    }
+
+    const blocked = assertReversible(cashout);
+    if (blocked) {
+      return res.status(400).json({ message: blocked });
+    }
+    if (cashout.reversedAt) {
+      return res.status(400).json({ message: 'This cashout has already been reversed' });
+    }
+
+    cashout.reversedAt = new Date();
+    cashout.reversedBy = req.user._id;
+    cashout.reversalReason = (req.body?.reason || '').trim();
+    await cashout.save();
+
+    console.log(`Cashout ${cashout._id} (RWF ${cashout.amount}) reversed by ${req.user._id}`);
+    res.json({ message: 'Cashout reversed — the amount is back in your available balance', cashout });
+  } catch (error) {
+    console.error('reverseCashout error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Delete a mistaken cashout record outright. Reversing is usually
+//          preferable since it keeps the correction visible; this is for rows
+//          that should never have existed at all.
 // @route   DELETE /api/subscriptions/cashouts/:id
 // @access  Private/SuperAdmin
 const deleteCashout = async (req, res) => {
   try {
-    const cashout = await Cashout.findByIdAndDelete(req.params.id);
+    const cashout = await Cashout.findById(req.params.id);
     if (!cashout) {
       return res.status(404).json({ message: 'Cashout record not found' });
     }
+
+    const blocked = assertReversible(cashout);
+    if (blocked) {
+      return res.status(400).json({ message: blocked });
+    }
+
+    await cashout.deleteOne();
     res.json({ message: 'Cashout record deleted' });
   } catch (error) {
     console.error('deleteCashout error:', error);
@@ -1630,6 +1703,7 @@ module.exports = {
   assignAccountPlan,
   createCashout,
   getCashouts,
+  reverseCashout,
   deleteCashout,
   verifyCashoutPassword
 };

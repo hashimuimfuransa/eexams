@@ -49,7 +49,20 @@ class ITECPaymentService {
     try {
       return JSON.parse(text);
     } catch {
-      throw new Error(`iTechPay returned non-JSON (HTTP ${response.status}): ${text.slice(0, 300)}`);
+      // An unparseable body on a 2xx is NOT a failure — iTechPay accepted and
+      // processed the request, we just can't read the outcome. Callers that
+      // move money must treat this as "unknown", never as "nothing happened",
+      // or they'll invite a double-send. A non-2xx with an unreadable body is
+      // a genuine transport-level failure.
+      const err = new Error(
+        text.trim()
+          ? `iTechPay returned non-JSON (HTTP ${response.status}): ${text.slice(0, 300)}`
+          : `iTechPay returned an empty body (HTTP ${response.status})`
+      );
+      err.isUnreadableResponse = true;
+      err.httpStatus = response.status;
+      err.outcomeUnknown = response.ok;
+      throw err;
     }
   }
 
@@ -126,31 +139,46 @@ class ITECPaymentService {
     };
   }
 
-  // Shared payout call behind transferToPhone/transferToMomoCode. Mirrors the
-  // /api2/pay request/response shape since iTechPay hasn't published payout
-  // docs — same { amount, phone, key, req_ref } body, same success heuristic.
-  // `destination` is whatever goes in the body's `phone` field, already in the
-  // exact form the gateway should receive.
-  // NOT YET CONFIRMED against a real successful transfer response; the only
-  // test so far returned { status: 400, data: { message: "Unauthorized" } }
-  // for a placeholder key. Treat the success path as unverified until a real
-  // transfer has been confirmed to actually land on the recipient.
-  async sendTransfer({ amount, destination, paymentMethod, reference, destinationKind }) {
+  // Sends money OUT to a phone number (cashout/payout), as opposed to
+  // createPaymentRequest which collects money FROM a customer. This is the
+  // ONLY automated payout: MoMo Pay codes and bank accounts have no working
+  // iTechPay payout, so those cash outs are recorded manually instead (see
+  // createCashout in subscriptionController.js).
+  //
+  // Mirrors the /api2/pay request/response shape since iTechPay hasn't
+  // published payout docs — same { amount, phone, key, req_ref } body, same
+  // success heuristic. NOT YET CONFIRMED against a real successful transfer;
+  // treat the success path as unverified until a transfer has been confirmed
+  // to actually land on the recipient's phone.
+  async transferToPhone({ amount, phone, paymentMethod, reference }) {
     const provider = this.getProvider(paymentMethod || 'mobile_money');
-    console.log(`[iTechPay] sendTransfer: provider=${provider}, amount=${amount}, ${destinationKind}=${destination}`);
+    const normalizedPhone = this.normalizePhone(phone);
+    console.log(`[iTechPay] transferToPhone: provider=${provider}, amount=${amount}, phone=${normalizedPhone}`);
 
     const apiKey = this.getApiKey(provider);
     const req_ref = reference || crypto.randomUUID();
 
-    const result = await this.post(
-      'https://pay.itecpay.rw/api/transfer',
-      {
-        amount: Number(amount),
-        phone: destination,
-        key: apiKey,
-        req_ref
+    let result;
+    try {
+      result = await this.post(
+        'https://pay.itecpay.rw/api/transfer',
+        {
+          amount: Number(amount),
+          phone: normalizedPhone,
+          key: apiKey,
+          req_ref
+        }
+      );
+    } catch (err) {
+      // The req_ref is the only handle on a transfer whose outcome we couldn't
+      // read, so it has to survive the throw — it's what iTechPay support (or
+      // a later status check) needs to say whether the money actually moved.
+      err.reference = req_ref;
+      if (err.outcomeUnknown) {
+        console.error(`[iTechPay] Transfer outcome UNKNOWN: req_ref=${req_ref}, phone=${normalizedPhone}, amount=${amount} — verify before retrying`);
       }
-    );
+      throw err;
+    }
 
     const statusVal = String(result?.status ?? '').toLowerCase();
     const ok = result?.status === 200 || result?.status === true || result?.status === 1 ||
@@ -161,45 +189,18 @@ class ITECPaymentService {
       console.error(`[iTechPay] Transfer rejected: ${errMsg}`);
       const err = new Error(errMsg);
       err.isGatewayError = true;
+      err.reference = req_ref;
       throw err;
     }
 
     const txId = result?.data?.transaction_id || result?.data?.financial_transaction_id || req_ref;
-    console.log(`[iTechPay] Transfer request accepted: txId=${txId}, ${destinationKind}=${destination}`);
+    console.log(`[iTechPay] Transfer request accepted: txId=${txId}, phone=${normalizedPhone}`);
     return {
       success: true,
       transactionId: txId,
       reference: req_ref,
       raw: result
     };
-  }
-
-  // Sends money OUT to a phone number (cashout/payout), as opposed to
-  // createPaymentRequest which collects money FROM a customer.
-  async transferToPhone({ amount, phone, paymentMethod, reference }) {
-    return this.sendTransfer({
-      amount,
-      destination: this.normalizePhone(phone),
-      paymentMethod,
-      reference,
-      destinationKind: 'phone'
-    });
-  }
-
-  // Sends money OUT to a MoMo Pay merchant code. The code is passed through
-  // untouched — normalizePhone() would mangle it (it prepends '0' to 9-char
-  // values and strips country codes), and a mangled code could route money to
-  // an unrelated destination. iTechPay has no documented code payout, so this
-  // may simply be declined; callers should be ready to fall back to recording
-  // the withdrawal manually.
-  async transferToMomoCode({ amount, code, paymentMethod, reference }) {
-    return this.sendTransfer({
-      amount,
-      destination: String(code).replace(/[\s\-().]/g, ''),
-      paymentMethod,
-      reference,
-      destinationKind: 'momoCode'
-    });
   }
 
   async verifyPayment(reference, paymentMethod) {

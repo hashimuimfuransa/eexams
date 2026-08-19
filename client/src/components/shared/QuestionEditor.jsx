@@ -20,6 +20,92 @@ import { tokens } from '../../pages/dashboardTokens';
 import { FinancialSpreadsheetQuestion } from '../FinancialSpreadsheet';
 import AIQuestionAssist from './AIQuestionAssist';
 
+// --- Matching question helpers -------------------------------------------------
+// Matching data is stored in two different shapes depending on how the question was
+// created: the pasted-exam path writes `leftItems`/`rightItems`, while the file parser
+// and AI generation write `matchingPairs.leftColumn`/`rightColumn`. The answer key
+// always lives in `matchingPairs.correctPairs` (leftIndex -> rightIndex) - that is the
+// only field the graders read. So read from every shape, and always write back both
+// shapes plus the key, otherwise an exam edited here loses its matching answers.
+const matchItemText = (item) => {
+  if (typeof item === 'string') return item;
+  if (item && typeof item === 'object') return item.text || item.label || item.value || '';
+  return item === 0 ? '0' : '';
+};
+
+const readMatchingColumns = (q) => {
+  const pick = (explicit, column, fromOptions) => (
+    explicit?.length ? explicit : column?.length ? column : fromOptions || []
+  );
+  const left = pick(q.leftItems, q.matchingPairs?.leftColumn, q.options?.filter((_, i) => i % 2 === 0));
+  const right = pick(q.rightItems, q.matchingPairs?.rightColumn, q.options?.filter((_, i) => i % 2 === 1));
+  return { left: left.map(matchItemText), right: right.map(matchItemText) };
+};
+
+// correctPairs is Mixed in the schema, so an index can arrive as a number, a numeric
+// string, the item's own text, or a letter label. Resolve all of them to an index so a
+// stored answer key is still shown (and stays gradeable) instead of silently reading as unset.
+const resolveMatchIndex = (value, list) => {
+  if (value === null || value === undefined || value === '') return -1;
+  if (typeof value === 'number') return Number.isInteger(value) ? value : -1;
+  const raw = matchItemText(value) || String(value);
+  const trimmed = raw.trim();
+  // Text match is tried before the numeric reading: the server's reconcileMatching writes the
+  // items' own text into correctPairs, and a column of numbers ("1", "2") would otherwise be
+  // misread as indices.
+  const byText = list.findIndex(item => item.trim().toLowerCase() === trimmed.toLowerCase());
+  if (byText !== -1) return byText;
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  if (/^[A-Za-z]$/.test(trimmed)) return trimmed.toUpperCase().charCodeAt(0) - 65;
+  return -1;
+};
+
+// Answer key as { leftIndex: rightIndex }. A question with no stored correctPairs falls
+// back to the same-order convention used by the rest of the app (left i matches right i).
+const readMatchingKey = (q, left, right) => {
+  const key = {};
+  left.forEach((_, i) => { key[i] = i; });
+  (q.matchingPairs?.correctPairs || []).forEach(pair => {
+    const l = resolveMatchIndex(pair?.left, left);
+    if (l < 0 || l >= left.length) return;
+    // A pair whose right side cannot be resolved (deleted item, unrecognisable value) is
+    // reported as -1 rather than falling back to row order, so the editor shows it as unset
+    // instead of quietly displaying a different item as if it were the stored answer.
+    const r = resolveMatchIndex(pair?.right, right);
+    key[l] = r >= 0 && r < right.length ? r : -1;
+  });
+  return key;
+};
+
+const writeMatching = (q, left, right, key) => ({
+  ...q,
+  leftItems: left.map(text => ({ text })),
+  rightItems: right.map(text => ({ text })),
+  matchingPairs: {
+    ...q.matchingPairs,
+    leftColumn: [...left],
+    rightColumn: [...right],
+    correctPairs: left.map((_, i) => ({ left: i, right: key[i] ?? i }))
+  }
+});
+
+// Keeps the answer key pointing at the same items after a row is removed: every index above
+// the removed row shifts down, and a left item whose answer was the removed right item is
+// marked unset (-1) instead of being silently re-pointed at whatever slid into that slot.
+const removeMatchingRow = (row, left, right, key) => {
+  const nextLeft = left.filter((_, i) => i !== row);
+  const nextRight = right.filter((_, i) => i !== row);
+  const nextKey = {};
+  nextLeft.forEach((_, i) => {
+    const oldLeft = i < row ? i : i + 1;
+    const oldRight = key[oldLeft];
+    if (oldRight === undefined) { nextKey[i] = i; return; }
+    if (oldRight === row || oldRight < 0) { nextKey[i] = -1; return; }
+    nextKey[i] = oldRight > row ? oldRight - 1 : oldRight;
+  });
+  return { left: nextLeft, right: nextRight, key: nextKey };
+};
+
 // Full-featured question editor supporting every question type (multiple-choice,
 // true-false, fill-blank, open-ended/short-answer/essay, matching, ordering,
 // drag-drop, structured, financial-spreadsheet, sub-questions). Shared between
@@ -27,6 +113,10 @@ import AIQuestionAssist from './AIQuestionAssist';
 // identical editing capability.
 export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, sections, onSectionChange }) => {
   const [expanded, setExpanded] = useState(false);
+  // Blank rows the matching editor is showing beyond the stored columns. Kept out of the
+  // question itself so "Add Pair" doesn't write empty items (which would show up as empty
+  // slots for students) until something is actually typed into the new row.
+  const [minMatchRows, setMinMatchRows] = useState(0);
   const [edited, setEdited] = useState(false);
   const [localQ, setLocalQ] = useState(question);
   // Tracks the latest localQ synchronously so back-to-back commits in the same tick
@@ -263,6 +353,32 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                 ))}
               </Box>
             )}
+            {/* Matching questions keep their answer in matchingPairs.correctPairs, not in
+                correctAnswer, so summarise the key here - otherwise a matching question looks
+                like it has no answer set until the card is expanded. */}
+            {qType === 'matching' && (() => {
+              const { left, right } = readMatchingColumns(localQ);
+              if (left.length === 0) return null;
+              const key = readMatchingKey(localQ, left, right);
+              const set = left.filter((_, i) => key[i] >= 0 && key[i] < right.length).length;
+              const summary = left.map((_, i) => `${i + 1}→${key[i] >= 0 && key[i] < right.length ? key[i] + 1 : '?'}`).join(' ');
+              return (
+                <Tooltip title={`Answer key (left→right): ${summary}`} arrow>
+                  <Chip
+                    label={`Key: ${set}/${left.length} matched`}
+                    size="small"
+                    sx={{
+                      height: 16,
+                      fontSize: 9,
+                      fontWeight: 600,
+                      bgcolor: set === left.length ? '#D1FAE5' : '#FEF3C7',
+                      color: set === left.length ? '#065F46' : '#B45309',
+                      cursor: 'pointer'
+                    }}
+                  />
+                </Tooltip>
+              );
+            })()}
             {/* Show correct answer indicator */}
             {localQ.correctAnswer && (
               <Chip
@@ -638,60 +754,70 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
               </Grid>
             )}
 
-            {/* Matching Question Editor */}
-            {qType === 'matching' && (
+            {/* Matching Question Editor - the pairs plus the answer key the graders read */}
+            {qType === 'matching' && (() => {
+              const { left, right } = readMatchingColumns(localQ);
+              const key = readMatchingKey(localQ, left, right);
+              const rowCount = Math.max(left.length, right.length, minMatchRows);
+              const padTo = (list, len) => {
+                const out = [...list];
+                while (out.length < len) out.push('');
+                return out;
+              };
+              const apply = (nextLeft, nextRight, nextKey) => {
+                setLocalQ(writeMatching(localQ, nextLeft, nextRight, nextKey));
+                setEdited(true);
+              };
+              const setLeftItem = (i, value) => {
+                const next = padTo(left, i + 1);
+                next[i] = value;
+                apply(next, right, key);
+              };
+              const setRightItem = (i, value) => {
+                const next = padTo(right, i + 1);
+                next[i] = value;
+                apply(left, next, key);
+              };
+              const matchedRight = left.map((_, i) => key[i]);
+              const duplicateKey = new Set(matchedRight.filter((r, i) => matchedRight.indexOf(r) !== i));
+              const unusedRight = right.map((_, i) => i).filter(i => !matchedRight.includes(i));
+              return (
               <Grid item xs={12}>
                 <Box sx={{ p: isMobile ? 1.5 : 2, bgcolor: '#ECFDF5', borderRadius: 2, border: `1px solid ${typeColors[qType]}` }}>
                   <Typography sx={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: '#065F46', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <DragIndicator sx={{ fontSize: isMobile ? 12 : 14 }} />
-                    Matching Pairs (Left → Right)
+                    Matching Items (Left Column / Right Column)
                   </Typography>
                   <Typography sx={{ fontSize: isMobile ? 11 : 12, color: '#047857', mb: 1.5, fontStyle: 'italic' }}>
-                    Students will drag items from right to match with items on left
+                    Students see the right column as a shuffled pool and drag items onto the left ones. The answer key below is what grading uses - it does not have to follow the row order.
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {(localQ.leftItems || localQ.options?.filter((_, i) => i % 2 === 0) || []).map((item, i) => (
+                    {Array.from({ length: rowCount }, (_, i) => (
                       <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip label={i + 1} size="small" sx={{ height: 20, minWidth: 24, fontSize: 10, fontWeight: 700, bgcolor: `${typeColors[qType]}25`, color: '#065F46' }} />
                         <TextField
                           fullWidth
                           size="small"
                           placeholder={`Left item ${i + 1}`}
-                          value={typeof item === 'string' ? item : item.text}
-                          onChange={e => {
-                            const newLeft = [...(localQ.leftItems || localQ.options?.filter((_, idx) => idx % 2 === 0) || [])];
-                            newLeft[i] = { text: e.target.value };
-                            setLocalQ({ ...localQ, leftItems: newLeft });
-                            setEdited(true);
-                          }}
+                          value={left[i] || ''}
+                          onChange={e => setLeftItem(i, e.target.value)}
                           sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white', fontSize: isMobile ? 12 : 13 } }}
                         />
                         <DragIndicator sx={{ color: 'text.secondary', flexShrink: 0 }} />
                         <TextField
                           fullWidth
                           size="small"
-                          placeholder={`Right match ${i + 1}`}
-                          value={(() => {
-                            const rightItems = localQ.rightItems || localQ.options?.filter((_, idx) => idx % 2 === 1) || [];
-                            const rightItem = rightItems[i];
-                            return typeof rightItem === 'string' ? rightItem : rightItem?.text || '';
-                          })()}
-                          onChange={e => {
-                            const newRight = [...(localQ.rightItems || localQ.options?.filter((_, idx) => idx % 2 === 1) || [])];
-                            newRight[i] = { text: e.target.value };
-                            setLocalQ({ ...localQ, rightItems: newRight });
-                            setEdited(true);
-                          }}
+                          placeholder={`Right item ${i + 1}`}
+                          value={right[i] || ''}
+                          onChange={e => setRightItem(i, e.target.value)}
                           sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white', fontSize: isMobile ? 12 : 13 } }}
                         />
                         <IconButton
                           size="small"
                           onClick={() => {
-                            const leftItems = [...(localQ.leftItems || localQ.options?.filter((_, idx) => idx % 2 === 0) || [])];
-                            const rightItems = [...(localQ.rightItems || localQ.options?.filter((_, idx) => idx % 2 === 1) || [])];
-                            leftItems.splice(i, 1);
-                            rightItems.splice(i, 1);
-                            setLocalQ({ ...localQ, leftItems, rightItems });
-                            setEdited(true);
+                            setMinMatchRows(Math.max(0, rowCount - 1));
+                            const next = removeMatchingRow(i, left, right, key);
+                            if (i < left.length || i < right.length) apply(next.left, next.right, next.key);
                           }}
                           sx={{ color: '#EF4444' }}
                         >
@@ -704,21 +830,83 @@ export const QuestionEditor = ({ question, index, onUpdate, onDelete, isMobile, 
                     variant="outlined"
                     size="small"
                     startIcon={<Add />}
-                    onClick={() => {
-                      const leftItems = [...(localQ.leftItems || localQ.options?.filter((_, idx) => idx % 2 === 0) || [])];
-                      const rightItems = [...(localQ.rightItems || localQ.options?.filter((_, idx) => idx % 2 === 1) || [])];
-                      leftItems.push({ text: '' });
-                      rightItems.push({ text: '' });
-                      setLocalQ({ ...localQ, leftItems, rightItems });
-                      setEdited(true);
-                    }}
+                    onClick={() => setMinMatchRows(rowCount + 1)}
                     sx={{ mt: 2, textTransform: 'none', borderStyle: 'dashed', fontSize: isMobile ? 12 : 13 }}
                   >
                     Add Pair
                   </Button>
+
+                  {/* Answer key: which right item is the correct match for each left item */}
+                  <Box sx={{ mt: 2.5, pt: 2, borderTop: `1px dashed ${typeColors[qType]}` }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                      <Typography sx={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: '#065F46', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <DoneAll sx={{ fontSize: isMobile ? 12 : 14 }} />
+                        Correct Answer Key
+                      </Typography>
+                      <Button
+                        size="small"
+                        startIcon={<SwapVert sx={{ fontSize: 14 }} />}
+                        onClick={() => apply(left, right, Object.fromEntries(left.map((_, i) => [i, i])))}
+                        sx={{ textTransform: 'none', fontSize: isMobile ? 10 : 11, color: '#047857' }}
+                      >
+                        Reset to row order
+                      </Button>
+                    </Box>
+                    {left.length === 0 ? (
+                      <Typography sx={{ fontSize: isMobile ? 11 : 12, color: '#065F46', fontStyle: 'italic' }}>
+                        Add at least one pair above to set the answer key.
+                      </Typography>
+                    ) : (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        {left.map((leftText, i) => {
+                          const rightIdx = key[i];
+                          const inRange = rightIdx >= 0 && rightIdx < right.length;
+                          const missing = !inRange || !(right[rightIdx] || '').trim();
+                          return (
+                            <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography sx={{ flex: 1, fontSize: isMobile ? 11 : 12, fontWeight: 600, color: '#065F46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {i + 1}. {leftText?.trim() || '(empty left item)'}
+                              </Typography>
+                              <Typography sx={{ color: '#047857', fontWeight: 700 }}>&rarr;</Typography>
+                              <FormControl size="small" sx={{ flex: 1, minWidth: isMobile ? 110 : 180 }}>
+                                <Select
+                                  displayEmpty
+                                  value={inRange ? rightIdx : ''}
+                                  onChange={e => apply(left, right, { ...key, [i]: Number(e.target.value) })}
+                                  error={missing}
+                                  sx={{ bgcolor: 'white', borderRadius: 2, fontSize: isMobile ? 12 : 13 }}
+                                >
+                                  {/* Display-only: shown when the stored key points at an item that no
+                                      longer exists. Not selectable, so the key can never be saved unset -
+                                      an unset pair would mark every student wrong on that item. */}
+                                  <MenuItem value="" disabled sx={{ fontSize: isMobile ? 12 : 13, fontStyle: 'italic' }}>Not set - pick the correct match</MenuItem>
+                                  {right.map((rightText, ri) => (
+                                    <MenuItem key={ri} value={ri} sx={{ fontSize: isMobile ? 12 : 13 }}>
+                                      {ri + 1}. {rightText?.trim() || '(empty right item)'}
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                              {inRange && duplicateKey.has(rightIdx) && (
+                                <Tooltip title="This right item is the answer for more than one left item" arrow>
+                                  <Chip label="dup" size="small" sx={{ height: 18, fontSize: 9, bgcolor: '#FEF3C7', color: '#B45309', fontWeight: 700 }} />
+                                </Tooltip>
+                              )}
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    )}
+                    {unusedRight.length > 0 && (
+                      <Alert severity="info" sx={{ mt: 1.5, py: 0, fontSize: isMobile ? 10 : 11, borderRadius: 2 }}>
+                        Right items not used by the key (students see them as distractors): {unusedRight.map(i => `${i + 1}. ${right[i]?.trim() || '(empty)'}`).join(', ')}
+                      </Alert>
+                    )}
+                  </Box>
                 </Box>
               </Grid>
-            )}
+              );
+            })()}
 
             {/* Ordering Question Editor */}
             {qType === 'ordering' && (

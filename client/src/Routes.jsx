@@ -13,6 +13,7 @@ import StudentRoutes from './StudentRoutes';
 import NotFound from './pages/NotFound';
 import PublicExamAccess from './pages/PublicExamAccess';
 import ExamResult from './pages/ExamResult';
+import StudentResults from './pages/StudentResults';
 import PendingApproval from './pages/PendingApproval';
 import CompleteRegistration from './pages/CompleteRegistration';
 import Marketplace from './pages/Marketplace';
@@ -80,6 +81,9 @@ const AppRoutes = () => {
       <Route path="/exam/:shareToken" element={<PublicExamAccess />} />
       <Route path="/access-code" element={<PublicExamAccess />} />
       <Route path="/exam-result/:resultId" element={<ExamResult />} />
+      {/* Public transcript lookup - a student checks their marks with just the
+          registration number their school issued, so this stays unauthenticated. */}
+      <Route path="/results" element={<StudentResults />} />
       
       {/* Public routes */}
       <Route path="/" element={

@@ -1,8 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const Result = require('../models/Result');
-const { apiLimiter } = require('../middleware/rateLimiter');
+const { apiLimiter, transcriptLookupLimiter } = require('../middleware/rateLimiter');
 const { RESULT_QUESTION_SELECT } = require('../utils/resultQuestionFields');
+const {
+  getTranscriptByRegistrationNumber,
+  downloadTranscriptByRegistrationNumber
+} = require('../controllers/transcriptController');
+
+// Transcript lookup by registration number (public - students check their own
+// marks on /results). Declared before the /:resultId catch-all below.
+router.get('/transcript/:registrationNumber', transcriptLookupLimiter, getTranscriptByRegistrationNumber);
+
+// The same transcript as a formal PDF the student can keep or print.
+router.get('/transcript/:registrationNumber/pdf', transcriptLookupLimiter, downloadTranscriptByRegistrationNumber);
 
 // Get result by ID (public - for exam result display)
 router.get('/:resultId', apiLimiter, async (req, res) => {

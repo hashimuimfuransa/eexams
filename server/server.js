@@ -128,6 +128,7 @@ const organizationPlanRoutes = require('./routes/organizationPlans');
 const individualPlanRoutes = require('./routes/individualPlans');
 const subscriptionRoutes = require('./routes/subscriptions');
 const paymentRoutes = require('./routes/payments');
+const resultRoutes = require('./routes/results');
 const seoController = require('./controllers/seoController');
 
 // Import subscription expiration middleware
@@ -153,6 +154,9 @@ app.use('/api/organization-plans', organizationPlanRoutes);
 app.use('/api/individual-plans', individualPlanRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/payments', paymentRoutes);
+// Public results: transcript lookup by registration number, plus the exam-result
+// page lookup that /exam-result/:resultId has always called.
+app.use('/api/results', resultRoutes);
 
 // Log registered routes for debugging
 console.log('Registered API routes:');

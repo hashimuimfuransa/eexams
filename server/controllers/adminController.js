@@ -128,7 +128,7 @@ setInterval(() => {
 const registerStudent = async (req, res) => {
   try {
     console.log('Register student request body:', req.body);
-    const { firstName, lastName, email, class: studentClass, organization, phone, gender } = req.body;
+    const { firstName, lastName, email, class: studentClass, organization, phone, gender, registrationNumber } = req.body;
 
     // Validate required fields
     if (!firstName || !lastName || !email) {
@@ -149,6 +149,25 @@ const registerStudent = async (req, res) => {
       return res.status(400).json({ message: 'Student with this email already exists' });
     }
 
+    // A school may bring its own numbering; otherwise one is issued below.
+    const {
+      normalizeRegistrationNumber,
+      isValidRegistrationNumber,
+      assignRegistrationNumber
+    } = require('../utils/registrationNumber');
+    const customRegNumber = normalizeRegistrationNumber(registrationNumber);
+    if (customRegNumber) {
+      if (!isValidRegistrationNumber(customRegNumber)) {
+        return res.status(400).json({
+          message: 'Registration number must be 3-30 characters using letters, numbers and dashes.'
+        });
+      }
+      const regTaken = await User.findOne({ registrationNumber: customRegNumber }).select('_id').lean();
+      if (regTaken) {
+        return res.status(400).json({ message: 'That registration number is already used by another student.' });
+      }
+    }
+
     // Auto-generate a default password: first name + 4-digit random number
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const defaultPassword = `${firstName.charAt(0).toUpperCase()}${firstName.slice(1).toLowerCase()}${randomSuffix}`;
@@ -167,7 +186,17 @@ const registerStudent = async (req, res) => {
       subscriptionPlan: 'free',
       subscriptionStatus: 'active',
       createdBy: req.orgAdminId,
+      registrationNumber: customRegNumber || undefined,
     });
+
+    // Every student needs a number to look their transcript up on /results.
+    if (!student.registrationNumber) {
+      try {
+        await assignRegistrationNumber(student, organization || req.user.organization);
+      } catch (regError) {
+        console.error('[registerStudent] Failed to issue registration number:', regError.message);
+      }
+    }
 
     console.log('Student created successfully:', student._id);
 
@@ -197,6 +226,7 @@ const registerStudent = async (req, res) => {
         email: student.email,
         role: student.role,
         class: student.class,
+        registrationNumber: student.registrationNumber || null,
         phone: student.phone,
         gender: student.gender,
         organization: student.organization
@@ -207,6 +237,13 @@ const registerStudent = async (req, res) => {
   } catch (error) {
     console.error('Register student error:', error);
     if (error.code === 11000) {
+      const clashedField = Object.keys(error.keyPattern || error.keyValue || {})[0];
+      if (clashedField === 'registrationNumber') {
+        return res.status(400).json({ message: 'That registration number is already used by another student.' });
+      }
+      if (clashedField === 'phone') {
+        return res.status(400).json({ message: 'That phone number is already registered.' });
+      }
       return res.status(400).json({ message: 'Student with this email already exists' });
     }
     if (error.name === 'ValidationError') {
@@ -3322,6 +3359,9 @@ const getStudentManagementData = async (req, res) => {
         lastName: s.lastName,
         email: s.email,
         class: s.class || '',
+        registrationNumber: s.registrationNumber || null,
+        phone: s.phone || '',
+        gender: s.gender || '',
         isBlocked: s.isBlocked || false,
         createdBy: s.createdBy
           ? { _id: s.createdBy._id, name: `${s.createdBy.firstName} ${s.createdBy.lastName}`, role: s.createdBy.role }

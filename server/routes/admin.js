@@ -54,6 +54,19 @@ const {
   reuseQuestionBankExam,
 } = require('../controllers/adminController');
 const { shareExam, getExamPreview, createStudentAccounts, removeStudentFromExam, updateStudentInExam, updateExam, deleteExam } = require('../controllers/adminController');
+const {
+  getTranscriptStudents,
+  getStudentRecords,
+  saveStudentRecord,
+  updateStudentRecord,
+  deleteStudentRecord,
+  setRegistrationNumber,
+  generateMissingRegistrationNumbers,
+  previewNextRegistrationNumber,
+  exportTranscriptsPdf,
+  exportTranscriptsCsv,
+  getTranscriptAnalytics
+} = require('../controllers/transcriptController');
 const auth = require('../middleware/auth');
 const { isAdminOrTeacher, attachOrgAdminId, isAdmin } = require('../middleware/role');
 const {
@@ -76,10 +89,25 @@ router.get('/dashboard-stats', getDashboardStats);
 router.post('/students', authLimiter, checkStudentLimit, registerStudent);
 router.get('/students', apiLimiter, getStudents);
 router.get('/recent-students', apiLimiter, getRecentStudents);
+
+// Registration numbers - declared before /students/:id so the literal paths win
+router.get('/students/next-registration-number', apiLimiter, previewNextRegistrationNumber);
+router.post('/students/generate-registration-numbers', apiLimiter, isAdmin, generateMissingRegistrationNumbers);
+router.put('/students/:id/registration-number', apiLimiter, isAdmin, setRegistrationNumber);
 router.get('/students/:id', apiLimiter, getStudentById);
 router.put('/students/:id', authLimiter, updateStudent);
 router.delete('/students/:id', authLimiter, deleteStudent);
 router.post('/students/:id/reset-password', authLimiter, resetStudentPassword);
+
+// Manual marks / transcript routes
+router.get('/transcripts/students', apiLimiter, getTranscriptStudents);
+router.get('/transcripts/analytics', apiLimiter, getTranscriptAnalytics);
+router.get('/transcripts/export/pdf', apiLimiter, exportTranscriptsPdf);
+router.get('/transcripts/export/csv', apiLimiter, exportTranscriptsCsv);
+router.get('/transcripts/student/:studentId', apiLimiter, getStudentRecords);
+router.post('/transcripts', apiLimiter, saveStudentRecord);
+router.put('/transcripts/:id', apiLimiter, updateStudentRecord);
+router.delete('/transcripts/:id', apiLimiter, deleteStudentRecord);
 
 // Teacher management routes (admin only)
 router.post('/teachers', authLimiter, isAdmin, checkTeacherLimit, registerTeacher);

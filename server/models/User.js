@@ -76,6 +76,16 @@ const UserSchema = new mongoose.Schema({
     enum: ['individual', 'organization'],
     default: 'individual' // Default to individual teacher
   },
+  // School-issued student registration number. Unique across the system so a
+  // student can pull their own transcript on /results with nothing else.
+  registrationNumber: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    unique: true,
+    sparse: true,
+    index: true
+  },
   class: {
     type: String,
     trim: true

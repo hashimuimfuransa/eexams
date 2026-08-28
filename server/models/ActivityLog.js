@@ -47,7 +47,10 @@ const ActivityLogSchema = new mongoose.Schema({
       // Subscription actions
       'approve_subscription',
       'reject_subscription',
-      'submit_subscription_request'
+      'submit_subscription_request',
+      // Manual marks / transcript actions
+      'save_academic_record',
+      'delete_academic_record'
     ],
     required: true
   },

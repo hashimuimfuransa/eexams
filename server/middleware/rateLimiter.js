@@ -68,11 +68,21 @@ const examCreationLimiter = createRateLimiter({
   message: 'Too many exam creation attempts, please try again later.'
 });
 
+// Rate limiter for the public transcript lookup on /results.
+// Registration numbers run in sequence, so this is the guard against
+// someone walking the range to harvest other students' marks.
+const transcriptLookupLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // 20 lookups per window
+  message: 'Too many result lookups. Please wait a few minutes and try again.'
+});
+
 module.exports = {
   authLimiter,
   submissionLimiter,
   apiLimiter,
   aiGradingLimiter,
   uploadLimiter,
-  examCreationLimiter
+  examCreationLimiter,
+  transcriptLookupLimiter
 };

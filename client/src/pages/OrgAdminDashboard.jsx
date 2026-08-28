@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Chip, Button, Paper, Grid, TextField,
   CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -11,7 +11,7 @@ import {
   Dashboard as DashIcon, People, Assignment, BarChart, Settings,
   SupervisorAccount, TrendingUp, PersonAdd, CheckCircle,
   Delete, Edit, Close, Add, ArrowForward, Visibility, VisibilityOff, Male, Female,
-  EmojiEvents, ReportProblem
+  EmojiEvents, ReportProblem, Grading, LibraryBooks
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -22,12 +22,16 @@ import { DashboardShell, Sidebar, Topbar, SectionTitle, getDynamicGreeting } fro
 import SubscriptionWarning from '../components/SubscriptionWarning';
 import PlanUsageCard from '../components/PlanUsageCard';
 import LeaderboardSection from '../components/admin/LeaderboardSection';
+import MarksEntrySection from '../components/admin/students/MarksEntrySection';
+import ExamBankSection from '../components/admin/exams/ExamBankSection';
 
 const nav = [
   { id: 'home',     label: 'Overview',   icon: <DashIcon sx={{ fontSize: 20 }} /> },
   { id: 'teachers', label: 'Teachers',   icon: <SupervisorAccount sx={{ fontSize: 20 }} /> },
   { id: 'students', label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
+  { id: 'marks',    label: 'Marks',      icon: <Grading sx={{ fontSize: 20 }} /> },
   { id: 'exams',    label: 'Exams',      icon: <Assignment sx={{ fontSize: 20 }} /> },
+  { id: 'exambank', label: 'Exam Bank',  icon: <LibraryBooks sx={{ fontSize: 20 }} /> },
   { id: 'results',     label: 'Results',     icon: <BarChart sx={{ fontSize: 20 }} /> },
   { id: 'reclamations', label: 'Reclamations', icon: <ReportProblem sx={{ fontSize: 20 }} /> },
   { id: 'leaderboard', label: 'Leaderboard', icon: <EmojiEvents sx={{ fontSize: 20 }} /> },
@@ -111,7 +115,9 @@ export default function OrgAdminDashboard() {
       {activeSection === 'home'      && <OverviewSection stats={stats} statsLoading={statsLoading} teachers={filteredTeachers} exams={filteredExams} results={results} setActiveSection={setActiveSection} user={user} />}
       {activeSection === 'teachers'  && <TeachersSection teachers={filteredTeachers} setTeachers={setTeachers} />}
       {activeSection === 'students'  && <StudentsSection />}
+      {activeSection === 'marks'     && <MarksEntrySection />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} />}
+      {activeSection === 'exambank' && <ExamBankSection />}
       {activeSection === 'results'     && <ResultsSection results={results} resultsTotal={resultsTotal} resultsPage={resultsPage} setResultsPage={setResultsPage} exams={exams} />}
       {activeSection === 'reclamations' && <ReclamationsSection />}
       {activeSection === 'leaderboard'  && <LeaderboardSection exams={exams} />}
@@ -612,12 +618,99 @@ function StudentsSection() {
   const [sortBy, setSortBy] = useState('name');
   const [detailStudent, setDetailStudent] = useState(null);
 
-  useEffect(() => {
+  // Add / edit / delete, backed by the existing /admin/students endpoints.
+  const emptyForm = { firstName: '', lastName: '', email: '', phone: '', class: '', gender: '', registrationNumber: '' };
+  const [form, setForm] = useState(emptyForm);
+  const [formError, setFormError] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editStudent, setEditStudent] = useState(null);
+  const [deleteStudent, setDeleteStudent] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [snack, setSnack] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true);
     api.get('/admin/student-management')
-      .then(r => setStudents(r.data?.students || []))
+      .then(r => { setStudents(r.data?.students || []); setError(''); })
       .catch(() => setError('Failed to load students.'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openCreate = () => { setForm(emptyForm); setFormError(''); setCreateOpen(true); };
+
+  const openEdit = (student) => {
+    setForm({
+      firstName: student.firstName || '', lastName: student.lastName || '',
+      email: student.email || '', phone: student.phone || '',
+      class: student.class || '', gender: student.gender || '',
+      registrationNumber: student.registrationNumber || ''
+    });
+    setFormError('');
+    setEditStudent(student);
+  };
+
+  const handleCreate = async () => {
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) {
+      setFormError('First name, last name and email are required.'); return;
+    }
+    setSaving(true); setFormError('');
+    try {
+      const payload = { ...form, registrationNumber: form.registrationNumber.trim() || undefined };
+      const r = await api.post('/admin/students', payload);
+      setSnack(`✓ ${r.data?.firstName || 'Student'} added${r.data?.registrationNumber ? ` · ${r.data.registrationNumber}` : ''}`);
+      setCreateOpen(false); setForm(emptyForm);
+      load();
+    } catch (err) {
+      setFormError(err.response?.data?.message || 'Failed to add student');
+    } finally { setSaving(false); }
+  };
+
+  const handleEdit = async () => {
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) {
+      setFormError('First name, last name and email are required.'); return;
+    }
+    setSaving(true); setFormError('');
+    try {
+      const { registrationNumber, ...details } = form;
+      await api.put(`/admin/students/${editStudent._id}`, details);
+      // The registration number lives behind its own endpoint, so only call it
+      // when the admin actually changed the field.
+      const trimmed = registrationNumber.trim();
+      if (trimmed !== (editStudent.registrationNumber || '')) {
+        await api.put(`/admin/students/${editStudent._id}/registration-number`, { registrationNumber: trimmed });
+      }
+      setSnack('✓ Student updated');
+      setEditStudent(null); setForm(emptyForm);
+      load();
+    } catch (err) {
+      setFormError(err.response?.data?.message || 'Failed to update student');
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    try {
+      await api.delete(`/admin/students/${deleteStudent._id}`);
+      setSnack('✓ Student deleted');
+      setDeleteStudent(null);
+      load();
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to delete student');
+      setDeleteStudent(null);
+    } finally { setSaving(false); }
+  };
+
+  const toggleBlock = async (student) => {
+    try {
+      await api.put(`/admin/students/${student._id}`, { isBlocked: !student.isBlocked });
+      setSnack(student.isBlocked ? '✓ Student unblocked' : '✓ Student blocked');
+      load();
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to update status');
+    }
+  };
 
   // Enrich each student with tier
   const enriched = students.map(s => ({ ...s, tier: getPerfTier(s.avg) }));
@@ -655,7 +748,13 @@ function StudentsSection() {
 
   return (
     <Box>
-      <SectionTitle>Students ({enriched.length})</SectionTitle>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}>
+        <SectionTitle>Students ({enriched.length})</SectionTitle>
+        <Button variant="contained" startIcon={<PersonAdd />} onClick={openCreate}
+          sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, mb: 1 }}>
+          Add Student
+        </Button>
+      </Box>
 
       {/* Summary Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -728,12 +827,12 @@ function StudentsSection() {
       <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
         <TableContainer sx={{ overflowX: 'auto' }}><Table sx={{ minWidth: 750 }}>
           <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
-            {['Student', 'Class', 'Registered By', 'Exams', 'Avg', 'Best', 'Worst', 'Trend', 'Performance', 'Weaknesses', 'Status'].map(h =>
+            {['Student', 'Reg No', 'Class', 'Registered By', 'Exams', 'Avg', 'Best', 'Worst', 'Trend', 'Performance', 'Weaknesses', 'Status', 'Actions'].map(h =>
               <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11, whiteSpace: 'nowrap', py: 1.25 }}>{h}</TableCell>)}
           </TableRow></TableHead>
           <TableBody>
             {filtered.length === 0
-              ? <TableRow><TableCell colSpan={11} align="center" sx={{ py: 5, color: tokens.textMuted }}>No students match your filters.</TableCell></TableRow>
+              ? <TableRow><TableCell colSpan={13} align="center" sx={{ py: 5, color: tokens.textMuted }}>No students match your filters.</TableCell></TableRow>
               : filtered.map(s => {
                   const tier = s.tier;
                   return (
@@ -746,6 +845,11 @@ function StudentsSection() {
                             <Typography variant="caption" sx={{ color: tokens.textMuted }}>{s.email}</Typography>
                           </Box>
                         </Box>
+                      </TableCell>
+                      <TableCell>
+                        {s.registrationNumber
+                          ? <Chip label={s.registrationNumber} size="small" sx={{ fontSize: 10, height: 18, fontWeight: 700, bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary }} />
+                          : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
                       </TableCell>
                       <TableCell>
                         {s.class ? <Chip label={s.class} size="small" sx={{ fontSize: 10, height: 18, bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600 }} /> : <Typography variant="caption" sx={{ color: tokens.textMuted }}>—</Typography>}
@@ -799,6 +903,24 @@ function StudentsSection() {
                       <TableCell>
                         <Chip label={s.isBlocked ? 'Blocked' : 'Active'} size="small"
                           sx={{ bgcolor: s.isBlocked ? 'rgba(239,68,68,0.08)' : 'rgba(12,189,115,0.1)', color: s.isBlocked ? '#EF4444' : tokens.accentDark, fontWeight: 600 }} />
+                      </TableCell>
+                      {/* stopPropagation so an action never also opens the detail dialog */}
+                      <TableCell onClick={e => e.stopPropagation()} sx={{ whiteSpace: 'nowrap' }}>
+                        <Tooltip title="Edit student">
+                          <IconButton size="small" onClick={() => openEdit(s)}>
+                            <Edit sx={{ fontSize: 16, color: tokens.textMuted }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={s.isBlocked ? 'Unblock student' : 'Block student'}>
+                          <IconButton size="small" onClick={() => toggleBlock(s)}>
+                            {s.isBlocked ? <Visibility sx={{ fontSize: 16, color: tokens.accentDark }} /> : <VisibilityOff sx={{ fontSize: 16, color: tokens.textMuted }} />}
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete student">
+                          <IconButton size="small" onClick={() => setDeleteStudent(s)}>
+                            <Delete sx={{ fontSize: 16, color: '#EF4444' }} />
+                          </IconButton>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   );
@@ -898,6 +1020,148 @@ function StudentsSection() {
           );
         })()}
       </Dialog>
+
+      {/* Add student */}
+      <Dialog open={createOpen} onClose={() => !saving && setCreateOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Add Student
+          <IconButton size="small" onClick={() => setCreateOpen(false)} disabled={saving}><Close fontSize="small" /></IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" sx={{ color: tokens.textMuted, mb: 1 }}>
+            The student gets a login and a registration number, and is emailed their credentials.
+          </Typography>
+            <Grid container spacing={1.5} sx={{ mt: 0 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="First name *" value={form.firstName}
+                  onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Last name *" value={form.lastName}
+                  onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField fullWidth size="small" label="Email *" type="email" value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Phone" placeholder="+250 788 123 456" value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Class" placeholder="S4 MCB" value={form.class}
+                  onChange={e => setForm(f => ({ ...f, class: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Gender</InputLabel>
+                  <Select label="Gender" value={form.gender}
+                    onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
+                    <MenuItem value="">Not specified</MenuItem>
+                    <MenuItem value="male">Male</MenuItem>
+                    <MenuItem value="female">Female</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Registration number" value={form.registrationNumber}
+                  onChange={e => setForm(f => ({ ...f, registrationNumber: e.target.value }))}
+                  helperText="Leave blank to issue automatically" />
+              </Grid>
+            </Grid>
+          {formError && <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>{formError}</Alert>}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setCreateOpen(false)} disabled={saving} sx={{ textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={saving}
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <PersonAdd />}
+            sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none' }}>
+            {saving ? 'Adding…' : 'Add student'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit student */}
+      <Dialog open={!!editStudent} onClose={() => !saving && setEditStudent(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Edit Student
+          <IconButton size="small" onClick={() => setEditStudent(null)} disabled={saving}><Close fontSize="small" /></IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+            <Grid container spacing={1.5} sx={{ mt: 0 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="First name *" value={form.firstName}
+                  onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Last name *" value={form.lastName}
+                  onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField fullWidth size="small" label="Email *" type="email" value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Phone" placeholder="+250 788 123 456" value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Class" placeholder="S4 MCB" value={form.class}
+                  onChange={e => setForm(f => ({ ...f, class: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Gender</InputLabel>
+                  <Select label="Gender" value={form.gender}
+                    onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
+                    <MenuItem value="">Not specified</MenuItem>
+                    <MenuItem value="male">Male</MenuItem>
+                    <MenuItem value="female">Female</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Registration number" value={form.registrationNumber}
+                  onChange={e => setForm(f => ({ ...f, registrationNumber: e.target.value }))}
+                  helperText="Leave blank to issue automatically" />
+              </Grid>
+            </Grid>
+          {formError && <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>{formError}</Alert>}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setEditStudent(null)} disabled={saving} sx={{ textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
+          <Button variant="contained" onClick={handleEdit} disabled={saving}
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
+            sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none' }}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <Dialog open={!!deleteStudent} onClose={() => !saving && setDeleteStudent(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete this student?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: tokens.textSecondary }}>
+            <strong>{deleteStudent?.firstName} {deleteStudent?.lastName}</strong> ({deleteStudent?.email}) will lose access immediately.
+            {deleteStudent?.examsCount > 0 && ` They have ${deleteStudent.examsCount} exam result${deleteStudent.examsCount === 1 ? '' : 's'} on record.`}
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#B91C1C', mt: 1.5, fontWeight: 600 }}>This cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setDeleteStudent(null)} disabled={saving} sx={{ textTransform: 'none', color: tokens.textSecondary }}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDelete} disabled={saving}
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Delete />}
+            sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', boxShadow: 'none' }}>
+            {saving ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={() => setSnack('')} severity={snack.startsWith('✓') ? 'success' : 'error'} sx={{ borderRadius: 2 }}>{snack}</Alert>
+      </Snackbar>
     </Box>
   );
 }

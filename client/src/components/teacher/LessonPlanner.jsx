@@ -3,11 +3,11 @@ import {
   Box, Typography, Button, Paper, Grid, TextField, Chip, IconButton, Tooltip,
   CircularProgress, Alert, Snackbar, Accordion, AccordionSummary, AccordionDetails,
   Tabs, Tab, MenuItem, Divider, Dialog, DialogTitle, DialogContent, DialogContentText,
-  DialogActions, useMediaQuery
+  DialogActions, useMediaQuery, InputAdornment, Select, FormControl
 } from '@mui/material';
 import {
   AutoAwesome, Download, Save, Add, Delete, ExpandMore, MenuBook, Refresh,
-  Edit, Description, CheckCircle, AttachFile, Close
+  Edit, Description, CheckCircle, AttachFile, Close, Search
 } from '@mui/icons-material';
 import api from '../../services/api';
 import useUpload from '../../hooks/useUpload';
@@ -48,6 +48,20 @@ const BRIEF_EXAMPLES = [
   'Chapter 3 of the book: photosynthesis, S2 Biology',
   'Introduce fractions to P4 learners, first lesson of the unit',
   'Revision lesson on the past simple tense, P5 English'
+];
+
+// Real top-level categories on elearning.reb.rw (course/index.php?categoryid=N) —
+// mirrors the "Pre-primary" level dropdown on REB's own Search courses page.
+const REB_CATEGORIES = [
+  { id: '', label: 'All levels' },
+  { id: '70', label: 'Pre-primary' },
+  { id: '19', label: 'Primary' },
+  { id: '13', label: 'Ordinary Level' },
+  { id: '32', label: 'Advanced Level' },
+  { id: '9', label: 'Teacher Training College (TTC)' },
+  { id: '391', label: 'Syllabi and Content Distribution' },
+  { id: '38', label: "Other Students' books to Read" },
+  { id: '37', label: 'Other Resources' }
 ];
 
 const LANGUAGES = [
@@ -254,6 +268,32 @@ export default function LessonPlanner({ user }) {
   const [referenceContent, setReferenceContent] = useState('');
   const [referenceFile, setReferenceFile] = useState(null);
   const [referenceInfo, setReferenceInfo] = useState(null);
+
+  // --- Search REB e-learning directly, using REB's own endpoints so results actually match ---
+  // Level dropdown = REB's category jump-menu (course/index.php?categoryid=N), opened immediately.
+  // Search box = REB's course search (course/search.php?search=...), same as their magnifier button.
+  const [libLevel, setLibLevel] = useState('');
+  const [libQuery, setLibQuery] = useState('');
+
+  const handleLevelChange = (e) => {
+    const id = e.target.value;
+    setLibLevel(id);
+    if (!id) return;
+    window.open(`https://elearning.reb.rw/course/index.php?categoryid=${id}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const searchOnReb = () => {
+    const q = libQuery.trim();
+    if (!q) return;
+    window.open(`https://elearning.reb.rw/course/search.php?search=${encodeURIComponent(q)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleLibKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      searchOnReb();
+    }
+  };
 
   const [plan, setPlan] = useState(null);
   const [planId, setPlanId] = useState(null);
@@ -504,15 +544,64 @@ export default function LessonPlanner({ user }) {
               ))}
             </Box>
 
-            {/* Optional book / curriculum */}
+            {/* Optional book / curriculum — search REB e-learning, then attach the download */}
             <Box sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '2px dashed #CBD5E1' }}>
               <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: tokens.textSecondary, mb: 0.5, fontFamily: "DM Sans,sans-serif" }}>
                 Attach the book or curriculum (optional)
               </Typography>
               <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, mb: 1.5, fontFamily: "DM Sans,sans-serif" }}>
-                PDF, DOC, DOCX or TXT up to 50MB. The AI finds the chapter you named and plans from it.
+                Same search as REB's own site — pick a level to browse it, or type a title/unit/topic to search. Download the book there, then attach it below.
               </Typography>
 
+              {/* Search REB — mirrors elearning.reb.rw's own "level dropdown + search box" bar */}
+              <Box
+                sx={{
+                  display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 2,
+                  p: 1, bgcolor: 'white', borderRadius: 2, border: `1px solid ${tokens.surfaceBorder}`
+                }}
+              >
+                <FormControl size="small" sx={{ minWidth: 180, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
+                  <Select
+                    value={libLevel}
+                    onChange={handleLevelChange}
+                    displayEmpty
+                    sx={{ borderRadius: 2, fontFamily: "DM Sans,sans-serif", fontSize: 13.5 }}
+                  >
+                    {REB_CATEGORIES.map((c) => (
+                      <MenuItem key={c.id} value={c.id} sx={{ fontSize: 13.5 }}>{c.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  size="small" placeholder="Search courses"
+                  value={libQuery} onChange={(e) => setLibQuery(e.target.value)} onKeyDown={handleLibKeyDown}
+                  sx={{ ...fieldSx, flex: 1, minWidth: 160 }}
+                />
+
+                <Tooltip title="Search on REB e-learning">
+                  <span>
+                    <IconButton
+                      onClick={searchOnReb} disabled={!libQuery.trim()}
+                      sx={{
+                        bgcolor: tokens.primary, color: 'white', borderRadius: 2, width: 40, height: 40,
+                        '&:hover': { bgcolor: tokens.primaryDark },
+                        '&.Mui-disabled': { bgcolor: '#CBD5E1', color: 'white' }
+                      }}
+                    >
+                      <Search sx={{ fontSize: 20 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Box>
+
+              <Divider sx={{ mb: 1.5 }}>
+                <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>
+                  then attach the downloaded file
+                </Typography>
+              </Divider>
+
+              {/* File upload */}
               <input type="file" accept=".pdf,.doc,.docx,.txt" id="lesson-plan-reference" style={{ display: 'none' }} onChange={handleFile} />
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
                 <label htmlFor="lesson-plan-reference">
@@ -535,6 +624,9 @@ export default function LessonPlanner({ user }) {
                   />
                 )}
               </Box>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted, mt: 0.75, fontFamily: "DM Sans,sans-serif" }}>
+                PDF, DOC, DOCX or TXT up to 50MB.
+              </Typography>
 
               {referenceInfo?.truncated && (
                 <Typography sx={{ fontSize: 11.5, color: tokens.warning, mt: 1, fontFamily: "DM Sans,sans-serif" }}>

@@ -305,6 +305,7 @@ export default function LessonPlanner({ user }) {
 
   const [saved, setSaved] = useState([]);
   const [savedLoading, setSavedLoading] = useState(false);
+  const [hasReachedTodayLimit, setHasReachedTodayLimit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const editorRef = useRef(null);
@@ -335,7 +336,7 @@ export default function LessonPlanner({ user }) {
     }
   });
 
-  const loadSaved = useCallback(async () => {
+   const loadSaved = useCallback(async () => {
     setSavedLoading(true);
     try {
       const res = await api.get('/lesson-plans');
@@ -347,7 +348,16 @@ export default function LessonPlanner({ user }) {
     }
   }, []);
 
-  useEffect(() => { loadSaved(); }, [loadSaved]);
+  const loadTodayStatus = useCallback(async () => {
+    try {
+      const res = await api.get('/lesson-plans/today-status');
+      setHasReachedTodayLimit(!res.data.canCreate);
+    } catch (err) {
+      console.error('Failed to load today status:', err);
+    }
+  }, []);
+
+  useEffect(() => { loadSaved(); loadTodayStatus(); }, [loadSaved, loadTodayStatus]);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -376,6 +386,10 @@ export default function LessonPlanner({ user }) {
   };
 
   const handleGenerate = async () => {
+    if (hasReachedTodayLimit) {
+      setError('You can only generate one lesson plan per day. Please come back tomorrow.');
+      return;
+    }
     if (!brief.trim() && !referenceContent) {
       setError('Tell us what to prepare, or attach the book first.');
       return;
@@ -408,6 +422,10 @@ export default function LessonPlanner({ user }) {
   };
 
   const startBlank = () => {
+    if (hasReachedTodayLimit) {
+      setError('You can only generate one lesson plan per day. Please come back tomorrow.');
+      return;
+    }
     setPlan({ ...emptyPlan(user), ...details, sourcePrompt: brief.trim() });
     setPlanId(null);
     setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
@@ -450,6 +468,7 @@ export default function LessonPlanner({ user }) {
         : await api.post('/lesson-plans', payload);
       setPlanId(res.data._id);
       setToast(planId ? 'Lesson plan updated.' : 'Lesson plan saved.');
+      if (!planId) setHasReachedTodayLimit(true);
       loadSaved();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save the lesson plan.');
@@ -516,6 +535,12 @@ export default function LessonPlanner({ user }) {
           {!canUseAI && (
             <Alert severity="info" sx={{ mb: 2, borderRadius: 2, fontFamily: "DM Sans,sans-serif" }}>
               AI generation is part of the Basic plan and above. You can still build a plan by hand and download the PDF.
+            </Alert>
+          )}
+
+          {hasReachedTodayLimit && (
+            <Alert severity="warning" onClose={() => setHasReachedTodayLimit(false)} sx={{ mb: 2, borderRadius: 2, fontFamily: "DM Sans,sans-serif" }}>
+              You have reached the daily limit of one lesson plan per day. Come back tomorrow to create another.
             </Alert>
           )}
 
@@ -706,7 +731,7 @@ export default function LessonPlanner({ user }) {
           <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 3 }}>
             <Button
               variant="contained" size="large" onClick={handleGenerate}
-              disabled={generating || isUploading}
+              disabled={generating || isUploading || hasReachedTodayLimit}
               startIcon={generating ? <CircularProgress size={18} sx={{ color: 'white' }} /> : <AutoAwesome />}
               sx={{
                 borderRadius: 2.5, textTransform: 'none', fontWeight: 700, fontSize: 14,
@@ -714,11 +739,12 @@ export default function LessonPlanner({ user }) {
                 '&:hover': { bgcolor: tokens.accentDark }
               }}
             >
-              {generating ? 'Writing your lesson plan…' : 'Generate lesson plan'}
+              {generating ? 'Writing your lesson plan…' : hasReachedTodayLimit ? 'Daily limit reached' : 'Generate lesson plan'}
             </Button>
             {!plan && (
               <Button
                 variant="outlined" size="large" onClick={startBlank} startIcon={<Edit />}
+                disabled={hasReachedTodayLimit}
                 sx={{ borderRadius: 2.5, textTransform: 'none', fontWeight: 700, fontSize: 14, fontFamily: "DM Sans,sans-serif", px: 3 }}
               >
                 Write it myself

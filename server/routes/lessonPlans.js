@@ -263,6 +263,18 @@ router.post('/pdf', isAdminOrTeacher, (req, res) => {
   }
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Has the teacher already created a lesson plan today (UTC)?
+const countPlansToday = async (userId) => {
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  return LessonPlan.countDocuments({
+    createdBy: userId,
+    createdAt: { $gte: startOfDay }
+  });
+};
+
 // @desc    List the current teacher's saved lesson plans
 // @route   GET /api/lesson-plans
 // @access  Private (teacher/admin)
@@ -278,6 +290,19 @@ router.get('/', isAdminOrTeacher, async (req, res) => {
   }
 });
 
+// @desc    Check whether the teacher can still create a lesson plan today
+// @route   GET /api/lesson-plans/today-status
+// @access  Private (teacher/admin)
+router.get('/today-status', isAdminOrTeacher, async (req, res) => {
+  try {
+    const count = await countPlansToday(req.user._id);
+    res.json({ canCreate: count === 0, todayCount: count });
+  } catch (err) {
+    console.error('lesson-plan today-status error:', err);
+    res.status(500).json({ message: 'Failed to check plan limit' });
+  }
+});
+
 // @desc    Save a (reviewed) lesson plan
 // @route   POST /api/lesson-plans
 // @access  Private (teacher/admin)
@@ -286,6 +311,14 @@ router.post('/', isAdminOrTeacher, attachOrgAdminId, async (req, res) => {
     const fields = pickPlanFields(req.body || {});
     if (!fields.lessonTitle && !fields.subject) {
       return res.status(400).json({ message: 'A lesson title or subject is required before saving.' });
+    }
+
+    // Daily limit: one lesson plan per teacher per day
+    const count = await countPlansToday(req.user._id);
+    if (count >= 1) {
+      return res.status(403).json({
+        message: 'You can only generate one lesson plan per day. Please come back tomorrow.'
+      });
     }
 
     const plan = await LessonPlan.create({

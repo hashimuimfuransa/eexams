@@ -46,6 +46,8 @@ const ActivityLogSchema = new mongoose.Schema({
       'delete_teacher',
       // Subscription actions
       'approve_subscription',
+      'assign_individual_plan',
+      'revoke_individual_plan',
       'reject_subscription',
       'submit_subscription_request',
       // Manual marks / transcript actions

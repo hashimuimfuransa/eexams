@@ -25,6 +25,7 @@ import LevelManagement from '../components/admin/LevelManagement';
 import SubscriptionPlanManagement from '../components/admin/SubscriptionPlanManagement';
 import OrganizationPlanManagement from '../components/admin/OrganizationPlanManagement';
 import IndividualPlanManagement from '../components/admin/IndividualPlanManagement';
+import AssignIndividualPlanDialog from '../components/admin/AssignIndividualPlanDialog';
 import SubscriptionReports from '../components/admin/SubscriptionReports';
 import { QuestionEditor } from '../components/shared/QuestionEditor';
 
@@ -264,6 +265,10 @@ function OrganizationsSection() {
   const [activityData, setActivityData] = useState(null);
   const [activityPeriod, setActivityPeriod] = useState('30d');
 
+  // Individual teacher plan assignment
+  const [planDialogTeacher, setPlanDialogTeacher] = useState(null);
+  const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
+
   useEffect(()=>{
     api.get('/superadmin/organizations').then(r=>{
       const data = (r.data||[]).map(o => {
@@ -333,6 +338,20 @@ function OrganizationsSection() {
     try{await api.put(`/superadmin/organizations/${o._id}/toggle-block`);setAllOrgs(p=>p.map(x=>x._id===o._id?{...x,isBlocked:!x.isBlocked}:x));}catch{}
   };
 
+  // Individual teachers have no parent org to inherit a plan from, so their
+  // subscription is assigned here (or bought by them through iTechPay).
+  const handlePlanAssigned=(updatedTeacher,message)=>{
+    setAllOrgs(p=>p.map(o=>o._id===updatedTeacher._id?{
+      ...o,
+      subscriptionPlan:updatedTeacher.subscriptionPlan,
+      subscriptionStatus:updatedTeacher.subscriptionStatus,
+      subscriptionStartDate:updatedTeacher.subscriptionStartDate,
+      subscriptionEndDate:updatedTeacher.subscriptionEndDate,
+      subscriptionExpiresAt:updatedTeacher.subscriptionExpiresAt
+    }:o));
+    setSnack({open:true,msg:message||'Plan updated',severity:'success'});
+  };
+
   const handleDeleteOrganization=async()=>{
     if(!deleteDialog)return;
     setDeleting(true);
@@ -394,6 +413,9 @@ function OrganizationsSection() {
         <Grid container spacing={2}>
           {data.map(o=>{
             const isIndividual = o.role === 'teacher';
+            // Self-registered teacher: owns their own subscription, so the
+            // super admin can grant/extend an individual plan for them.
+            const isIndividualTeacher = isIndividual && !isOrgTeacher;
             const isSuper = o.role === 'superadmin';
 
             return (
@@ -463,7 +485,7 @@ function OrganizationsSection() {
                           <Email fontSize="small" sx={{color:tokens.textSecondary,fontSize:12}}/>
                         </Tooltip>
                       )}
-                      {isOrg && <Chip label={o.subscriptionPlan||'free'} size="small" sx={{height:22,fontSize:'11px',bgcolor:`${PLAN_COLORS[o.subscriptionPlan]||PLAN_COLORS.free}15`,color:PLAN_COLORS[o.subscriptionPlan]||PLAN_COLORS.free,fontWeight:600,textTransform:'capitalize'}}/>}
+                      {(isOrg||isIndividualTeacher) && <Chip label={o.subscriptionPlan||'free'} size="small" sx={{height:22,fontSize:'11px',bgcolor:`${PLAN_COLORS[o.subscriptionPlan]||PLAN_COLORS.free}15`,color:PLAN_COLORS[o.subscriptionPlan]||PLAN_COLORS.free,fontWeight:600,textTransform:'capitalize'}}/>}
                       <Chip label={o.isBlocked?'Blocked':(o.subscriptionStatus||'active')} size="small" sx={{
                         height:22,fontSize:'11px',fontWeight:600,
                         bgcolor:o.isBlocked?'rgba(239,68,68,0.1)':o.subscriptionStatus==='active'?'rgba(12,189,115,0.1)':'rgba(245,158,11,0.1)',
@@ -480,6 +502,13 @@ function OrganizationsSection() {
                         <Tooltip title="Edit subscription">
                           <IconButton size="small" onClick={()=>handleOpen(o)} sx={{color:tokens.primary,bgcolor:`${tokens.primary}10`,'&:hover':{bgcolor:`${tokens.primary}20`},width:32,height:32}}>
                             <Edit fontSize="small"/>
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {isIndividualTeacher && (
+                        <Tooltip title="Assign individual plan">
+                          <IconButton size="small" onClick={()=>setPlanDialogTeacher(o)} sx={{color:tokens.accentDark,bgcolor:`${tokens.accent}15`,'&:hover':{bgcolor:`${tokens.accent}25`},width:32,height:32}}>
+                            <CardMembership fontSize="small"/>
                           </IconButton>
                         </Tooltip>
                       )}
@@ -770,6 +799,18 @@ function OrganizationsSection() {
           <Button onClick={()=>setActivityDialog(null)} sx={{textTransform:'none'}}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Assign / extend an individual teacher's plan */}
+      <AssignIndividualPlanDialog
+        open={Boolean(planDialogTeacher)}
+        teacher={planDialogTeacher}
+        onClose={()=>setPlanDialogTeacher(null)}
+        onUpdated={handlePlanAssigned}
+      />
+
+      <Snackbar open={snack.open} autoHideDuration={3500} onClose={()=>setSnack(s=>({...s,open:false}))} anchorOrigin={{vertical:'bottom',horizontal:'center'}}>
+        <Alert severity={snack.severity} onClose={()=>setSnack(s=>({...s,open:false}))} sx={{borderRadius:2}}>{snack.msg}</Alert>
+      </Snackbar>
     </Box>
   );
 }
@@ -783,6 +824,8 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityData, setActivityData] = useState(null);
   const [activityPeriod, setActivityPeriod] = useState('30d');
+  const [planDialogTeacher, setPlanDialogTeacher] = useState(null);
+  const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
   useEffect(() => {
     api.get('/superadmin/teachers').then(r => {
@@ -811,6 +854,20 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
     if (activityDialog) {
       handleViewActivity(activityDialog);
     }
+  };
+
+  // Only individual (self-registered) teachers get a plan assigned here —
+  // org teachers inherit their admin's organisation subscription.
+  const handlePlanAssigned = (updatedTeacher, message) => {
+    setTeachers(prev => prev.map(t => t._id === updatedTeacher._id ? {
+      ...t,
+      subscriptionPlan: updatedTeacher.subscriptionPlan,
+      subscriptionStatus: updatedTeacher.subscriptionStatus,
+      subscriptionStartDate: updatedTeacher.subscriptionStartDate,
+      subscriptionEndDate: updatedTeacher.subscriptionEndDate,
+      subscriptionExpiresAt: updatedTeacher.subscriptionExpiresAt
+    } : t));
+    setSnack({ open: true, msg: message || 'Plan updated', severity: 'success' });
   };
 
   const filteredTeachers = teachers.filter(t => {
@@ -899,6 +956,13 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
                 {/* Footer */}
                 <Box sx={{display:'flex',alignItems:'center',justifyContent:'space-between',pt:1.5,borderTop:`1px solid ${tokens.surfaceBorder}`}}>
                   <Box sx={{display:'flex',alignItems:'center',gap:1}}>
+                    {!teacher.parentAdmin && (
+                      <Chip label={teacher.subscriptionPlan||'free'} size="small" sx={{
+                        height:22,fontSize:'11px',fontWeight:600,textTransform:'capitalize',
+                        bgcolor:`${PLAN_COLORS[teacher.subscriptionPlan]||PLAN_COLORS.free}15`,
+                        color:PLAN_COLORS[teacher.subscriptionPlan]||PLAN_COLORS.free
+                      }}/>
+                    )}
                     <Chip label={teacher.isBlocked?'Blocked':'Active'} size="small" sx={{
                       height:22,fontSize:'11px',fontWeight:600,
                       bgcolor:teacher.isBlocked?'rgba(239,68,68,0.1)':'rgba(12,189,115,0.1)',
@@ -906,6 +970,13 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
                     }}/>
                   </Box>
                   <Box sx={{display:'flex',gap:0.5}}>
+                    {!teacher.parentAdmin && (
+                      <Tooltip title="Assign individual plan">
+                        <IconButton size="small" onClick={()=>setPlanDialogTeacher(teacher)} sx={{color:tokens.accentDark,bgcolor:`${tokens.accent}15`,'&:hover':{bgcolor:`${tokens.accent}25`},width:32,height:32}}>
+                          <CardMembership fontSize="small"/>
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <Tooltip title="View Activity">
                       <IconButton size="small" onClick={()=>handleViewActivity(teacher)} sx={{color:tokens.textSecondary,bgcolor:`${tokens.textSecondary}10`,'&:hover':{bgcolor:`${tokens.textSecondary}20`},width:32,height:32}}>
                         <Assessment fontSize="small"/>
@@ -998,6 +1069,18 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
           <Button onClick={()=>setActivityDialog(null)} sx={{textTransform:'none'}}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Assign / extend an individual teacher's plan */}
+      <AssignIndividualPlanDialog
+        open={Boolean(planDialogTeacher)}
+        teacher={planDialogTeacher}
+        onClose={()=>setPlanDialogTeacher(null)}
+        onUpdated={handlePlanAssigned}
+      />
+
+      <Snackbar open={snack.open} autoHideDuration={3500} onClose={()=>setSnack(s=>({...s,open:false}))} anchorOrigin={{vertical:'bottom',horizontal:'center'}}>
+        <Alert severity={snack.severity} onClose={()=>setSnack(s=>({...s,open:false}))} sx={{borderRadius:2}}>{snack.msg}</Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -4,6 +4,7 @@ const ActivityLog = require('../models/ActivityLog');
 const Result = require('../models/Result');
 const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
+const IndividualPlan = require('../models/IndividualPlan');
 const bcrypt = require('bcryptjs');
 const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate } = require('../utils/subscriptionStatus');
 const { RESULT_QUESTION_FIELDS } = require('../utils/resultQuestionFields');
@@ -143,6 +144,8 @@ const getAllOrganizations = async (req, res) => {
           subscriptionPlan: org.subscriptionPlan,
           subscriptionStatus: org.subscriptionStatus,
           subscriptionExpiresAt: org.subscriptionExpiresAt,
+          subscriptionStartDate: org.subscriptionStartDate,
+          subscriptionEndDate: org.subscriptionEndDate,
           isBlocked: org.isBlocked,
           createdAt: org.createdAt,
           lastLogin: org.lastLogin,
@@ -3442,6 +3445,9 @@ const getAllTeachers = async (req, res) => {
           role: teacher.role,
           subscriptionPlan: teacher.subscriptionPlan,
           subscriptionStatus: teacher.subscriptionStatus,
+          subscriptionStartDate: teacher.subscriptionStartDate,
+          subscriptionEndDate: teacher.subscriptionEndDate,
+          subscriptionExpiresAt: teacher.subscriptionExpiresAt,
           isBlocked: teacher.isBlocked,
           createdAt: teacher.createdAt,
           lastLogin: teacher.lastLogin,
@@ -3518,6 +3524,187 @@ const getTeacherActivity = async (req, res) => {
     });
   } catch (error) {
     console.error('Get teacher activity error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Individual (self-registered) teachers buy their own plan through the
+// iTechPay flow — unlike org teachers, whose plan cascades from their parent
+// admin's subscription — so before these endpoints there was no way to give
+// one a plan from the admin side. They write exactly the same User
+// subscription fields the paid activation path writes (see
+// activateAccountPlanPendingPayment in subscriptionController), for offline
+// payments, promos and support fixes.
+const loadIndividualTeacher = async (id) => {
+  const teacher = await User.findById(id);
+  if (!teacher || teacher.role !== 'teacher') {
+    return { error: { status: 404, message: 'Teacher not found' } };
+  }
+  if (teacher.parentAdmin) {
+    return {
+      error: {
+        status: 400,
+        message: "This teacher belongs to an organisation — their plan is managed through the organisation's subscription."
+      }
+    };
+  }
+  return { teacher };
+};
+
+const individualTeacherSubscriptionPayload = (teacher) => ({
+  _id: teacher._id,
+  firstName: teacher.firstName,
+  lastName: teacher.lastName,
+  email: teacher.email,
+  subscriptionPlan: teacher.subscriptionPlan,
+  subscriptionStatus: getEffectiveSubscriptionStatus(teacher),
+  subscriptionStartDate: teacher.subscriptionStartDate,
+  subscriptionEndDate: teacher.subscriptionEndDate,
+  subscriptionExpiresAt: teacher.subscriptionExpiresAt
+});
+
+// @desc    Assign (or extend) an individual teacher's subscription plan
+// @route   PUT /api/superadmin/teachers/:id/individual-plan
+// @access  Private/SuperAdmin
+const assignIndividualTeacherPlan = async (req, res) => {
+  try {
+    const { planId, mode = 'extend', durationDays, expiresAt } = req.body;
+
+    if (!planId) {
+      return res.status(400).json({ message: 'planId is required' });
+    }
+
+    const { teacher, error } = await loadIndividualTeacher(req.params.id);
+    if (error) {
+      return res.status(error.status).json({ message: error.message });
+    }
+
+    // Inactive catalog entries are still grantable here (unlike the purchase
+    // flow) so a retired/legacy plan can be honoured for someone who paid for
+    // it outside the app.
+    const plan = await IndividualPlan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ message: 'Individual plan not found' });
+    }
+
+    const now = new Date();
+    let newExpiry;
+
+    if (expiresAt) {
+      const explicitExpiry = new Date(expiresAt);
+      if (Number.isNaN(explicitExpiry.getTime()) || explicitExpiry <= now) {
+        return res.status(400).json({ message: 'expiresAt must be a valid future date' });
+      }
+      newExpiry = explicitExpiry;
+    } else {
+      // A custom duration lets an admin grant a window that doesn't match the
+      // catalog plan's own length (trial, goodwill extension); omitted falls
+      // back to the plan's duration.
+      const days = (durationDays === undefined || durationDays === null || durationDays === '')
+        ? plan.durationDays
+        : Number(durationDays);
+      if (!Number.isFinite(days) || days <= 0) {
+        return res.status(400).json({ message: 'durationDays must be a positive number' });
+      }
+
+      // 'extend' stacks onto whatever time is left (same as a paid renewal);
+      // 'replace' restarts the window from now.
+      const currentExpiry = getSubscriptionExpiryDate(teacher);
+      const stillRunning = getEffectiveSubscriptionStatus(teacher) === 'active'
+        && currentExpiry && new Date(currentExpiry) > now;
+      const baseDate = (mode === 'extend' && stillRunning) ? new Date(currentExpiry) : now;
+      newExpiry = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+    }
+
+    const previousPlan = teacher.subscriptionPlan;
+    const previousExpiry = getSubscriptionExpiryDate(teacher);
+
+    teacher.subscriptionPlan = plan.tierKey;
+    teacher.subscriptionStatus = 'active';
+    if (mode === 'replace' || !teacher.subscriptionStartDate) {
+      teacher.subscriptionStartDate = now;
+    }
+    teacher.subscriptionEndDate = newExpiry;
+    teacher.subscriptionExpiresAt = newExpiry;
+    // lastPaymentDate is deliberately left untouched — no money changed hands
+    // on an admin grant, and revenue reporting reads that field.
+    await teacher.save();
+
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'assign_individual_plan',
+      details: {
+        teacherId: teacher._id,
+        teacherName: `${teacher.firstName} ${teacher.lastName}`,
+        teacherEmail: teacher.email,
+        planId: plan._id,
+        planName: plan.name,
+        planTier: plan.tierKey,
+        mode,
+        previousPlan,
+        previousExpiry,
+        expiresAt: newExpiry,
+        grantedBy: `${req.user.firstName} ${req.user.lastName}`
+      }
+    });
+
+    res.json({
+      message: `${plan.name} assigned to ${teacher.firstName} ${teacher.lastName}`,
+      teacher: individualTeacherSubscriptionPayload(teacher),
+      plan: {
+        _id: plan._id,
+        name: plan.name,
+        tierKey: plan.tierKey,
+        durationDays: plan.durationDays
+      }
+    });
+  } catch (error) {
+    console.error('Assign individual teacher plan error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Revoke an individual teacher's plan (back to the free tier)
+// @route   DELETE /api/superadmin/teachers/:id/individual-plan
+// @access  Private/SuperAdmin
+const revokeIndividualTeacherPlan = async (req, res) => {
+  try {
+    const { teacher, error } = await loadIndividualTeacher(req.params.id);
+    if (error) {
+      return res.status(error.status).json({ message: error.message });
+    }
+
+    const previousPlan = teacher.subscriptionPlan;
+    const previousExpiry = getSubscriptionExpiryDate(teacher);
+
+    // Reset to the same state a brand-new free account is in — not 'expired',
+    // which blockExpiredUsers would lock them out of the app entirely.
+    teacher.subscriptionPlan = 'free';
+    teacher.subscriptionStatus = 'active';
+    teacher.subscriptionStartDate = null;
+    teacher.subscriptionEndDate = null;
+    teacher.subscriptionExpiresAt = null;
+    await teacher.save();
+
+    await ActivityLog.logActivity({
+      user: req.user._id,
+      action: 'revoke_individual_plan',
+      details: {
+        teacherId: teacher._id,
+        teacherName: `${teacher.firstName} ${teacher.lastName}`,
+        teacherEmail: teacher.email,
+        previousPlan,
+        previousExpiry,
+        revokedBy: `${req.user.firstName} ${req.user.lastName}`
+      }
+    });
+
+    res.json({
+      message: `${teacher.firstName} ${teacher.lastName} moved back to the free plan`,
+      teacher: individualTeacherSubscriptionPayload(teacher)
+    });
+  } catch (error) {
+    console.error('Revoke individual teacher plan error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -3600,6 +3787,8 @@ module.exports = {
   getSystemLeaderboard,
   getOrganizationActivity,
   getAllTeachers,
+  assignIndividualTeacherPlan,
+  revokeIndividualTeacherPlan,
   getTeacherActivity,
   getBackups,
   runBackupNow

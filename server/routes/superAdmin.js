@@ -44,6 +44,8 @@ const {
   getOrganizationActivity,
   getAllTeachers,
   getTeacherActivity,
+  assignIndividualTeacherPlan,
+  revokeIndividualTeacherPlan,
   getBackups,
   runBackupNow
 } = require('../controllers/superAdminController');
@@ -96,6 +98,11 @@ router.put('/users/:id/toggle-block', toggleUserBlock);
 // Teacher management routes
 router.get('/teachers', getAllTeachers);
 router.get('/teachers/:id/activity', getTeacherActivity);
+
+// Individual (non-organisation) teacher plan assignment — org teachers get
+// their plan from their admin's organisation subscription instead.
+router.put('/teachers/:id/individual-plan', assignIndividualTeacherPlan);
+router.delete('/teachers/:id/individual-plan', revokeIndividualTeacherPlan);
 
 router.get('/exams', getAllExams);
 router.get('/exams/:id', getExamById);

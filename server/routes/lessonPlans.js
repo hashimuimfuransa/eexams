@@ -17,10 +17,13 @@ const pdfParse = require('pdf-parse');
 const LessonPlan = require('../models/LessonPlan');
 const auth = require('../middleware/auth');
 const { isAdminOrTeacher, attachOrgAdminId } = require('../middleware/role');
-const { requireAIFeatures } = require('../middleware/planRestrictions');
+const { requireLessonPlanner, resolveEffectivePlan } = require('../middleware/planRestrictions');
+const { getPlanConfigForUser } = require('../config/plans');
+const { getAllQuotaStatus, checkQuota } = require('../utils/plannerQuotas');
 const { aiGradingLimiter, uploadLimiter } = require('../middleware/rateLimiter');
 const groqClient = require('../utils/groqClient');
 const { streamLessonPlanPdf } = require('../utils/lessonPlanPdf');
+const { sendDocx } = require('../utils/docxExport');
 const {
   str,
   extractRelevantExcerpt,
@@ -113,11 +116,16 @@ const extractPdfText = async (buffer, originalname) => {
 };
 
 // ── Routes ───────────────────────────────────────────────────────────────────
+//
+// requireLessonPlanner guards the authoring routes only. A teacher whose plan
+// no longer covers the planner (or who moved to an exams-only plan) can still
+// list, open and download the plans they already wrote — their own work is not
+// held hostage by the scope gate, they simply can't author new ones.
 
 // @desc    Read a book/curriculum file and return its text (nothing is stored)
 // @route   POST /api/lesson-plans/extract
 // @access  Private (teacher/admin)
-router.post('/extract', uploadLimiter, isAdminOrTeacher, (req, res) => {
+router.post('/extract', uploadLimiter, isAdminOrTeacher, requireLessonPlanner, (req, res) => {
   referenceUpload.single('file')(req, res, async (uploadErr) => {
     if (uploadErr) {
       if (uploadErr.code === 'LIMIT_FILE_SIZE') {
@@ -177,13 +185,27 @@ router.post('/extract', uploadLimiter, isAdminOrTeacher, (req, res) => {
 
 // @desc    Generate a lesson plan with AI (not saved — the teacher reviews first)
 // @route   POST /api/lesson-plans/generate
-// @access  Private (teacher/admin, Basic plan or higher)
-router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
+// @access  Private (teacher/admin, within this month's Lesson Planner allowance)
+// Deliberately NOT behind requireAIFeatures. The Lesson Planner is now sold by
+// monthly output volume, and the Free tier's headline is "4 lesson plans/mo" —
+// gating generation on the aiFeatures flag (false on Free) would make that
+// number unusable. The allowance below is what limits free usage instead;
+// requireAIFeatures still guards the exam-side AI routes, which are a
+// different product.
+router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireLessonPlanner, async (req, res) => {
   try {
     const { brief: rawBrief, referenceContent: rawReference, sourceFileName = '', ...rest } = req.body || {};
     // Coerce rather than trust: a non-string here would throw on .trim().
     const brief = typeof rawBrief === 'string' ? rawBrief : '';
     const referenceContent = typeof rawReference === 'string' ? rawReference : '';
+
+    // Checked before the model call, not after: generating a plan the teacher
+    // has no allowance left to save would burn an AI call for nothing.
+    const planConfig = await resolvePlannerPlan(req.user);
+    const quota = await checkQuota(req.user._id, planConfig, 'lessonPlansPerMonth');
+    if (!quota.ok) {
+      return res.status(403).json(quota.body);
+    }
 
     if (!brief.trim() && !referenceContent.trim()) {
       return res.status(400).json({
@@ -250,10 +272,22 @@ router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireAIFeatures, 
   }
 });
 
+// @desc    Download a DOCX of a plan that has not been saved yet
+// @route   POST /api/lesson-plans/docx
+// @access  Private (teacher/admin)
+router.post('/docx', isAdminOrTeacher, requireLessonPlanner, async (req, res) => {
+  try {
+    await sendDocx(res, pickPlanFields(req.body || {}), 'lessonPlan');
+  } catch (err) {
+    console.error('lesson-plan docx error:', err);
+    if (!res.headersSent) res.status(500).json({ message: 'Failed to generate the Word document' });
+  }
+});
+
 // @desc    Download a PDF of a plan that has not been saved yet
 // @route   POST /api/lesson-plans/pdf
 // @access  Private (teacher/admin)
-router.post('/pdf', isAdminOrTeacher, (req, res) => {
+router.post('/pdf', isAdminOrTeacher, requireLessonPlanner, (req, res) => {
   try {
     const plan = pickPlanFields(req.body || {});
     streamLessonPlanPdf(res, plan);
@@ -266,13 +300,13 @@ router.post('/pdf', isAdminOrTeacher, (req, res) => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // Has the teacher already created a lesson plan today (UTC)?
-const countPlansToday = async (userId) => {
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  return LessonPlan.countDocuments({
-    createdBy: userId,
-    createdAt: { $gte: startOfDay }
-  });
+// Resolve the caller's plan, then its Lesson Planner allowance. The old rule
+// here was a flat "one lesson plan per teacher per day" for everyone; output
+// volume is now what the plans actually sell, so the number comes from the
+// plan the teacher is on (see utils/plannerQuotas.js).
+const resolvePlannerPlan = async (user) => {
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  return getPlanConfigForUser(plan, userType, planRef);
 };
 
 // @desc    List the current teacher's saved lesson plans
@@ -290,35 +324,54 @@ router.get('/', isAdminOrTeacher, async (req, res) => {
   }
 });
 
-// @desc    Check whether the teacher can still create a lesson plan today
-// @route   GET /api/lesson-plans/today-status
+// @desc    This month's Lesson Planner allowance and how much of it is used
+// @route   GET /api/lesson-plans/quota
 // @access  Private (teacher/admin)
-router.get('/today-status', isAdminOrTeacher, async (req, res) => {
+const respondWithQuota = async (req, res) => {
   try {
-    const count = await countPlansToday(req.user._id);
-    res.json({ canCreate: count === 0, todayCount: count });
+    const planConfig = await resolvePlannerPlan(req.user);
+    const quotas = await getAllQuotaStatus(req.user._id, planConfig);
+    const lessonPlans = quotas.find((q) => q.key === 'lessonPlansPerMonth');
+
+    res.json({
+      planName: planConfig.name,
+      scope: planConfig.scope || 'both',
+      periodStart: lessonPlans.periodStart,
+      periodEnd: lessonPlans.periodEnd,
+      quotas,
+      // canCreate/used/limit are the flat fields the planner UI reads.
+      canCreate: lessonPlans.allowed,
+      used: lessonPlans.used,
+      limit: lessonPlans.limit,
+      remaining: lessonPlans.remaining
+    });
   } catch (err) {
-    console.error('lesson-plan today-status error:', err);
+    console.error('lesson-plan quota error:', err);
     res.status(500).json({ message: 'Failed to check plan limit' });
   }
-});
+};
+
+router.get('/quota', isAdminOrTeacher, respondWithQuota);
+
+// Kept so a browser still running the previous build doesn't break — same
+// payload, which already carries canCreate.
+router.get('/today-status', isAdminOrTeacher, respondWithQuota);
 
 // @desc    Save a (reviewed) lesson plan
 // @route   POST /api/lesson-plans
 // @access  Private (teacher/admin)
-router.post('/', isAdminOrTeacher, attachOrgAdminId, async (req, res) => {
+router.post('/', isAdminOrTeacher, requireLessonPlanner, attachOrgAdminId, async (req, res) => {
   try {
     const fields = pickPlanFields(req.body || {});
     if (!fields.lessonTitle && !fields.subject) {
       return res.status(400).json({ message: 'A lesson title or subject is required before saving.' });
     }
 
-    // Daily limit: one lesson plan per teacher per day
-    const count = await countPlansToday(req.user._id);
-    if (count >= 1) {
-      return res.status(403).json({
-        message: 'You can only generate one lesson plan per day. Please come back tomorrow.'
-      });
+    // Monthly allowance from the teacher's plan, not a flat per-day rule.
+    const planConfig = await resolvePlannerPlan(req.user);
+    const quota = await checkQuota(req.user._id, planConfig, 'lessonPlansPerMonth');
+    if (!quota.ok) {
+      return res.status(403).json(quota.body);
     }
 
     const plan = await LessonPlan.create({
@@ -351,7 +404,7 @@ router.get('/:id', isAdminOrTeacher, async (req, res) => {
 // @desc    Update a saved lesson plan
 // @route   PUT /api/lesson-plans/:id
 // @access  Private (owner)
-router.put('/:id', isAdminOrTeacher, async (req, res) => {
+router.put('/:id', isAdminOrTeacher, requireLessonPlanner, async (req, res) => {
   try {
     const plan = await LessonPlan.findOneAndUpdate(
       { _id: req.params.id, createdBy: req.user._id },
@@ -377,6 +430,20 @@ router.delete('/:id', isAdminOrTeacher, async (req, res) => {
   } catch (err) {
     console.error('lesson-plan delete error:', err);
     res.status(500).json({ message: 'Failed to delete lesson plan' });
+  }
+});
+
+// @desc    Download a saved lesson plan as DOCX
+// @route   GET /api/lesson-plans/:id/docx
+// @access  Private (owner)
+router.get('/:id/docx', isAdminOrTeacher, async (req, res) => {
+  try {
+    const plan = await LessonPlan.findOne({ _id: req.params.id, createdBy: req.user._id }).lean();
+    if (!plan) return res.status(404).json({ message: 'Lesson plan not found' });
+    await sendDocx(res, plan, 'lessonPlan');
+  } catch (err) {
+    console.error('lesson-plan docx error:', err);
+    if (!res.headersSent) res.status(500).json({ message: 'Failed to generate the Word document' });
   }
 });
 

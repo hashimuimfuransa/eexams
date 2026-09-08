@@ -1,7 +1,8 @@
-const { checkLimit, hasFeature, getPlanConfig, getPlanConfigForUser } = require('../config/plans');
+const { checkLimit, hasFeature, allowsExams, allowsLessonPlanner, getPlanConfig, getPlanConfigForUser } = require('../config/plans');
 const Exam = require('../models/Exam');
 const User = require('../models/User');
 const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, syncSubscriptionStatus } = require('../utils/subscriptionStatus');
+const { getAllQuotaStatus } = require('../utils/plannerQuotas');
 
 // Resolve the effective plan for a user:
 // - Org teachers inherit their parentAdmin's plan
@@ -10,21 +11,48 @@ const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, syncSubscript
 // actually owns the subscriptionStatus/subscriptionExpiresAt that should be
 // shown/enforced — an org teacher's own subscription fields are unused
 // boilerplate, the org's plan is what governs their access.
+// planRef is the exact catalog document the subscription came from, passed on
+// to getPlanConfigForUser so a tier that exists at several scopes/prices
+// resolves to the one actually bought rather than an arbitrary sibling.
 const resolveEffectivePlan = async (user) => {
   if (user.role === 'teacher' && user.parentAdmin) {
     const admin = await User.findById(user.parentAdmin)
-      .select('subscriptionPlan userType subscriptionStatus subscriptionExpiresAt subscriptionEndDate');
-    if (admin) return { plan: admin.subscriptionPlan || 'free', userType: 'organization', statusSource: admin };
+      .select('subscriptionPlan subscriptionPlanRef userType subscriptionStatus subscriptionExpiresAt subscriptionEndDate');
+    if (admin) {
+      return {
+        plan: admin.subscriptionPlan || 'free',
+        userType: 'organization',
+        planRef: admin.subscriptionPlanRef || null,
+        statusSource: admin
+      };
+    }
   }
-  return { plan: user.subscriptionPlan || 'free', userType: user.userType || 'individual', statusSource: user };
+  return {
+    plan: user.subscriptionPlan || 'free',
+    userType: user.userType || 'individual',
+    planRef: user.subscriptionPlanRef || null,
+    statusSource: user
+  };
 };
 
 // Middleware to check if user can create more exams
 const checkExamLimit = async (req, res, next) => {
   try {
     const user = req.user;
-    const { plan, userType } = await resolveEffectivePlan(user);
-    const planConfig = await getPlanConfigForUser(plan, userType);
+    const { plan, userType, planRef } = await resolveEffectivePlan(user);
+    const planConfig = await getPlanConfigForUser(plan, userType, planRef);
+
+    // A Lesson-Planner-only plan has no exam product at all — say so, rather
+    // than reporting it as a numeric limit of 0 exams.
+    if (!allowsExams(planConfig)) {
+      return res.status(403).json({
+        message: `The ${planConfig.name} plan covers the Lesson Planner only. Upgrade to a plan that includes exams to create one.`,
+        code: 'PLAN_SCOPE_EXCLUDED',
+        scope: planConfig.scope,
+        requiredScope: 'exams',
+        upgradeRequired: true
+      });
+    }
 
     // Count current exams created by this user
     const examCount = await Exam.countDocuments({ createdBy: user._id });
@@ -59,8 +87,8 @@ const checkExamLimit = async (req, res, next) => {
 const checkStudentLimit = async (req, res, next) => {
   try {
     const user = req.user;
-    const { plan, userType } = await resolveEffectivePlan(user);
-    const planConfig = await getPlanConfigForUser(plan, userType);
+    const { plan, userType, planRef } = await resolveEffectivePlan(user);
+    const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
     const studentQuery = { role: 'student', createdBy: user._id };
     const studentCount = await User.countDocuments(studentQuery);
@@ -101,8 +129,8 @@ const checkTeacherLimit = async (req, res, next) => {
       return next();
     }
     
-    const { plan, userType } = await resolveEffectivePlan(user);
-    const planConfig = await getPlanConfigForUser(plan, userType);
+    const { plan, userType, planRef } = await resolveEffectivePlan(user);
+    const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
     // Count teachers in this organization
     const teacherCount = await User.countDocuments({
@@ -132,8 +160,8 @@ const checkTeacherLimit = async (req, res, next) => {
 // Middleware to check if user has access to AI features
 const requireAIFeatures = async (req, res, next) => {
   const user = req.user;
-  const { plan, userType } = await resolveEffectivePlan(user);
-  const planConfig = await getPlanConfigForUser(plan, userType);
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
   if (!hasFeature(planConfig, 'aiFeatures')) {
     return res.status(403).json({
@@ -147,11 +175,54 @@ const requireAIFeatures = async (req, res, next) => {
   next();
 };
 
+// Middleware for routes that belong to the exam product — blocked for accounts
+// on a plan sold for the Lesson Planner alone. Separate from checkExamLimit,
+// which additionally counts existing exams and only guards creation.
+const requireExamAccess = async (req, res, next) => {
+  const user = req.user;
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
+
+  if (!allowsExams(planConfig)) {
+    return res.status(403).json({
+      message: `The ${planConfig.name} plan covers the Lesson Planner only. Upgrade to a plan that includes exams to use this.`,
+      code: 'PLAN_SCOPE_EXCLUDED',
+      scope: planConfig.scope,
+      requiredScope: 'exams',
+      upgradeRequired: true
+    });
+  }
+
+  next();
+};
+
+// Middleware for the Lesson Planner — blocked for accounts on a plan sold for
+// exams alone. Note this is a *scope* gate, not an AI gate: AI generation
+// inside the planner is still separately guarded by requireAIFeatures, so a
+// free account keeps the planner's manual authoring exactly as before.
+const requireLessonPlanner = async (req, res, next) => {
+  const user = req.user;
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
+
+  if (!allowsLessonPlanner(planConfig)) {
+    return res.status(403).json({
+      message: `The ${planConfig.name} plan covers exams only. Upgrade to a plan that includes the Lesson Planner to use it.`,
+      code: 'PLAN_SCOPE_EXCLUDED',
+      scope: planConfig.scope,
+      requiredScope: 'lesson_planner',
+      upgradeRequired: true
+    });
+  }
+
+  next();
+};
+
 // Middleware to check if user has access to advanced AI features
 const requireAdvancedAI = async (req, res, next) => {
   const user = req.user;
-  const { plan, userType } = await resolveEffectivePlan(user);
-  const planConfig = await getPlanConfigForUser(plan, userType);
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
   if (!hasFeature(planConfig, 'advancedAI')) {
     return res.status(403).json({
@@ -168,8 +239,8 @@ const requireAdvancedAI = async (req, res, next) => {
 // Middleware to check if user has access to analytics
 const requireAnalytics = async (req, res, next) => {
   const user = req.user;
-  const { plan, userType } = await resolveEffectivePlan(user);
-  const planConfig = await getPlanConfigForUser(plan, userType);
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
   if (!hasFeature(planConfig, 'analytics')) {
     return res.status(403).json({
@@ -186,8 +257,8 @@ const requireAnalytics = async (req, res, next) => {
 // Middleware to check if user has API access
 const requireAPIAccess = async (req, res, next) => {
   const user = req.user;
-  const { plan, userType } = await resolveEffectivePlan(user);
-  const planConfig = await getPlanConfigForUser(plan, userType);
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
   if (!hasFeature(planConfig, 'apiAccess')) {
     return res.status(403).json({
@@ -204,8 +275,8 @@ const requireAPIAccess = async (req, res, next) => {
 // Middleware to check if user has custom branding
 const requireCustomBranding = async (req, res, next) => {
   const user = req.user;
-  const { plan, userType } = await resolveEffectivePlan(user);
-  const planConfig = await getPlanConfigForUser(plan, userType);
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
   if (!hasFeature(planConfig, 'customBranding')) {
     return res.status(403).json({
@@ -222,8 +293,8 @@ const requireCustomBranding = async (req, res, next) => {
 // Middleware to check if user has marketplace access
 const requireMarketplaceAccess = async (req, res, next) => {
   const user = req.user;
-  const { plan, userType } = await resolveEffectivePlan(user);
-  const planConfig = await getPlanConfigForUser(plan, userType);
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
   if (!hasFeature(planConfig, 'marketplaceAccess')) {
     return res.status(403).json({
@@ -240,8 +311,8 @@ const requireMarketplaceAccess = async (req, res, next) => {
 // Middleware to check if user has templates access
 const requireTemplatesAccess = async (req, res, next) => {
   const user = req.user;
-  const { plan, userType } = await resolveEffectivePlan(user);
-  const planConfig = await getPlanConfigForUser(plan, userType);
+  const { plan, userType, planRef } = await resolveEffectivePlan(user);
+  const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
   if (!hasFeature(planConfig, 'templates')) {
     return res.status(403).json({
@@ -261,8 +332,8 @@ const getPlanUsage = async (userId) => {
     const user = await User.findById(userId);
     if (!user) return null;
 
-    const { plan, userType, statusSource } = await resolveEffectivePlan(user);
-    const planConfig = await getPlanConfigForUser(plan, userType);
+    const { plan, userType, planRef, statusSource } = await resolveEffectivePlan(user);
+    const planConfig = await getPlanConfigForUser(plan, userType, planRef);
 
     // Get counts
     const examCount = await Exam.countDocuments({ createdBy: userId });
@@ -311,6 +382,10 @@ const getPlanUsage = async (userId) => {
       }
     }
 
+    const plannerQuotas = allowsLessonPlanner(planConfig)
+      ? await getAllQuotaStatus(userId, planConfig)
+      : [];
+
     // JSON has no Infinity — it silently serializes to null over the wire,
     // which the frontend can't distinguish from "no limit set". Send the
     // same -1 sentinel used by the DB catalog (server/utils/planLimits.js)
@@ -321,17 +396,31 @@ const getPlanUsage = async (userId) => {
       plan,
       userType,
       planName: planConfig.name,
+      scope: planConfig.scope || 'both',
       subscriptionStatus,
       subscriptionExpiresAt,
       daysLeft,
       hoursLeft,
+      // This month's Lesson Planner output allowance and usage, so the planner
+      // UI can show "3 of 40 used" without a second round trip.
+      plannerQuotas,
       limits: {
-        exams: { limit: toWireLimit(planConfig.maxExams), used: examCount },
+        // A Lesson-Planner-only plan has no exam allowance to report — send
+        // null (the same "not applicable" signal already used for an
+        // individual's teacher limit) so PlanUsageCard omits the bar entirely
+        // rather than showing a permanently-full 0/0 one.
+        exams: allowsExams(planConfig) ? { limit: toWireLimit(planConfig.maxExams), used: examCount } : null,
         students: { limit: toWireLimit(planConfig.maxStudents), used: studentCount },
         teachers: isOrg ? { limit: toWireLimit(planConfig.maxTeachers), used: teacherCount } : null
       },
       features: {
+        // Scope-derived, not stored flags — they say which of the two products
+        // this plan sells, so the UI can hide a section the account can't reach
+        // instead of only failing at the API.
+        exams: allowsExams(planConfig),
+        lessonPlanner: allowsLessonPlanner(planConfig),
         aiFeatures: planConfig.aiFeatures,
+        docxExport: planConfig.docxExport,
         advancedAI: planConfig.advancedAI,
         analytics: planConfig.analytics,
         prioritySupport: planConfig.prioritySupport,
@@ -365,6 +454,8 @@ module.exports = {
   checkStudentLimit,
   checkTeacherLimit,
   requireAIFeatures,
+  requireExamAccess,
+  requireLessonPlanner,
   requireAdvancedAI,
   requireAnalytics,
   requireAPIAccess,

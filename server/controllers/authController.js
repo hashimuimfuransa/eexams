@@ -491,6 +491,8 @@ const updateProfile = async (req, res) => {
 
       // Set subscription status based on plan
       if (subscriptionPlan === 'free') {
+        // Downgrading drops the catalog entry the old paid plan resolved from.
+        user.subscriptionPlanRef = null;
         user.subscriptionStatus = 'active';
         // Students get 365 days, teachers get 14 days
         if (user.role === 'student') {
@@ -553,13 +555,15 @@ const verifyToken = async (req, res) => {
 
     // For org teachers, inherit plan, status and expiry from their parent admin
     let effectivePlan = user.subscriptionPlan;
+    let effectivePlanRef = user.subscriptionPlanRef;
     let effectiveStatus = getEffectiveSubscriptionStatus(user);
     let effectiveExpiresAt = getSubscriptionExpiryDate(user);
     let isOrgTeacher = false;
     if (user.role === 'teacher' && user.parentAdmin) {
-      const admin = await User.findById(user.parentAdmin).select('subscriptionPlan subscriptionStatus subscriptionExpiresAt subscriptionEndDate');
+      const admin = await User.findById(user.parentAdmin).select('subscriptionPlan subscriptionPlanRef subscriptionStatus subscriptionExpiresAt subscriptionEndDate');
       if (admin) {
         effectivePlan = admin.subscriptionPlan;
+        effectivePlanRef = admin.subscriptionPlanRef;
         effectiveStatus = getEffectiveSubscriptionStatus(admin);
         effectiveExpiresAt = getSubscriptionExpiryDate(admin);
         await syncSubscriptionStatus(admin);
@@ -580,6 +584,10 @@ const verifyToken = async (req, res) => {
       signinMethod: user.signinMethod,
       isVerified: true,
       subscriptionPlan: effectivePlan,
+      // The exact catalog entry behind the tier — a tier can be on sale at
+      // several scopes/prices, so anything showing "your plan" needs this to
+      // name the right one.
+      subscriptionPlanRef: effectivePlanRef || null,
       subscriptionStatus: effectiveStatus,
       subscriptionExpiresAt: effectiveExpiresAt,
       organization: user.organization,

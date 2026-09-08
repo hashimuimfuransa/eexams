@@ -33,7 +33,8 @@ const {
   resolveExamAccessType,
   checkExamLimit,
   requireAIFeatures,
-  requireAdvancedAI
+  requireAdvancedAI,
+  requireExamAccess
 } = require('../middleware/planRestrictions');
 const { authLimiter, submissionLimiter, aiGradingLimiter, examCreationLimiter } = require('../middleware/rateLimiter');
 const { cacheExam, cacheExamList, invalidateExamCache } = require('../middleware/cacheMiddleware');
@@ -1125,7 +1126,7 @@ router.post('/upload-reference', auth, isAdminOrTeacher, referenceUpload.single(
 });
 
 // AI exam generation route - requires Basic plan or higher
-router.post('/ai-generate', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
+router.post('/ai-generate', auth, isAdminOrTeacher, requireExamAccess, requireAIFeatures, async (req, res) => {
   try {
     const { prompt = '', pastedExam, referenceContent } = req.body;
     const hasPastedExam = pastedExam && pastedExam.trim();
@@ -3035,7 +3036,7 @@ Before returning, recompute every subtotal from its own components independently
 // computed model answer and (via normalizeSpreadsheetField on the client) the blank student
 // template derived from it. Mirrors ensureSpreadsheetGrid's prompt (fileParser.js) but treats
 // the pasted table as the authoritative source of data instead of the question's own passage.
-router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
+router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireExamAccess, requireAIFeatures, async (req, res) => {
   try {
     const { questionText = '', passage = '', pastedTable = '', currentSpreadsheet = '' } = req.body;
     // Accept one or more uploaded images (data: URIs) of a photo/screenshot of the table —
@@ -3232,7 +3233,7 @@ Return ONLY JSON: {"correctAnswer":"...","explanation":"..."}`;
   }
 };
 
-router.post('/ai-assist-question', auth, isAdminOrTeacher, requireAIFeatures, async (req, res) => {
+router.post('/ai-assist-question', auth, isAdminOrTeacher, requireExamAccess, requireAIFeatures, async (req, res) => {
   try {
     const { type = 'open-ended', text = '', passage = '', pasted = '', existing = {} } = req.body;
     if (!text.trim() && !pasted.trim()) {

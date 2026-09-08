@@ -48,6 +48,51 @@ import { formatPlanDuration } from '../../utils/planUtils';
 // server/utils/planLimits.js and server/config/plans.js.
 const UNLIMITED = -1;
 
+// Mirrors server/utils/planLimits.js PLAN_SCOPES — what the plan actually
+// sells. A tier can exist at several scopes and prices at once (e.g. a cheap
+// Lesson-Planner-only Basic alongside a full Basic), so scope is part of the
+// product definition here, not a feature toggle.
+const SCOPE_DEFS = [
+  {
+    key: 'both',
+    label: 'Exams + Lesson Planner',
+    short: 'Exams + Planner',
+    description: 'Full access — exam creation/grading and the Lesson Planner.',
+    color: 'primary'
+  },
+  {
+    key: 'lesson_planner',
+    label: 'Lesson Planner only',
+    short: 'Planner only',
+    description: 'Priced for teachers who only want AI lesson planning. Exam creation is blocked.',
+    color: 'secondary'
+  },
+  {
+    key: 'exams',
+    label: 'Exams only',
+    short: 'Exams only',
+    description: 'Exam creation, grading and results. The Lesson Planner is blocked.',
+    color: 'info'
+  }
+];
+
+const scopeDef = (scope) => SCOPE_DEFS.find((s) => s.key === scope) || SCOPE_DEFS[0];
+
+const scopeAllowsExams = (scope) => scope !== 'lesson_planner';
+const scopeAllowsLessonPlanner = (scope) => scope !== 'exams';
+
+// Lesson Planner monthly output allowances — mirrors PLANNER_QUOTA_FIELDS in
+// server/utils/planLimits.js. `enforced: false` means the price card can
+// advertise the number but nothing in the app produces that output yet, so
+// the server cannot hold anyone to it — surfaced in the dialog rather than
+// hidden, since an admin setting a number deserves to know whether it bites.
+const QUOTA_FIELD_DEFS = [
+  { key: 'lessonPlansPerMonth', label: 'Lesson plans /mo', noun: 'lesson plans', enforced: true },
+  { key: 'slidesPerMonth', label: 'Slides /mo', noun: 'slides', enforced: false },
+  { key: 'exercisesPerMonth', label: 'Exercises /mo', noun: 'exercises', enforced: false },
+  { key: 'schemesPerMonth', label: 'Schemes /mo', noun: 'schemes', enforced: false }
+];
+
 const LIMIT_FIELD_DEFS = [
   { key: 'maxExams', label: 'Max Exams' },
   { key: 'maxStudents', label: 'Max Students' },
@@ -58,11 +103,12 @@ const FEATURE_FLAG_DEFS = [
   { key: 'aiFeatures', label: 'AI Question Generation' },
   { key: 'advancedAI', label: 'Advanced AI Features' },
   { key: 'analytics', label: 'Analytics Dashboard' },
-  { key: 'prioritySupport', label: 'Priority Support' },
+  { key: 'prioritySupport', label: 'Priority Support', omitFromCard: true },
   { key: 'customBranding', label: 'Custom Branding' },
   { key: 'apiAccess', label: 'API Access' },
   { key: 'marketplaceAccess', label: 'Marketplace Access' },
-  { key: 'templates', label: 'Exam Templates' }
+  { key: 'templates', label: 'Exam Templates' },
+  { key: 'docxExport', label: 'PDF & DOCX Export' }
 ];
 
 // Only used to pre-fill sensible starting values when adding a new plan or
@@ -70,14 +116,31 @@ const FEATURE_FLAG_DEFS = [
 // server/config/plans.js PLANS; leaving a field blank/"Default" here means
 // the server falls back to those hardcoded numbers.
 const TIER_DEFAULTS = {
-  basic: { maxExams: 30, maxStudents: 200, maxTeachers: 3, aiFeatures: true, advancedAI: false, analytics: true, prioritySupport: false, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: true },
-  premium: { maxExams: UNLIMITED, maxStudents: UNLIMITED, maxTeachers: 10, aiFeatures: true, advancedAI: true, analytics: true, prioritySupport: true, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: true },
-  enterprise: { maxExams: UNLIMITED, maxStudents: UNLIMITED, maxTeachers: UNLIMITED, aiFeatures: true, advancedAI: true, analytics: true, prioritySupport: true, customBranding: true, apiAccess: true, marketplaceAccess: true, templates: true }
+  free: { maxExams: 1, maxStudents: 1, maxTeachers: 1, lessonPlansPerMonth: 4, slidesPerMonth: 3, exercisesPerMonth: 3, schemesPerMonth: 1, aiFeatures: false, advancedAI: false, analytics: false, prioritySupport: false, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: false, docxExport: true },
+  basic: { maxExams: 30, maxStudents: 200, maxTeachers: 3, lessonPlansPerMonth: 40, slidesPerMonth: 4, exercisesPerMonth: 15, schemesPerMonth: 3, aiFeatures: true, advancedAI: false, analytics: true, prioritySupport: false, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: true, docxExport: true },
+  pro: { maxExams: 60, maxStudents: 400, maxTeachers: 5, lessonPlansPerMonth: 100, slidesPerMonth: 10, exercisesPerMonth: 25, schemesPerMonth: 10, aiFeatures: true, advancedAI: false, analytics: true, prioritySupport: true, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: true, docxExport: true },
+  premium: { maxExams: UNLIMITED, maxStudents: UNLIMITED, maxTeachers: 10, lessonPlansPerMonth: 200, slidesPerMonth: 20, exercisesPerMonth: 40, schemesPerMonth: 20, aiFeatures: true, advancedAI: true, analytics: true, prioritySupport: true, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: true, docxExport: true },
+  term_pro: { maxExams: UNLIMITED, maxStudents: UNLIMITED, maxTeachers: 10, lessonPlansPerMonth: 300, slidesPerMonth: 30, exercisesPerMonth: 40, schemesPerMonth: 20, aiFeatures: true, advancedAI: true, analytics: true, prioritySupport: true, customBranding: false, apiAccess: false, marketplaceAccess: false, templates: true, docxExport: true },
+  enterprise: { maxExams: UNLIMITED, maxStudents: UNLIMITED, maxTeachers: UNLIMITED, lessonPlansPerMonth: UNLIMITED, slidesPerMonth: UNLIMITED, exercisesPerMonth: UNLIMITED, schemesPerMonth: UNLIMITED, aiFeatures: true, advancedAI: true, analytics: true, prioritySupport: true, customBranding: true, apiAccess: true, marketplaceAccess: true, templates: true, docxExport: true }
 };
+
+// Display order and labels for the tier dropdown — matches TIER_ORDER on the
+// server. Pro and Term Pro exist for the Lesson Planner pricing grid.
+const TIER_OPTIONS = [
+  { key: 'free', label: 'Free (assigned on signup)' },
+  { key: 'basic', label: 'Basic' },
+  { key: 'pro', label: 'Pro' },
+  { key: 'premium', label: 'Premium' },
+  { key: 'term_pro', label: 'Term Pro' },
+  { key: 'enterprise', label: 'Enterprise' }
+];
 
 const DEFAULT_FORM = {
   tierKey: 'basic',
+  scope: 'both',
   name: '',
+  description: '',
+  isPopular: false,
   price: 0,
   currency: 'RWF',
   durationValue: 30,
@@ -86,6 +149,11 @@ const DEFAULT_FORM = {
   discountPercentage: 0,
   ...TIER_DEFAULTS.basic
 };
+
+// Limits and flags that only exist because of the exam product — hidden and
+// left out of the checkout copy when a plan doesn't sell exams.
+const EXAM_SCOPED_LIMITS = ['maxExams', 'maxStudents', 'maxTeachers'];
+const EXAM_SCOPED_FLAGS = ['marketplaceAccess', 'templates'];
 
 const formatLimitDisplay = (value) => {
   if (value === UNLIMITED) return 'Unlimited';
@@ -97,13 +165,41 @@ const formatLimitDisplay = (value) => {
 // selected limits/toggles, so what a buyer sees always matches what's
 // enforced — no separately-typed marketing copy to drift out of sync.
 const buildFeatureList = (formData) => {
-  const list = LIMIT_FIELD_DEFS.map(({ key, label }) => {
+  const scope = formData.scope || 'both';
+  const list = [];
+
+  // Monthly Lesson Planner output leads the card — it is what the plan sells.
+  if (scopeAllowsLessonPlanner(scope)) {
+    QUOTA_FIELD_DEFS.forEach(({ key, noun }) => {
+      const value = formData[key];
+      if (value === null || value === undefined || value === '') return;
+      list.push(value === UNLIMITED ? `Unlimited ${noun}` : `${value} ${noun}/mo`);
+    });
+  }
+  if (scopeAllowsExams(scope)) list.push('Exam creation & grading');
+
+  // Exam/student allowances are meaningless on a Lesson-Planner-only plan —
+  // the server forces maxExams to 0 for that scope, so advertising a number
+  // here would be the exact marketing-copy-vs-enforcement gap this editor
+  // exists to close.
+  LIMIT_FIELD_DEFS.forEach(({ key, label }) => {
+    if (!scopeAllowsExams(scope) && EXAM_SCOPED_LIMITS.includes(key)) return;
     const noun = label.replace(/^Max /, '').toLowerCase();
-    return formData[key] === UNLIMITED ? `Unlimited ${noun}` : `Up to ${formData[key]} ${noun}`;
+    list.push(formData[key] === UNLIMITED ? `Unlimited ${noun}` : `Up to ${formData[key]} ${noun}`);
   });
+
+  // Every individual plan is a single-teacher licence, so the card says so
+  // rather than leaving buyers to infer it from a missing teacher limit.
+  list.push('Single user');
+
   FEATURE_FLAG_DEFS.forEach(({ key, label }) => {
+    if (!scopeAllowsExams(scope) && EXAM_SCOPED_FLAGS.includes(key)) return;
+    if (FEATURE_FLAG_DEFS.find((f) => f.key === key)?.omitFromCard) return;
     if (formData[key]) list.push(label);
   });
+
+  // Stated either way — a buyer comparing tiers needs to see which one loses it.
+  list.push(formData.prioritySupport ? 'Priority email support' : 'No priority support');
   return list;
 };
 
@@ -138,12 +234,15 @@ const IndividualPlanManagement = () => {
       setEditingPlan(plan);
       const tierDefaults = TIER_DEFAULTS[plan.tierKey] || TIER_DEFAULTS.basic;
       const limitFields = {};
-      [...LIMIT_FIELD_DEFS, ...FEATURE_FLAG_DEFS].forEach(({ key }) => {
+      [...QUOTA_FIELD_DEFS, ...LIMIT_FIELD_DEFS, ...FEATURE_FLAG_DEFS].forEach(({ key }) => {
         limitFields[key] = (plan[key] === undefined || plan[key] === null) ? tierDefaults[key] : plan[key];
       });
       setFormData({
         tierKey: plan.tierKey || 'basic',
+        scope: plan.scope || 'both',
         name: plan.name,
+        description: plan.description || '',
+        isPopular: !!plan.isPopular,
         price: plan.price,
         currency: plan.currency || 'RWF',
         durationValue: plan.durationValue ?? plan.durationDays,
@@ -246,7 +345,8 @@ const IndividualPlanManagement = () => {
 
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         These are the paid plans individual (non-organisation) teachers can purchase via mobile money, Airtel Money, or
-        card. Editing a plan changes the price/duration/features shown at checkout for new purchases going forward.
+        card. Each plan sells either the exam product, the Lesson Planner, or both — so you can price the Lesson Planner
+        on its own. Editing a plan changes the price/duration/features shown at checkout for new purchases going forward.
       </Typography>
 
       {error && (
@@ -262,6 +362,8 @@ const IndividualPlanManagement = () => {
               <TableRow>
                 <TableCell>Tier</TableCell>
                 <TableCell>Plan Name</TableCell>
+                <TableCell>Sells</TableCell>
+                <TableCell>Plans /mo</TableCell>
                 <TableCell>Price</TableCell>
                 <TableCell>Duration</TableCell>
                 <TableCell>Status</TableCell>
@@ -278,6 +380,24 @@ const IndividualPlanManagement = () => {
                   </TableCell>
                   <TableCell>
                     <Typography fontWeight="bold">{plan.name}</Typography>
+                    {plan.isPopular && (
+                      <Chip label={plan.badgeText || 'MOST POPULAR'} color="primary" size="small" sx={{ mt: 0.5, fontSize: 10, height: 18 }} />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title={scopeDef(plan.scope).description}>
+                      <Chip
+                        label={scopeDef(plan.scope).short}
+                        color={scopeDef(plan.scope).color}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    {scopeAllowsLessonPlanner(plan.scope)
+                      ? formatLimitDisplay(plan.lessonPlansPerMonth)
+                      : '—'}
                   </TableCell>
                   <TableCell>{plan.currency} {plan.price.toLocaleString()}</TableCell>
                   <TableCell>{formatPlanDuration(plan)}</TableCell>
@@ -289,22 +409,31 @@ const IndividualPlanManagement = () => {
                     <Tooltip
                       title={
                         <Box>
-                          {LIMIT_FIELD_DEFS.map((f) => (
+                          {scopeAllowsLessonPlanner(plan.scope) && QUOTA_FIELD_DEFS.map((f) => (
                             <Typography key={f.key} variant="caption" display="block">
-                              {f.label}: {formatLimitDisplay(plan[f.key])}
+                              {f.label}: {formatLimitDisplay(plan[f.key])}{f.enforced ? '' : ' (not enforced)'}
                             </Typography>
                           ))}
-                          {FEATURE_FLAG_DEFS.map((f) => (
-                            <Typography key={f.key} variant="caption" display="block">
-                              {f.label}: {plan[f.key] === true ? 'On' : plan[f.key] === false ? 'Off' : 'Default'}
-                            </Typography>
-                          ))}
+                          {LIMIT_FIELD_DEFS
+                            .filter((f) => scopeAllowsExams(plan.scope) || !EXAM_SCOPED_LIMITS.includes(f.key))
+                            .map((f) => (
+                              <Typography key={f.key} variant="caption" display="block">
+                                {f.label}: {formatLimitDisplay(plan[f.key])}
+                              </Typography>
+                            ))}
+                          {FEATURE_FLAG_DEFS
+                            .filter((f) => scopeAllowsExams(plan.scope) || !EXAM_SCOPED_FLAGS.includes(f.key))
+                            .map((f) => (
+                              <Typography key={f.key} variant="caption" display="block">
+                                {f.label}: {plan[f.key] === true ? 'On' : plan[f.key] === false ? 'Off' : 'Default'}
+                              </Typography>
+                            ))}
                         </Box>
                       }
                     >
                       <Chip
                         label={
-                          [...LIMIT_FIELD_DEFS, ...FEATURE_FLAG_DEFS].some((f) => plan[f.key] !== null && plan[f.key] !== undefined)
+                          [...QUOTA_FIELD_DEFS, ...LIMIT_FIELD_DEFS, ...FEATURE_FLAG_DEFS].some((f) => plan[f.key] !== null && plan[f.key] !== undefined)
                             ? 'Custom limits'
                             : 'Default limits'
                         }
@@ -328,7 +457,7 @@ const IndividualPlanManagement = () => {
               ))}
               {plans.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} align="center">
+                  <TableCell colSpan={10} align="center">
                     <Typography color="text.secondary" sx={{ py: 3 }}>No individual plans yet.</Typography>
                   </TableCell>
                 </TableRow>
@@ -345,6 +474,44 @@ const IndividualPlanManagement = () => {
         <DialogContent>
           <Box sx={{ pt: 2 }}>
             <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                  What this plan sells
+                </Typography>
+                <Stack direction="row" flexWrap="wrap" gap={1.5} sx={{ mb: 1 }}>
+                  {SCOPE_DEFS.map((def) => {
+                    const selected = (formData.scope || 'both') === def.key;
+                    return (
+                      <Paper
+                        key={def.key}
+                        variant="outlined"
+                        onClick={() => setFormData({ ...formData, scope: def.key })}
+                        sx={{
+                          p: 1.5,
+                          flex: '1 1 200px',
+                          minWidth: 200,
+                          cursor: 'pointer',
+                          borderWidth: selected ? 2 : 1,
+                          borderColor: selected ? `${def.color}.main` : 'divider',
+                          bgcolor: selected ? `${def.color}.50` : 'transparent'
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="bold" color={selected ? `${def.color}.main` : 'text.primary'}>
+                          {def.label}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {def.description}
+                        </Typography>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  Price each scope separately — the same tier can exist as a cheap Lesson-Planner-only plan and a fuller
+                  exams plan side by side. A teacher gets exactly what the plan they paid for covers.
+                </Typography>
+                <Divider sx={{ mt: 2 }} />
+              </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Tier</InputLabel>
@@ -354,9 +521,9 @@ const IndividualPlanManagement = () => {
                     label="Tier"
                     required
                   >
-                    <MenuItem value="basic">Basic</MenuItem>
-                    <MenuItem value="premium">Premium</MenuItem>
-                    <MenuItem value="enterprise">Enterprise</MenuItem>
+                    {TIER_OPTIONS.map(({ key, label }) => (
+                      <MenuItem key={key} value={key}>{label}</MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
               </Grid>
@@ -427,6 +594,78 @@ const IndividualPlanManagement = () => {
                   inputProps={{ min: 0, max: 100 }}
                 />
               </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={!!formData.isPopular}
+                      onChange={(e) => setFormData({ ...formData, isPopular: e.target.checked })}
+                    />
+                  }
+                  label="Highlight as MOST POPULAR"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Tagline"
+                  placeholder="Best for individual teachers who create resources every week."
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  helperText="One line shown under the plan name on the pricing grid."
+                />
+              </Grid>
+
+              {scopeAllowsLessonPlanner(formData.scope) && (
+                <>
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 1 }} />
+                    <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                      Lesson Planner Monthly Output
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      How much a teacher on this plan can produce per calendar month. These are the headline numbers on
+                      the pricing card.
+                    </Typography>
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      Only <strong>lesson plans</strong> are enforced today — the app has no slide, exercise or
+                      scheme-of-work generator yet, so those three numbers are advertised but nothing consumes them.
+                      They start biting automatically once those tools ship.
+                    </Alert>
+                  </Grid>
+                  {QUOTA_FIELD_DEFS.map(({ key, label, enforced }) => (
+                    <Grid item xs={12} sm={3} key={key}>
+                      <Stack spacing={0.5}>
+                        <TextField
+                          fullWidth
+                          label={label}
+                          type="number"
+                          value={formData[key] === UNLIMITED ? '' : (formData[key] ?? '')}
+                          onChange={(e) => setFormData({ ...formData, [key]: parseInt(e.target.value, 10) || 0 })}
+                          disabled={formData[key] === UNLIMITED}
+                          inputProps={{ min: 0 }}
+                          helperText={enforced ? 'Enforced' : 'Not yet enforced'}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              size="small"
+                              checked={formData[key] === UNLIMITED}
+                              onChange={(e) => {
+                                const tierDefaults = TIER_DEFAULTS[formData.tierKey] || TIER_DEFAULTS.basic;
+                                const fallback = tierDefaults[key] === UNLIMITED ? 0 : tierDefaults[key];
+                                setFormData({ ...formData, [key]: e.target.checked ? UNLIMITED : fallback });
+                              }}
+                            />
+                          }
+                          label="Unlimited"
+                        />
+                      </Stack>
+                    </Grid>
+                  ))}
+                </>
+              )}
+
               <Grid item xs={12}>
                 <Divider sx={{ my: 1 }} />
                 <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
@@ -435,8 +674,14 @@ const IndividualPlanManagement = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   These are enforced server-side. Leave "Unlimited" off and set a number, or turn it on to remove the cap entirely.
                 </Typography>
+                {!scopeAllowsExams(formData.scope) && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    Exam, student and teacher limits are hidden because this plan doesn&apos;t sell the exam product — the
+                    server blocks exam creation for it outright.
+                  </Alert>
+                )}
               </Grid>
-              {LIMIT_FIELD_DEFS.map(({ key, label }) => (
+              {LIMIT_FIELD_DEFS.filter(({ key }) => scopeAllowsExams(formData.scope) || !EXAM_SCOPED_LIMITS.includes(key)).map(({ key, label }) => (
                 <Grid item xs={12} sm={4} key={key}>
                   <Stack spacing={0.5}>
                     <TextField
@@ -472,7 +717,7 @@ const IndividualPlanManagement = () => {
                   Feature Access
                 </Typography>
               </Grid>
-              {FEATURE_FLAG_DEFS.map(({ key, label }) => (
+              {FEATURE_FLAG_DEFS.filter(({ key }) => scopeAllowsExams(formData.scope) || !EXAM_SCOPED_FLAGS.includes(key)).map(({ key, label }) => (
                 <Grid item xs={12} sm={6} key={key}>
                   <FormControlLabel
                     control={

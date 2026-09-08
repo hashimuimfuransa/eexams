@@ -23,7 +23,8 @@ import {
   ErrorOutline, HourglassEmpty, PlayArrow, SaveAlt, Close,
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox, Check,
   DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info, Article,
-  EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll, ReportProblem, MenuBook
+  EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll, ReportProblem, MenuBook,
+  Slideshow, FactCheck, CalendarMonth
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -36,6 +37,7 @@ import FinancialAnswerReview, { isFinancialSpreadsheetQuestion } from '../compon
 import AIQuestionAssist from '../components/shared/AIQuestionAssist';
 import MarketplaceManager from '../components/teacher/MarketplaceManager';
 import LessonPlanner from '../components/teacher/LessonPlanner';
+import PlannerStudio from '../components/teacher/PlannerStudio';
 import usePlan from '../hooks/usePlan';
 import SubscriptionWarning from '../components/SubscriptionWarning';
 import PlanUsageCard from '../components/PlanUsageCard';
@@ -80,12 +82,20 @@ const StudentRow = memo(({ row, index, fields, onUpdate, onRemove, disabled, can
   );
 });
 
+// Every dashboard section the Lesson Planner product covers — each one is
+// backed by a monthly output quota on the plan, and all of them disappear
+// together when a plan doesn't include the planner.
+const PLANNER_SECTIONS = ['lessonPlanner', 'slides', 'exercises', 'scheme'];
+
 // Function to get navigation items based on subscription plan
-const getNavigationItems = (user, hasTemplatesAccess) => {
+const getNavigationItems = (user, hasTemplatesAccess, hasLessonPlannerAccess = true) => {
   const baseNav = [
     { id: 'home',      label: 'Dashboard',  icon: <DashboardCustomize sx={{ fontSize: 20 }} /> },
     { id: 'exams',     label: 'My Exams',   icon: <Assignment sx={{ fontSize: 20 }} /> },
     { id: 'lessonPlanner', label: 'Lesson Planner', icon: <MenuBook sx={{ fontSize: 20 }} /> },
+    { id: 'slides', label: 'Slides', icon: <Slideshow sx={{ fontSize: 20 }} /> },
+    { id: 'exercises', label: 'Exercises', icon: <FactCheck sx={{ fontSize: 20 }} /> },
+    { id: 'scheme', label: 'Scheme of Work', icon: <CalendarMonth sx={{ fontSize: 20 }} /> },
     { id: 'students',  label: 'Students',   icon: <People sx={{ fontSize: 20 }} /> },
     { id: 'results',     label: 'Results',      icon: <ListAlt sx={{ fontSize: 20 }} /> },
     { id: 'reclamations', label: 'Reclamations', icon: <ReportProblem sx={{ fontSize: 20 }} /> },
@@ -93,16 +103,23 @@ const getNavigationItems = (user, hasTemplatesAccess) => {
     { id: 'settings',    label: 'Settings',     icon: <Settings sx={{ fontSize: 20 }} /> },
   ];
 
+  // The Lesson Planner is its own purchasable product — a plan sold for exams
+  // only doesn't include it, and the server rejects the authoring routes, so
+  // don't offer the tab at all.
+  const nav = hasLessonPlannerAccess
+    ? baseNav
+    : baseNav.filter((item) => !PLANNER_SECTIONS.includes(item.id));
+
   // Only show templates if user has access (Basic plan or higher).
-  // Index 6 keeps Templates sitting just before Leaderboard now that Lesson
-  // Planner has been added to the list above.
+  // Templates sits just before Leaderboard.
   if (hasTemplatesAccess) {
-    baseNav.splice(6, 0, { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> });
+    const leaderboardIndex = nav.findIndex((item) => item.id === 'leaderboard');
+    nav.splice(leaderboardIndex, 0, { id: 'templates', label: 'Templates',  icon: <Description sx={{ fontSize: 20 }} /> });
   }
 
   // If not custom enterprise, remove AI-related features from home section
   // (The AI tab is part of the home section, not a separate nav item)
-  return baseNav;
+  return nav;
 };
 
 /* ── Sparkline ── */
@@ -165,7 +182,7 @@ export default function TeacherDashboard() {
   const isMobile = useMediaQuery('(max-width:900px)');
   const isXs = useMediaQuery('(max-width:600px)');
   const { user, logout } = useAuth();
-  const { hasTemplatesAccess } = usePlan();
+  const { hasTemplatesAccess, hasLessonPlannerAccess } = usePlan();
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [activeSection, setActiveSection] = useState('home');
   const [stats, setStats] = useState(null);
@@ -241,8 +258,14 @@ export default function TeacherDashboard() {
     exam.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // A plan change (or a deep link) can leave the dashboard sitting on a section
+  // the account no longer has — send it home rather than rendering nothing.
+  useEffect(() => {
+    if (!hasLessonPlannerAccess && PLANNER_SECTIONS.includes(activeSection)) setActiveSection('home');
+  }, [hasLessonPlannerAccess, activeSection]);
+
   // Get navigation items based on subscription plan
-  const nav = getNavigationItems(user, hasTemplatesAccess);
+  const nav = getNavigationItems(user, hasTemplatesAccess, hasLessonPlannerAccess);
 
   return (
     <DashboardShell
@@ -252,7 +275,10 @@ export default function TeacherDashboard() {
       <SubscriptionWarning user={user} onLogout={logout} />
       {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} user={user} />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
-      {activeSection === 'lessonPlanner' && <LessonPlanner user={user} />}
+      {activeSection === 'lessonPlanner' && hasLessonPlannerAccess && <LessonPlanner user={user} />}
+      {activeSection === 'slides' && hasLessonPlannerAccess && <PlannerStudio user={user} kind="slides" />}
+      {activeSection === 'exercises' && hasLessonPlannerAccess && <PlannerStudio user={user} kind="exercises" />}
+      {activeSection === 'scheme' && hasLessonPlannerAccess && <PlannerStudio user={user} kind="scheme" />}
       {activeSection === 'students'  && <StudentsSection />}
       {activeSection === 'results'   && <ResultsSection results={results} resultsTotal={resultsTotal} resultsPage={resultsPage} setResultsPage={setResultsPage} exams={exams} />}
       {activeSection === 'reclamations' && <ReclamationsSection />}
@@ -466,7 +492,7 @@ function ExamDetailsPanel({ exam, saving, onSave }) {
 /* ── HOME ── */
 function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const { canUseAI: hasAIFeatureAccess, canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess, isEnterprise } = usePlan();
+  const { canUseAI: hasAIFeatureAccess, canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess, hasExamAccess, isEnterprise } = usePlan();
   const [aiMode, setAiMode] = useState(canUseAdvancedAI ? 'describe' : 'upload');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, level: '', subLevel: '', accessType: 'subscription', sections: [{ name: 'A', description: 'Section A', questions: [] }] });
   const [levels, setLevels] = useState([]);
@@ -604,7 +630,10 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   // which a super admin can turn off for a tier independently — without
   // this, a plan with AI disabled would still show the generator as usable
   // and only fail once the user hit the server-enforced 403.
-  const canUseAI = hasAIFeatureAccess && planLimits.maxQuestions > 0;
+  // hasExamAccess is a separate axis from the AI flag: a Lesson-Planner-only
+  // plan can include AI and still not sell the exam product, and the server
+  // rejects /exam/ai-generate for it (requireExamAccess).
+  const canUseAI = hasAIFeatureAccess && hasExamAccess && planLimits.maxQuestions > 0;
 
   // Smart message analyzer to detect incomplete inputs
   const analyzeMessage = (msg) => {
@@ -705,7 +734,12 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
   const handleGenerate = async () => {
     if (examInputMode === 'describe' && !prompt.trim() && !uploadedFileContent) return;
     if (examInputMode === 'paste' && !pastedExam.trim()) return;
-    if (!canUseAI) { setAiError('AI exam generation requires Basic plan or higher. Please upgrade your subscription.'); return; }
+    if (!canUseAI) {
+      setAiError(hasExamAccess
+        ? 'AI exam generation requires Basic plan or higher. Please upgrade your subscription.'
+        : 'Your plan covers the Lesson Planner only. Upgrade to a plan that includes exams to generate one.');
+      return;
+    }
     setAiLoading(true); setAiError('');
     try {
       const payload = examInputMode === 'paste'

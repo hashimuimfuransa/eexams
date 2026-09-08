@@ -28,6 +28,7 @@ import IndividualPlanManagement from '../components/admin/IndividualPlanManageme
 import AssignIndividualPlanDialog from '../components/admin/AssignIndividualPlanDialog';
 import SubscriptionReports from '../components/admin/SubscriptionReports';
 import { QuestionEditor } from '../components/shared/QuestionEditor';
+import { getPlanScopeMeta } from '../utils/planUtils';
 
 const nav = [
   { id: 'home',          label: 'Overview',                icon: <DashIcon sx={{ fontSize: 20 }} /> },
@@ -1585,7 +1586,9 @@ function AllUsersSection() {
               noOptionsText="No active plans available"
               options={accountPlans.map(p=>({
                 value: p._id,
-                label: `${p.name} (${p.tierKey}) — ${p.durationDays}d, ${p.currency} ${p.price}`
+                // Individual plans can share a tier and differ only in what
+                // they sell, so the scope has to be in the label.
+                label: `${p.name} (${p.tierKey}${p.scope ? `, ${getPlanScopeMeta(p).short}` : ''}) — ${p.durationDays}d, ${p.currency} ${p.price}`
               }))}
             />
           ):null}

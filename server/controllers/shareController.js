@@ -5,6 +5,7 @@ const User = require('../models/User');
 const ActivityLog = require('../models/ActivityLog');
 const jwt = require('jsonwebtoken');
 const { resolveEffectivePlan } = require('../middleware/planRestrictions');
+const { isTierAtLeast } = require('../utils/planLimits');
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -24,7 +25,7 @@ const hasUnlimitedStudents = async (userId) => {
     const { plan } = await resolveEffectivePlan(user);
 
     // Allow unlimited for basic, premium, and enterprise plans
-    return ['basic', 'premium', 'enterprise'].includes(plan?.toLowerCase());
+    return isTierAtLeast(plan, 'basic');
   } catch (error) {
     console.error('Error checking unlimited students:', error);
     return false;

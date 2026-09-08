@@ -3620,6 +3620,9 @@ const assignIndividualTeacherPlan = async (req, res) => {
     const previousExpiry = getSubscriptionExpiryDate(teacher);
 
     teacher.subscriptionPlan = plan.tierKey;
+    // Same as the paid path (activateAccountPlanPendingPayment): the tier
+    // alone can't say which scope/price of that tier was granted.
+    teacher.subscriptionPlanRef = plan._id;
     teacher.subscriptionStatus = 'active';
     if (mode === 'replace' || !teacher.subscriptionStartDate) {
       teacher.subscriptionStartDate = now;
@@ -3640,6 +3643,7 @@ const assignIndividualTeacherPlan = async (req, res) => {
         planId: plan._id,
         planName: plan.name,
         planTier: plan.tierKey,
+        planScope: plan.scope,
         mode,
         previousPlan,
         previousExpiry,
@@ -3655,6 +3659,7 @@ const assignIndividualTeacherPlan = async (req, res) => {
         _id: plan._id,
         name: plan.name,
         tierKey: plan.tierKey,
+        scope: plan.scope,
         durationDays: plan.durationDays
       }
     });
@@ -3680,6 +3685,7 @@ const revokeIndividualTeacherPlan = async (req, res) => {
     // Reset to the same state a brand-new free account is in — not 'expired',
     // which blockExpiredUsers would lock them out of the app entirely.
     teacher.subscriptionPlan = 'free';
+    teacher.subscriptionPlanRef = null;
     teacher.subscriptionStatus = 'active';
     teacher.subscriptionStartDate = null;
     teacher.subscriptionEndDate = null;

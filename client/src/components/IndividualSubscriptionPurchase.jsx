@@ -8,7 +8,6 @@ import {
   CardContent,
   Button,
   Radio,
-  RadioGroup,
   CircularProgress,
   Alert,
   Chip,
@@ -18,7 +17,10 @@ import {
   TextField,
   InputAdornment,
   Select,
-  MenuItem
+  MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip
 } from '@mui/material';
 import {
   WorkspacePremium,
@@ -27,11 +29,14 @@ import {
   PhoneAndroid,
   CreditCard,
   Phone,
-  Refresh
+  Refresh,
+  MenuBook,
+  Assignment,
+  Cancel
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { formatPlanDuration } from '../utils/planUtils';
+import { formatPlanDuration, getPlanScope, getPlanScopeMeta, planSellsExams, planSellsLessonPlanner } from '../utils/planUtils';
 
 const COUNTRY_CODES = [
   { code: '+250', country: 'Rwanda',   flag: '🇷🇼' },
@@ -52,6 +57,81 @@ const parseProfilePhone = (phone) => {
   }
   if (p.startsWith('0') && p.length === 10) return { code: '+250', local: p.slice(1) };
   return { code: '+250', local: p };
+};
+
+// Teachers shop by what they want, not by tier — a Lesson-Planner-only plan
+// and a full plan can both be "Basic". 'all' stays the default so nobody has
+// to make this choice before seeing the catalog.
+const SCOPE_FILTERS = [
+  { key: 'all', label: 'All plans' },
+  { key: 'lesson_planner', label: 'Lesson Planner' },
+  { key: 'exams', label: 'Exams' }
+];
+
+// Which plans belong under each filter: a plan that sells both shows under
+// either product, since it does cover it.
+const matchesScopeFilter = (plan, filter) => {
+  const scope = getPlanScope(plan);
+  if (filter === 'all') return true;
+  return scope === filter || scope === 'both';
+};
+
+// Monthly Lesson Planner output, in price-card order. Mirrors
+// PLANNER_QUOTA_FIELDS on the server; a null value means the plan inherits its
+// tier default, which the client can't know, so that line is simply omitted.
+const QUOTA_LINES = [
+  { key: 'lessonPlansPerMonth', noun: 'lesson plans' },
+  { key: 'slidesPerMonth', noun: 'slides' },
+  { key: 'exercisesPerMonth', noun: 'exercises' },
+  { key: 'schemesPerMonth', noun: 'schemes' }
+];
+
+const isFreePlan = (plan) => plan?.tierKey === 'free' || !(plan?.price > 0);
+
+// The checklist under each price. Built from the plan's own stored numbers so
+// the card can never advertise something different from what was configured;
+// `plan.features` is the fallback for catalog rows saved before the quota
+// fields existed.
+const planCardLines = (plan) => {
+  const lines = [];
+
+  if (planSellsLessonPlanner(plan)) {
+    QUOTA_LINES.forEach(({ key, noun }) => {
+      const value = plan?.[key];
+      if (value === null || value === undefined) return;
+      lines.push({ text: value === -1 ? `Unlimited ${noun}` : `${value} ${noun}/mo`, included: true });
+    });
+  }
+
+  if (planSellsExams(plan)) {
+    if (plan?.maxExams !== null && plan?.maxExams !== undefined) {
+      lines.push({ text: plan.maxExams === -1 ? 'Unlimited exams' : `Up to ${plan.maxExams} exams`, included: true });
+    }
+    if (plan?.maxStudents !== null && plan?.maxStudents !== undefined) {
+      lines.push({ text: plan.maxStudents === -1 ? 'Unlimited students' : `Up to ${plan.maxStudents} students`, included: true });
+    }
+  }
+
+  // Nothing structured to show — fall back to whatever bullets were stored,
+  // treating a "No ..." bullet as the excluded line it reads as.
+  if (lines.length === 0 && plan?.features?.length) {
+    return plan.features.map((text) => ({ text, included: !/^no\s/i.test(text) }));
+  }
+
+  lines.push({ text: 'Single user', included: true });
+  if (plan?.docxExport !== false) lines.push({ text: 'PDF & DOCX export', included: true });
+  lines.push({
+    text: plan?.prioritySupport ? 'Priority email support' : 'No priority support',
+    included: !!plan?.prioritySupport
+  });
+
+  return lines;
+};
+
+const SCOPE_ICONS = {
+  both: <WorkspacePremium fontSize="small" />,
+  lesson_planner: <MenuBook fontSize="small" />,
+  exams: <Assignment fontSize="small" />
 };
 
 const PAYMENT_METHODS = [
@@ -123,6 +203,7 @@ const IndividualSubscriptionPurchase = () => {
   const { user, setUser } = useAuth();
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState('');
+  const [scopeFilter, setScopeFilter] = useState('all');
   const [paymentMethod, setPaymentMethod] = useState('mobile_money');
   const [countryCode, setCountryCode] = useState('+250');
   const [localPhone, setLocalPhone] = useState('');
@@ -214,6 +295,15 @@ const IndividualSubscriptionPurchase = () => {
 
     return () => clearInterval(interval);
   }, [mobilePending, pendingReference, navigate, user, setUser]);
+
+  // Keep the selection honest: a plan filtered out of view must not stay
+  // selected behind the scenes and get charged from the order summary. Skipped
+  // while a payment is pending, since that selection is the one being paid for.
+  useEffect(() => {
+    if (!selectedPlan || mobilePending) return;
+    const stillVisible = plans.some(p => p._id === selectedPlan && matchesScopeFilter(p, scopeFilter));
+    if (!stillVisible) setSelectedPlan('');
+  }, [scopeFilter, plans, selectedPlan, mobilePending]);
 
   const fetchPlans = async () => {
     try {
@@ -342,6 +432,10 @@ const IndividualSubscriptionPurchase = () => {
   }
 
   const selectedPlanData = plans.find(p => p._id === selectedPlan);
+  const visiblePlans = plans.filter(p => matchesScopeFilter(p, scopeFilter));
+  // subscriptionPlanRef pins the exact catalog entry the account holds, so a
+  // renewal is labelled correctly even when several plans share a tier.
+  const isCurrentPlan = (plan) => !!user?.subscriptionPlanRef && plan._id === user.subscriptionPlanRef;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>
@@ -359,8 +453,21 @@ const IndividualSubscriptionPurchase = () => {
           Choose Your Subscription Plan
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Select a plan to unlock more exams, students and AI features
+          Buy the AI Lesson Planner on its own, exams on their own, or both together
         </Typography>
+        <ToggleButtonGroup
+          value={scopeFilter}
+          exclusive
+          size="small"
+          onChange={(e, value) => value && setScopeFilter(value)}
+          sx={{ mt: 2 }}
+        >
+          {SCOPE_FILTERS.map(({ key, label }) => (
+            <ToggleButton key={key} value={key} sx={{ textTransform: 'none', px: 2 }}>
+              {label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
       </Box>
 
       {error && (
@@ -414,73 +521,125 @@ const IndividualSubscriptionPurchase = () => {
         </Box>
       )}
 
-      {!loading && plans.length === 0 && !mobilePending ? (
+      {!loading && visiblePlans.length === 0 && !mobilePending ? (
         <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
           <Typography variant="h6" color="text.secondary">
-            No subscription plans available yet.
+            {plans.length === 0
+              ? 'No subscription plans available yet.'
+              : `No plans cover ${scopeFilter === 'lesson_planner' ? 'the Lesson Planner' : 'exams'} right now.`}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Please contact support for more information.
+            {plans.length === 0
+              ? 'Please contact support for more information.'
+              : 'Try "All plans", or contact support for more information.'}
           </Typography>
         </Paper>
       ) : !loading && (
         <Grid container spacing={3}>
           <Grid item xs={12} md={8}>
-            <RadioGroup value={selectedPlan} onChange={(e) => setSelectedPlan(e.target.value)}>
-              {plans.map((plan) => (
-                <Card
-                  key={plan._id}
-                  elevation={selectedPlan === plan._id ? 3 : 1}
-                  sx={{
-                    mb: 2,
-                    border: selectedPlan === plan._id ? '2px solid' : '1px solid',
-                    borderColor: selectedPlan === plan._id ? 'primary.main' : 'divider',
-                    borderRadius: 2,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    '&:hover': { boxShadow: 2 }
-                  }}
-                  onClick={() => setSelectedPlan(plan._id)}
-                >
-                  <CardContent>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-                      <Box sx={{ flex: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                          <Radio checked={selectedPlan === plan._id} value={plan._id} />
+            {/* Comparison grid: one card per plan, headline monthly allowance
+                first, so tiers are compared on the number that differs. */}
+            <Grid container spacing={2} alignItems="stretch">
+              {visiblePlans.map((plan) => {
+                const selected = selectedPlan === plan._id;
+                const free = isFreePlan(plan);
+                const current = isCurrentPlan(plan);
+                return (
+                  <Grid item xs={12} sm={6} lg={4} key={plan._id} sx={{ display: 'flex' }}>
+                    <Card
+                      elevation={selected ? 4 : 0}
+                      onClick={() => { if (!free) setSelectedPlan(plan._id); }}
+                      sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        width: '100%',
+                        position: 'relative',
+                        overflow: 'visible',
+                        borderRadius: 2,
+                        border: '2px solid',
+                        borderColor: selected ? 'primary.main' : plan.isPopular ? 'primary.light' : 'divider',
+                        cursor: free ? 'default' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        mt: plan.isPopular ? 1.5 : 0,
+                        '&:hover': free ? {} : { borderColor: 'primary.main', boxShadow: 3 }
+                      }}
+                    >
+                      {plan.isPopular && (
+                        <Chip
+                          label={plan.badgeText || 'MOST POPULAR'}
+                          color="primary"
+                          size="small"
+                          sx={{
+                            position: 'absolute',
+                            top: -12,
+                            left: 16,
+                            fontWeight: 700,
+                            fontSize: 10,
+                            letterSpacing: 0.5
+                          }}
+                        />
+                      )}
+                      <CardContent sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: 2.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
                           <Typography variant="h6" fontWeight="bold">{plan.name}</Typography>
-                          <Chip
-                            label={plan.tierKey}
-                            color="primary"
-                            size="small"
-                            variant="outlined"
-                            sx={{ textTransform: 'capitalize' }}
-                          />
                           {plan.discountPercentage > 0 && (
-                            <Chip label={`${plan.discountPercentage}% OFF`} color="error" size="small" sx={{ fontWeight: 500 }} />
+                            <Chip label={`${plan.discountPercentage}% OFF`} color="error" size="small" sx={{ fontWeight: 600 }} />
                           )}
                         </Box>
-                        <Typography variant="h4" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
-                          {plan.currency === 'RWF' ? 'RWF' : '$'} {plan.price.toLocaleString()}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          {formatPlanDuration(plan)} access
-                        </Typography>
-                        {plan.features?.length > 0 && (
-                          <Box sx={{ mt: 2 }}>
-                            {plan.features.map((feature, idx) => (
-                              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                                <CheckCircle color="success" fontSize="small" />
-                                <Typography variant="body2">{feature}</Typography>
-                              </Box>
-                            ))}
-                          </Box>
+
+                        {plan.description && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                            {plan.description}
+                          </Typography>
                         )}
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </Card>
-              ))}
-            </RadioGroup>
+
+                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mb: 0.5 }}>
+                          <Typography variant="h5" fontWeight="bold" color={free ? 'success.main' : 'primary.main'}>
+                            {free ? 'FREE' : `${plan.currency === 'RWF' ? 'RWF' : '$'} ${plan.price.toLocaleString()}`}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            /{formatPlanDuration(plan)}
+                          </Typography>
+                        </Box>
+
+                        <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5 }}>
+                          {free ? 'Automatically assigned on signup' : getPlanScopeMeta(plan).label}
+                        </Typography>
+
+                        <Box sx={{ flex: 1 }}>
+                          {planCardLines(plan).map(({ text, included }, idx) => (
+                            <Box key={idx} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 0.75 }}>
+                              {included
+                                ? <CheckCircle color="success" sx={{ fontSize: 18, mt: '1px', flexShrink: 0 }} />
+                                : <Cancel sx={{ fontSize: 18, mt: '1px', flexShrink: 0, color: 'text.disabled' }} />}
+                              <Typography variant="body2" color={included ? 'text.primary' : 'text.disabled'}>
+                                {text}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Box>
+
+                        <Button
+                          fullWidth
+                          variant={selected ? 'contained' : 'outlined'}
+                          disabled={free}
+                          onClick={(e) => { e.stopPropagation(); setSelectedPlan(plan._id); }}
+                          sx={{ mt: 2, borderRadius: 1.5, textTransform: 'none', fontWeight: 700 }}
+                        >
+                          {free
+                            ? 'Free Plan - Assigned on Signup'
+                            : current
+                            ? 'Renew / Extend'
+                            : selected
+                            ? 'Selected'
+                            : 'Upgrade Now'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
           </Grid>
 
           <Grid item xs={12} md={4}>
@@ -495,6 +654,12 @@ const IndividualSubscriptionPurchase = () => {
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="body2" color="text.secondary">Plan:</Typography>
                     <Typography variant="body2" fontWeight="bold">{selectedPlanData?.name}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" color="text.secondary">Covers:</Typography>
+                    <Typography variant="body2" fontWeight="bold" align="right">
+                      {getPlanScopeMeta(selectedPlanData).label}
+                    </Typography>
                   </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">Duration:</Typography>

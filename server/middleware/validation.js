@@ -1,4 +1,5 @@
 const { body, validationResult } = require('express-validator');
+const { TIER_ORDER } = require('../utils/planLimits');
 
 // Fast validation middleware for login requests
 const validateLogin = [
@@ -79,8 +80,8 @@ const validateRegister = [
   body('subscriptionPlan')
     .optional({ nullable: true, checkFalsy: true })
     .trim()
-    .isIn(['free', 'basic', 'premium', 'enterprise'])
-    .withMessage('Subscription plan must be one of: free, basic, premium, enterprise'),
+    .isIn(TIER_ORDER)
+    .withMessage(`Subscription plan must be one of: ${TIER_ORDER.join(', ')}`),
 
   // Custom validation: at least one of email or phone must be provided
   (req, res, next) => {

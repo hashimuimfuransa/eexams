@@ -11,7 +11,6 @@ import {
 } from '@mui/icons-material';
 import api from '../../services/api';
 import useUpload from '../../hooks/useUpload';
-import usePlan from '../../hooks/usePlan';
 import UploadProgress from '../UploadProgress';
 import { tokens, gradients } from '../../pages/dashboardTokens';
 
@@ -256,7 +255,6 @@ function PlanEditor({ plan, setField, setStep, addStep, removeStep }) {
 
 export default function LessonPlanner({ user }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const { canUseAI } = usePlan();
 
   const [tab, setTab] = useState(0);
   const [brief, setBrief] = useState('');
@@ -305,7 +303,9 @@ export default function LessonPlanner({ user }) {
 
   const [saved, setSaved] = useState([]);
   const [savedLoading, setSavedLoading] = useState(false);
-  const [hasReachedTodayLimit, setHasReachedTodayLimit] = useState(false);
+  // This month's Lesson Planner allowance (GET /lesson-plans/quota). Null until
+  // it loads — treated as "allowed" so the UI never blocks on a pending fetch.
+  const [quota, setQuota] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const editorRef = useRef(null);
@@ -348,16 +348,25 @@ export default function LessonPlanner({ user }) {
     }
   }, []);
 
-  const loadTodayStatus = useCallback(async () => {
+  const loadQuota = useCallback(async () => {
     try {
-      const res = await api.get('/lesson-plans/today-status');
-      setHasReachedTodayLimit(!res.data.canCreate);
+      const res = await api.get('/lesson-plans/quota');
+      setQuota(res.data);
     } catch (err) {
-      console.error('Failed to load today status:', err);
+      console.error('Failed to load lesson plan quota:', err);
     }
   }, []);
 
-  useEffect(() => { loadSaved(); loadTodayStatus(); }, [loadSaved, loadTodayStatus]);
+  useEffect(() => { loadSaved(); loadQuota(); }, [loadSaved, loadQuota]);
+
+  const quotaExhausted = quota ? quota.canCreate === false : false;
+  const quotaUnlimited = quota?.limit === -1;
+  const quotaMessage = quota && !quotaUnlimited
+    ? `Your ${quota.planName} plan includes ${quota.limit} lesson plans this month and you have used ${quota.used}.`
+    : '';
+  const quotaResetsOn = quota?.periodEnd
+    ? new Date(quota.periodEnd).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
+    : '';
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -386,16 +395,12 @@ export default function LessonPlanner({ user }) {
   };
 
   const handleGenerate = async () => {
-    if (hasReachedTodayLimit) {
-      setError('You can only generate one lesson plan per day. Please come back tomorrow.');
+    if (quotaExhausted) {
+      setError(`${quotaMessage} Upgrade your plan, or wait until the allowance resets on ${quotaResetsOn}.`);
       return;
     }
     if (!brief.trim() && !referenceContent) {
       setError('Tell us what to prepare, or attach the book first.');
-      return;
-    }
-    if (!canUseAI) {
-      setError('AI lesson planning requires the Basic plan or higher. You can still write a plan by hand below and download it.');
       return;
     }
     setGenerating(true);
@@ -422,8 +427,8 @@ export default function LessonPlanner({ user }) {
   };
 
   const startBlank = () => {
-    if (hasReachedTodayLimit) {
-      setError('You can only generate one lesson plan per day. Please come back tomorrow.');
+    if (quotaExhausted) {
+      setError(`${quotaMessage} Upgrade your plan, or wait until the allowance resets on ${quotaResetsOn}.`);
       return;
     }
     setPlan({ ...emptyPlan(user), ...details, sourcePrompt: brief.trim() });
@@ -431,20 +436,25 @@ export default function LessonPlanner({ user }) {
     setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
   };
 
-  const downloadPdf = async (target = plan, id = planId) => {
+  // Both export formats go through one function — the endpoints and MIME types
+  // are the only difference, and the plans advertise "PDF & DOCX export".
+  const downloadFile = async (format, target = plan, id = planId) => {
     setDownloading(true);
     setError('');
     try {
       const res = id
-        ? await api.get(`/lesson-plans/${id}/pdf`, { responseType: 'blob' })
-        : await api.post('/lesson-plans/pdf', target, { responseType: 'blob' });
+        ? await api.get(`/lesson-plans/${id}/${format}`, { responseType: 'blob' })
+        : await api.post(`/lesson-plans/${format}`, target, { responseType: 'blob' });
 
-      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const mime = format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: mime }));
       const link = document.createElement('a');
       link.href = url;
       const name = [target?.subject, target?.className, target?.lessonTitle]
         .filter(Boolean).join(' - ') || 'lesson-plan';
-      link.download = `${name}.pdf`;
+      link.download = `${name}.${format}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -468,7 +478,9 @@ export default function LessonPlanner({ user }) {
         : await api.post('/lesson-plans', payload);
       setPlanId(res.data._id);
       setToast(planId ? 'Lesson plan updated.' : 'Lesson plan saved.');
-      if (!planId) setHasReachedTodayLimit(true);
+      // Only a new plan spends the monthly allowance; re-read it from the
+      // server rather than decrementing locally, so the banner can't drift.
+      if (!planId) loadQuota();
       loadSaved();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save the lesson plan.');
@@ -532,15 +544,15 @@ export default function LessonPlanner({ user }) {
 
       {tab === 0 && (
         <>
-          {!canUseAI && (
+          {quota && !quotaUnlimited && !quotaExhausted && (
             <Alert severity="info" sx={{ mb: 2, borderRadius: 2, fontFamily: "DM Sans,sans-serif" }}>
-              AI generation is part of the Basic plan and above. You can still build a plan by hand and download the PDF.
+              {quotaMessage} {quota.remaining} left until {quotaResetsOn}.
             </Alert>
           )}
 
-          {hasReachedTodayLimit && (
-            <Alert severity="warning" onClose={() => setHasReachedTodayLimit(false)} sx={{ mb: 2, borderRadius: 2, fontFamily: "DM Sans,sans-serif" }}>
-              You have reached the daily limit of one lesson plan per day. Come back tomorrow to create another.
+          {quotaExhausted && (
+            <Alert severity="warning" sx={{ mb: 2, borderRadius: 2, fontFamily: "DM Sans,sans-serif" }}>
+              {quotaMessage} Upgrade your plan to keep going, or wait until the allowance resets on {quotaResetsOn}.
             </Alert>
           )}
 
@@ -731,7 +743,7 @@ export default function LessonPlanner({ user }) {
           <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 3 }}>
             <Button
               variant="contained" size="large" onClick={handleGenerate}
-              disabled={generating || isUploading || hasReachedTodayLimit}
+              disabled={generating || isUploading || quotaExhausted}
               startIcon={generating ? <CircularProgress size={18} sx={{ color: 'white' }} /> : <AutoAwesome />}
               sx={{
                 borderRadius: 2.5, textTransform: 'none', fontWeight: 700, fontSize: 14,
@@ -739,12 +751,12 @@ export default function LessonPlanner({ user }) {
                 '&:hover': { bgcolor: tokens.accentDark }
               }}
             >
-              {generating ? 'Writing your lesson plan…' : hasReachedTodayLimit ? 'Daily limit reached' : 'Generate lesson plan'}
+              {generating ? 'Writing your lesson plan…' : quotaExhausted ? 'Monthly limit reached' : 'Generate lesson plan'}
             </Button>
             {!plan && (
               <Button
                 variant="outlined" size="large" onClick={startBlank} startIcon={<Edit />}
-                disabled={hasReachedTodayLimit}
+                disabled={quotaExhausted}
                 sx={{ borderRadius: 2.5, textTransform: 'none', fontWeight: 700, fontSize: 14, fontFamily: "DM Sans,sans-serif", px: 3 }}
               >
                 Write it myself
@@ -775,11 +787,18 @@ export default function LessonPlanner({ user }) {
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                   <Button
-                    variant="contained" onClick={() => downloadPdf(plan, null)} disabled={downloading}
+                    variant="contained" onClick={() => downloadFile('pdf', plan, null)} disabled={downloading}
                     startIcon={downloading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <Download />}
                     sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, fontSize: 13, bgcolor: tokens.primary, '&:hover': { bgcolor: tokens.primaryDark } }}
                   >
                     Download PDF
+                  </Button>
+                  <Button
+                    variant="outlined" onClick={() => downloadFile('docx', plan, null)} disabled={downloading}
+                    startIcon={downloading ? <CircularProgress size={16} /> : <Description />}
+                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, fontSize: 13 }}
+                  >
+                    Download Word
                   </Button>
                   <Button
                     variant="outlined" onClick={savePlan} disabled={saving}
@@ -788,7 +807,7 @@ export default function LessonPlanner({ user }) {
                   >
                     {planId ? 'Update' : 'Save'}
                   </Button>
-                  {canUseAI && (
+                  {!quotaExhausted && (
                     <Tooltip title="Generate a fresh version from the same brief">
                       <span>
                         <Button
@@ -850,8 +869,13 @@ export default function LessonPlanner({ user }) {
                 </Box>
                 <Box sx={{ display: 'flex', gap: 0.5 }}>
                   <Tooltip title="Download PDF">
-                    <IconButton size="small" onClick={() => downloadPdf(item, item._id)} sx={{ color: tokens.primary }}>
+                    <IconButton size="small" onClick={() => downloadFile('pdf', item, item._id)} sx={{ color: tokens.primary }}>
                       <Download sx={{ fontSize: 19 }} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Download Word">
+                    <IconButton size="small" onClick={() => downloadFile('docx', item, item._id)} sx={{ color: tokens.textSecondary }}>
+                      <Description sx={{ fontSize: 19 }} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Open and edit">

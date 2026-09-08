@@ -15,7 +15,8 @@ const FEATURE_LABELS = [
   { key: 'customBranding', label: 'Custom Branding' },
   { key: 'apiAccess', label: 'API Access' },
   { key: 'marketplaceAccess', label: 'Marketplace Access' },
-  { key: 'templates', label: 'Exam Templates' }
+  { key: 'templates', label: 'Exam Templates' },
+  { key: 'docxExport', label: 'PDF & DOCX Export' }
 ];
 
 export default function PlanUsageCard({ user, compact = false }) {
@@ -41,7 +42,7 @@ export default function PlanUsageCard({ user, compact = false }) {
     );
   }
 
-  const { plan, planName, subscriptionStatus, subscriptionExpiresAt, daysLeft, hoursLeft, limits, features } = planUsage;
+  const { plan, planName, subscriptionStatus, subscriptionExpiresAt, daysLeft, hoursLeft, limits, features, plannerQuotas = [] } = planUsage;
   const isExpired = subscriptionStatus === 'expired';
   const formatExpiry = (date) => new Date(date).toLocaleString('en-GB', {
     day: '2-digit',
@@ -418,6 +419,40 @@ export default function PlanUsageCard({ user, compact = false }) {
               </Box>
             )}
           </Box>
+
+          {/* Monthly Lesson Planner output — the allowance these plans are
+              actually sold on, so it sits above the feature flags. */}
+          {plannerQuotas.length > 0 && (
+            <>
+              <Divider sx={{ my: 3 }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: tokens.primary }}>
+                This Month&apos;s Lesson Planner Allowance
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={1}>
+                {plannerQuotas.map((q) => {
+                  const unlimited = q.limit === -1;
+                  const full = !unlimited && q.allowed === false;
+                  return (
+                    <Chip
+                      key={q.key}
+                      size="small"
+                      label={unlimited ? `${q.label}: Unlimited` : `${q.label}: ${q.used ?? 0} / ${q.limit}`}
+                      sx={{
+                        bgcolor: full ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                        color: full ? '#EF4444' : '#10B981',
+                        fontWeight: 600
+                      }}
+                    />
+                  );
+                })}
+              </Stack>
+              {plannerQuotas[0]?.periodEnd && (
+                <Typography variant="caption" sx={{ color: tokens.textMuted, mt: 1, display: 'block' }}>
+                  Resets on {new Date(plannerQuotas[0].periodEnd).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}.
+                </Typography>
+              )}
+            </>
+          )}
 
           <Divider sx={{ my: 3 }} />
 

@@ -7,7 +7,7 @@ import {
 import { Close, CardMembership } from '@mui/icons-material';
 import api from '../../services/api';
 import { tokens, gradients, planColors as PLAN_COLORS } from '../../pages/dashboardTokens';
-import { formatPlanDuration } from '../../utils/planUtils';
+import { formatPlanDuration, getPlanScopeMeta } from '../../utils/planUtils';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -198,7 +198,9 @@ export default function AssignIndividualPlanDialog({ open, teacher, onClose, onU
                   sx={{ borderRadius: 2 }}
                   renderValue={(value) => {
                     const p = plans.find((x) => x._id === value);
-                    return p ? `${p.name} — ${p.price?.toLocaleString()} ${p.currency || 'RWF'} · ${formatPlanDuration(p)}` : '';
+                    return p
+                      ? `${p.name} — ${getPlanScopeMeta(p).short} · ${p.price?.toLocaleString()} ${p.currency || 'RWF'} · ${formatPlanDuration(p)}`
+                      : '';
                   }}
                 >
                   {plans.map((p) => (
@@ -206,6 +208,10 @@ export default function AssignIndividualPlanDialog({ open, teacher, onClose, onU
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         <Typography variant="body2" fontWeight={600}>{p.name}</Typography>
                         <Chip label={p.tierKey} size="small" sx={{ height: 18, fontSize: 10, textTransform: 'capitalize', bgcolor: `${PLAN_COLORS[p.tierKey] || PLAN_COLORS.free}15`, color: PLAN_COLORS[p.tierKey] || PLAN_COLORS.free }} />
+                        {/* Two plans can share a tier and price differently by
+                            what they sell, so the scope has to be visible here
+                            or the grant is a coin flip. */}
+                        <Chip label={getPlanScopeMeta(p).short} size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
                         <Typography variant="caption" sx={{ color: tokens.textMuted }}>
                           {p.price?.toLocaleString()} {p.currency || 'RWF'} • {formatPlanDuration(p)}
                         </Typography>

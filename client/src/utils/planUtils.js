@@ -159,11 +159,13 @@ export const getUpgradeMessage = (feature) => {
 
 // Get next plan recommendation
 export const getRecommendedPlan = (currentPlan, neededFeature) => {
-  const plans = ['free', 'basic', 'premium', 'enterprise'];
+  const plans = TIER_ORDER;
   const currentIdx = plans.indexOf(currentPlan?.toLowerCase());
   
   for (let i = currentIdx + 1; i < plans.length; i++) {
-    if (PLANS[plans[i]][neededFeature]) {
+    // TIER_ORDER carries the Lesson Planner tiers, which this legacy hardcoded
+    // PLANS table has no entry for — skip rather than throw on undefined.
+    if (PLANS[plans[i]]?.[neededFeature]) {
       return plans[i];
     }
   }
@@ -189,3 +191,59 @@ export const formatPlanDuration = (plan) => {
   const label = UNIT_LABELS[unit];
   return `${value} ${label}${value === 1 ? '' : 's'}`;
 };
+
+// ── Tier ordering ────────────────────────────────────────────────────────────
+//
+// Mirrors TIER_ORDER in server/utils/planLimits.js, cheapest to richest. Pro
+// and Term Pro exist for the Lesson Planner pricing grid. Rank through this
+// rather than hand-writing tier arrays, so adding a tier can't silently miss
+// a comparison.
+export const TIER_ORDER = ['free', 'basic', 'pro', 'premium', 'term_pro', 'enterprise'];
+
+export const tierRank = (tier) => {
+  const index = TIER_ORDER.indexOf(String(tier || '').toLowerCase());
+  return index === -1 ? 0 : index;
+};
+
+export const isTierAtLeast = (tier, minimum) => tierRank(tier) >= tierRank(minimum);
+
+export const TIER_LABELS = {
+  free: 'Free',
+  basic: 'Basic',
+  pro: 'Pro',
+  premium: 'Premium',
+  term_pro: 'Term Pro',
+  enterprise: 'Enterprise'
+};
+
+// ── Plan scope ───────────────────────────────────────────────────────────────
+//
+// Mirrors server/utils/planLimits.js PLAN_SCOPES. An individual (teacher) plan
+// sells the exam product, the Lesson Planner, or both, so the same tier can be
+// on sale at several prices. Plans stored before this field existed have no
+// `scope` — they grant everything, hence the 'both' fallback.
+export const PLAN_SCOPE_META = {
+  both: {
+    label: 'Exams + Lesson Planner',
+    short: 'Exams + Planner',
+    description: 'Exam creation and grading, plus the AI Lesson Planner.'
+  },
+  lesson_planner: {
+    label: 'Lesson Planner only',
+    short: 'Planner only',
+    description: 'The AI Lesson Planner only — this plan does not include exams.'
+  },
+  exams: {
+    label: 'Exams only',
+    short: 'Exams only',
+    description: 'Exam creation, grading and results — this plan does not include the Lesson Planner.'
+  }
+};
+
+export const getPlanScope = (plan) =>
+  (plan?.scope && PLAN_SCOPE_META[plan.scope]) ? plan.scope : 'both';
+
+export const getPlanScopeMeta = (plan) => PLAN_SCOPE_META[getPlanScope(plan)];
+
+export const planSellsExams = (plan) => getPlanScope(plan) !== 'lesson_planner';
+export const planSellsLessonPlanner = (plan) => getPlanScope(plan) !== 'exams';

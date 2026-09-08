@@ -308,6 +308,13 @@ const initiateAccountPlanPayment = async (req, res, kind) => {
       return res.status(400).json({ message: 'This plan is not currently available' });
     }
 
+    // The Free card is a catalog entry so its quotas stay editable, but it is
+    // granted at signup, never bought — and a zero-amount charge would be
+    // rejected by the gateway anyway, after a pending payment had been written.
+    if (plan.tierKey === 'free' || !(plan.price > 0)) {
+      return res.status(400).json({ message: 'This plan is assigned automatically and cannot be purchased.' });
+    }
+
     console.log(`[Payment] ${kind} plan="${plan.name}" (${plan.tierKey}) price=${plan.price} ${plan.currency}`);
 
     const paymentResult = await itecPayment.createPaymentRequest({
@@ -398,6 +405,10 @@ const activateAccountPlanPendingPayment = async (pendingPayment, Model, planId) 
   const newExpiry = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
 
   user.subscriptionPlan = plan.tierKey;
+  // Remember the exact catalog entry, not just its tier — individual plans
+  // differ in scope (Lesson Planner / exams / both) within a single tier, so
+  // enforcement has to resolve back to this document. See config/plans.js.
+  user.subscriptionPlanRef = plan._id;
   user.subscriptionStatus = 'active';
   if (!user.subscriptionStartDate) user.subscriptionStartDate = now;
   user.subscriptionEndDate = newExpiry;
@@ -735,6 +746,7 @@ const assignAccountPlan = async (req, res) => {
     const newExpiry = new Date(baseDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
 
     user.subscriptionPlan = plan.tierKey;
+    user.subscriptionPlanRef = plan._id;
     user.subscriptionStatus = 'active';
     if (!user.subscriptionStartDate) user.subscriptionStartDate = now;
     user.subscriptionEndDate = newExpiry;
@@ -901,6 +913,7 @@ const cancelAccountPlanSubscription = async (req, res) => {
     const expiry = new Date(now.getTime() + (isOrg ? 30 : 14) * 24 * 60 * 60 * 1000);
 
     user.subscriptionPlan = 'free';
+    user.subscriptionPlanRef = null;
     user.subscriptionStatus = 'active';
     user.subscriptionStartDate = now;
     user.subscriptionEndDate = expiry;

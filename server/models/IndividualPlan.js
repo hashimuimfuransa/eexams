@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { PLAN_SCOPES, DEFAULT_PLAN_SCOPE, TIER_ORDER } = require('../utils/planLimits');
 
 // Purchasable catalog entries for individual (non-organisation) teacher
 // subscriptions — same shape and role as OrganizationPlan, kept as a
@@ -6,15 +7,46 @@ const mongoose = require('mongoose');
 // existing convention of one model per plan audience, e.g. SubscriptionPlan
 // for level/exam plans vs OrganizationPlan for organisation plans).
 const IndividualPlanSchema = new mongoose.Schema({
+  // 'free' is allowed here so the Free card on the pricing grid is editable
+  // too — it is granted at signup, never purchased (the payment flow rejects
+  // it), but its Lesson Planner quotas should be tunable like every other.
   tierKey: {
     type: String,
-    enum: ['basic', 'premium', 'enterprise'],
+    enum: TIER_ORDER,
     required: true
   },
   name: {
     type: String,
     required: true,
     trim: true
+  },
+  // Which product this plan sells. A teacher can be sold the Lesson Planner on
+  // its own, the exam product on its own, or both in one plan — so the same
+  // tier can exist at several price points with different scopes. Defaults to
+  // 'both', which is what every plan created before this field existed grants.
+  scope: {
+    type: String,
+    enum: PLAN_SCOPES,
+    default: DEFAULT_PLAN_SCOPE
+  },
+  // One-line pitch under the plan name on the pricing grid
+  // ("Best for individual teachers who create resources every week").
+  description: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  // Marks the card the grid highlights. Not enforced to be unique — the
+  // pricing grid highlights every plan carrying it, which is what an admin
+  // running two promotions at once would expect.
+  isPopular: {
+    type: Boolean,
+    default: false
+  },
+  badgeText: {
+    type: String,
+    trim: true,
+    default: 'MOST POPULAR'
   },
   price: {
     type: Number,
@@ -60,6 +92,12 @@ const IndividualPlanSchema = new mongoose.Schema({
   },
   // Enforcement overrides — when unset (null), server/config/plans.js falls
   // back to the hardcoded default for this tierKey. -1 means "unlimited".
+  // Lesson Planner monthly output quotas (see PLANNER_QUOTA_FIELDS). Null
+  // inherits the tier default from config/plans.js; -1 is unlimited.
+  lessonPlansPerMonth: { type: Number, default: null },
+  slidesPerMonth: { type: Number, default: null },
+  exercisesPerMonth: { type: Number, default: null },
+  schemesPerMonth: { type: Number, default: null },
   maxExams: { type: Number, default: null },
   maxStudents: { type: Number, default: null },
   maxTeachers: { type: Number, default: null },
@@ -73,6 +111,7 @@ const IndividualPlanSchema = new mongoose.Schema({
   apiAccess: { type: Boolean, default: null },
   marketplaceAccess: { type: Boolean, default: null },
   templates: { type: Boolean, default: null },
+  docxExport: { type: Boolean, default: null },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -94,6 +133,7 @@ IndividualPlanSchema.pre('save', function(next) {
 });
 
 IndividualPlanSchema.index({ tierKey: 1, status: 1 });
+IndividualPlanSchema.index({ scope: 1, status: 1 });
 IndividualPlanSchema.index({ status: 1, price: 1 });
 
 IndividualPlanSchema.statics.getActivePlans = async function() {

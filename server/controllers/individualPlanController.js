@@ -1,17 +1,18 @@
 const IndividualPlan = require('../models/IndividualPlan');
 const { resolvePlanDuration } = require('../utils/planDuration');
-const { extractLimitOverrides } = require('../utils/planLimits');
+const { extractLimitOverrides, PLAN_SCOPES, DEFAULT_PLAN_SCOPE, TIER_ORDER } = require('../utils/planLimits');
 
 // @desc    Get all individual (teacher) plans
 // @route   GET /api/individual-plans
 // @access  Private
 const getIndividualPlans = async (req, res) => {
   try {
-    const { status, tierKey } = req.query;
+    const { status, tierKey, scope } = req.query;
 
     const query = {};
     if (status) query.status = status;
     if (tierKey) query.tierKey = tierKey;
+    if (scope) query.scope = scope;
 
     const plans = await IndividualPlan.find(query)
       .populate('createdBy', 'fullName')
@@ -58,10 +59,13 @@ const getIndividualPlanById = async (req, res) => {
 // @access  Private/SuperAdmin
 const createIndividualPlan = async (req, res) => {
   try {
-    const { tierKey, name, price, currency, durationDays, durationValue, durationUnit, status, features, discountPercentage } = req.body;
+    const { tierKey, name, scope, description, isPopular, badgeText, price, currency, durationDays, durationValue, durationUnit, status, features, discountPercentage } = req.body;
 
-    if (!tierKey || !['basic', 'premium', 'enterprise'].includes(tierKey)) {
-      return res.status(400).json({ message: 'Invalid tier. Must be "basic", "premium", or "enterprise"' });
+    if (!tierKey || !TIER_ORDER.includes(tierKey)) {
+      return res.status(400).json({ message: `Invalid tier. Must be one of: ${TIER_ORDER.join(', ')}` });
+    }
+    if (scope !== undefined && !PLAN_SCOPES.includes(scope)) {
+      return res.status(400).json({ message: `Invalid scope. Must be one of: ${PLAN_SCOPES.join(', ')}` });
     }
     if (!name || price === undefined) {
       return res.status(400).json({ message: 'name and price are required' });
@@ -74,6 +78,10 @@ const createIndividualPlan = async (req, res) => {
     const plan = await IndividualPlan.create({
       tierKey,
       name,
+      scope: scope || DEFAULT_PLAN_SCOPE,
+      description: description || '',
+      isPopular: Boolean(isPopular),
+      ...(badgeText === undefined ? {} : { badgeText }),
       price,
       currency: currency || 'RWF',
       durationDays: resolvedDuration.durationDays,
@@ -98,19 +106,26 @@ const createIndividualPlan = async (req, res) => {
 // @access  Private/SuperAdmin
 const updateIndividualPlan = async (req, res) => {
   try {
-    const { tierKey, name, price, currency, durationDays, durationValue, durationUnit, status, features, discountPercentage } = req.body;
+    const { tierKey, name, scope, description, isPopular, badgeText, price, currency, durationDays, durationValue, durationUnit, status, features, discountPercentage } = req.body;
 
     const plan = await IndividualPlan.findById(req.params.id);
     if (!plan) {
       return res.status(404).json({ message: 'Individual plan not found' });
     }
 
-    if (tierKey && !['basic', 'premium', 'enterprise'].includes(tierKey)) {
-      return res.status(400).json({ message: 'Invalid tier. Must be "basic", "premium", or "enterprise"' });
+    if (tierKey && !TIER_ORDER.includes(tierKey)) {
+      return res.status(400).json({ message: `Invalid tier. Must be one of: ${TIER_ORDER.join(', ')}` });
+    }
+    if (scope !== undefined && !PLAN_SCOPES.includes(scope)) {
+      return res.status(400).json({ message: `Invalid scope. Must be one of: ${PLAN_SCOPES.join(', ')}` });
     }
 
     if (tierKey !== undefined) plan.tierKey = tierKey;
     if (name !== undefined) plan.name = name;
+    if (scope !== undefined) plan.scope = scope;
+    if (description !== undefined) plan.description = description;
+    if (isPopular !== undefined) plan.isPopular = Boolean(isPopular);
+    if (badgeText !== undefined) plan.badgeText = badgeText;
     if (price !== undefined) plan.price = price;
     if (currency !== undefined) plan.currency = currency;
     if (durationValue !== undefined || durationUnit !== undefined || durationDays !== undefined) {

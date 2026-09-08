@@ -7,7 +7,7 @@ import { useThemeMode } from '../context/ThemeContext';
 import Nav from '../components/Nav';
 import SEO from '../components/SEO';
 import api from '../services/api';
-import { formatPlanDuration } from '../utils/planUtils';
+import { formatPlanDuration, getPlanScope, getPlanScopeMeta, planSellsLessonPlanner } from '../utils/planUtils';
 
 // Public pricing page. Everything here comes from the three super-admin-editable
 // plan catalogs, so prices shown to visitors always match what they will be
@@ -107,6 +107,13 @@ const Pricing = () => {
         : { label: 'Sign up to subscribe', to: '/student-register' };
     }
     if (key === 'teacher') {
+      // The Free card is a catalog entry so its quotas stay editable, but it
+      // is granted at signup — the payment flow rejects it.
+      if (plan?.tierKey === 'free' || !(plan?.price > 0)) {
+        return isAuthenticated && user?.role === 'teacher'
+          ? { label: 'Included with your account', to: '/teacher' }
+          : { label: 'Start free', to: '/register' };
+      }
       return isAuthenticated && user?.role === 'teacher'
         ? { label: 'Subscribe', to: '/individual/subscription' }
         : { label: 'Create a teacher account', to: '/register' };
@@ -121,12 +128,30 @@ const Pricing = () => {
 
   // Enforcement limits are nullable — null means "fall back to the tier default"
   // on the server, so there is no number to show. -1 means unlimited.
+  // Monthly Lesson Planner output, in price-card order — the headline numbers
+  // for a planner plan, so they lead the spec list.
+  const QUOTA_ROWS = [
+    ['Lesson plans /mo', 'lessonPlansPerMonth'],
+    ['Slides /mo', 'slidesPerMonth'],
+    ['Exercises /mo', 'exercisesPerMonth'],
+    ['Schemes /mo', 'schemesPerMonth'],
+  ];
+
   const getLimitRows = (plan) => {
+    // A Lesson-Planner-only plan doesn't sell exams at all, so its exam/student
+    // allowances are never enforced — listing them would advertise something
+    // the server blocks outright.
+    const sellsExams = getPlanScope(plan) !== 'lesson_planner';
     const rows = [
-      ['Exams', plan.maxExams],
-      ['Teachers', plan.maxTeachers],
-      ['Students', plan.maxStudents],
-      ['Exams per month', plan.examPerMonth],
+      ...(planSellsLessonPlanner(plan) ? QUOTA_ROWS.map(([label, key]) => [label, plan[key]]) : []),
+      ...(sellsExams
+        ? [
+            ['Exams', plan.maxExams],
+            ['Teachers', plan.maxTeachers],
+            ['Students', plan.maxStudents],
+            ['Exams per month', plan.examPerMonth],
+          ]
+        : []),
     ]
       .filter(([, value]) => value !== null && value !== undefined)
       .map(([label, value]) => [label, value === -1 ? 'Unlimited' : value.toLocaleString()]);
@@ -302,6 +327,9 @@ const Pricing = () => {
     const limitRows = getLimitRows(plan);
     const featureChips = getFeatureChips(plan);
     const examPlan = isExamPlan(plan);
+    // Only individual teacher plans are sold per product (Lesson Planner /
+    // exams / both) — student and organisation catalogs have no scope.
+    const scopeMeta = audienceKey === 'teacher' ? getPlanScopeMeta(plan) : null;
 
     return (
       <Grid item xs={12} sm={6} md={4} key={plan._id}>
@@ -311,16 +339,27 @@ const Pricing = () => {
               <Typography variant="h6" fontWeight={700} sx={{ color: isDark ? '#F8FAFC' : '#0D406C' }}>
                 {plan.name}
               </Typography>
-              {examPlan
+              {scopeMeta
+                ? <Chip label={scopeMeta.label} size="small" color="secondary" sx={{ fontWeight: 600 }} />
+                : examPlan
                 ? <Chip label="Single exam" size="small" color="secondary" variant="outlined" sx={{ fontWeight: 600 }} />
                 : <Chip label={plan.subLevel || 'Whole level'} size="small" variant="outlined" />}
               {examPlan && plan.exam?.subLevel && (
                 <Chip label={plan.exam.subLevel} size="small" variant="outlined" />
               )}
+              {plan.isPopular && (
+                <Chip label={plan.badgeText || 'MOST POPULAR'} color="primary" size="small" sx={{ fontWeight: 700, fontSize: 10 }} />
+              )}
               {plan.discountPercentage > 0 && (
                 <Chip label={`${plan.discountPercentage}% OFF`} color="error" size="small" sx={{ fontWeight: 600 }} />
               )}
             </Box>
+
+            {plan.description && (
+              <Typography variant="body2" sx={{ color: isDark ? '#94A3B8' : '#64748B', mb: 1 }}>
+                {plan.description}
+              </Typography>
+            )}
 
             {/* Which exam the money buys — without it, two single-exam plans at
                 the same price are indistinguishable. */}

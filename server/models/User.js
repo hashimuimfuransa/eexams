@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { TIER_ORDER } = require('../utils/planLimits');
 const bcrypt = require('bcryptjs');
 
 const UserSchema = new mongoose.Schema({
@@ -120,8 +121,22 @@ const UserSchema = new mongoose.Schema({
   // For organizations: subscription plan details
   subscriptionPlan: {
     type: String,
-    enum: ['free', 'basic', 'premium', 'enterprise'],
+    enum: TIER_ORDER,
     default: 'free'
+  },
+  // The exact catalog document (IndividualPlan for individual accounts,
+  // OrganizationPlan for organisations) this subscription was bought/granted
+  // from. subscriptionPlan alone is only a tier key, and several active plans
+  // can now share a tier while differing in scope/price/limits (e.g. a Basic
+  // Lesson-Planner-only plan next to a Basic exams+planner plan), so the tier
+  // is no longer enough to resolve what the account actually paid for.
+  // Deliberately untyped by `ref` — which model it points at is decided by the
+  // account's userType, see getPlanConfigForUser in config/plans.js. Null on
+  // free accounts and on subscriptions predating this field, which fall back
+  // to resolving by tier exactly as before.
+  subscriptionPlanRef: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null
   },
   subscriptionStatus: {
     type: String,

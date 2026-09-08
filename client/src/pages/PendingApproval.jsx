@@ -101,9 +101,14 @@ export default function PendingApproval() {
   const isPaid = plan !== 'free' && planInfo.rwf !== 0;
   const isEnterprise = plan === 'enterprise';
 
-  // Prefer the live catalog entry for this tier (cheapest active plan of that
-  // tier, since the backend sorts by price) over the hardcoded fallback table.
-  const dbPlan = (planCatalog || []).find(p => p.tierKey === plan);
+  // Prefer the exact plan the account holds — a tier can be on sale at several
+  // scopes and prices, so matching on tier alone can name the wrong one. Falls
+  // back to the cheapest active plan of that tier (the backend sorts by price)
+  // for subscriptions that predate subscriptionPlanRef, then to the hardcoded
+  // table below.
+  const catalog = planCatalog || [];
+  const dbPlan = catalog.find(p => p._id === user?.subscriptionPlanRef)
+    || catalog.find(p => p.tierKey === plan);
   const planLabel = dbPlan?.name || planInfo.label;
   const displayPrice = dbPlan ? `${dbPlan.price.toLocaleString()} ${dbPlan.currency}` : `${planInfo.rwf?.toLocaleString()} RWF`;
   const displayUsdHint = !dbPlan && planInfo.usd != null ? `(~$${planInfo.usd}/mo)` : null;

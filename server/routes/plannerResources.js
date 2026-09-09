@@ -23,6 +23,8 @@ const groqClient = require('../utils/groqClient');
 const { str } = require('../utils/lessonPlanBuilder');
 const { KINDS, clampCount, extractRelevantExcerpt } = require('../utils/plannerResourceBuilder');
 const { streamPlannerResourcePdf } = require('../utils/plannerResourcePdf');
+const { sendPptx } = require('../utils/slidesPptx');
+const { THEME_KEYS, THEMES, DEFAULT_THEME } = require('../utils/slideThemes');
 const { sendDocx } = require('../utils/docxExport');
 
 router.use(auth);
@@ -50,6 +52,7 @@ const pickFields = (kindConfig, body = {}) => {
   return {
     ...normalized,
     kind: kindConfig.kind,
+    theme: THEME_KEYS.includes(body.theme) ? body.theme : (normalized.theme || DEFAULT_THEME),
     schoolName: str(body.schoolName),
     teacherName: str(body.teacherName),
     term: str(body.term) || normalized.term || '',
@@ -81,6 +84,26 @@ router.get('/quota', isAdminOrTeacher, async (req, res) => {
     console.error('planner-resource quota error:', err);
     res.status(500).json({ message: 'Failed to check your monthly allowance' });
   }
+});
+
+// @desc    Slide deck design themes offered in the studio
+// @route   GET /api/planner-resources/themes
+// @access  Private (teacher/admin)
+router.get('/themes', isAdminOrTeacher, (req, res) => {
+  res.json({
+    defaultTheme: DEFAULT_THEME,
+    themes: THEME_KEYS.map((key) => ({
+      key,
+      name: THEMES[key].name,
+      description: THEMES[key].description,
+      // Enough colour for the picker to render a true swatch of each theme.
+      swatch: {
+        deep: `#${THEMES[key].deep}`,
+        accent: `#${THEMES[key].accent}`,
+        accentSoft: `#${THEMES[key].accentSoft}`
+      }
+    }))
+  });
 });
 
 // ── Generate ─────────────────────────────────────────────────────────────────
@@ -116,7 +139,8 @@ router.post('/:kind/generate', aiGradingLimiter, isAdminOrTeacher, requireLesson
       term: str(rest.term),
       unitTitle: str(rest.unitTitle),
       academicYear: str(rest.academicYear),
-      language: str(rest.language, 'auto')
+      language: str(rest.language, 'auto'),
+      theme: THEME_KEYS.includes(rest.theme) ? rest.theme : DEFAULT_THEME
     };
 
     const reference = referenceContent ? extractRelevantExcerpt(referenceContent, brief) : '';
@@ -271,14 +295,21 @@ router.delete('/:kind/:id', isAdminOrTeacher, withKind, async (req, res) => {
 // The unsaved variants let a draft be downloaded before it is committed.
 
 // @desc    Download an unsaved draft
-// @route   POST /api/planner-resources/:kind/export/:format(pdf|docx)
+// @route   POST /api/planner-resources/:kind/export/:format(pdf|docx|pptx)
 // @access  Private (teacher/admin)
 router.post('/:kind/export/:format', isAdminOrTeacher, requireLessonPlanner, withKind, async (req, res) => {
   try {
     const resource = pickFields(req.kindConfig, req.body || {});
+    // PowerPoint only makes sense for a deck — the other kinds are documents.
+    if (req.params.format === 'pptx') {
+      if (req.kindConfig.kind !== 'slides') {
+        return res.status(400).json({ message: 'PowerPoint export is only available for slide decks' });
+      }
+      return await sendPptx(res, resource);
+    }
     if (req.params.format === 'docx') return await sendDocx(res, resource, req.kindConfig.kind);
     if (req.params.format === 'pdf') return streamPlannerResourcePdf(res, resource);
-    return res.status(400).json({ message: 'Format must be pdf or docx' });
+    return res.status(400).json({ message: 'Format must be pdf, docx or pptx' });
   } catch (err) {
     console.error('planner-resource export error:', err);
     if (!res.headersSent) res.status(500).json({ message: 'Failed to generate the file' });
@@ -286,7 +317,7 @@ router.post('/:kind/export/:format', isAdminOrTeacher, requireLessonPlanner, wit
 });
 
 // @desc    Download a saved resource
-// @route   GET /api/planner-resources/:kind/:id/export/:format(pdf|docx)
+// @route   GET /api/planner-resources/:kind/:id/export/:format(pdf|docx|pptx)
 // @access  Private (owner)
 router.get('/:kind/:id/export/:format', isAdminOrTeacher, withKind, async (req, res) => {
   try {
@@ -295,9 +326,15 @@ router.get('/:kind/:id/export/:format', isAdminOrTeacher, withKind, async (req, 
     }).lean();
     if (!resource) return res.status(404).json({ message: 'Not found' });
 
+    if (req.params.format === 'pptx') {
+      if (req.kindConfig.kind !== 'slides') {
+        return res.status(400).json({ message: 'PowerPoint export is only available for slide decks' });
+      }
+      return await sendPptx(res, resource);
+    }
     if (req.params.format === 'docx') return await sendDocx(res, resource, req.kindConfig.kind);
     if (req.params.format === 'pdf') return streamPlannerResourcePdf(res, resource);
-    return res.status(400).json({ message: 'Format must be pdf or docx' });
+    return res.status(400).json({ message: 'Format must be pdf, docx or pptx' });
   } catch (err) {
     console.error('planner-resource export error:', err);
     if (!res.headersSent) res.status(500).json({ message: 'Failed to generate the file' });

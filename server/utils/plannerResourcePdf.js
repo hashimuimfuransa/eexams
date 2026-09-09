@@ -151,63 +151,110 @@ const renderExercises = (doc, resource) => {
   drawHeader(doc, cursor, resource, 'Exercise sheet');
 
   const w = cursor.width;
+
+  // Name / class / date rules. A sheet handed out without them gets written on
+  // anyway, in whatever space the learner finds.
+  doc.font(FONT_REG).fontSize(10.5).fillColor('#000000');
+  const fieldW = (w - 20) / 3;
+  ['Name: ' + '.'.repeat(26), 'Class: ' + '.'.repeat(14), 'Date: ' + '.'.repeat(16)]
+    .forEach((label, i) => doc.text(label, cursor.x0 + i * (fieldW + 10), cursor.y, { width: fieldW }));
+  cursor.y += 24;
+
   const instructions = sanitize(resource.instructions);
   if (instructions) {
     drawRow(doc, cursor, [{ text: instructions, w, font: FONT_ITALIC, size: 10.5, fill: SHADE }]);
-    cursor.y += 6;
   }
 
   const items = resource.items || [];
-  const totalMarks = items.reduce((sum, item) => {
+  const sumOf = (rows) => rows.reduce((total, item) => {
     const m = parseFloat(item.marks);
-    return sum + (Number.isFinite(m) ? m : 0);
+    return total + (Number.isFinite(m) ? m : 0);
   }, 0);
+  const totalMarks = sanitize(resource.totalMarks) || String(sumOf(items));
+
+  if (Number(totalMarks) > 0) {
+    drawRow(doc, cursor, [{ text: 'Total: ' + totalMarks + ' marks', w, font: FONT_BOLD, size: 10.5, align: 'right' }]);
+  }
+  cursor.y += 8;
 
   const numW = 34;
-  const bodyW = w - numW;
   const markW = 54;
+  const bodyW = w - numW;
+  const letters = 'ABCDEFGH';
 
-  items.forEach((item) => {
-    const marks = sanitize(item.marks);
-    drawRow(doc, cursor, [
-      { text: sanitize(item.number), w: numW, font: FONT_BOLD, size: 10.5, align: 'center' },
-      { text: sanitize(item.question), w: bodyW - (marks ? markW : 0), font: FONT_REG, size: 10.5 },
-      ...(marks ? [{ text: `(${marks})`, w: markW, font: FONT_REG, size: 10, align: 'center', valign: 'center' }] : [])
-    ]);
+  // Group by section so the paper prints with headed parts. Items carrying no
+  // section fall into one unlabelled group, which keeps older sheets working.
+  const declared = (resource.sections || []).filter((sec) => sanitize(sec.label) || sanitize(sec.title));
+  const groups = declared.map((sec) => ({
+    sec,
+    rows: items.filter((it) => sanitize(it.section) === sanitize(sec.label))
+  }));
+  const grouped = new Set(groups.flatMap((g) => g.rows));
+  const leftover = items.filter((it) => !grouped.has(it));
+  if (leftover.length) groups.push({ sec: null, rows: leftover });
 
-    const options = (item.options || []).map((o) => sanitize(o)).filter(Boolean);
-    if (options.length) {
-      const letters = 'ABCDEFGH';
-      const text = options.map((o, i) => `${letters[i] || '-'}. ${o}`).join('\n');
+  groups.filter((g) => g.rows.length).forEach(({ sec, rows }) => {
+    if (sec) {
+      const marks = sumOf(rows);
+      const title = [sanitize(sec.label) && ('SECTION ' + sanitize(sec.label)), sanitize(sec.title)]
+        .filter(Boolean).join(': ');
       drawRow(doc, cursor, [
-        { text: '', w: numW },
-        { text, w: bodyW, font: FONT_REG, size: 10.5 }
+        { text: title, w: w - 90, font: FONT_BOLD, size: 11, fill: SHADE },
+        { text: marks > 0 ? '(' + marks + ' marks)' : '', w: 90, font: FONT_BOLD, size: 10, fill: SHADE, align: 'right' }
       ]);
-    } else {
-      // Ruled space for an open answer.
-      drawRow(doc, cursor, [
-        { text: '', w: numW },
-        { text: '\n\n', w: bodyW, font: FONT_REG, size: 10.5 }
-      ]);
+      const secInstr = sanitize(sec.instructions);
+      if (secInstr) drawRow(doc, cursor, [{ text: secInstr, w, font: FONT_ITALIC, size: 10 }]);
+      cursor.y += 4;
     }
+
+    rows.forEach((item) => {
+      const marks = sanitize(item.marks);
+      drawRow(doc, cursor, [
+        { text: sanitize(item.number), w: numW, font: FONT_BOLD, size: 10.5, align: 'center' },
+        { text: sanitize(item.question), w: bodyW - (marks ? markW : 0), font: FONT_REG, size: 10.5 },
+        ...(marks ? [{ text: '(' + marks + ')', w: markW, font: FONT_REG, size: 10, align: 'center', valign: 'center' }] : [])
+      ]);
+
+      const options = (item.options || []).map((o) => sanitize(o)).filter(Boolean);
+      if (options.length) {
+        drawRow(doc, cursor, [
+          { text: '', w: numW },
+          { text: options.map((o, i) => (letters[i] || '-') + '. ' + o).join('\n'), w: bodyW, font: FONT_REG, size: 10.5 }
+        ]);
+      } else {
+        // Real ruled lines, as many as the question was scoped for. A blank gap
+        // leaves learners guessing how much answer is expected.
+        const count = Math.max(1, Math.min(12, item.answerLines || 2));
+        drawRow(doc, cursor, [
+          { text: '', w: numW },
+          { text: Array.from({ length: count }, () => '.'.repeat(108)).join('\n'), w: bodyW, font: FONT_REG, size: 10.5 }
+        ]);
+      }
+      cursor.y += 3;
+    });
   });
 
-  if (totalMarks > 0) {
-    cursor.y += 6;
-    drawRow(doc, cursor, [{ text: `Total: ${totalMarks} marks`, w, font: FONT_BOLD, size: 11, align: 'right' }]);
-  }
-
+  // Marking key on its own page: the sheet is handed out, the key is not.
   const answered = items.filter((item) => sanitize(item.answer));
   if (answered.length) {
     doc.addPage();
     cursor.y = doc.page.margins.top;
-    drawRow(doc, cursor, [{ text: 'Marking key', w, font: FONT_BOLD, size: 12, fill: SHADE, align: 'center' }]);
+    drawRow(doc, cursor, [{ text: 'MARKING KEY', w, font: FONT_BOLD, size: 12, fill: SHADE, align: 'center' }]);
+    drawRow(doc, cursor, [
+      { text: 'Q', w: numW, font: FONT_BOLD, size: 10, fill: SHADE, align: 'center' },
+      { text: 'Answer', w: bodyW - markW, font: FONT_BOLD, size: 10, fill: SHADE },
+      { text: 'Marks', w: markW, font: FONT_BOLD, size: 10, fill: SHADE, align: 'center' }
+    ]);
     answered.forEach((item) => {
       drawRow(doc, cursor, [
         { text: sanitize(item.number), w: numW, font: FONT_BOLD, size: 10.5, align: 'center' },
-        { text: sanitize(item.answer), w: bodyW, font: FONT_REG, size: 10.5 }
+        { text: sanitize(item.answer), w: bodyW - markW, font: FONT_REG, size: 10.5 },
+        { text: sanitize(item.marks), w: markW, font: FONT_REG, size: 10, align: 'center', valign: 'center' }
       ]);
     });
+    if (Number(totalMarks) > 0) {
+      drawRow(doc, cursor, [{ text: 'Total: ' + totalMarks + ' marks', w, font: FONT_BOLD, size: 11, align: 'right' }]);
+    }
   }
 };
 

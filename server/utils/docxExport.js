@@ -163,48 +163,116 @@ const slidesChildren = (resource) => {
 
 const exercisesChildren = (resource) => {
   const children = headerBlock(resource, 'Exercise sheet');
-
-  if (text(resource.instructions).trim()) {
-    children.push(para(resource.instructions, { italics: true, spacing: { after: 200 } }));
-  }
-
   const items = resource.items || [];
   const letters = 'ABCDEFGH';
 
-  items.forEach((item) => {
-    const marks = text(item.marks).trim();
-    children.push(para(
-      `${text(item.number)}. ${text(item.question)}${marks ? `   (${marks})` : ''}`,
-      { bold: true, spacing: { after: 60 } }
-    ));
-
-    const options = splitLines(item.options);
-    if (options.length) {
-      options.forEach((opt, i) => children.push(para(`   ${letters[i] || '-'}. ${opt}`, { spacing: { after: 40 } })));
-    } else {
-      // Blank ruled space so the sheet is usable as handed out.
-      children.push(para('', { spacing: { after: 40 } }));
-      children.push(para('   ' + '.'.repeat(90), { spacing: { after: 40 } }));
-      children.push(para('   ' + '.'.repeat(90), { spacing: { after: 120 } }));
-    }
-  });
-
-  const totalMarks = items.reduce((sum, item) => {
+  const sumOf = (rows) => rows.reduce((total, item) => {
     const m = parseFloat(item.marks);
-    return sum + (Number.isFinite(m) ? m : 0);
+    return total + (Number.isFinite(m) ? m : 0);
   }, 0);
-  if (totalMarks > 0) {
-    children.push(para(`Total: ${totalMarks} marks`, { bold: true, align: AlignmentType.RIGHT, spacing: { before: 160 } }));
+  const totalMarks = text(resource.totalMarks).trim() || String(sumOf(items));
+
+  // Name / class / date rules, so the sheet is usable the moment it prints.
+  children.push(table([
+    new TableRow({
+      children: [
+        cell('Name: ______________________', { width: 40 }),
+        cell('Class: ______________', { width: 30 }),
+        cell('Date: ______________', { width: 30 })
+      ]
+    })
+  ]));
+  children.push(para('', { spacing: { after: 120 } }));
+
+  if (text(resource.instructions).trim()) {
+    children.push(para(resource.instructions, { italics: true, spacing: { after: 80 } }));
+  }
+  if (Number(totalMarks) > 0) {
+    children.push(para('Total: ' + totalMarks + ' marks', {
+      bold: true, align: AlignmentType.RIGHT, spacing: { after: 200 }
+    }));
   }
 
-  // Marking key on its own page — the sheet is handed out, the key is not.
+  // Group by declared section; anything unassigned prints as a trailing
+  // unlabelled group so sheets saved before sections existed still render.
+  const declared = (resource.sections || []).filter((sec) => text(sec.label).trim() || text(sec.title).trim());
+  const groups = declared.map((sec) => ({
+    sec,
+    rows: items.filter((it) => text(it.section).trim() === text(sec.label).trim())
+  }));
+  const grouped = new Set(groups.flatMap((g) => g.rows));
+  const leftover = items.filter((it) => !grouped.has(it));
+  if (leftover.length) groups.push({ sec: null, rows: leftover });
+
+  groups.filter((g) => g.rows.length).forEach(({ sec, rows }) => {
+    if (sec) {
+      const marks = sumOf(rows);
+      const title = [text(sec.label).trim() && ('SECTION ' + text(sec.label).trim()), text(sec.title).trim()]
+        .filter(Boolean).join(': ');
+      children.push(table([
+        new TableRow({
+          children: [
+            cell(title, { width: 78, bold: true, fill: true, size: 22 }),
+            cell(marks > 0 ? '(' + marks + ' marks)' : '', { width: 22, bold: true, fill: true, size: 20 })
+          ]
+        })
+      ]));
+      if (text(sec.instructions).trim()) {
+        children.push(para(sec.instructions, { italics: true, spacing: { before: 80, after: 80 } }));
+      } else {
+        children.push(para('', { spacing: { after: 80 } }));
+      }
+    }
+
+    rows.forEach((item) => {
+      const marks = text(item.marks).trim();
+      children.push(para(
+        text(item.number) + '. ' + text(item.question) + (marks ? '   (' + marks + ')' : ''),
+        { bold: true, spacing: { before: 120, after: 60 } }
+      ));
+
+      const options = splitLines(item.options);
+      if (options.length) {
+        options.forEach((opt, i) => children.push(
+          para('   ' + (letters[i] || '-') + '. ' + opt, { spacing: { after: 40 } })
+        ));
+      } else {
+        // One ruled line per line the question was scoped for.
+        const count = Math.max(1, Math.min(12, item.answerLines || 2));
+        for (let i = 0; i < count; i += 1) {
+          children.push(para('   ' + '.'.repeat(88), { spacing: { after: 40 } }));
+        }
+      }
+    });
+  });
+
+  // Marking key on its own page: the sheet is handed out, the key is not.
   const answered = items.filter((item) => text(item.answer).trim());
   if (answered.length) {
     children.push(new Paragraph({ children: [], pageBreakBefore: true }));
-    children.push(para('Marking key', { bold: true, size: 26, align: AlignmentType.CENTER, spacing: { after: 160 } }));
-    children.push(table(answered.map((item) => new TableRow({
-      children: [cell(text(item.number), { width: 8, bold: true }), cell(text(item.answer), { width: 92 })]
-    }))));
+    children.push(para('MARKING KEY', { bold: true, size: 26, align: AlignmentType.CENTER, spacing: { after: 160 } }));
+    children.push(table([
+      new TableRow({
+        tableHeader: true,
+        children: [
+          cell('Q', { width: 8, bold: true, fill: true }),
+          cell('Answer', { width: 78, bold: true, fill: true }),
+          cell('Marks', { width: 14, bold: true, fill: true })
+        ]
+      }),
+      ...answered.map((item) => new TableRow({
+        children: [
+          cell(text(item.number), { width: 8, bold: true }),
+          cell(text(item.answer), { width: 78 }),
+          cell(text(item.marks), { width: 14 })
+        ]
+      }))
+    ]));
+    if (Number(totalMarks) > 0) {
+      children.push(para('Total: ' + totalMarks + ' marks', {
+        bold: true, align: AlignmentType.RIGHT, spacing: { before: 160 }
+      }));
+    }
   }
 
   return children;

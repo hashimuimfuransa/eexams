@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { THEME_KEYS, DEFAULT_THEME, LAYOUT_KEYS } = require('../utils/slideThemes');
 
 // The Lesson Planner's non-lesson-plan outputs: slide decks, exercise sheets
 // and schemes of work — the three things the pricing grid sells alongside
@@ -15,18 +16,42 @@ const mongoose = require('mongoose');
 // fields would make every consumer guess which ones are meaningful.
 
 const SlideSchema = new mongoose.Schema({
+  // Which of the designed layouts in utils/slidesPptx.js renders this slide.
+  // A closed set: an unknown value falls back to 'bullets' at render time
+  // rather than producing a blank slide.
+  layout: { type: String, enum: LAYOUT_KEYS, default: 'bullets' },
+  // Small caps label above the heading ("OBJECTIVES", "PRACTICE").
+  eyebrow: { type: String, trim: true, default: '' },
   heading: { type: String, trim: true, default: '' },
   bullets: { type: [String], default: [] },
+  // 'compare' layout only — the two panel headings.
+  columnLabels: { type: [String], default: [] },
+  // 'image' layout only — what the teacher should drop into the placeholder.
+  imageIdea: { type: String, trim: true, default: '' },
+  // 'summary' layout only — printed in its own highlighted box.
+  homework: { type: String, trim: true, default: '' },
   notes: { type: String, trim: true, default: '' }
 }, { _id: false });
 
 const ExerciseItemSchema = new mongoose.Schema({
+  // Section this question belongs to ("A", "B") so a sheet prints as a real
+  // paper with sections rather than one flat numbered run.
+  section: { type: String, trim: true, default: '' },
   number: { type: String, trim: true, default: '' },
   question: { type: String, trim: true, default: '' },
   // Empty for open-response questions; populated for multiple choice.
   options: { type: [String], default: [] },
   answer: { type: String, trim: true, default: '' },
-  marks: { type: String, trim: true, default: '' }
+  marks: { type: String, trim: true, default: '' },
+  // How much ruled space an open-response answer needs when printed.
+  answerLines: { type: Number, default: 2 }
+}, { _id: false });
+
+// Section header printed above the questions belonging to it.
+const ExerciseSectionSchema = new mongoose.Schema({
+  label: { type: String, trim: true, default: '' },
+  title: { type: String, trim: true, default: '' },
+  instructions: { type: String, trim: true, default: '' }
 }, { _id: false });
 
 const SchemeWeekSchema = new mongoose.Schema({
@@ -60,10 +85,16 @@ const PlannerResourceSchema = new mongoose.Schema({
   duration: { type: String, trim: true, default: '' },
   language: { type: String, trim: true, default: '' },
 
+  // Slide deck visual theme (utils/slideThemes.js). Stored per deck so a
+  // re-export months later looks identical to the one already handed out.
+  theme: { type: String, enum: THEME_KEYS, default: DEFAULT_THEME },
+
   // Per-kind body. Only the branch matching `kind` is ever populated.
   slides: { type: [SlideSchema], default: [] },
   instructions: { type: String, trim: true, default: '' },
+  sections: { type: [ExerciseSectionSchema], default: [] },
   items: { type: [ExerciseItemSchema], default: [] },
+  totalMarks: { type: String, trim: true, default: '' },
   weeks: { type: [SchemeWeekSchema], default: [] },
 
   // Provenance, mirroring LessonPlan.

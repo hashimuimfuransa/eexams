@@ -70,6 +70,7 @@ function Nav({ scrolled, mode, toggleMode, isAuthenticated, user, handleLogout, 
   const navLinks = [
     { id: 'home', label: 'Home', route: '/' },
     { id: 'how-it-works', label: 'How it works' },
+    { id: 'teacher-toolkit', label: 'For teachers' },
     { id: 'faq', label: 'FAQ' },
     { id: 'contact', label: 'Contact' },
     { id: 'marketplace', label: 'Public Exams', route: '/marketplace' },

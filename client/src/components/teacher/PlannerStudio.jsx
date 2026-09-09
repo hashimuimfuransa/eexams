@@ -6,7 +6,7 @@ import {
   FormControl, InputLabel, LinearProgress
 } from '@mui/material';
 import {
-  AutoAwesome, Download, Save, Add, Delete, Description, AttachFile, Close, Refresh
+  AutoAwesome, Download, Save, Add, Delete, Description, AttachFile, Close, Refresh, Slideshow
 } from '@mui/icons-material';
 import api from '../../services/api';
 import { tokens } from '../../pages/dashboardTokens';
@@ -31,8 +31,23 @@ const cardSx = {
 
 const LANGUAGES = ['auto', 'English', 'French', 'Kinyarwanda', 'Kiswahili'];
 
+// Mirrors LAYOUTS in server/utils/slideThemes.js. Each one is drawn by a real
+// designed layout in the PowerPoint renderer, so the picker is a closed set —
+// an unknown value would silently fall back to plain bullets.
+const SLIDE_LAYOUTS = [
+  { key: 'title', label: 'Title slide' },
+  { key: 'bullets', label: 'Bullet points' },
+  { key: 'twoColumn', label: 'Two columns' },
+  { key: 'compare', label: 'Compare (two panels)' },
+  { key: 'steps', label: 'Numbered steps' },
+  { key: 'callout', label: 'Big statement' },
+  { key: 'image', label: 'Text + picture' },
+  { key: 'question', label: 'Question to the class' },
+  { key: 'summary', label: 'Summary + homework' }
+];
+
 // Blank row factories, matching the sub-schemas in server/models/PlannerResource.js.
-const blankSlide = () => ({ heading: '', bullets: [''], notes: '' });
+const blankSlide = () => ({ layout: 'bullets', eyebrow: '', heading: '', bullets: [''], columnLabels: [], imageIdea: '', homework: '', notes: '' });
 const blankItem = (n) => ({ number: String(n), question: '', options: [], answer: '', marks: '' });
 const blankWeek = (n) => ({
   week: String(n), lessonNo: '', unitTitle: '', lessonTitle: '',
@@ -86,6 +101,7 @@ const KIND_CONFIG = {
 
 const emptyResource = (config, user) => ({
   kind: config.kind,
+  theme: 'classic',
   title: '',
   subject: '',
   className: '',
@@ -156,6 +172,8 @@ export default function PlannerStudio({ user, kind }) {
   const [toast, setToast] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [quota, setQuota] = useState(null);
+  const [themes, setThemes] = useState([]);
+  const [theme, setTheme] = useState('classic');
 
   // Reset everything when the dashboard switches between studio kinds — the
   // component instance is reused, and a deck must not leak into a scheme.
@@ -188,6 +206,15 @@ export default function PlannerStudio({ user, kind }) {
     }
   }, [config.quotaKey]);
 
+  // The design catalogue comes from the server so the picker can never offer a
+  // theme the PowerPoint renderer doesn't know how to draw.
+  useEffect(() => {
+    if (config.kind !== 'slides') return;
+    api.get('/planner-resources/themes')
+      .then((res) => setThemes(res.data.themes || []))
+      .catch((err) => console.error('Failed to load slide themes:', err));
+  }, [config.kind]);
+
   useEffect(() => { loadSaved(); loadQuota(); }, [loadSaved, loadQuota]);
 
   const exhausted = quota ? quota.allowed === false : false;
@@ -198,6 +225,11 @@ export default function PlannerStudio({ user, kind }) {
   const resetsOn = quota?.periodEnd
     ? new Date(quota.periodEnd).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
     : '';
+
+  const applyTheme = (key) => {
+    setTheme(key);
+    if (resource) setResource({ ...resource, theme: key });
+  };
 
   const body = resource?.[config.bodyKey] || [];
   const setBody = (rows) => setResource({ ...resource, [config.bodyKey]: rows });
@@ -239,11 +271,11 @@ export default function PlannerStudio({ user, kind }) {
     setError('');
     try {
       const res = await api.post(`/planner-resources/${config.kind}/generate`, {
-        brief, referenceContent, count, questionType,
+        brief, referenceContent, count, questionType, theme,
         ...details,
         sourceFileName: referenceInfo?.name || ''
       });
-      setResource({ ...emptyResource(config, user), ...res.data });
+      setResource({ ...emptyResource(config, user), theme, ...res.data });
       setResourceId(null);
       setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
     } catch (err) {
@@ -260,6 +292,7 @@ export default function PlannerStudio({ user, kind }) {
     }
     setResource({
       ...emptyResource(config, user),
+      theme,
       ...details,
       language: details.language === 'auto' ? '' : details.language,
       sourcePrompt: brief.trim(),
@@ -300,6 +333,8 @@ export default function PlannerStudio({ user, kind }) {
 
       const mime = format === 'pdf'
         ? 'application/pdf'
+        : format === 'pptx'
+        ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
         : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       const url = window.URL.createObjectURL(new Blob([res.data], { type: mime }));
       const link = document.createElement('a');
@@ -321,6 +356,7 @@ export default function PlannerStudio({ user, kind }) {
   const openSaved = async (item) => {
     setResource(item);
     setResourceId(item._id);
+    if (item.theme) setTheme(item.theme);
     setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   };
 
@@ -462,6 +498,46 @@ export default function PlannerStudio({ user, kind }) {
           )}
         </Box>
 
+        {config.kind === 'slides' && themes.length > 0 && (
+          <>
+            <Divider sx={{ my: 2 }} />
+            <Typography sx={{ fontSize: 13, fontWeight: 800, color: tokens.textPrimary, mb: 1 }}>
+              Design
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap' }}>
+              {themes.map((th) => {
+                const selected = theme === th.key;
+                return (
+                  <Tooltip key={th.key} title={th.description}>
+                    <Box
+                      onClick={() => applyTheme(th.key)}
+                      sx={{
+                        cursor: 'pointer', borderRadius: 2, p: 1, width: 132,
+                        border: '2px solid',
+                        borderColor: selected ? tokens.primary : tokens.surfaceBorder,
+                        bgcolor: selected ? 'rgba(12,189,115,0.05)' : 'transparent',
+                        transition: 'all .15s ease'
+                      }}
+                    >
+                      {/* A true miniature of the deck: title ground, accent
+                          rule and a page body, in the theme's own colours. */}
+                      <Box sx={{ height: 46, borderRadius: 1, overflow: 'hidden', border: `1px solid ${tokens.surfaceBorder}` }}>
+                        <Box sx={{ height: 26, bgcolor: th.swatch.deep, position: 'relative' }}>
+                          <Box sx={{ position: 'absolute', left: 6, bottom: 5, width: 26, height: 3, bgcolor: th.swatch.accent, borderRadius: 2 }} />
+                        </Box>
+                        <Box sx={{ height: 20, bgcolor: th.swatch.accentSoft }} />
+                      </Box>
+                      <Typography sx={{ fontSize: 11, fontWeight: 700, mt: 0.75, color: selected ? tokens.primary : tokens.textSecondary }} noWrap>
+                        {th.name}
+                      </Typography>
+                    </Box>
+                  </Tooltip>
+                );
+              })}
+            </Box>
+          </>
+        )}
+
         <Divider sx={{ my: 2 }} />
 
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -529,18 +605,73 @@ export default function PlannerStudio({ user, kind }) {
 
               {config.kind === 'slides' && (
                 <Grid container spacing={1.5}>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Layout</InputLabel>
+                      <Select
+                        label="Layout" value={row.layout || 'bullets'}
+                        onChange={(e) => updateRow(i, { layout: e.target.value })}
+                        sx={{ borderRadius: 1.5, fontSize: 13 }}
+                      >
+                        {SLIDE_LAYOUTS.map((l) => (
+                          <MenuItem key={l.key} value={l.key}>{l.label}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField fullWidth size="small" label="Section label" value={row.eyebrow || ''}
+                      placeholder="Objectives"
+                      onChange={(e) => updateRow(i, { eyebrow: e.target.value })}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
+                  </Grid>
+                  <Grid item xs={12} sm={5}>
                     <TextField fullWidth size="small" label="Heading" value={row.heading || ''}
                       onChange={(e) => updateRow(i, { heading: e.target.value })}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
                   </Grid>
+
+                  {/* Only the fields the chosen layout actually renders — a
+                      "picture idea" box on a bullet slide is just noise. */}
+                  {row.layout === 'compare' && (
+                    <Grid item xs={12}>
+                      <LineListEditor label="Panel headings (left, right)" items={row.columnLabels || []}
+                        onChange={(columnLabels) => updateRow(i, { columnLabels })}
+                        placeholder="Panel heading" />
+                    </Grid>
+                  )}
+                  {row.layout === 'image' && (
+                    <Grid item xs={12}>
+                      <TextField fullWidth size="small" label="What picture to show"
+                        value={row.imageIdea || ''}
+                        placeholder="Photo of a Rwandan school uniform, clothing clearly visible"
+                        onChange={(e) => updateRow(i, { imageIdea: e.target.value })}
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
+                    </Grid>
+                  )}
+                  {row.layout === 'summary' && (
+                    <Grid item xs={12}>
+                      <TextField fullWidth size="small" label="Homework" value={row.homework || ''}
+                        onChange={(e) => updateRow(i, { homework: e.target.value })}
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
+                    </Grid>
+                  )}
+
                   <Grid item xs={12} md={7}>
-                    <LineListEditor label="Bullets" items={row.bullets || []}
+                    <LineListEditor
+                      label={row.layout === 'compare'
+                        ? 'Items (first half = left panel, second half = right)'
+                        : row.layout === 'steps' ? 'Steps, in order'
+                        : row.layout === 'question' ? 'Question (first line)'
+                        : row.layout === 'callout' ? 'Statement (first line)'
+                        : 'Bullets'}
+                      items={row.bullets || []}
                       onChange={(bullets) => updateRow(i, { bullets })}
                       placeholder="One short line learners can read" />
                   </Grid>
                   <Grid item xs={12} md={5}>
-                    <TextField fullWidth size="small" multiline minRows={3} label="Speaker notes"
+                    <TextField fullWidth size="small" multiline minRows={3}
+                      label={row.layout === 'question' ? 'Speaker notes (put the answer here)' : 'Speaker notes'}
                       value={row.notes || ''} onChange={(e) => updateRow(i, { notes: e.target.value })}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
                   </Grid>
@@ -554,12 +685,18 @@ export default function PlannerStudio({ user, kind }) {
                       onChange={(e) => updateRow(i, { number: e.target.value })}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
                   </Grid>
-                  <Grid item xs={8} sm={2}>
+                  <Grid item xs={4} sm={2}>
+                    <TextField fullWidth size="small" label="Section" value={row.section || ''}
+                      placeholder="A"
+                      onChange={(e) => updateRow(i, { section: e.target.value })}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
+                  </Grid>
+                  <Grid item xs={4} sm={2}>
                     <TextField fullWidth size="small" label="Marks" value={row.marks || ''}
                       onChange={(e) => updateRow(i, { marks: e.target.value })}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
                   </Grid>
-                  <Grid item xs={12} sm={8}>
+                  <Grid item xs={12} sm={6}>
                     <TextField fullWidth size="small" multiline label="Question" value={row.question || ''}
                       onChange={(e) => updateRow(i, { question: e.target.value })}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
@@ -571,7 +708,14 @@ export default function PlannerStudio({ user, kind }) {
                   <Grid item xs={12} md={5}>
                     <TextField fullWidth size="small" multiline minRows={2} label="Answer (marking key)"
                       value={row.answer || ''} onChange={(e) => updateRow(i, { answer: e.target.value })}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 }, mb: 1 }} />
+                    {!(row.options || []).length && (
+                      <TextField fullWidth size="small" type="number" label="Ruled answer lines to print"
+                        value={row.answerLines ?? 2}
+                        onChange={(e) => updateRow(i, { answerLines: Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 1)) })}
+                        inputProps={{ min: 1, max: 12 }}
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: 13 } }} />
+                    )}
                   </Grid>
                 </Grid>
               )}
@@ -631,10 +775,21 @@ export default function PlannerStudio({ user, kind }) {
           <Divider sx={{ my: 2 }} />
 
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {config.kind === 'slides' && (
+              <Button
+                variant="contained" onClick={() => download('pptx')} disabled={!!downloading}
+                startIcon={downloading === 'pptx' ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <Slideshow />}
+                sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, fontSize: 13, bgcolor: '#C43E1C', '&:hover': { bgcolor: '#A63317' } }}
+              >
+                Download PowerPoint
+              </Button>
+            )}
             <Button
-              variant="contained" onClick={() => download('pdf')} disabled={!!downloading}
-              startIcon={downloading === 'pdf' ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <Download />}
-              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, fontSize: 13, bgcolor: tokens.primary, '&:hover': { bgcolor: tokens.primaryDark } }}
+              variant={config.kind === 'slides' ? 'outlined' : 'contained'} onClick={() => download('pdf')} disabled={!!downloading}
+              startIcon={downloading === 'pdf' ? <CircularProgress size={16} /> : <Download />}
+              sx={config.kind === 'slides'
+                ? { borderRadius: 2, textTransform: 'none', fontWeight: 700, fontSize: 13 }
+                : { borderRadius: 2, textTransform: 'none', fontWeight: 700, fontSize: 13, bgcolor: tokens.primary, '&:hover': { bgcolor: tokens.primaryDark } }}
             >
               Download PDF
             </Button>
@@ -700,6 +855,13 @@ export default function PlannerStudio({ user, kind }) {
                   sx={{ textTransform: 'none', fontWeight: 700, fontSize: 12 }}>
                   Open
                 </Button>
+                {config.kind === 'slides' && (
+                  <Tooltip title="Download PowerPoint">
+                    <IconButton size="small" onClick={() => download('pptx', item, item._id)} sx={{ color: '#C43E1C' }}>
+                      <Slideshow fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 <Tooltip title="Download PDF">
                   <IconButton size="small" onClick={() => download('pdf', item, item._id)}><Download fontSize="small" /></IconButton>
                 </Tooltip>

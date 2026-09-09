@@ -875,6 +875,107 @@ function HowItWorks({ mode }) {
   );
 }
 
+// ─── TEACHER TOOLKIT ─────────────────────────────────────────────────────────
+// The platform started as exams only, so the landing page said nothing about
+// the Lesson Planner products a teacher can now buy on their own. This is the
+// section that tells them, and it mirrors the four monthly allowances the
+// pricing grid actually sells (server/utils/planLimits.js PLANNER_QUOTA_FIELDS)
+// — if an output is added or removed there, it belongs here too.
+function TeacherToolkit({ mode }) {
+  const isDark = mode === 'dark';
+  const bg = isDark ? '#0B1220' : '#F8FAFC';
+  const text = isDark ? '#E2E8F0' : '#0F172A';
+  const muted = isDark ? '#94A3B8' : '#64748B';
+  const cardBg = isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF';
+  const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0';
+
+  const tools = [
+    {
+      colour: '#0D406C',
+      title: 'Lesson plans',
+      desc: 'Describe the lesson or attach the textbook. You get the full REB/CBC lesson plan form, ready to edit and hand in.',
+      icon: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    },
+    {
+      colour: '#C43E1C',
+      title: 'Slide decks',
+      desc: 'A real PowerPoint file with a designed theme, varied layouts and speaker notes — not a page of bullet points.',
+      icon: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>
+    },
+    {
+      colour: '#7C3AED',
+      title: 'Exercise sheets',
+      desc: 'A printable paper with sections, marks per question, ruled answer space and a marking key on its own page.',
+      icon: <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>
+    },
+    {
+      colour: '#0891B2',
+      title: 'Schemes of work',
+      desc: 'A whole term laid out week by week with objectives, activities, materials and assessment, ready for your head teacher.',
+      icon: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>
+    },
+  ];
+
+  return (
+    <section id="teacher-toolkit" style={{ padding: 'clamp(60px, 12vw, 100px) 0', background: bg }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
+        <div style={{ textAlign: 'center', marginBottom: 56 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 100, background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.08)', border: `1px solid ${isDark ? 'rgba(12,189,115,0.2)' : 'rgba(12,189,115,0.15)'}`, marginBottom: 20 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#0CBD73', fontFamily: "'DM Sans', sans-serif", letterSpacing: '0.02em', textTransform: 'uppercase' }}>For teachers</span>
+          </div>
+          <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', letterSpacing: '-0.01em', color: text, marginBottom: 14 }}>
+            Not just exams — your whole preparation, done with AI
+          </h2>
+          <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(0.95rem, 2vw, 1.05rem)', lineHeight: 1.65, color: muted, maxWidth: 660, margin: '0 auto' }}>
+            The Lesson Planner turns what you are teaching next into the documents you actually have to produce.
+            Every one of them downloads as PDF and Word, and slides as PowerPoint.
+          </p>
+        </div>
+
+        <div className="features-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24 }}>
+          {tools.map((t) => (
+            <div key={t.title} style={{ padding: 24, borderRadius: 12, border: `1px solid ${cardBorder}`, background: cardBg }}>
+              <div style={{ width: 48, height: 48, borderRadius: 10, background: `${t.colour}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={t.colour} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                  {t.icon}
+                </svg>
+              </div>
+              <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 16, color: text, marginBottom: 8 }}>{t.title}</h3>
+              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, lineHeight: 1.6, color: muted }}>{t.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: 48, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <RouterLink to="/register" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '12px 28px', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
+            background: '#0D406C', color: 'white', textDecoration: 'none',
+            boxShadow: '0 1px 3px rgba(13, 64, 108, 0.15)', whiteSpace: 'nowrap', transition: 'all 0.15s ease',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#082545'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#0D406C'; }}
+          >
+            Start planning free
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </RouterLink>
+          <RouterLink to="/pricing" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '12px 28px', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 15,
+            background: 'transparent', color: text, textDecoration: 'none',
+            border: `1px solid ${cardBorder}`, whiteSpace: 'nowrap', transition: 'all 0.15s ease',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#0CBD73'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = cardBorder; }}
+          >
+            See teacher plans
+          </RouterLink>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── FAQ ─────────────────────────────────────────────────────────────────────
 // Single source of truth: rendered on the page AND emitted as FAQPage JSON-LD.
 // Google requires the two to match, so never add a schema entry that isn't visible here.
@@ -1398,8 +1499,8 @@ function App() {
     <div style={{ fontFamily: "'DM Sans', sans-serif" }}>
       <SEO
         title="Online Exams for Schools & Students in Rwanda | eexams"
-        description="eexams runs secure online exams for institutions, schools, organisations and individual students in Rwanda and beyond. AI marking, results the same day."
-        keywords="eexams, online exams, online exams Rwanda, online exams for schools, online exams for institutions, online exams for organisations, online exams for students, individual students, AI marking, AI grading, marked in minutes, same-day results, secure online exams, exam platform, exam management system, digital assessment, student testing, university exams, Kinyarwanda exams, English exams, national exams, secondary exams, primary exams, East Africa online exams"
+        description="eexams runs secure online exams for institutions, schools, organisations and individual students in Rwanda and beyond. AI marking, results the same day — plus an AI Lesson Planner for teachers: lesson plans, PowerPoint slides, exercise sheets and schemes of work."
+        keywords="eexams, online exams, online exams Rwanda, AI lesson planner, lesson plan generator, REB lesson plan, CBC lesson plan, scheme of work generator, lesson plan template Rwanda, teaching slides generator, PowerPoint for teachers, exercise sheet generator, worksheet generator, teacher resources Rwanda, online exams for schools, online exams for institutions, online exams for organisations, online exams for students, individual students, AI marking, AI grading, marked in minutes, same-day results, secure online exams, exam platform, exam management system, digital assessment, student testing, university exams, Kinyarwanda exams, English exams, national exams, secondary exams, primary exams, East Africa online exams"
         ogUrl="https://www.eexams.net/"
         canonical="https://www.eexams.net/"
         structuredData={[
@@ -1410,7 +1511,7 @@ function App() {
             '@type': 'WebSite',
             name: 'eexams',
             url: 'https://www.eexams.net/',
-            description: 'Online exams, marked in minutes. For institutions, schools, organisations and individual students in Rwanda and beyond.',
+            description: 'Online exams, marked in minutes, plus an AI Lesson Planner producing lesson plans, slide decks, exercise sheets and schemes of work. For institutions, schools, organisations and individual students in Rwanda and beyond.',
             potentialAction: {
               '@type': 'SearchAction',
               target: 'https://www.eexams.net/marketplace?q={search_term_string}',
@@ -1433,6 +1534,7 @@ function App() {
         <Hero mode={mode} isAuthenticated={isAuthenticated} user={user} />
         <MarketplaceShowcase mode={mode} />
         <HowItWorks mode={mode} />
+        <TeacherToolkit mode={mode} />
         <CTABanner mode={mode} />
         <FAQ mode={mode} />
         <Contact mode={mode} />

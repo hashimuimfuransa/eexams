@@ -24,7 +24,7 @@ import {
   ExpandMore, ExpandLess, Delete, RadioButtonChecked, CheckBox, Check,
   DragIndicator, SwapVert, Mic, MicOff, Stop, RestartAlt, Visibility, VisibilityOff, LockReset, Info, Article,
   EmojiEvents, Leaderboard as LeaderboardIcon, ClearAll, ReportProblem, MenuBook,
-  Slideshow, FactCheck, CalendarMonth
+  Slideshow, FactCheck, CalendarMonth, ArrowBack
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -87,10 +87,15 @@ const StudentRow = memo(({ row, index, fields, onUpdate, onRemove, disabled, can
 // together when a plan doesn't include the planner.
 const PLANNER_SECTIONS = ['lessonPlanner', 'slides', 'exercises', 'scheme'];
 
+// The exam product's own sections. A plan sold for the Lesson Planner alone
+// can't author exams, so offering the builder would only lead to a 403.
+const EXAM_SECTIONS = ['createExam'];
+
 // Function to get navigation items based on subscription plan
-const getNavigationItems = (user, hasTemplatesAccess, hasLessonPlannerAccess = true) => {
+const getNavigationItems = (user, hasTemplatesAccess, hasLessonPlannerAccess = true, hasExamAccess = true) => {
   const baseNav = [
     { id: 'home',      label: 'Dashboard',  icon: <DashboardCustomize sx={{ fontSize: 20 }} /> },
+    { id: 'createExam', label: 'Create Exam', icon: <AutoAwesome sx={{ fontSize: 20 }} /> },
     { id: 'exams',     label: 'My Exams',   icon: <Assignment sx={{ fontSize: 20 }} /> },
     { id: 'lessonPlanner', label: 'Lesson Planner', icon: <MenuBook sx={{ fontSize: 20 }} /> },
     { id: 'slides', label: 'Slides', icon: <Slideshow sx={{ fontSize: 20 }} /> },
@@ -106,9 +111,10 @@ const getNavigationItems = (user, hasTemplatesAccess, hasLessonPlannerAccess = t
   // The Lesson Planner is its own purchasable product — a plan sold for exams
   // only doesn't include it, and the server rejects the authoring routes, so
   // don't offer the tab at all.
-  const nav = hasLessonPlannerAccess
+  let nav = hasLessonPlannerAccess
     ? baseNav
     : baseNav.filter((item) => !PLANNER_SECTIONS.includes(item.id));
+  if (!hasExamAccess) nav = nav.filter((item) => !EXAM_SECTIONS.includes(item.id));
 
   // Only show templates if user has access (Basic plan or higher).
   // Templates sits just before Leaderboard.
@@ -182,7 +188,7 @@ export default function TeacherDashboard() {
   const isMobile = useMediaQuery('(max-width:900px)');
   const isXs = useMediaQuery('(max-width:600px)');
   const { user, logout } = useAuth();
-  const { hasTemplatesAccess, hasLessonPlannerAccess } = usePlan();
+  const { hasTemplatesAccess, hasLessonPlannerAccess, hasExamAccess } = usePlan();
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [activeSection, setActiveSection] = useState('home');
   const [stats, setStats] = useState(null);
@@ -262,10 +268,11 @@ export default function TeacherDashboard() {
   // the account no longer has — send it home rather than rendering nothing.
   useEffect(() => {
     if (!hasLessonPlannerAccess && PLANNER_SECTIONS.includes(activeSection)) setActiveSection('home');
-  }, [hasLessonPlannerAccess, activeSection]);
+    if (!hasExamAccess && EXAM_SECTIONS.includes(activeSection)) setActiveSection('home');
+  }, [hasLessonPlannerAccess, hasExamAccess, activeSection]);
 
   // Get navigation items based on subscription plan
-  const nav = getNavigationItems(user, hasTemplatesAccess, hasLessonPlannerAccess);
+  const nav = getNavigationItems(user, hasTemplatesAccess, hasLessonPlannerAccess, hasExamAccess);
 
   return (
     <DashboardShell
@@ -273,7 +280,8 @@ export default function TeacherDashboard() {
       topbarEl={<Topbar greeting={getDynamicGreeting(user?.firstName || 'Teacher')} sub="Here's what's happening with your exams today." user={user} onMenuClick={() => setSidebarOpen(v => !v)} onLogout={logout} roleLabel="Teacher" isXs={isXs} onSearch={handleSearch} />}
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
       <SubscriptionWarning user={user} onLogout={logout} />
-      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} user={user} />}
+      {activeSection === 'home'      && <HomeSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} pendingApprovals={pendingApprovals} user={user} />}
+      {activeSection === 'createExam' && hasExamAccess && <CreateExamSection stats={stats} statsLoading={statsLoading} exams={filteredExams} results={results} setActiveSection={setActiveSection} setExams={setExams} pendingApprovals={pendingApprovals} user={user} />}
       {activeSection === 'exams'     && <ExamsSection exams={filteredExams} setExams={setExams} setActiveSection={setActiveSection} user={user} />}
       {activeSection === 'lessonPlanner' && hasLessonPlannerAccess && <LessonPlanner user={user} />}
       {activeSection === 'slides' && hasLessonPlannerAccess && <PlannerStudio user={user} kind="slides" />}
@@ -490,9 +498,450 @@ function ExamDetailsPanel({ exam, saving, onSave }) {
 }
 
 /* ── HOME ── */
-function HomeSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
+/* ── HOME ──
+   Deliberately an index, not a workspace. Every tool the account can reach is
+   one tap away and grouped by the two products the plans actually sell —
+   exams, and the Lesson Planner teaching tools — so a teacher never has to
+   remember which sidebar item hides what. The exam builder, results tables and
+   planner studios all live on their own pages; nothing heavy renders here. */
+
+// One tile per destination. `scope` says which product it belongs to, so a plan
+// that covers only one of them simply drops the other panel.
+const TOOL_GROUPS = [
+  {
+    key: 'exams',
+    scope: 'exams',
+    title: 'Exams',
+    subtitle: 'Create, run and mark assessments',
+    accent: tokens.accent,
+    tint: 'rgba(12,189,115,0.09)',
+    icon: <Assignment sx={{ fontSize: 20 }} />,
+    tools: [
+      { id: 'createExam',   label: 'Create Exam',   hint: 'AI, upload or build by hand', icon: <AutoAwesome sx={{ fontSize: 20 }} />,      colour: '#0CBD73', primary: true },
+      { id: 'exams',        label: 'My Exams',      hint: 'Publish, edit, share',        icon: <Assignment sx={{ fontSize: 20 }} />,       colour: '#0D406C' },
+      { id: 'students',     label: 'Students',      hint: 'Add and organise classes',    icon: <People sx={{ fontSize: 20 }} />,           colour: '#6366F1' },
+      { id: 'results',      label: 'Results',       hint: 'Scores and marking',          icon: <ListAlt sx={{ fontSize: 20 }} />,          colour: '#0891B2' },
+      { id: 'leaderboard',  label: 'Leaderboard',   hint: 'Top performers',              icon: <EmojiEvents sx={{ fontSize: 20 }} />,      colour: '#F59E0B' },
+      { id: 'reclamations', label: 'Reclamations',  hint: 'Student score appeals',       icon: <ReportProblem sx={{ fontSize: 20 }} />,    colour: '#EF4444' },
+      { id: 'templates',    label: 'Templates',     hint: 'Reuse a past exam',           icon: <Description sx={{ fontSize: 20 }} />,      colour: '#7C3AED', needs: 'templates' },
+      { id: 'reports',      label: 'Reports',       hint: 'Class analytics',             icon: <BarChart sx={{ fontSize: 20 }} />,         colour: '#EC4899' },
+    ]
+  },
+  {
+    key: 'teaching',
+    scope: 'lessonPlanner',
+    title: 'Teaching tools',
+    subtitle: 'Prepare and export with AI',
+    accent: '#7C3AED',
+    tint: 'rgba(124,58,237,0.09)',
+    icon: <MenuBook sx={{ fontSize: 20 }} />,
+    tools: [
+      { id: 'lessonPlanner', label: 'Lesson Plan',    hint: 'REB/CBC plan form',   icon: <MenuBook sx={{ fontSize: 20 }} />,      colour: '#0D406C', primary: true },
+      { id: 'slides',        label: 'Slides',         hint: 'PowerPoint deck',     icon: <Slideshow sx={{ fontSize: 20 }} />,     colour: '#C43E1C' },
+      { id: 'exercises',     label: 'Exercises',      hint: 'Question sheet',      icon: <FactCheck sx={{ fontSize: 20 }} />,     colour: '#7C3AED' },
+      { id: 'scheme',        label: 'Scheme of Work', hint: 'Whole term plan',     icon: <CalendarMonth sx={{ fontSize: 20 }} />, colour: '#0891B2' },
+    ]
+  }
+];
+
+// How many stat cards sit on a row at each breakpoint, and how the last card
+// fills any gap.
+//
+// The card count is not fixed — it is 2 on a Lesson-Planner-only plan and 6 on
+// an exams + planner + marketplace one — so a hardcoded `md={2.4}` either
+// squeezes or strands cards. This computes the columns from the real count and
+// then stretches the final card across whatever remains of its row, so there is
+// never a half-width orphan sitting next to dead space on any screen.
+const statColumns = (count) => ({
+  xs: 2,                                  // phones: two up
+  sm: count <= 4 ? 2 : 3,                 // large phones / small tablets
+  md: count <= 4 ? count : 3,             // tablets
+  lg: Math.min(count, 6)                  // laptops and up: one row
+});
+
+// A Lesson-Planner-only plan shows just two cards. Left to stretch they become
+// two 450px slabs each holding a single digit, which reads as a broken layout
+// rather than a compact summary — so few cards get a capped track and sit left.
+const statTrack = (count) => (count <= 2 ? 'minmax(0, 290px)' : 'minmax(0, 1fr)');
+
+// span for the LAST card so the bottom row is always full
+const statLastSpan = (count, cols) => {
+  const remainder = count % cols;
+  return remainder === 0 ? 'auto' : `span ${cols - remainder + 1}`;
+};
+
+/* One dashboard statistic.
+
+   Deliberately has no sparkline: the previous cards drew a hardcoded seven-point
+   series and captioned every figure "+3 this week" regardless of the data, which
+   is a number a teacher could act on and that was never true. A card either
+   shows a real trailing figure or it shows nothing but the value.
+
+   `progress` (0-1) turns the card into a monthly allowance meter — that IS real,
+   it comes from the plan's quota counters. */
+function StatCard({ stat, loading }) {
+  const pct = stat.progress === null || stat.progress === undefined
+    ? null
+    : Math.min(100, Math.max(0, stat.progress * 100));
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: { xs: 1.5, sm: 2, md: 2.25 },
+        height: '100%',
+        minWidth: 0,
+        borderRadius: 3,
+        bgcolor: 'white',
+        border: `1px solid ${tokens.surfaceBorder}`,
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'box-shadow .2s, transform .15s, border-color .15s',
+        ...(stat.onClick && {
+          cursor: 'pointer',
+          '&:hover': { boxShadow: '0 6px 20px rgba(13,64,108,0.09)', transform: 'translateY(-2px)', borderColor: `${stat.colour}55` }
+        })
+      }}
+      onClick={stat.onClick}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25 }, mb: { xs: 1, sm: 1.5 }, minWidth: 0 }}>
+        <Box sx={{
+          width: { xs: 30, sm: 34, md: 38 }, height: { xs: 30, sm: 34, md: 38 }, borderRadius: 2, flexShrink: 0,
+          bgcolor: `${stat.colour}16`, color: stat.colour,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          '& svg': { fontSize: { xs: 17, sm: 20 } }
+        }}>
+          {stat.icon}
+        </Box>
+        <Typography sx={{
+          fontSize: { xs: 11, sm: 12, md: 12.5 }, fontWeight: 600, color: tokens.textMuted,
+          fontFamily: "DM Sans,sans-serif", lineHeight: 1.25, minWidth: 0,
+          // Two lines max, then ellipsis — "Teaching resources" must not push
+          // the card taller than its neighbours on a narrow phone column.
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+        }}>
+          {stat.label}
+        </Typography>
+      </Box>
+
+      {loading
+        ? <CircularProgress size={20} sx={{ color: stat.colour }} />
+        : (
+          <Typography fontWeight={800} sx={{ color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.75rem' } }} noWrap>
+            {stat.value}
+          </Typography>
+        )}
+
+      <Box sx={{ mt: 'auto', pt: 1 }}>
+        {pct !== null && (
+          <Box sx={{ height: 5, borderRadius: 3, bgcolor: `${stat.colour}18`, overflow: 'hidden', mb: 0.75 }}>
+            <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: stat.colour, borderRadius: 3, transition: 'width .4s ease' }} />
+          </Box>
+        )}
+        {stat.sub && (
+          <Typography sx={{
+            fontSize: { xs: 10, sm: 11, md: 11.5 }, color: tokens.textMuted,
+            fontFamily: "DM Sans,sans-serif", lineHeight: 1.35,
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+          }}>
+            {stat.sub}
+          </Typography>
+        )}
+      </Box>
+    </Paper>
+  );
+}
+
+function ToolTile({ tool, onOpen }) {
+  return (
+    <Grid item xs={12} sm={6} md={6}>
+      <Box
+        onClick={() => onOpen(tool.id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(tool.id); } }}
+        sx={{
+          height: '100%',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 1.25,
+          p: { xs: 1.5, sm: 1.75 },
+          borderRadius: 2.5,
+          cursor: 'pointer',
+          bgcolor: tool.primary ? `${tool.colour}12` : 'white',
+          border: `1px solid ${tool.primary ? `${tool.colour}45` : tokens.surfaceBorder}`,
+          transition: 'transform .15s ease, box-shadow .15s ease, border-color .15s ease',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: '0 6px 18px rgba(13,64,108,0.10)',
+            borderColor: tool.colour
+          },
+          '&:hover .tool-arrow': { opacity: 1, transform: 'translateX(0)' },
+          '&:focus-visible': { outline: `2px solid ${tool.colour}`, outlineOffset: 2 }
+        }}
+      >
+        <Box sx={{
+          width: 36, height: 36, borderRadius: 2, flexShrink: 0,
+          bgcolor: `${tool.colour}16`, color: tool.colour,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          {tool.icon}
+        </Box>
+        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+          <Typography fontWeight={700} sx={{ fontSize: 13.5, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.25 }}>
+            {tool.label}
+          </Typography>
+          <Typography sx={{ fontSize: 11.5, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", lineHeight: 1.35, mt: 0.25 }}>
+            {tool.hint}
+          </Typography>
+        </Box>
+        {/* Reveals on hover only — a static arrow on every tile is visual noise
+            when eight of them sit side by side. */}
+        <ArrowForward
+          className="tool-arrow"
+          sx={{
+            fontSize: 16, color: tool.colour, alignSelf: 'center', flexShrink: 0,
+            opacity: 0, transform: 'translateX(-4px)', transition: 'opacity .15s ease, transform .15s ease',
+            display: { xs: 'none', sm: 'block' }
+          }}
+        />
+      </Box>
+    </Grid>
+  );
+}
+
+function HomeSection({ stats, statsLoading, exams, results, setActiveSection, pendingApprovals, user }) {
+  const { hasMarketplaceAccess, hasTemplatesAccess, hasExamAccess, hasLessonPlannerAccess, plannerQuotas } = usePlan();
+
+  const perfData = results.slice(-7).map(r => Math.round(r.percentage ?? r.scores?.percentage ?? 0));
+  const avgPerf = results.length ? Math.round(results.reduce((s, r) => s + ((r.percentage ?? r.scores?.percentage ?? 0)), 0) / results.length) : (stats?.avgScore ? Math.round(stats.avgScore) : 0);
+
+  // Two of these come straight from the plan's monthly Lesson Planner counters
+  // (server/utils/plannerQuotas.js), already loaded by PlanContext — so they
+  // are live usage, not an estimate, and they double as the allowance meter.
+  const quota = (key) => plannerQuotas.find((q) => q.key === key) || null;
+  const lessonPlans = quota('lessonPlansPerMonth');
+  const resourceKeys = ['slidesPerMonth', 'exercisesPerMonth', 'schemesPerMonth'];
+  const resourceUsed = resourceKeys.reduce((sum, k) => sum + (quota(k)?.used || 0), 0);
+  const resourceLimit = resourceKeys.reduce((sum, k) => {
+    const q = quota(k);
+    // -1 is the unlimited sentinel; one unlimited output makes the group unlimited.
+    if (!q || q.limit === -1) return -1;
+    return sum === -1 ? -1 : sum + q.limit;
+  }, 0);
+
+  const meter = (used, limit) => (limit > 0 ? Math.min(1, used / limit) : null);
+  const ofLimit = (limit) => (limit === -1 ? 'Unlimited this month' : `of ${limit} this month`);
+
+  const examStats = [
+    {
+      label: 'Exams created', value: stats?.totalExams ?? 0, colour: tokens.accent,
+      icon: <Assignment sx={{ fontSize: 20 }} />,
+      sub: exams.length ? `${exams.filter((e) => e.status === 'active').length} currently active` : 'None yet',
+      onClick: () => setActiveSection('exams')
+    },
+    {
+      label: 'Students', value: stats?.totalStudents ?? 0, colour: '#6366F1',
+      icon: <People sx={{ fontSize: 20 }} />,
+      sub: 'Across your classes',
+      onClick: () => setActiveSection('students')
+    },
+    {
+      label: 'Average score', value: `${Math.round(stats?.averageScore ?? 0)}%`, colour: tokens.warning,
+      icon: <BarChart sx={{ fontSize: 20 }} />,
+      sub: `${stats?.passRate ?? 0}% pass rate`,
+      onClick: () => setActiveSection('results')
+    },
+  ];
+
+  const teachingStats = [
+    {
+      label: 'Lesson plans', value: lessonPlans?.used ?? 0, colour: '#0D406C',
+      icon: <MenuBook sx={{ fontSize: 20 }} />,
+      sub: lessonPlans ? ofLimit(lessonPlans.limit) : 'This month',
+      progress: lessonPlans ? meter(lessonPlans.used, lessonPlans.limit) : null,
+      onClick: () => setActiveSection('lessonPlanner')
+    },
+    {
+      label: 'Teaching resources', value: resourceUsed, colour: '#7C3AED',
+      icon: <Slideshow sx={{ fontSize: 20 }} />,
+      sub: resourceLimit === -1 ? 'Slides, exercises & schemes' : `of ${resourceLimit} slides, exercises & schemes`,
+      progress: meter(resourceUsed, resourceLimit),
+      onClick: () => setActiveSection('slides')
+    },
+  ];
+
+  const statCards = [
+    ...(hasExamAccess ? examStats : []),
+    ...(hasLessonPlannerAccess ? teachingStats : []),
+    ...(hasMarketplaceAccess ? [{
+      label: 'Pending approvals', value: pendingApprovals ?? 0, colour: '#F59E0B',
+      icon: <HourglassEmpty sx={{ fontSize: 20 }} />,
+      sub: 'Marketplace requests'
+    }] : []),
+  ];
+
+  const cols = statColumns(statCards.length);
+  const track = statTrack(statCards.length);
+
+  const available = { exams: hasExamAccess, lessonPlanner: hasLessonPlannerAccess };
+  const groups = TOOL_GROUPS
+    .filter((g) => available[g.scope])
+    .map((g) => ({ ...g, tools: g.tools.filter((t) => t.needs !== 'templates' || hasTemplatesAccess) }));
+
+  return (
+    <Box>
+      {/* At-a-glance figures. Exam-side and Lesson-Planner-side sit together so
+          a teacher sees the whole account in one row on a laptop, and a tidy
+          two-up grid on a phone. */}
+      <Box
+        sx={{
+          display: 'grid',
+          gap: { xs: 1.25, sm: 1.75, md: 2 },
+          mb: 3,
+          gridTemplateColumns: {
+            // Phones always stretch to the full width; the cap only applies once
+            // there is room to spare.
+            xs: `repeat(${cols.xs}, minmax(0, 1fr))`,
+            sm: `repeat(${cols.sm}, ${track})`,
+            md: `repeat(${cols.md}, ${track})`,
+            lg: `repeat(${cols.lg}, ${track})`,
+          },
+          // minmax(0, 1fr) above stops long values from forcing a column wider
+          // than its share and pushing the row into a horizontal overflow.
+          '& > *:last-child': {
+            gridColumn: {
+              xs: statLastSpan(statCards.length, cols.xs),
+              sm: statLastSpan(statCards.length, cols.sm),
+              md: statLastSpan(statCards.length, cols.md),
+              lg: statLastSpan(statCards.length, cols.lg),
+            }
+          }
+        }}
+      >
+        {statCards.map((stat) => (
+          <StatCard key={stat.label} stat={stat} loading={statsLoading} />
+        ))}
+      </Box>
+
+      {/* Everything the account can do, split by product. */}
+      <Box sx={{ mb: 1.5 }}>
+        <Typography fontWeight={800} sx={{ fontSize: 17, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif" }}>
+          What would you like to do?
+        </Typography>
+        <Typography sx={{ fontSize: 13, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>
+          Everything on your plan, in one place.
+        </Typography>
+      </Box>
+      <Grid container spacing={2.5} sx={{ mb: 3 }} alignItems="flex-start">
+        {groups.map((g) => (
+          <Grid item xs={12} md={groups.length > 1 ? 6 : 12} key={g.key}>
+            <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2.5, py: 2, bgcolor: g.tint, borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
+                <Box sx={{ width: 38, height: 38, borderRadius: 2, bgcolor: 'white', color: g.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {g.icon}
+                </Box>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography fontWeight={800} sx={{ fontSize: 15.5, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.2 }}>
+                    {g.title}
+                  </Typography>
+                  <Typography sx={{ fontSize: 12, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>
+                    {g.subtitle}
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+                <Grid container spacing={1.5}>
+                  {g.tools.map((t) => (
+                    <ToolTile key={t.id} tool={t} onOpen={setActiveSection} />
+                  ))}
+                </Grid>
+              </Box>
+            </Paper>
+          </Grid>
+        ))}
+
+        {groups.length === 0 && (
+          <Grid item xs={12}>
+            <Paper elevation={0} sx={{ p: 4, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', textAlign: 'center' }}>
+              <Typography sx={{ fontSize: 14, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif" }}>
+                Your plan doesn&apos;t include any tools yet. Upgrade to start creating.
+              </Typography>
+            </Paper>
+          </Grid>
+        )}
+      </Grid>
+
+      {/* Recent activity */}
+      <Box sx={{ mb: 1.5 }}>
+        <Typography fontWeight={800} sx={{ fontSize: 17, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif" }}>
+          Recent activity
+        </Typography>
+      </Box>
+      <Grid container spacing={2.5} sx={{ mb: 3 }}>
+        {/* Recent Exams */}
+        <Grid item xs={12} sm={6} md={4}>
+          <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
+            <SectionTitle action={<Button size="small" onClick={() => setActiveSection('exams')} sx={{ color: tokens.accent, fontWeight: 700, fontSize: 12, textTransform: 'none' }}>View All</Button>}>Recent Exams</SectionTitle>
+            {exams.length === 0
+              ? <Box sx={{ py: 4, textAlign: 'center' }}><Typography sx={{ color: tokens.textMuted, fontSize: 13 }}>No exams yet.</Typography></Box>
+              : exams.slice(0, 3).map((e, i) => {
+                  const sc = e.status === 'active' ? tokens.accent : e.status === 'draft' ? tokens.warning : '#6366F1';
+                  // Calculate total questions from all sections
+                  const totalQuestions = e.questions || e.sections?.reduce((total, section) =>
+                    total + (section.questions?.length || 0), 0
+                  ) || 0;
+                  return (
+                    <Box key={e._id || i} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.5, borderBottom: i < 2 ? `1px solid ${tokens.surfaceBorder}` : 'none' }}>
+                      <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: 'rgba(12,189,115,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Assignment sx={{ fontSize: 18, color: tokens.accent }} />
+                      </Box>
+                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                        <Typography variant="body2" fontWeight={600} noWrap sx={{ fontFamily: "DM Sans,sans-serif" }}>{e.title}</Typography>
+                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>{totalQuestions} Questions</Typography>
+                      </Box>
+                      <Chip label={e.status || 'draft'} size="small" sx={{ bgcolor: `${sc}14`, color: sc, fontWeight: 600, fontSize: 11, textTransform: 'capitalize' }} />
+                    </Box>
+                  );
+                })}
+            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('exams')}
+              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "DM Sans,sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
+              View All Exams
+            </Button>
+          </Paper>
+        </Grid>
+
+        {/* Performance Overview */}
+        <Grid item xs={12} sm={12} md={4}>
+          <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
+            <SectionTitle action={<Chip label="This Week" size="small" sx={{ bgcolor: '#F1F5F9', color: tokens.textSecondary, fontSize: 11, fontWeight: 600 }} />}>
+              Performance Overview
+            </SectionTitle>
+            <AreaChart data={perfData.length >= 3 ? perfData : [50,60,45,75,65,80,72]} color={tokens.accent} />
+            <Box sx={{ textAlign: 'center', mt: 0.5 }}>
+              <Chip label={`${avgPerf}% Average Score`} sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, fontSize: 12 }} />
+            </Box>
+            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('results')}
+              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "DM Sans,sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
+              View Analytics
+            </Button>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      <PlanUsageCard user={user} compact />
+    </Box>
+  );
+}
+
+/* ── CREATE EXAM ──
+   The exam builder used to live inside the dashboard home, squeezed between
+   stat cards and quick actions. It is the densest surface in the app — AI chat,
+   file upload, voice input, a full question editor — so it now owns a page and
+   the home is free to be a simple index of everything on offer. */
+function CreateExamSection({ stats, statsLoading, exams, results, setActiveSection, setExams, pendingApprovals, user }) {
   const isXs = useMediaQuery('(max-width:600px)');
-  const { canUseAI: hasAIFeatureAccess, canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess, hasExamAccess, isEnterprise } = usePlan();
+  const { canUseAI: hasAIFeatureAccess, canUseAdvancedAI, hasMarketplaceAccess, hasTemplatesAccess, hasExamAccess, hasLessonPlannerAccess, isEnterprise } = usePlan();
   const [aiMode, setAiMode] = useState(canUseAdvancedAI ? 'describe' : 'upload');
   const [manualExam, setManualExam] = useState({ title: '', description: 'Exam', timeLimit: 60, passingScore: 70, level: '', subLevel: '', accessType: 'subscription', sections: [{ name: 'A', description: 'Section A', questions: [] }] });
   const [levels, setLevels] = useState([]);
@@ -728,8 +1177,6 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     { label: 'Open Question',   color: '#EC4899',       count: stats?.questionTypes?.open_question ?? 1 },
   ];
   const qTotal = qDist.reduce((s, q) => s + q.count, 0);
-  const perfData = results.slice(-7).map(r => Math.round(r.percentage ?? r.scores?.percentage ?? 0));
-  const avgPerf = results.length ? Math.round(results.reduce((s, r) => s + ((r.percentage ?? r.scores?.percentage ?? 0)), 0) / results.length) : (stats?.avgScore ? Math.round(stats.avgScore) : 0);
 
   const handleGenerate = async () => {
     if (examInputMode === 'describe' && !prompt.trim() && !uploadedFileContent) return;
@@ -1098,37 +1545,24 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, se
     }
   };
 
-  const statCards = [
-    { label: 'Exams Created',  value: stats?.totalExams    ?? 0,    sub: '+3 this week',  subColor: tokens.accent,  iconBg: 'rgba(12,189,115,0.1)',  icon: <Assignment sx={{ color: tokens.accent, fontSize: { xs: 20, sm: 24 } }} />,  spark: [5,8,6,10,9,12,10] },
-    { label: 'Total Students', value: stats?.totalStudents ?? 0,    sub: '+18 this week', subColor: '#6366F1',       iconBg: 'rgba(99,102,241,0.1)',  icon: <People sx={{ color: '#6366F1', fontSize: { xs: 20, sm: 24 } }} />,           spark: [200,220,230,240,244,246,248] },
-    { label: 'Average Score',  value: `${Math.round(stats?.averageScore ?? 0)}%`, sub: '+6% this week', subColor: tokens.warning, iconBg: 'rgba(245,158,11,0.1)', icon: <BarChart sx={{ color: tokens.warning, fontSize: { xs: 20, sm: 24 } }} />, spark: [65,70,68,75,72,78,75] },
-    { label: 'Pass Rate',      value: `${stats?.passRate ?? 0}%`,     sub: '+4% this week', subColor: '#EC4899',       iconBg: 'rgba(236,72,153,0.1)',  icon: <CheckCircle sx={{ color: '#EC4899', fontSize: { xs: 20, sm: 24 } }} />,        spark: [70,72,74,76,75,78,77] },
-    ...(hasMarketplaceAccess ? [{ label: 'Pending Approvals', value: pendingApprovals ?? 0, sub: 'Auto-refreshing', subColor: '#F59E0B', iconBg: 'rgba(245,158,11,0.1)', icon: <HourglassEmpty sx={{ color: '#F59E0B', fontSize: { xs: 20, sm: 24 } }} />, spark: [2,3,1,4,2,5,3] }] : []),
-  ];
 
   return (
     <Box>
-      {/* Stat cards with sparkline */}
-      <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        {statCards.map((s, i) => (
-          <Grid item xs={6} md={2.4} key={i}>
-            <Paper elevation={0} sx={{ p: { xs: 1.5, sm: 2.5 }, borderRadius: 3, bgcolor: 'white', border: `1px solid ${tokens.surfaceBorder}`, transition: 'box-shadow 0.2s,transform 0.15s', '&:hover': { boxShadow: '0 6px 24px rgba(13,64,108,0.09)', transform: 'translateY(-1px)' } }}>
-              <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
-                <Box sx={{ width: { xs: 38, sm: 48 }, height: { xs: 38, sm: 48 }, borderRadius: 2.5, bgcolor: s.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.icon}</Box>
-                <Box sx={{ display: { xs: 'none', sm: 'block' } }}><Sparkline color={s.subColor} values={s.spark} /></Box>
-              </Box>
-              {statsLoading ? <CircularProgress size={20} sx={{ color: tokens.accent }} /> :
-                <Typography fontWeight={800} sx={{ color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '2.125rem' } }}>{s.value}</Typography>}
-              <Typography sx={{ fontSize: { xs: 11, sm: 12.5 }, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", mt: 0.25 }} noWrap>{s.label}</Typography>
-              <Typography sx={{ fontSize: { xs: 10.5, sm: 11.5 }, color: s.subColor, fontWeight: 600, fontFamily: "DM Sans,sans-serif", mt: 0.35 }} noWrap>{s.sub}</Typography>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-
-      {/* Plan Usage Card */}
       <Box sx={{ mb: 2.5 }}>
-        <PlanUsageCard user={user} compact />
+        <Button
+          size="small"
+          startIcon={<ArrowBack sx={{ fontSize: 16 }} />}
+          onClick={() => setActiveSection('home')}
+          sx={{ color: tokens.textSecondary, fontWeight: 600, fontSize: 12.5, textTransform: 'none', mb: 1 }}
+        >
+          Back to dashboard
+        </Button>
+        <Typography fontWeight={800} sx={{ fontSize: { xs: 20, sm: 25 }, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.2 }}>
+          Create an exam
+        </Typography>
+        <Typography sx={{ fontSize: 13.5, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", mt: 0.5 }}>
+          Describe it, paste it, or upload a document — then review every question before you publish.
+        </Typography>
       </Box>
 
       {/* AI Creator */}
@@ -1855,76 +2289,6 @@ SECTION B: Short Answer (10 marks)
           </Box>
         </Paper>
       )}
-
-      {/* 3-col bottom row */}
-      <Grid container spacing={2.5}>
-        {/* Recent Exams */}
-        <Grid item xs={12} sm={6} md={4}>
-          <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
-            <SectionTitle action={<Button size="small" onClick={() => setActiveSection('exams')} sx={{ color: tokens.accent, fontWeight: 700, fontSize: 12, textTransform: 'none' }}>View All</Button>}>Recent Exams</SectionTitle>
-            {exams.length === 0
-              ? <Box sx={{ py: 4, textAlign: 'center' }}><Typography sx={{ color: tokens.textMuted, fontSize: 13 }}>No exams yet.</Typography></Box>
-              : exams.slice(0, 3).map((e, i) => {
-                  const sc = e.status === 'active' ? tokens.accent : e.status === 'draft' ? tokens.warning : '#6366F1';
-                  // Calculate total questions from all sections
-                  const totalQuestions = e.questions || e.sections?.reduce((total, section) =>
-                    total + (section.questions?.length || 0), 0
-                  ) || 0;
-                  return (
-                    <Box key={e._id || i} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.5, borderBottom: i < 2 ? `1px solid ${tokens.surfaceBorder}` : 'none' }}>
-                      <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: 'rgba(12,189,115,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Assignment sx={{ fontSize: 18, color: tokens.accent }} />
-                      </Box>
-                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap sx={{ fontFamily: "DM Sans,sans-serif" }}>{e.title}</Typography>
-                        <Typography variant="caption" sx={{ color: tokens.textMuted }}>{totalQuestions} Questions</Typography>
-                      </Box>
-                      <Chip label={e.status || 'draft'} size="small" sx={{ bgcolor: `${sc}14`, color: sc, fontWeight: 600, fontSize: 11, textTransform: 'capitalize' }} />
-                    </Box>
-                  );
-                })}
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('exams')}
-              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "DM Sans,sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
-              View All Exams
-            </Button>
-          </Paper>
-        </Grid>
-
-        {/* Performance Overview */}
-        <Grid item xs={12} sm={12} md={4}>
-          <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
-            <SectionTitle action={<Chip label="This Week" size="small" sx={{ bgcolor: '#F1F5F9', color: tokens.textSecondary, fontSize: 11, fontWeight: 600 }} />}>
-              Performance Overview
-            </SectionTitle>
-            <AreaChart data={perfData.length >= 3 ? perfData : [50,60,45,75,65,80,72]} color={tokens.accent} />
-            <Box sx={{ textAlign: 'center', mt: 0.5 }}>
-              <Chip label={`${avgPerf}% Average Score`} sx={{ bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accentDark, fontWeight: 700, fontSize: 12 }} />
-            </Box>
-            <Button fullWidth size="small" endIcon={<ArrowForward fontSize="small" />} onClick={() => setActiveSection('results')}
-              sx={{ mt: 2, color: tokens.accent, fontWeight: 600, fontSize: 12, textTransform: 'none', fontFamily: "DM Sans,sans-serif", bgcolor: 'rgba(12,189,115,0.05)', borderRadius: 2, py: 1, '&:hover': { bgcolor: 'rgba(12,189,115,0.1)' } }}>
-              View Analytics
-            </Button>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Quick Actions */}
-      <Paper elevation={0} sx={{ mt: 2.5, p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white' }}>
-        <Typography fontWeight={700} sx={{ fontSize: 15, fontFamily: "DM Sans,sans-serif", color: tokens.textPrimary, mb: 2 }}>Quick Actions</Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-          {[
-            { label: 'Create Exam',      icon: <Add sx={{ fontSize: 18 }} />,         color: tokens.accent,  bg: 'rgba(12,189,115,0.09)',  section: 'exams' },
-            { label: 'Add Students',     icon: <People sx={{ fontSize: 18 }} />,       color: '#6366F1',      bg: 'rgba(99,102,241,0.09)',  section: 'students' },
-            ...(hasTemplatesAccess ? [{ label: 'Browse Templates', icon: <Description sx={{ fontSize: 18 }} />,  color: tokens.primary, bg: 'rgba(13,64,108,0.07)',   section: 'templates' }] : []),
-            { label: 'View Reports',     icon: <BarChart sx={{ fontSize: 18 }} />,     color: tokens.warning, bg: 'rgba(245,158,11,0.09)',  section: 'reports' },
-          ].map((a, i) => (
-            <Box key={i} onClick={() => setActiveSection(a.section)} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: { xs: 1.5, sm: 2.5 }, py: 1.5, borderRadius: 2.5, bgcolor: a.bg, cursor: 'pointer', flex: '1 1 130px', minWidth: { xs: 0, sm: 130 }, border: `1px solid ${a.color}18`, transition: 'opacity 0.15s', '&:hover': { opacity: 0.82 } }}>
-              <Box sx={{ color: a.color }}>{a.icon}</Box>
-              <Typography fontWeight={700} sx={{ color: a.color, fontSize: 13.5, fontFamily: "DM Sans,sans-serif" }}>{a.label}</Typography>
-            </Box>
-          ))}
-        </Box>
-      </Paper>
 
       {publishExamId && <PublishDialog examId={publishExamId} onClose={() => setPublishExamId(null)} setActiveSection={setActiveSection} />}
     </Box>
@@ -5460,7 +5824,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
         <Button
           variant="contained"
           startIcon={<Add />}
-          onClick={() => setActiveSection('home')}
+          onClick={() => setActiveSection('createExam')}
           sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, fontFamily: "DM Sans,sans-serif", '&:hover': { boxShadow: '0 4px 14px rgba(12,189,115,0.3)' } }}
         >
           Create Exam

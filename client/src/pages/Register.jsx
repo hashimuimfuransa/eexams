@@ -554,7 +554,7 @@ const Register = () => {
                   )}
                 </div>
                 <div style={{ fontSize: isMobile ? 12 : 13, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5 }}>
-                  Perfect for individual educators. Create exams, share via links, and track student results. Free forever.
+                  Perfect for individual educators. Create exams, plus AI lesson plans, slides, exercise sheets and schemes of work. Free to start.
                 </div>
               </div>
             </div>
@@ -658,7 +658,7 @@ const Register = () => {
                   )}
                 </div>
                 <div style={{ fontSize: isMobile ? 12 : 13, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, lineHeight: 1.5 }}>
-                  For schools and institutions. Manage multiple teachers, track progress across classes, and access advanced analytics.
+                  For schools and institutions. Manage multiple teachers, give them the full planning toolkit, and track progress across classes with advanced analytics.
                 </div>
               </div>
             </div>
@@ -1037,19 +1037,46 @@ const Register = () => {
                     color: 'white',
                     marginBottom: 2,
                   }}>
-                    Create Exams
+                    Create &amp; Teach
                   </div>
                   <div style={{
                     fontSize: 12,
                     color: 'rgba(255, 255, 255, 0.9)',
+                    lineHeight: 1.45,
                   }}>
-                    Register as a teacher or organization
+                    Exams, lesson plans, slides, exercises &amp; schemes of work
                   </div>
                 </div>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
                   <path d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
               </button>
+            </div>
+
+            {/* What "Create & Teach" actually includes. Mirrors the four monthly
+                allowances the plans sell (server/utils/planLimits.js
+                PLANNER_QUOTA_FIELDS) — keep the two lists in step. */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              gap: 6,
+              marginTop: 16,
+            }}>
+              {['Exams', 'Lesson plans', 'Slides', 'Exercises', 'Schemes of work'].map((label) => (
+                <span key={label} style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '4px 10px',
+                  borderRadius: 100,
+                  fontFamily: "'DM Sans', sans-serif",
+                  color: isDark ? tokens.dark.textSecondary : tokens.textSecondary,
+                  background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)',
+                  border: `1px solid ${isDark ? tokens.dark.border : tokens.surfaceBorder}`,
+                }}>
+                  {label}
+                </span>
+              ))}
             </div>
 
             {/* Go Back link */}

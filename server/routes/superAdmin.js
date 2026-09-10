@@ -44,6 +44,7 @@ const {
   getOrganizationActivity,
   getAllTeachers,
   getTeacherActivity,
+  getToolUsageStats,
   assignIndividualTeacherPlan,
   revokeIndividualTeacherPlan,
   getBackups,
@@ -98,6 +99,10 @@ router.put('/users/:id/toggle-block', toggleUserBlock);
 // Teacher management routes
 router.get('/teachers', getAllTeachers);
 router.get('/teachers/:id/activity', getTeacherActivity);
+
+// Teacher tool usage — every AI draft, save, download and refusal, including
+// the work teachers never saved (see models/ToolUsage.js).
+router.get('/tool-usage', getToolUsageStats);
 
 // Individual (non-organisation) teacher plan assignment — org teachers get
 // their plan from their admin's organisation subscription instead.

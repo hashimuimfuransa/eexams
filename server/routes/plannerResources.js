@@ -26,6 +26,7 @@ const { streamPlannerResourcePdf } = require('../utils/plannerResourcePdf');
 const { sendPptx } = require('../utils/slidesPptx');
 const { THEME_KEYS, THEMES, DEFAULT_THEME } = require('../utils/slideThemes');
 const { sendDocx } = require('../utils/docxExport');
+const { recordToolUsage, startTimer, errorMeta } = require('../utils/toolUsage');
 
 router.use(auth);
 
@@ -113,6 +114,10 @@ router.get('/themes', isAdminOrTeacher, (req, res) => {
 // @access  Private (teacher/admin, within this month's allowance)
 router.post('/:kind/generate', aiGradingLimiter, isAdminOrTeacher, requireLessonPlanner, withKind, async (req, res) => {
   const kindConfig = req.kindConfig;
+  // Recorded whatever the outcome — a draft the teacher abandons is still the
+  // teacher using the tool, and still an AI call the platform paid for (see
+  // models/ToolUsage.js). kindConfig.kind doubles as the tool key.
+  const elapsed = startTimer();
   try {
     const { brief: rawBrief, referenceContent: rawReference, count, questionType, ...rest } = req.body || {};
     const brief = typeof rawBrief === 'string' ? rawBrief : '';
@@ -123,6 +128,10 @@ router.post('/:kind/generate', aiGradingLimiter, isAdminOrTeacher, requireLesson
     const planConfig = await resolvePlannerPlan(req.user);
     const quota = await checkQuota(req.user._id, planConfig, kindConfig.quotaKey);
     if (!quota.ok) {
+      recordToolUsage(req, {
+        tool: kindConfig.kind, action: 'generate', status: 'blocked',
+        meta: { code: quota.body?.code, limit: quota.status?.limit, used: quota.status?.used, plan: planConfig?.name }
+      });
       return res.status(403).json(quota.body);
     }
 
@@ -168,6 +177,11 @@ router.post('/:kind/generate', aiGradingLimiter, isAdminOrTeacher, requireLesson
     }
 
     if (!parsed || typeof parsed !== 'object') {
+      recordToolUsage(req, {
+        tool: kindConfig.kind, action: 'generate', status: 'failed',
+        subject: details.subject, className: details.className,
+        durationMs: elapsed(), meta: { reason: 'unparsable_ai_response' }
+      });
       return res.status(422).json({
         message: `The AI could not build a ${kindConfig.label.toLowerCase()} from that. Add a bit more detail and try again.`
       });
@@ -175,8 +189,27 @@ router.post('/:kind/generate', aiGradingLimiter, isAdminOrTeacher, requireLesson
 
     const resource = kindConfig.normalize(parsed, details);
     if (!resource[kindConfig.bodyKey]?.length) {
+      recordToolUsage(req, {
+        tool: kindConfig.kind, action: 'generate', status: 'failed',
+        subject: details.subject, className: details.className,
+        durationMs: elapsed(), meta: { reason: 'empty_body' }
+      });
       return res.status(422).json({ message: kindConfig.emptyMessage });
     }
+
+    recordToolUsage(req, {
+      tool: kindConfig.kind,
+      action: 'generate',
+      title: resource.title || details.title || brief.trim().slice(0, 120),
+      subject: details.subject,
+      className: details.className,
+      durationMs: elapsed(),
+      meta: {
+        hasReference: Boolean(reference),
+        sourceFileName: str(rest.sourceFileName),
+        items: resource[kindConfig.bodyKey].length
+      }
+    });
 
     res.json({
       ...resource,
@@ -187,6 +220,10 @@ router.post('/:kind/generate', aiGradingLimiter, isAdminOrTeacher, requireLesson
     });
   } catch (err) {
     console.error(`planner-resource generate (${kindConfig.kind}) error:`, err);
+    recordToolUsage(req, {
+      tool: kindConfig.kind, action: 'generate', status: 'failed',
+      durationMs: elapsed(), meta: errorMeta(err)
+    });
     res.status(500).json({ message: `Failed to generate the ${kindConfig.label.toLowerCase()}` });
   }
 });
@@ -222,6 +259,11 @@ router.post('/:kind', isAdminOrTeacher, requireLessonPlanner, withKind, attachOr
     const planConfig = await resolvePlannerPlan(req.user);
     const quota = await checkQuota(req.user._id, planConfig, kindConfig.quotaKey);
     if (!quota.ok) {
+      recordToolUsage(req, {
+        tool: kindConfig.kind, action: 'save', status: 'blocked',
+        title: fields.title, subject: fields.subject, className: fields.className,
+        meta: { code: quota.body?.code, limit: quota.status?.limit, used: quota.status?.used, plan: planConfig?.name }
+      });
       return res.status(403).json(quota.body);
     }
 
@@ -229,6 +271,12 @@ router.post('/:kind', isAdminOrTeacher, requireLessonPlanner, withKind, attachOr
       ...fields,
       createdBy: req.user._id,
       orgAdminId: req.orgAdminId || req.user._id
+    });
+
+    recordToolUsage(req, {
+      tool: kindConfig.kind, action: 'save', resource: resource._id,
+      title: resource.title, subject: resource.subject, className: resource.className,
+      meta: { generatedByAI: resource.generatedByAI }
     });
 
     res.status(201).json(resource);
@@ -265,6 +313,10 @@ router.put('/:kind/:id', isAdminOrTeacher, requireLessonPlanner, withKind, async
       { new: true, runValidators: true }
     );
     if (!resource) return res.status(404).json({ message: 'Not found' });
+    recordToolUsage(req, {
+      tool: req.kindConfig.kind, action: 'update', resource: resource._id,
+      title: resource.title, subject: resource.subject, className: resource.className
+    });
     res.json(resource);
   } catch (err) {
     console.error('planner-resource update error:', err);
@@ -281,6 +333,10 @@ router.delete('/:kind/:id', isAdminOrTeacher, withKind, async (req, res) => {
       _id: req.params.id, kind: req.kindConfig.kind, createdBy: req.user._id
     });
     if (!resource) return res.status(404).json({ message: 'Not found' });
+    recordToolUsage(req, {
+      tool: req.kindConfig.kind, action: 'delete', resource: resource._id,
+      title: resource.title, subject: resource.subject, className: resource.className
+    });
     res.json({ message: 'Deleted' });
   } catch (err) {
     console.error('planner-resource delete error:', err);
@@ -300,6 +356,11 @@ router.delete('/:kind/:id', isAdminOrTeacher, withKind, async (req, res) => {
 router.post('/:kind/export/:format', isAdminOrTeacher, requireLessonPlanner, withKind, async (req, res) => {
   try {
     const resource = pickFields(req.kindConfig, req.body || {});
+    recordToolUsage(req, {
+      tool: req.kindConfig.kind, action: 'export', format: req.params.format,
+      title: resource.title, subject: resource.subject, className: resource.className,
+      meta: { saved: false }
+    });
     // PowerPoint only makes sense for a deck — the other kinds are documents.
     if (req.params.format === 'pptx') {
       if (req.kindConfig.kind !== 'slides') {
@@ -325,6 +386,12 @@ router.get('/:kind/:id/export/:format', isAdminOrTeacher, withKind, async (req, 
       _id: req.params.id, kind: req.kindConfig.kind, createdBy: req.user._id
     }).lean();
     if (!resource) return res.status(404).json({ message: 'Not found' });
+
+    recordToolUsage(req, {
+      tool: req.kindConfig.kind, action: 'export', format: req.params.format, resource: resource._id,
+      title: resource.title, subject: resource.subject, className: resource.className,
+      meta: { saved: true }
+    });
 
     if (req.params.format === 'pptx') {
       if (req.kindConfig.kind !== 'slides') {

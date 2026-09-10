@@ -23,6 +23,7 @@ const { getAllQuotaStatus, checkQuota } = require('../utils/plannerQuotas');
 const { aiGradingLimiter, uploadLimiter } = require('../middleware/rateLimiter');
 const groqClient = require('../utils/groqClient');
 const { streamLessonPlanPdf } = require('../utils/lessonPlanPdf');
+const { recordToolUsage, startTimer, errorMeta } = require('../utils/toolUsage');
 const { sendDocx } = require('../utils/docxExport');
 const {
   str,
@@ -167,6 +168,13 @@ router.post('/extract', uploadLimiter, isAdminOrTeacher, requireLessonPlanner, (
 
       console.log(`Lesson planner reference read: ${content.length} chars, ${pages || '?'} page(s), via ${method}`);
 
+      recordToolUsage(req, {
+        tool: 'reference_extract',
+        action: 'extract',
+        title: originalname,
+        meta: { chars: content.length, pages, method, truncated, sizeBytes: size }
+      });
+
       res.json({
         success: true,
         content,
@@ -178,6 +186,13 @@ router.post('/extract', uploadLimiter, isAdminOrTeacher, requireLessonPlanner, (
       });
     } catch (err) {
       console.error('lesson-plan extract error:', err);
+      recordToolUsage(req, {
+        tool: 'reference_extract',
+        action: 'extract',
+        status: 'failed',
+        title: originalname,
+        meta: errorMeta(err)
+      });
       res.status(422).json({ message: err.message || 'Could not read that file.' });
     }
   });
@@ -193,6 +208,10 @@ router.post('/extract', uploadLimiter, isAdminOrTeacher, requireLessonPlanner, (
 // requireAIFeatures still guards the exam-side AI routes, which are a
 // different product.
 router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireLessonPlanner, async (req, res) => {
+  // Timed and recorded whatever the outcome: a generation the teacher never
+  // saves still cost an AI call and still counts as the teacher using the tool
+  // (see models/ToolUsage.js).
+  const elapsed = startTimer();
   try {
     const { brief: rawBrief, referenceContent: rawReference, sourceFileName = '', ...rest } = req.body || {};
     // Coerce rather than trust: a non-string here would throw on .trim().
@@ -204,6 +223,10 @@ router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireLessonPlanne
     const planConfig = await resolvePlannerPlan(req.user);
     const quota = await checkQuota(req.user._id, planConfig, 'lessonPlansPerMonth');
     if (!quota.ok) {
+      recordToolUsage(req, {
+        tool: 'lesson_plan', action: 'generate', status: 'blocked',
+        meta: { code: quota.body?.code, limit: quota.status?.limit, used: quota.status?.used, plan: planConfig?.name }
+      });
       return res.status(403).json(quota.body);
     }
 
@@ -245,13 +268,33 @@ router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireLessonPlanne
     }
 
     if (!parsed || typeof parsed !== 'object') {
+      recordToolUsage(req, {
+        tool: 'lesson_plan', action: 'generate', status: 'failed',
+        subject: details.subject, className: details.className,
+        durationMs: elapsed(), meta: { reason: 'unparsable_ai_response' }
+      });
       return res.status(422).json({ message: 'The AI could not build a lesson plan from that. Add a bit more detail and try again.' });
     }
 
     const plan = normalizePlan(parsed, details);
     if (!plan.steps.length) {
+      recordToolUsage(req, {
+        tool: 'lesson_plan', action: 'generate', status: 'failed',
+        subject: details.subject, className: details.className,
+        durationMs: elapsed(), meta: { reason: 'no_teaching_steps' }
+      });
       return res.status(422).json({ message: 'The generated plan had no teaching steps. Please try again.' });
     }
+
+    recordToolUsage(req, {
+      tool: 'lesson_plan',
+      action: 'generate',
+      title: plan.lessonTitle || plan.unitTitle || brief.trim().slice(0, 120),
+      subject: details.subject,
+      className: details.className,
+      durationMs: elapsed(),
+      meta: { hasReference: Boolean(reference), sourceFileName: str(sourceFileName), steps: plan.steps.length }
+    });
 
     res.json({
       ...plan,
@@ -263,6 +306,10 @@ router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireLessonPlanne
     });
   } catch (err) {
     console.error('lesson-plan generate error:', err);
+    recordToolUsage(req, {
+      tool: 'lesson_plan', action: 'generate', status: 'failed',
+      durationMs: elapsed(), meta: errorMeta(err)
+    });
     const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('rate limit');
     res.status(is429 ? 429 : 500).json({
       message: is429
@@ -277,7 +324,13 @@ router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireLessonPlanne
 // @access  Private (teacher/admin)
 router.post('/docx', isAdminOrTeacher, requireLessonPlanner, async (req, res) => {
   try {
-    await sendDocx(res, pickPlanFields(req.body || {}), 'lessonPlan');
+    const fields = pickPlanFields(req.body || {});
+    recordToolUsage(req, {
+      tool: 'lesson_plan', action: 'export', format: 'docx',
+      title: fields.lessonTitle || fields.unitTitle, subject: fields.subject, className: fields.className,
+      meta: { saved: false }
+    });
+    await sendDocx(res, fields, 'lessonPlan');
   } catch (err) {
     console.error('lesson-plan docx error:', err);
     if (!res.headersSent) res.status(500).json({ message: 'Failed to generate the Word document' });
@@ -290,6 +343,11 @@ router.post('/docx', isAdminOrTeacher, requireLessonPlanner, async (req, res) =>
 router.post('/pdf', isAdminOrTeacher, requireLessonPlanner, (req, res) => {
   try {
     const plan = pickPlanFields(req.body || {});
+    recordToolUsage(req, {
+      tool: 'lesson_plan', action: 'export', format: 'pdf',
+      title: plan.lessonTitle || plan.unitTitle, subject: plan.subject, className: plan.className,
+      meta: { saved: false }
+    });
     streamLessonPlanPdf(res, plan);
   } catch (err) {
     console.error('lesson-plan pdf error:', err);
@@ -371,6 +429,11 @@ router.post('/', isAdminOrTeacher, requireLessonPlanner, attachOrgAdminId, async
     const planConfig = await resolvePlannerPlan(req.user);
     const quota = await checkQuota(req.user._id, planConfig, 'lessonPlansPerMonth');
     if (!quota.ok) {
+      recordToolUsage(req, {
+        tool: 'lesson_plan', action: 'save', status: 'blocked',
+        title: fields.lessonTitle || fields.unitTitle, subject: fields.subject, className: fields.className,
+        meta: { code: quota.body?.code, limit: quota.status?.limit, used: quota.status?.used, plan: planConfig?.name }
+      });
       return res.status(403).json(quota.body);
     }
 
@@ -378,6 +441,12 @@ router.post('/', isAdminOrTeacher, requireLessonPlanner, attachOrgAdminId, async
       ...fields,
       createdBy: req.user._id,
       orgAdminId: req.orgAdminId || req.user._id
+    });
+
+    recordToolUsage(req, {
+      tool: 'lesson_plan', action: 'save', resource: plan._id,
+      title: plan.lessonTitle || plan.unitTitle, subject: plan.subject, className: plan.className,
+      meta: { generatedByAI: plan.generatedByAI }
     });
 
     res.status(201).json(plan);
@@ -412,6 +481,10 @@ router.put('/:id', isAdminOrTeacher, requireLessonPlanner, async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!plan) return res.status(404).json({ message: 'Lesson plan not found' });
+    recordToolUsage(req, {
+      tool: 'lesson_plan', action: 'update', resource: plan._id,
+      title: plan.lessonTitle || plan.unitTitle, subject: plan.subject, className: plan.className
+    });
     res.json(plan);
   } catch (err) {
     console.error('lesson-plan update error:', err);
@@ -426,6 +499,10 @@ router.delete('/:id', isAdminOrTeacher, async (req, res) => {
   try {
     const plan = await LessonPlan.findOneAndDelete({ _id: req.params.id, createdBy: req.user._id });
     if (!plan) return res.status(404).json({ message: 'Lesson plan not found' });
+    recordToolUsage(req, {
+      tool: 'lesson_plan', action: 'delete', resource: plan._id,
+      title: plan.lessonTitle || plan.unitTitle, subject: plan.subject, className: plan.className
+    });
     res.json({ message: 'Lesson plan deleted' });
   } catch (err) {
     console.error('lesson-plan delete error:', err);
@@ -440,6 +517,11 @@ router.get('/:id/docx', isAdminOrTeacher, async (req, res) => {
   try {
     const plan = await LessonPlan.findOne({ _id: req.params.id, createdBy: req.user._id }).lean();
     if (!plan) return res.status(404).json({ message: 'Lesson plan not found' });
+    recordToolUsage(req, {
+      tool: 'lesson_plan', action: 'export', format: 'docx', resource: plan._id,
+      title: plan.lessonTitle || plan.unitTitle, subject: plan.subject, className: plan.className,
+      meta: { saved: true }
+    });
     await sendDocx(res, plan, 'lessonPlan');
   } catch (err) {
     console.error('lesson-plan docx error:', err);
@@ -454,6 +536,11 @@ router.get('/:id/pdf', isAdminOrTeacher, async (req, res) => {
   try {
     const plan = await LessonPlan.findOne({ _id: req.params.id, createdBy: req.user._id }).lean();
     if (!plan) return res.status(404).json({ message: 'Lesson plan not found' });
+    recordToolUsage(req, {
+      tool: 'lesson_plan', action: 'export', format: 'pdf', resource: plan._id,
+      title: plan.lessonTitle || plan.unitTitle, subject: plan.subject, className: plan.className,
+      meta: { saved: true }
+    });
     streamLessonPlanPdf(res, plan);
   } catch (err) {
     console.error('lesson-plan pdf error:', err);

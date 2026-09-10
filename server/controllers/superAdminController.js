@@ -1,6 +1,10 @@
 const User = require('../models/User');
 const Exam = require('../models/Exam');
 const ActivityLog = require('../models/ActivityLog');
+const ToolUsage = require('../models/ToolUsage');
+// The tool catalogue lives with the model so labels and grouping stay in one
+// place; the reports below never hardcode a tool name.
+const TOOL_REGISTRY = ToolUsage.TOOLS;
 const Result = require('../models/Result');
 const ExamRequest = require('../models/ExamRequest');
 const SharedExam = require('../models/SharedExam');
@@ -386,6 +390,28 @@ const getSuperAdminDashboardStats = async (req, res) => {
     // Count total users
     const totalUsers = await User.countDocuments();
 
+    // Teacher tool usage. Counted from ToolUsage events rather than from the
+    // saved LessonPlan/PlannerResource rows, so a teacher who generated ten
+    // drafts and kept none still shows up here — that is exactly the activity
+    // the saved-document counts miss (see models/ToolUsage.js).
+    const toolPeriodStart = resolvePeriodStart('30d');
+    const [toolAllTimeRow, toolRecentRow, toolByToolRows] = await Promise.all([
+      ToolUsage.aggregate([
+        { $group: { _id: null, ...actionCounters(), users: { $addToSet: '$user' } } }
+      ]),
+      ToolUsage.aggregate([
+        { $match: { createdAt: { $gte: toolPeriodStart } } },
+        { $group: { _id: null, ...actionCounters(), users: { $addToSet: '$user' } } }
+      ]),
+      ToolUsage.aggregate([
+        { $match: { createdAt: { $gte: toolPeriodStart } } },
+        { $group: { _id: '$tool', ...actionCounters() } },
+        { $sort: { total: -1 } }
+      ])
+    ]);
+    const toolAllTime = toolAllTimeRow[0] || { ...emptyCounters(), users: [] };
+    const toolRecent = toolRecentRow[0] || { ...emptyCounters(), users: [] };
+
     // Debug logging
     console.log('[SuperAdmin] Stats:', {
       totalOrganizations,
@@ -447,6 +473,40 @@ const getSuperAdminDashboardStats = async (req, res) => {
         admins: totalOrganizations
       },
       exams: totalExams,
+      // Flat aliases first, for stat cards that read the top level like the
+      // counts above them.
+      totalToolUses: toolAllTime.total || 0,
+      totalToolsGenerated: toolAllTime.generated || 0,
+      toolUsage: {
+        allTime: {
+          events: toolAllTime.total || 0,
+          generated: toolAllTime.generated || 0,
+          saved: toolAllTime.saved || 0,
+          exported: toolAllTime.exported || 0,
+          unsaved: unsavedFrom(toolAllTime),
+          activeTeachers: (toolAllTime.users || []).length
+        },
+        last30Days: {
+          events: toolRecent.total || 0,
+          generated: toolRecent.generated || 0,
+          saved: toolRecent.saved || 0,
+          exported: toolRecent.exported || 0,
+          blocked: toolRecent.blocked || 0,
+          failed: toolRecent.failed || 0,
+          unsaved: unsavedFrom(toolRecent),
+          activeTeachers: (toolRecent.users || []).length,
+          saveRate: toolRecent.generated ? Math.round((toolRecent.saved / toolRecent.generated) * 100) : 0
+        },
+        byTool: toolByToolRows.map(row => ({
+          tool: row._id,
+          label: TOOL_REGISTRY[row._id]?.label || row._id,
+          group: TOOL_REGISTRY[row._id]?.group || 'other',
+          total: row.total,
+          generated: row.generated,
+          saved: row.saved,
+          unsaved: unsavedFrom(row)
+        }))
+      },
       recentOrganizations: recentOrganizations.map(org => ({
         _id: org._id,
         name: org.organization,
@@ -3374,21 +3434,247 @@ const getOrganizationActivity = async (req, res) => {
   }
 };
 
-// @desc    Get all teachers with their activity
+// ==================== TEACHER TOOL USAGE ====================
+//
+// Reporting over ToolUsage (see models/ToolUsage.js). The point of these
+// endpoints is the gap between what teachers PRODUCE and what they KEEP: the
+// saved libraries (LessonPlan, PlannerResource, Exam) only show the latter, so
+// a teacher who generates a dozen AI drafts and saves none reads as inactive
+// everywhere else in this dashboard. Every figure below therefore counts
+// events, and reports `generated` and `saved` side by side rather than
+// collapsing them into a single "usage" number.
+
+const TOOL_KEYS = Object.keys(TOOL_REGISTRY);
+
+// Period strings used across the super admin UI. 'all' means no lower bound.
+const resolvePeriodStart = (period = '30d') => {
+  if (period === 'all') return null;
+  const start = new Date();
+  if (period === '24h') start.setDate(start.getDate() - 1);
+  else if (period === '7d') start.setDate(start.getDate() - 7);
+  else if (period === '90d') start.setDate(start.getDate() - 90);
+  else if (period === '1y') start.setFullYear(start.getFullYear() - 1);
+  else start.setDate(start.getDate() - 30);
+  return start;
+};
+
+// One $group stage's worth of the per-action counters every report shows, so
+// the platform total, the per-tool row and the per-teacher row are all counted
+// the same way and can never disagree.
+const actionCounters = () => ({
+  total: { $sum: 1 },
+  generated: { $sum: { $cond: [{ $and: [{ $eq: ['$action', 'generate'] }, { $eq: ['$status', 'success'] }] }, 1, 0] } },
+  saved: { $sum: { $cond: [{ $and: [{ $eq: ['$action', 'save'] }, { $eq: ['$status', 'success'] }] }, 1, 0] } },
+  updated: { $sum: { $cond: [{ $eq: ['$action', 'update'] }, 1, 0] } },
+  exported: { $sum: { $cond: [{ $eq: ['$action', 'export'] }, 1, 0] } },
+  deleted: { $sum: { $cond: [{ $eq: ['$action', 'delete'] }, 1, 0] } },
+  blocked: { $sum: { $cond: [{ $eq: ['$status', 'blocked'] }, 1, 0] } },
+  failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+  lastUsed: { $max: '$createdAt' }
+});
+
+const emptyCounters = () => ({
+  total: 0, generated: 0, saved: 0, updated: 0, exported: 0,
+  deleted: 0, blocked: 0, failed: 0, lastUsed: null
+});
+
+// Drafts that were generated but never kept. Clamped at zero because saves and
+// generations are independent events: a teacher can save a plan they typed by
+// hand, or save this month a draft generated last month.
+const unsavedFrom = (row) => Math.max(0, (row.generated || 0) - (row.saved || 0));
+
+// Shapes one $group row into the per-tool/per-teacher figure the UI renders.
+const toolCountersPayload = (row) => ({
+  total: row.total || 0,
+  generated: row.generated || 0,
+  saved: row.saved || 0,
+  updated: row.updated || 0,
+  exported: row.exported || 0,
+  deleted: row.deleted || 0,
+  blocked: row.blocked || 0,
+  failed: row.failed || 0,
+  unsaved: unsavedFrom(row),
+  lastUsed: row.lastUsed || null
+});
+
+// @desc    Platform-wide teacher tool usage (generated vs saved, per tool, over time)
+// @route   GET /api/superadmin/tool-usage
+// @access  Private/SuperAdmin
+const getToolUsageStats = async (req, res) => {
+  try {
+    const { period = '30d', topLimit = 10, recentLimit = 25 } = req.query;
+    const since = resolvePeriodStart(period);
+    const match = since ? { createdAt: { $gte: since } } : {};
+
+    const [totalsRow, byToolRows, trendRows, topTeacherRows, recentEvents, allTimeRow] = await Promise.all([
+      ToolUsage.aggregate([
+        { $match: match },
+        { $group: { _id: null, ...actionCounters(), users: { $addToSet: '$user' } } }
+      ]),
+      ToolUsage.aggregate([
+        { $match: match },
+        { $group: { _id: '$tool', ...actionCounters(), users: { $addToSet: '$user' } } }
+      ]),
+      // The trend is always drawn over a bounded window — 'all' would produce a
+      // point per day since launch, which no chart in the UI can read.
+      ToolUsage.aggregate([
+        { $match: { createdAt: { $gte: since || resolvePeriodStart('30d') } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            total: { $sum: 1 },
+            generated: { $sum: { $cond: [{ $eq: ['$action', 'generate'] }, 1, 0] } },
+            saved: { $sum: { $cond: [{ $eq: ['$action', 'save'] }, 1, 0] } }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]),
+      ToolUsage.aggregate([
+        { $match: match },
+        { $group: { _id: '$user', ...actionCounters(), tools: { $addToSet: '$tool' } } },
+        { $sort: { total: -1 } },
+        { $limit: Math.min(parseInt(topLimit, 10) || 10, 50) },
+        {
+          $lookup: {
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'teacher'
+          }
+        },
+        { $unwind: { path: '$teacher', preserveNullAndEmptyArrays: true } }
+      ]),
+      ToolUsage.find(match)
+        .sort({ createdAt: -1 })
+        .limit(Math.min(parseInt(recentLimit, 10) || 25, 100))
+        .populate('user', 'firstName lastName email organization role')
+        .lean(),
+      // Shown next to the period figure so a quiet week does not read as
+      // "nobody has ever used the tools".
+      ToolUsage.aggregate([{ $group: { _id: null, ...actionCounters(), users: { $addToSet: '$user' } } }])
+    ]);
+
+    const totals = totalsRow[0] || { ...emptyCounters(), users: [] };
+    const allTime = allTimeRow[0] || { ...emptyCounters(), users: [] };
+
+    const byToolMap = new Map(byToolRows.map((row) => [row._id, row]));
+    // Every known tool is listed, including ones nobody touched — a zero is the
+    // answer to "is anybody using the scheme-of-work generator?", not a gap.
+    const byTool = TOOL_KEYS.map((tool) => {
+      const row = byToolMap.get(tool) || { ...emptyCounters(), users: [] };
+      return {
+        tool,
+        label: TOOL_REGISTRY[tool].label,
+        group: TOOL_REGISTRY[tool].group,
+        ...toolCountersPayload(row),
+        users: (row.users || []).length
+      };
+    }).sort((a, b) => b.total - a.total);
+
+    const byGroup = ['planner', 'exam'].map((group) => {
+      const rows = byTool.filter((t) => t.group === group);
+      return {
+        group,
+        label: group === 'planner' ? 'Lesson Planner Studio' : 'Exam AI Tools',
+        total: rows.reduce((sum, r) => sum + r.total, 0),
+        generated: rows.reduce((sum, r) => sum + r.generated, 0),
+        saved: rows.reduce((sum, r) => sum + r.saved, 0)
+      };
+    });
+
+    res.json({
+      period,
+      since,
+      totals: {
+        events: totals.total || 0,
+        generated: totals.generated || 0,
+        saved: totals.saved || 0,
+        updated: totals.updated || 0,
+        exported: totals.exported || 0,
+        deleted: totals.deleted || 0,
+        blocked: totals.blocked || 0,
+        failed: totals.failed || 0,
+        unsaved: unsavedFrom(totals),
+        activeTeachers: (totals.users || []).length
+      },
+      allTime: {
+        events: allTime.total || 0,
+        generated: allTime.generated || 0,
+        saved: allTime.saved || 0,
+        unsaved: unsavedFrom(allTime),
+        activeTeachers: (allTime.users || []).length
+      },
+      // What share of AI drafts teachers actually kept — the headline quality
+      // signal for the planner tools.
+      saveRate: totals.generated ? Math.round((totals.saved / totals.generated) * 100) : 0,
+      byTool,
+      byGroup,
+      trend: trendRows.map((row) => ({
+        date: row._id,
+        total: row.total,
+        generated: row.generated,
+        saved: row.saved
+      })),
+      topTeachers: topTeacherRows.map((row) => ({
+        _id: row._id,
+        firstName: row.teacher?.firstName || 'Deleted',
+        lastName: row.teacher?.lastName || 'user',
+        email: row.teacher?.email || '',
+        organization: row.teacher?.organization || '',
+        role: row.teacher?.role || '',
+        total: row.total,
+        generated: row.generated,
+        saved: row.saved,
+        exported: row.exported,
+        unsaved: unsavedFrom(row),
+        tools: row.tools || [],
+        lastUsed: row.lastUsed
+      })),
+      recent: recentEvents.map((event) => ({
+        _id: event._id,
+        tool: event.tool,
+        toolLabel: TOOL_REGISTRY[event.tool]?.label || event.tool,
+        action: event.action,
+        status: event.status,
+        format: event.format,
+        title: event.title,
+        subject: event.subject,
+        className: event.className,
+        durationMs: event.durationMs,
+        meta: event.meta,
+        createdAt: event.createdAt,
+        user: event.user
+          ? {
+              _id: event.user._id,
+              firstName: event.user.firstName,
+              lastName: event.user.lastName,
+              email: event.user.email,
+              organization: event.user.organization,
+              role: event.user.role
+            }
+          : null
+      }))
+    });
+  } catch (error) {
+    console.error('Get tool usage stats error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+// @desc    Get all teachers with their activity and tool usage
 // @route   GET /api/superadmin/teachers
 // @access  Private/SuperAdmin
+//
+// Every per-teacher figure is produced by ONE aggregate over the whole page of
+// teachers rather than a query per teacher: this list is what an admin scans to
+// find who is (and is not) using the platform, so it grew from 3 counters to 8
+// and a per-tool breakdown, and the old count-per-teacher-in-a-loop shape would
+// have meant six round trips per row.
 const getAllTeachers = async (req, res) => {
   try {
     const { search, organizationId, period = '30d', limit = 50 } = req.query;
-
-    // Calculate date range
-    const now = new Date();
-    const startDate = new Date();
-    if (period === '7d') startDate.setDate(now.getDate() - 7);
-    else if (period === '30d') startDate.setDate(now.getDate() - 30);
-    else if (period === '90d') startDate.setDate(now.getDate() - 90);
-    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
-    else startDate.setDate(now.getDate() - 30);
+    const startDate = resolvePeriodStart(period) || new Date(0);
 
     // Build query for teachers
     const query = { role: 'teacher' };
@@ -3406,7 +3692,6 @@ const getAllTeachers = async (req, res) => {
       ];
     }
 
-    // Get teachers
     const teachers = await User.find(query)
       .select('-password')
       .populate('parentAdmin', 'firstName lastName organization email')
@@ -3414,52 +3699,111 @@ const getAllTeachers = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit));
 
-    // Get activity counts for each teacher
-    const teachersWithActivity = await Promise.all(
-      teachers.map(async (teacher) => {
-        const activityCount = await ActivityLog.countDocuments({
-          user: teacher._id,
-          timestamp: { $gte: startDate }
-        });
+    const teacherIds = teachers.map((t) => t._id);
 
-        // Get recent activities
-        const recentActivities = await ActivityLog.find({
-          user: teacher._id,
-          timestamp: { $gte: startDate }
-        })
-          .sort({ timestamp: -1 })
-          .limit(5);
+    const [activityRows, examRows, studentRows, toolRows, toolByKindRows] = await Promise.all([
+      ActivityLog.aggregate([
+        { $match: { user: { $in: teacherIds }, timestamp: { $gte: startDate } } },
+        { $sort: { timestamp: -1 } },
+        {
+          $group: {
+            _id: '$user',
+            count: { $sum: 1 },
+            lastActivity: { $first: '$timestamp' },
+            recent: { $push: { action: '$action', details: '$details', timestamp: '$timestamp' } }
+          }
+        },
+        { $project: { count: 1, lastActivity: 1, recent: { $slice: ['$recent', 5] } } }
+      ]),
+      Exam.aggregate([
+        { $match: { createdBy: { $in: teacherIds } } },
+        { $group: { _id: '$createdBy', count: { $sum: 1 }, lastCreated: { $max: '$createdAt' } } }
+      ]),
+      User.aggregate([
+        { $match: { createdBy: { $in: teacherIds }, role: 'student' } },
+        { $group: { _id: '$createdBy', count: { $sum: 1 } } }
+      ]),
+      ToolUsage.aggregate([
+        { $match: { user: { $in: teacherIds }, createdAt: { $gte: startDate } } },
+        { $group: { _id: '$user', ...actionCounters(), tools: { $addToSet: '$tool' } } }
+      ]),
+      // Per-tool counts, so the list can show WHICH tools a teacher reached for
+      // rather than only how often they reached for something.
+      ToolUsage.aggregate([
+        { $match: { user: { $in: teacherIds }, createdAt: { $gte: startDate } } },
+        {
+          $group: {
+            _id: { user: '$user', tool: '$tool' },
+            total: { $sum: 1 },
+            generated: { $sum: { $cond: [{ $eq: ['$action', 'generate'] }, 1, 0] } },
+            saved: { $sum: { $cond: [{ $eq: ['$action', 'save'] }, 1, 0] } }
+          }
+        }
+      ])
+    ]);
 
-        // Get stats
-        const examCount = await Exam.countDocuments({ createdBy: teacher._id });
-        const studentCount = await User.countDocuments({ createdBy: teacher._id, role: 'student' });
+    const byId = (rows) => new Map(rows.map((row) => [String(row._id), row]));
+    const activityById = byId(activityRows);
+    const examById = byId(examRows);
+    const studentById = byId(studentRows);
+    const toolById = byId(toolRows);
 
-        return {
-          _id: teacher._id,
-          firstName: teacher.firstName,
-          lastName: teacher.lastName,
-          email: teacher.email,
-          organization: teacher.organization,
-          parentAdmin: teacher.parentAdmin,
-          createdBy: teacher.createdBy,
-          role: teacher.role,
-          subscriptionPlan: teacher.subscriptionPlan,
-          subscriptionStatus: teacher.subscriptionStatus,
-          subscriptionStartDate: teacher.subscriptionStartDate,
-          subscriptionEndDate: teacher.subscriptionEndDate,
-          subscriptionExpiresAt: teacher.subscriptionExpiresAt,
-          isBlocked: teacher.isBlocked,
-          createdAt: teacher.createdAt,
-          lastLogin: teacher.lastLogin,
-          stats: {
-            examCount,
-            studentCount,
-            activityCount
-          },
-          recentActivities
-        };
-      })
-    );
+    const toolBreakdownById = new Map();
+    toolByKindRows.forEach((row) => {
+      const key = String(row._id.user);
+      if (!toolBreakdownById.has(key)) toolBreakdownById.set(key, {});
+      toolBreakdownById.get(key)[row._id.tool] = {
+        total: row.total,
+        generated: row.generated,
+        saved: row.saved
+      };
+    });
+
+    const teachersWithActivity = teachers.map((teacher) => {
+      const key = String(teacher._id);
+      const activity = activityById.get(key);
+      const tools = toolById.get(key) || emptyCounters();
+
+      return {
+        _id: teacher._id,
+        firstName: teacher.firstName,
+        lastName: teacher.lastName,
+        email: teacher.email,
+        organization: teacher.organization,
+        parentAdmin: teacher.parentAdmin,
+        createdBy: teacher.createdBy,
+        role: teacher.role,
+        subscriptionPlan: teacher.subscriptionPlan,
+        subscriptionStatus: teacher.subscriptionStatus,
+        subscriptionStartDate: teacher.subscriptionStartDate,
+        subscriptionEndDate: teacher.subscriptionEndDate,
+        subscriptionExpiresAt: teacher.subscriptionExpiresAt,
+        isBlocked: teacher.isBlocked,
+        createdAt: teacher.createdAt,
+        lastLogin: teacher.lastLogin,
+        stats: {
+          examCount: examById.get(key)?.count || 0,
+          lastExamCreated: examById.get(key)?.lastCreated || null,
+          studentCount: studentById.get(key)?.count || 0,
+          activityCount: activity?.count || 0,
+          lastActivity: activity?.lastActivity || null,
+          // Tool usage over the same period. `toolsGenerated` counts drafts the
+          // teacher produced whether or not they kept them, which is the whole
+          // reason ToolUsage exists.
+          toolEvents: tools.total || 0,
+          toolsGenerated: tools.generated || 0,
+          toolsSaved: tools.saved || 0,
+          toolsExported: tools.exported || 0,
+          toolsUnsaved: unsavedFrom(tools),
+          toolsBlocked: tools.blocked || 0,
+          toolsFailed: tools.failed || 0,
+          lastToolUse: tools.lastUsed || null,
+          toolsUsed: tools.tools || [],
+          toolBreakdown: toolBreakdownById.get(key) || {}
+        },
+        recentActivities: activity?.recent || []
+      };
+    });
 
     res.json(teachersWithActivity);
   } catch (error) {
@@ -3468,46 +3812,58 @@ const getAllTeachers = async (req, res) => {
   }
 };
 
-// @desc    Get activity logs for a specific teacher
+// @desc    Get activity logs and tool usage for a specific teacher
 // @route   GET /api/superadmin/teachers/:id/activity
 // @access  Private/SuperAdmin
+//
+// Returns two timelines for the same teacher over the same window: the audit
+// trail (ActivityLog — logged in, created an exam, added a student) and the
+// tool telemetry (ToolUsage — every AI draft, save, download and refusal). They
+// stay separate in the payload because they answer different questions, and the
+// client shows them as two tabs.
 const getTeacherActivity = async (req, res) => {
   try {
     const { id } = req.params;
     const { limit = 50, period = '30d' } = req.query;
+    const startDate = resolvePeriodStart(period) || new Date(0);
+    const eventLimit = Math.min(parseInt(limit, 10) || 50, 200);
 
-    // Calculate date range
-    const now = new Date();
-    const startDate = new Date();
-    if (period === '7d') startDate.setDate(now.getDate() - 7);
-    else if (period === '30d') startDate.setDate(now.getDate() - 30);
-    else if (period === '90d') startDate.setDate(now.getDate() - 90);
-    else if (period === '1y') startDate.setFullYear(now.getFullYear() - 1);
-    else startDate.setDate(now.getDate() - 30);
-
-    // Get the teacher
     const teacher = await User.findById(id).select('-password');
     if (!teacher || teacher.role !== 'teacher') {
       return res.status(404).json({ message: 'Teacher not found' });
     }
 
-    // Get activity logs
-    const activities = await ActivityLog.find({
-      user: teacher._id,
-      timestamp: { $gte: startDate }
-    })
-      .sort({ timestamp: -1 })
-      .limit(parseInt(limit));
+    const [activities, toolEvents, toolTotalsRow, toolByToolRows, examCount] = await Promise.all([
+      ActivityLog.find({ user: teacher._id, timestamp: { $gte: startDate } })
+        .sort({ timestamp: -1 })
+        .limit(eventLimit),
+      ToolUsage.find({ user: teacher._id, createdAt: { $gte: startDate } })
+        .sort({ createdAt: -1 })
+        .limit(eventLimit)
+        .lean(),
+      ToolUsage.aggregate([
+        { $match: { user: teacher._id, createdAt: { $gte: startDate } } },
+        { $group: { _id: null, ...actionCounters() } }
+      ]),
+      ToolUsage.aggregate([
+        { $match: { user: teacher._id, createdAt: { $gte: startDate } } },
+        { $group: { _id: '$tool', ...actionCounters() } },
+        { $sort: { total: -1 } }
+      ]),
+      Exam.countDocuments({ createdBy: teacher._id, createdAt: { $gte: startDate } })
+    ]);
 
     // Group activities by action type for summary
     const activitySummary = {};
-    activities.forEach(activity => {
+    activities.forEach((activity) => {
       const action = activity.action;
       if (!activitySummary[action]) {
         activitySummary[action] = 0;
       }
       activitySummary[action]++;
     });
+
+    const toolTotals = toolTotalsRow[0] || emptyCounters();
 
     res.json({
       teacher: {
@@ -3518,9 +3874,38 @@ const getTeacherActivity = async (req, res) => {
         organization: teacher.organization
       },
       period,
+      since: startDate,
       summary: activitySummary,
       totalActivities: activities.length,
-      activities
+      activities,
+      examsCreated: examCount,
+      toolUsage: {
+        totals: {
+          ...toolCountersPayload(toolTotals),
+          saveRate: toolTotals.generated ? Math.round((toolTotals.saved / toolTotals.generated) * 100) : 0
+        },
+        byTool: toolByToolRows.map((row) => ({
+          tool: row._id,
+          label: TOOL_REGISTRY[row._id]?.label || row._id,
+          group: TOOL_REGISTRY[row._id]?.group || 'other',
+          ...toolCountersPayload(row)
+        })),
+        events: toolEvents.map((event) => ({
+          _id: event._id,
+          tool: event.tool,
+          toolLabel: TOOL_REGISTRY[event.tool]?.label || event.tool,
+          action: event.action,
+          status: event.status,
+          format: event.format,
+          title: event.title,
+          subject: event.subject,
+          className: event.className,
+          durationMs: event.durationMs,
+          resource: event.resource,
+          meta: event.meta,
+          createdAt: event.createdAt
+        }))
+      }
     });
   } catch (error) {
     console.error('Get teacher activity error:', error);
@@ -3796,6 +4181,7 @@ module.exports = {
   assignIndividualTeacherPlan,
   revokeIndividualTeacherPlan,
   getTeacherActivity,
+  getToolUsageStats,
   getBackups,
   runBackupNow
 };

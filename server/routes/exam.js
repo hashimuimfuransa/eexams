@@ -44,6 +44,7 @@ const { coerceToGrid } = require('../utils/spreadsheetGrading');
 const { repairJson, isJsonValidationError } = require('../utils/jsonRepair');
 const { normalizeExamStructure } = require('../utils/examStructure');
 const { VALID_QUESTION_TYPES } = require('../models/Question');
+const { recordToolUsage, startTimer, errorMeta } = require('../utils/toolUsage');
 
 // Normalize a single spreadsheetTemplate/spreadsheetModelAnswer field returned by the AI.
 // Two independent problems to fix:
@@ -1104,6 +1105,12 @@ router.post('/upload-reference', auth, isAdminOrTeacher, referenceUpload.single(
       console.log(`Content truncated from ${originalLength} to ${maxContentLength} characters`);
     }
 
+    recordToolUsage(req, {
+      tool: 'exam_reference', action: 'extract',
+      title: originalname,
+      meta: { chars: content.length, sizeBytes: size, type: mimetype }
+    });
+
     res.json({
       success: true,
       content: content,
@@ -1115,6 +1122,9 @@ router.post('/upload-reference', auth, isAdminOrTeacher, referenceUpload.single(
     });
   } catch (error) {
     console.error('Error uploading reference file:', error);
+    recordToolUsage(req, {
+      tool: 'exam_reference', action: 'extract', status: 'failed', meta: errorMeta(error)
+    });
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({ message: 'File too large. Maximum size is 50MB.' });
     }
@@ -1127,6 +1137,9 @@ router.post('/upload-reference', auth, isAdminOrTeacher, referenceUpload.single(
 
 // AI exam generation route - requires Basic plan or higher
 router.post('/ai-generate', auth, isAdminOrTeacher, requireExamAccess, requireAIFeatures, async (req, res) => {
+  // Recorded whether or not the generated exam is ever saved — see
+  // models/ToolUsage.js for why unsaved work still counts as tool usage.
+  const elapsed = startTimer();
   try {
     const { prompt = '', pastedExam, referenceContent } = req.body;
     const hasPastedExam = pastedExam && pastedExam.trim();
@@ -2524,9 +2537,29 @@ IMPORTANT: Arrays must be JSON arrays, not string representations. correctAnswer
 
     console.log(`AI Exam Generated: ${examData.title} with ${flattenedQuestions.length} questions`);
 
+    recordToolUsage(req, {
+      tool: 'exam_ai_generate',
+      action: 'generate',
+      title: examData.title,
+      subject: examData.subject,
+      className: examData.className || examData.grade,
+      durationMs: elapsed(),
+      meta: {
+        questions: flattenedQuestions.length,
+        sections: examData.sections?.length || 0,
+        fromPastedExam: Boolean(hasPastedExam),
+        fromReference: Boolean(hasReferenceContent),
+        plan
+      }
+    });
+
     res.json(examData);
   } catch (err) {
     console.error('ai-generate error:', err);
+    recordToolUsage(req, {
+      tool: 'exam_ai_generate', action: 'generate', status: 'failed',
+      durationMs: elapsed(), meta: errorMeta(err)
+    });
     const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota');
     res.status(is429 ? 429 : 500).json({
       message: is429
@@ -3037,6 +3070,7 @@ Before returning, recompute every subtotal from its own components independently
 // template derived from it. Mirrors ensureSpreadsheetGrid's prompt (fileParser.js) but treats
 // the pasted table as the authoritative source of data instead of the question's own passage.
 router.post('/ai-fill-spreadsheet', auth, isAdminOrTeacher, requireExamAccess, requireAIFeatures, async (req, res) => {
+  const elapsed = startTimer();
   try {
     const { questionText = '', passage = '', pastedTable = '', currentSpreadsheet = '' } = req.body;
     // Accept one or more uploaded images (data: URIs) of a photo/screenshot of the table —
@@ -3156,12 +3190,23 @@ This is a SECOND request, editing what's already there. The teacher's input belo
 
     const fixedModelAnswerJson = modelAnswerGrid ? JSON.stringify(modelAnswerGrid) : modelAnswerJson;
 
+    recordToolUsage(req, {
+      tool: 'exam_ai_spreadsheet', action: 'generate',
+      title: String(questionText || '').slice(0, 120),
+      durationMs: elapsed(),
+      meta: { fromImages: images.length, tables: modelAnswerGrid?.tables?.length || 0 }
+    });
+
     res.json({
       spreadsheetTemplate: normalizeSpreadsheetField(parsed.spreadsheetTemplate) || fixedModelAnswerJson,
       spreadsheetModelAnswer: fixedModelAnswerJson,
     });
   } catch (err) {
     console.error('ai-fill-spreadsheet error:', err);
+    recordToolUsage(req, {
+      tool: 'exam_ai_spreadsheet', action: 'generate', status: 'failed',
+      durationMs: elapsed(), meta: errorMeta(err)
+    });
     const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota');
     // Never leak Groq's raw error payload (e.g. "Groq API error: 400 {...json...}") to the
     // teacher — translate the one we know about into plain English and fall back to a generic
@@ -3255,12 +3300,25 @@ router.post('/ai-assist-question', auth, isAdminOrTeacher, requireExamAccess, re
 
     const parsed = result.parsedContent || (result.text ? JSON.parse(result.text.match(/\{[\s\S]*\}/)?.[0] || '{}') : {});
     if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
+      recordToolUsage(req, {
+        tool: 'exam_ai_question', action: 'generate', status: 'failed',
+        meta: { reason: 'unusable_ai_response', questionType: type }
+      });
       return res.status(422).json({ message: 'AI could not fill in this question. Try adding more detail.' });
     }
+
+    recordToolUsage(req, {
+      tool: 'exam_ai_question', action: 'generate',
+      title: String(text || pasted || '').slice(0, 120),
+      meta: { questionType: type, hasPassage: Boolean(passage) }
+    });
 
     res.json({ patch: parsed });
   } catch (err) {
     console.error('ai-assist-question error:', err);
+    recordToolUsage(req, {
+      tool: 'exam_ai_question', action: 'generate', status: 'failed', meta: errorMeta(err)
+    });
     const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota');
     res.status(is429 ? 429 : 500).json({
       message: is429
@@ -3299,9 +3357,18 @@ router.post('/ai-chat', auth, isAdminOrTeacher, async (req, res) => {
     });
     const reply = aiResponse.text || '';
 
+    recordToolUsage(req, {
+      tool: 'exam_ai_chat', action: 'generate',
+      title: message.trim().slice(0, 120),
+      meta: { replyChars: reply.length }
+    });
+
     res.json({ reply });
   } catch (err) {
     console.error('ai-chat error:', err);
+    recordToolUsage(req, {
+      tool: 'exam_ai_chat', action: 'generate', status: 'failed', meta: errorMeta(err)
+    });
     const is429 = err.status === 429 || err.message?.includes('429') || err.message?.includes('quota');
     res.status(is429 ? 429 : 500).json({
       message: is429

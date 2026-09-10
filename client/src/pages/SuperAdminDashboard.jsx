@@ -12,7 +12,7 @@ import {
   SupervisorAccount, School, TrendingUp,
   CheckCircle, Block, Edit, Add, ArrowForward, Delete, InfoOutlined, Close,
   Visibility, VisibilityOff, Assessment, Person, Email, Phone, EmojiEvents, ReportProblem,
-  CardMembership, Lock, LockOpen
+  CardMembership, Lock, LockOpen, AutoAwesome, SaveAlt, DraftsOutlined, Handyman
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -27,6 +27,8 @@ import OrganizationPlanManagement from '../components/admin/OrganizationPlanMana
 import IndividualPlanManagement from '../components/admin/IndividualPlanManagement';
 import AssignIndividualPlanDialog from '../components/admin/AssignIndividualPlanDialog';
 import SubscriptionReports from '../components/admin/SubscriptionReports';
+import ToolUsagePanel, { TOOL_LABELS, toolIcon, timeAgo } from '../components/admin/ToolUsagePanel';
+import TeacherActivityDialog from '../components/admin/teachers/TeacherActivityDialog';
 import { QuestionEditor } from '../components/shared/QuestionEditor';
 import { getPlanScopeMeta } from '../utils/planUtils';
 
@@ -34,6 +36,7 @@ const nav = [
   { id: 'home',          label: 'Overview',                icon: <DashIcon sx={{ fontSize: 20 }} /> },
   { id: 'organizations', label: 'Organizations',           icon: <Business sx={{ fontSize: 20 }} /> },
   { id: 'teachers',      label: 'Teachers',               icon: <SupervisorAccount sx={{ fontSize: 20 }} /> },
+  { id: 'tool-usage',    label: 'Teacher Tools',          icon: <Handyman sx={{ fontSize: 20 }} /> },
   { id: 'users',         label: 'All Users',               icon: <People sx={{ fontSize: 20 }} /> },
   { id: 'exam-requests', label: 'Exam Requests',           icon: <School sx={{ fontSize: 20 }} /> },
   { id: 'organization-plans', label: 'Organization Plans', icon: <Business sx={{ fontSize: 20 }} /> },
@@ -91,7 +94,8 @@ export default function SuperAdminDashboard() {
       sidebarOpen={sidebarOpen} isMobile={isMobile} onCloseSidebar={() => setSidebarOpen(false)}>
       {activeSection === 'home'          && <OverviewSection stats={stats} statsLoading={statsLoading} searchQuery={searchQuery} setActiveSection={setActiveSection} />}
       {activeSection === 'organizations' && <OrganizationsSection searchQuery={searchQuery} />}
-      {activeSection === 'teachers'      && <TeachersSection searchQuery={searchQuery} />}
+      {activeSection === 'teachers'      && <TeachersSection searchQuery={searchQuery} onViewAllTools={() => setActiveSection('tool-usage')} />}
+      {activeSection === 'tool-usage'    && <ToolUsageSection />}
       {activeSection === 'users'         && <AllUsersSection searchQuery={searchQuery} />}
       {activeSection === 'exam-requests' && <ExamRequestsSection searchQuery={searchQuery} />}
       {activeSection === 'organization-plans' && <OrganizationPlanManagement />}
@@ -122,12 +126,19 @@ function OverviewSection({ stats, statsLoading, setActiveSection }) {
     { plan:'Enterprise', color: PLAN_COLORS.enterprise, count: stats?.organizations?.byPlan?.enterprise ?? 0 },
   ];
   const planTotal = planData.reduce((s,p)=>s+p.count,0)||1;
+  const tools30 = stats?.toolUsage?.last30Days;
 
   const statCards = [
     { label:'Organizations',  value:stats?.totalOrganizations, iconBg:'rgba(13,64,108,0.1)',  icon:<Business sx={{color:tokens.primary,fontSize:24}}/>,       sub:'registered', subColor:tokens.primary },
     { label:'Total Teachers', value:stats?.totalTeachers,      iconBg:'rgba(12,189,115,0.1)', icon:<SupervisorAccount sx={{color:tokens.accent,fontSize:24}}/>, sub:'platform-wide', subColor:tokens.accent },
     { label:'Total Students', value:stats?.totalStudents,      iconBg:'rgba(245,158,11,0.1)', icon:<People sx={{color:tokens.warning,fontSize:24}}/>,           sub:'enrolled', subColor:tokens.warning },
     { label:'Active Exams',   value:stats?.totalExams,         iconBg:'rgba(99,102,241,0.1)', icon:<School sx={{color:'#6366F1',fontSize:24}}/>,                sub:'running', subColor:'#6366F1' },
+    // Teacher tool usage. `generated` counts every AI draft, including the ones
+    // never saved — work the exam and lesson-plan counts above cannot see.
+    { label:'Tool Uses',      value:tools30?.events,           iconBg:'rgba(13,64,108,0.1)',  icon:<Handyman sx={{color:tokens.primary,fontSize:24}}/>,        sub:'last 30 days', subColor:tokens.primary },
+    { label:'AI Generations', value:tools30?.generated,        iconBg:'rgba(99,102,241,0.1)', icon:<AutoAwesome sx={{color:'#6366F1',fontSize:24}}/>,          sub:'saved or not', subColor:'#6366F1' },
+    { label:'Saved Outputs',  value:tools30?.saved,            iconBg:'rgba(12,189,115,0.1)', icon:<SaveAlt sx={{color:tokens.accent,fontSize:24}}/>,          sub:`${tools30?.saveRate ?? 0}% of generations`, subColor:tokens.accent },
+    { label:'Never Saved',    value:tools30?.unsaved,          iconBg:'rgba(245,158,11,0.1)', icon:<DraftsOutlined sx={{color:tokens.warning,fontSize:24}}/>,  sub:'generated, not kept', subColor:tokens.warning },
   ];
 
   return (
@@ -218,6 +229,14 @@ function OverviewSection({ stats, statsLoading, setActiveSection }) {
         </Grid>
       </Grid>
 
+      {/* Teacher tools — what was produced, and how much of it was kept */}
+      <Box sx={{ mt:2.5 }}>
+        <SectionTitle action={
+          <Button size="small" onClick={() => setActiveSection('tool-usage')} sx={{color:tokens.accent,fontWeight:700,fontSize:12,textTransform:'none'}}>Full Report</Button>
+        }>Teacher Tools Usage · Last 30 Days</SectionTitle>
+        <ToolUsagePanel compact hideTiles onViewAll={() => setActiveSection('tool-usage')} />
+      </Box>
+
       {/* Quick Actions */}
       <Paper elevation={0} sx={{ mt:2.5, p:2.5, borderRadius:3, border:`1px solid ${tokens.surfaceBorder}`, bgcolor:'white' }}>
         <Typography fontWeight={700} sx={{ fontSize:15, fontFamily:"'DM Sans',sans-serif", mb:2 }}>Quick Actions</Typography>
@@ -226,6 +245,7 @@ function OverviewSection({ stats, statsLoading, setActiveSection }) {
             { label:'Organizations', icon:<Business sx={{fontSize:18}}/>,       color:tokens.primary, bg:'rgba(13,64,108,0.07)',   section:'organizations' },
             { label:'All Users',     icon:<People sx={{fontSize:18}}/>,         color:'#6366F1',      bg:'rgba(99,102,241,0.09)',  section:'users' },
             { label:'Org Plans',     icon:<AttachMoney sx={{fontSize:18}}/>,    color:tokens.accent,  bg:'rgba(12,189,115,0.09)',  section:'organization-plans' },
+            { label:'Teacher Tools', icon:<Handyman sx={{fontSize:18}}/>,       color:tokens.accentDark, bg:'rgba(12,189,115,0.09)', section:'tool-usage' },
             { label:'Analytics',     icon:<TrendingUp sx={{fontSize:18}}/>,     color:tokens.warning, bg:'rgba(245,158,11,0.09)',  section:'analytics' },
             { label:'Settings',      icon:<Settings sx={{fontSize:18}}/>,       color:'#64748B',      bg:'rgba(100,116,139,0.09)', section:'settings' },
           ].map((a,i)=>(
@@ -236,6 +256,24 @@ function OverviewSection({ stats, statsLoading, setActiveSection }) {
           ))}
         </Box>
       </Paper>
+    </Box>
+  );
+}
+
+/* ── TEACHER TOOLS ──
+   Full tool-usage report: which tools teachers reached for, how much they
+   generated, and how much of that they actually kept. */
+function ToolUsageSection() {
+  return (
+    <Box>
+      <Paper elevation={0} sx={{ p:3, mb:3, borderRadius:3, background:gradients.brand, color:'white', position:'relative', overflow:'hidden' }}>
+        <Box sx={{ position:'absolute', right:-50, top:-50, width:200, height:200, borderRadius:'50%', bgcolor:'rgba(255,255,255,0.06)' }}/>
+        <Typography variant="h5" fontWeight={700} sx={{ fontFamily:"'DM Sans',sans-serif" }}>Teacher Tools</Typography>
+        <Typography variant="body2" sx={{ color:'rgba(255,255,255,0.8)', mt:0.5, fontFamily:"'DM Sans',sans-serif" }}>
+          Every lesson plan, slide deck, exercise sheet, scheme of work and exam-AI request — counted when it is generated, not only when it is saved.
+        </Typography>
+      </Paper>
+      <ToolUsagePanel />
     </Box>
   );
 }
@@ -817,45 +855,33 @@ function OrganizationsSection() {
 }
 
 /* ── TEACHERS SECTION ── */
-function TeachersSection({ searchQuery: initialSearchQuery }) {
+/* ── TEACHERS ──
+   The list answers "who is actually using what they pay for?", so every row
+   carries tool usage next to the saved-work counts: `generated` counts AI
+   drafts whether or not the teacher kept them, which is invisible in the exam
+   and lesson-plan libraries (see server/models/ToolUsage.js). */
+function TeachersSection({ searchQuery: initialSearchQuery, onViewAllTools }) {
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
-  const [activityDialog, setActivityDialog] = useState(null);
-  const [activityLoading, setActivityLoading] = useState(false);
-  const [activityData, setActivityData] = useState(null);
-  const [activityPeriod, setActivityPeriod] = useState('30d');
+  const [period, setPeriod] = useState('30d');
+  const [usageFilter, setUsageFilter] = useState('');
+  const [sortBy, setSortBy] = useState('activity');
+  const [activityTeacher, setActivityTeacher] = useState(null);
   const [planDialogTeacher, setPlanDialogTeacher] = useState(null);
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
   useEffect(() => {
-    api.get('/superadmin/teachers').then(r => {
-      setTeachers(r.data || []);
-    }).catch(err => {
-      console.error('Fetch teachers error:', err);
-    }).finally(() => setLoading(false));
-  }, []);
-
-  const handleViewActivity = async (teacher) => {
-    setActivityDialog(teacher);
-    setActivityLoading(true);
-    setActivityData(null);
-    try {
-      const response = await api.get(`/superadmin/teachers/${teacher._id}/activity?period=${activityPeriod}`);
-      setActivityData(response.data);
-    } catch (err) {
-      console.error('Fetch activity error:', err);
-    } finally {
-      setActivityLoading(false);
-    }
-  };
-
-  const handleActivityPeriodChange = (period) => {
-    setActivityPeriod(period);
-    if (activityDialog) {
-      handleViewActivity(activityDialog);
-    }
-  };
+    let cancelled = false;
+    setLoading(true);
+    // A high limit because the usage filters below are client-side: filtering a
+    // 50-row page for "never used a tool" would silently hide the rest.
+    api.get(`/superadmin/teachers?period=${period}&limit=300`)
+      .then(r => { if (!cancelled) setTeachers(r.data || []); })
+      .catch(err => { console.error('Fetch teachers error:', err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [period]);
 
   // Only individual (self-registered) teachers get a plan assigned here —
   // org teachers inherit their admin's organisation subscription.
@@ -871,17 +897,53 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
     setSnack({ open: true, msg: message || 'Plan updated', severity: 'success' });
   };
 
-  const filteredTeachers = teachers.filter(t => {
-    const searchLower = searchQuery.toLowerCase();
-    return !searchQuery ||
-      (t.firstName?.toLowerCase().includes(searchLower)) ||
-      (t.lastName?.toLowerCase().includes(searchLower)) ||
-      (t.email?.toLowerCase().includes(searchLower)) ||
-      (t.organization?.toLowerCase().includes(searchLower));
+  const matchesSearch = (t) => {
+    const q = searchQuery.toLowerCase();
+    return !q ||
+      (t.firstName?.toLowerCase().includes(q)) ||
+      (t.lastName?.toLowerCase().includes(q)) ||
+      (t.email?.toLowerCase().includes(q)) ||
+      (t.organization?.toLowerCase().includes(q));
+  };
+
+  const matchesUsage = (t) => {
+    const s = t.stats || {};
+    if (usageFilter === 'tools') return (s.toolEvents || 0) > 0;
+    if (usageFilter === 'no-tools') return !(s.toolEvents || 0);
+    if (usageFilter === 'exams') return (s.examCount || 0) > 0;
+    if (usageFilter === 'unsaved') return (s.toolsUnsaved || 0) > 0;
+    if (usageFilter === 'blocked') return (s.toolsBlocked || 0) > 0;
+    // Nothing at all in the selected window — neither a tool nor a logged action.
+    if (usageFilter === 'inactive') return !(s.toolEvents || 0) && !(s.activityCount || 0);
+    return true;
+  };
+
+  const filteredTeachers = teachers.filter(t => matchesSearch(t) && matchesUsage(t)).sort((a, b) => {
+    const sa = a.stats || {}, sb = b.stats || {};
+    if (sortBy === 'tools') return (sb.toolEvents || 0) - (sa.toolEvents || 0);
+    if (sortBy === 'generated') return (sb.toolsGenerated || 0) - (sa.toolsGenerated || 0);
+    if (sortBy === 'exams') return (sb.examCount || 0) - (sa.examCount || 0);
+    if (sortBy === 'name') return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+    // 'activity' — most recently seen doing anything, tool or audited action.
+    const lastOf = (s) => Math.max(new Date(s.lastToolUse || 0).getTime(), new Date(s.lastActivity || 0).getTime());
+    return lastOf(sb) - lastOf(sa);
   });
 
+  // Roll-up of the rows currently loaded, so the strip always agrees with the
+  // cards underneath it.
+  const summary = teachers.reduce((acc, t) => {
+    const s = t.stats || {};
+    acc.usingTools += (s.toolEvents || 0) > 0 ? 1 : 0;
+    acc.generated += s.toolsGenerated || 0;
+    acc.saved += s.toolsSaved || 0;
+    acc.unsaved += s.toolsUnsaved || 0;
+    acc.withExams += (s.examCount || 0) > 0 ? 1 : 0;
+    acc.idle += (!(s.toolEvents || 0) && !(s.activityCount || 0)) ? 1 : 0;
+    return acc;
+  }, { usingTools: 0, generated: 0, saved: 0, unsaved: 0, withExams: 0, idle: 0 });
+
   const StatBadge = ({ icon, value, label, color }) => (
-    <Box sx={{display:'flex',alignItems:'center',gap:0.75,bgcolor:`${color}15`,px:1.5,py:0.5,borderRadius:2}}>
+    <Box sx={{display:'flex',alignItems:'center',gap:0.75,bgcolor:`${color}15`,px:1.25,py:0.5,borderRadius:2}}>
       {icon}
       <Typography variant="caption" fontWeight={700} sx={{color}}>{value}</Typography>
       <Typography variant="caption" sx={{color:tokens.textMuted,fontSize:'10px'}}>{label}</Typography>
@@ -890,21 +952,91 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
 
   return (
     <Box>
-      <SectionTitle>Teachers</SectionTitle>
+      <SectionTitle action={onViewAllTools ? (
+        <Button size="small" onClick={onViewAllTools} sx={{color:tokens.accent,fontWeight:700,fontSize:12,textTransform:'none'}}>
+          Full tool report
+        </Button>
+      ) : null}>Teachers</SectionTitle>
+
+      {/* Usage roll-up for the loaded teachers */}
+      <Grid container spacing={1.5} sx={{mb:2.5}}>
+        {[
+          { value: teachers.length, label: 'Teachers', color: tokens.primary },
+          { value: summary.usingTools, label: 'Used tools', color: tokens.accentDark },
+          { value: summary.generated, label: 'AI generations', color: '#6366F1' },
+          { value: summary.saved, label: 'Saved outputs', color: tokens.accent },
+          { value: summary.unsaved, label: 'Never saved', color: tokens.warning },
+          { value: summary.idle, label: 'No activity', color: tokens.textMuted },
+        ].map((s,i)=>(
+          <Grid item xs={6} sm={4} md={2} key={i}>
+            <Paper elevation={0} sx={{p:1.75,borderRadius:2.5,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white'}}>
+              <Typography variant="h6" fontWeight={800} sx={{color:s.color,fontFamily:"'DM Sans',sans-serif",lineHeight:1.2}}>
+                {loading ? '—' : s.value}
+              </Typography>
+              <Typography sx={{fontSize:11.5,color:tokens.textMuted}}>{s.label}</Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
 
       {/* Filter Bar */}
       <Paper elevation={0} sx={{p:2,mb:3,borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white'}}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search teachers by name, email, organization..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          InputProps={{
-            startAdornment: <Box component="span" sx={{color:tokens.textMuted,mr:1}}>🔍</Box>
-          }}
-          sx={{'& .MuiOutlinedInput-root':{borderRadius:2,bgcolor:'#FAFBFC'}}}
-        />
+        <Grid container spacing={1.5} alignItems="center">
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search teachers by name, email, organization..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: <Box component="span" sx={{color:tokens.textMuted,mr:1}}>🔍</Box>
+              }}
+              sx={{'& .MuiOutlinedInput-root':{borderRadius:2,bgcolor:'#FAFBFC'}}}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Activity</InputLabel>
+              <Select value={usageFilter} label="Activity" onChange={(e)=>setUsageFilter(e.target.value)} sx={{borderRadius:2,bgcolor:'#FAFBFC'}}>
+                <MuiMenuItem value="">All teachers</MuiMenuItem>
+                <MuiMenuItem value="tools">Used teacher tools</MuiMenuItem>
+                <MuiMenuItem value="unsaved">Generated but never saved</MuiMenuItem>
+                <MuiMenuItem value="exams">Created exams</MuiMenuItem>
+                <MuiMenuItem value="blocked">Hit a plan limit</MuiMenuItem>
+                <MuiMenuItem value="no-tools">Never used a tool</MuiMenuItem>
+                <MuiMenuItem value="inactive">No activity at all</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Sort by</InputLabel>
+              <Select value={sortBy} label="Sort by" onChange={(e)=>setSortBy(e.target.value)} sx={{borderRadius:2,bgcolor:'#FAFBFC'}}>
+                <MuiMenuItem value="activity">Last seen</MuiMenuItem>
+                <MuiMenuItem value="tools">Most tool uses</MuiMenuItem>
+                <MuiMenuItem value="generated">Most AI generations</MuiMenuItem>
+                <MuiMenuItem value="exams">Most exams</MuiMenuItem>
+                <MuiMenuItem value="name">Name</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Period</InputLabel>
+              <Select value={period} label="Period" onChange={(e)=>setPeriod(e.target.value)} sx={{borderRadius:2,bgcolor:'#FAFBFC'}}>
+                <MuiMenuItem value="7d">Last 7 days</MuiMenuItem>
+                <MuiMenuItem value="30d">Last 30 days</MuiMenuItem>
+                <MuiMenuItem value="90d">Last 90 days</MuiMenuItem>
+                <MuiMenuItem value="1y">Last year</MuiMenuItem>
+                <MuiMenuItem value="all">All time</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+        <Typography variant="caption" sx={{color:tokens.textMuted,mt:1.5,display:'block'}}>
+          Showing {filteredTeachers.length} of {teachers.length} teachers · usage counted over the selected period
+        </Typography>
       </Paper>
 
       {loading ? (
@@ -916,160 +1048,142 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
           <SupervisorAccount sx={{fontSize:48,color:tokens.textMuted,mb:2}}/>
           <Typography variant="h6" sx={{color:tokens.textMuted,mb:1}}>No teachers found</Typography>
           <Typography variant="body2" sx={{color:tokens.textMuted}}>
-            {searchQuery ? 'No teachers match your search criteria' : 'There are no teachers in the system yet'}
+            {searchQuery || usageFilter ? 'No teachers match these filters' : 'There are no teachers in the system yet'}
           </Typography>
         </Paper>
       ) : (
         <Grid container spacing={2}>
-          {filteredTeachers.map(teacher => (
-            <Grid item xs={12} md={6} lg={4} key={teacher._id}>
-              <Paper elevation={0} sx={{
-                p:2.5,borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',
-                transition:'all 0.2s ease','&:hover':{boxShadow:'0 8px 30px rgba(13,64,108,0.12)',transform:'translateY(-2px)'}
-              }}>
-                {/* Header */}
-                <Box sx={{display:'flex',alignItems:'flex-start',gap:1.5,mb:2}}>
-                  <Avatar sx={{
-                    width:44,height:44,fontSize:16,fontWeight:700,
-                    background:`linear-gradient(135deg,${tokens.accent}20,${tokens.accent}40)`,
-                    color:tokens.accent
+          {filteredTeachers.map(teacher => {
+            const s = teacher.stats || {};
+            const toolsUsed = s.toolsUsed || [];
+            const lastSeen = [s.lastToolUse, s.lastActivity, teacher.lastLogin]
+              .filter(Boolean)
+              .sort((a, b) => new Date(b) - new Date(a))[0];
+
+            return (
+              <Grid item xs={12} md={6} lg={4} key={teacher._id}>
+                <Paper elevation={0} sx={{
+                  p:2.5,borderRadius:3,border:`1px solid ${tokens.surfaceBorder}`,bgcolor:'white',height:'100%',
+                  display:'flex',flexDirection:'column',
+                  transition:'all 0.2s ease','&:hover':{boxShadow:'0 8px 30px rgba(13,64,108,0.12)',transform:'translateY(-2px)'}
+                }}>
+                  {/* Header */}
+                  <Box sx={{display:'flex',alignItems:'flex-start',gap:1.5,mb:2}}>
+                    <Avatar sx={{
+                      width:44,height:44,fontSize:16,fontWeight:700,
+                      background:`linear-gradient(135deg,${tokens.accent}20,${tokens.accent}40)`,
+                      color:tokens.accent
+                    }}>
+                      {teacher.firstName?.charAt(0)}
+                    </Avatar>
+                    <Box sx={{flex:1,minWidth:0}}>
+                      <Typography variant="body1" fontWeight={700} sx={{fontFamily:"'DM Sans',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {teacher.firstName} {teacher.lastName}
+                      </Typography>
+                      <Typography variant="caption" sx={{color:tokens.textMuted,display:'block'}}>{teacher.email}</Typography>
+                      {teacher.organization && (
+                        <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mt:0.5}}>{teacher.organization}</Typography>
+                      )}
+                    </Box>
+                  </Box>
+
+                  {/* Saved-work stats */}
+                  <Box sx={{display:'flex',flexWrap:'wrap',gap:0.75,mb:1.25}}>
+                    <StatBadge icon={<People sx={{fontSize:14,color:tokens.warning}}/>} value={s.studentCount??0} label="Students" color={tokens.warning}/>
+                    <StatBadge icon={<School sx={{fontSize:14,color:'#6366F1'}}/>} value={s.examCount??0} label="Exams" color="#6366F1"/>
+                    <StatBadge icon={<Assessment sx={{fontSize:14,color:tokens.primary}}/>} value={s.activityCount??0} label="Actions" color={tokens.primary}/>
+                  </Box>
+
+                  {/* Tool usage — generated counts drafts the teacher never saved */}
+                  <Box sx={{
+                    p:1.25,mb:1.5,borderRadius:2,
+                    bgcolor: s.toolEvents ? 'rgba(12,189,115,0.06)' : '#F8FAFC',
+                    border:`1px solid ${s.toolEvents ? 'rgba(12,189,115,0.18)' : tokens.surfaceBorder}`
                   }}>
-                    {teacher.firstName?.charAt(0)}
-                  </Avatar>
-                  <Box sx={{flex:1,minWidth:0}}>
-                    <Typography variant="body1" fontWeight={700} sx={{fontFamily:"'DM Sans',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                      {teacher.firstName} {teacher.lastName}
-                    </Typography>
-                    <Typography variant="caption" sx={{color:tokens.textMuted,display:'block'}}>{teacher.email}</Typography>
-                    {teacher.organization && (
-                      <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mt:0.5}}>{teacher.organization}</Typography>
+                    <Box sx={{display:'flex',alignItems:'center',justifyContent:'space-between',mb:toolsUsed.length?0.75:0}}>
+                      <Typography variant="caption" fontWeight={700} sx={{color:tokens.textSecondary}}>
+                        Teacher tools
+                      </Typography>
+                      <Typography variant="caption" fontWeight={700} sx={{color: s.toolEvents ? tokens.accentDark : tokens.textMuted}}>
+                        {s.toolEvents ? `${s.toolEvents} uses` : 'not used'}
+                      </Typography>
+                    </Box>
+                    {s.toolEvents > 0 && (
+                      <>
+                        <Box sx={{display:'flex',flexWrap:'wrap',gap:0.75,mb:0.75}}>
+                          <StatBadge icon={<AutoAwesome sx={{fontSize:13,color:'#6366F1'}}/>} value={s.toolsGenerated??0} label="generated" color="#6366F1"/>
+                          <StatBadge icon={<SaveAlt sx={{fontSize:13,color:tokens.accentDark}}/>} value={s.toolsSaved??0} label="saved" color={tokens.accentDark}/>
+                          {s.toolsUnsaved > 0 && (
+                            <StatBadge icon={<DraftsOutlined sx={{fontSize:13,color:tokens.warning}}/>} value={s.toolsUnsaved} label="unsaved" color={tokens.warning}/>
+                          )}
+                          {s.toolsBlocked > 0 && (
+                            <StatBadge icon={<Block sx={{fontSize:13,color:tokens.danger}}/>} value={s.toolsBlocked} label="blocked" color={tokens.danger}/>
+                          )}
+                        </Box>
+                        <Box sx={{display:'flex',flexWrap:'wrap',gap:0.5}}>
+                          {toolsUsed.slice(0,4).map(tool => (
+                            <Chip
+                              key={tool}
+                              size="small"
+                              icon={<Box sx={{display:'flex',alignItems:'center',color:tokens.primary,ml:0.5}}>{toolIcon(tool)}</Box>}
+                              label={TOOL_LABELS[tool] || tool}
+                              sx={{height:22,fontSize:10.5,fontWeight:600,bgcolor:'white',border:`1px solid ${tokens.surfaceBorder}`,color:tokens.textSecondary}}
+                            />
+                          ))}
+                          {toolsUsed.length > 4 && (
+                            <Chip size="small" label={`+${toolsUsed.length-4}`} sx={{height:22,fontSize:10.5,fontWeight:700,bgcolor:'#EEF2F6',color:tokens.textSecondary}}/>
+                          )}
+                        </Box>
+                      </>
                     )}
                   </Box>
-                </Box>
 
-                {/* Stats */}
-                <Box sx={{display:'flex',flexWrap:'wrap',gap:1,mb:2}}>
-                  <StatBadge icon={<People sx={{fontSize:14,color:tokens.warning}}/>} value={teacher.stats?.studentCount??0} label="Students" color={tokens.warning}/>
-                  <StatBadge icon={<School sx={{fontSize:14,color:'#6366F1'}}/>} value={teacher.stats?.examCount??0} label="Exams" color="#6366F1"/>
-                  <StatBadge icon={<Assessment sx={{fontSize:14,color:tokens.primary}}/>} value={teacher.stats?.activityCount??0} label="Activities" color={tokens.primary}/>
-                </Box>
-
-                {/* Footer */}
-                <Box sx={{display:'flex',alignItems:'center',justifyContent:'space-between',pt:1.5,borderTop:`1px solid ${tokens.surfaceBorder}`}}>
-                  <Box sx={{display:'flex',alignItems:'center',gap:1}}>
-                    {!teacher.parentAdmin && (
-                      <Chip label={teacher.subscriptionPlan||'free'} size="small" sx={{
-                        height:22,fontSize:'11px',fontWeight:600,textTransform:'capitalize',
-                        bgcolor:`${PLAN_COLORS[teacher.subscriptionPlan]||PLAN_COLORS.free}15`,
-                        color:PLAN_COLORS[teacher.subscriptionPlan]||PLAN_COLORS.free
+                  {/* Footer */}
+                  <Box sx={{display:'flex',alignItems:'center',justifyContent:'space-between',pt:1.5,mt:'auto',borderTop:`1px solid ${tokens.surfaceBorder}`}}>
+                    <Box sx={{display:'flex',alignItems:'center',gap:1,flexWrap:'wrap'}}>
+                      {!teacher.parentAdmin && (
+                        <Chip label={teacher.subscriptionPlan||'free'} size="small" sx={{
+                          height:22,fontSize:'11px',fontWeight:600,textTransform:'capitalize',
+                          bgcolor:`${PLAN_COLORS[teacher.subscriptionPlan]||PLAN_COLORS.free}15`,
+                          color:PLAN_COLORS[teacher.subscriptionPlan]||PLAN_COLORS.free
+                        }}/>
+                      )}
+                      <Chip label={teacher.isBlocked?'Blocked':'Active'} size="small" sx={{
+                        height:22,fontSize:'11px',fontWeight:600,
+                        bgcolor:teacher.isBlocked?'rgba(239,68,68,0.1)':'rgba(12,189,115,0.1)',
+                        color:teacher.isBlocked?'#EF4444':tokens.accentDark
                       }}/>
-                    )}
-                    <Chip label={teacher.isBlocked?'Blocked':'Active'} size="small" sx={{
-                      height:22,fontSize:'11px',fontWeight:600,
-                      bgcolor:teacher.isBlocked?'rgba(239,68,68,0.1)':'rgba(12,189,115,0.1)',
-                      color:teacher.isBlocked?'#EF4444':tokens.accentDark
-                    }}/>
-                  </Box>
-                  <Box sx={{display:'flex',gap:0.5}}>
-                    {!teacher.parentAdmin && (
-                      <Tooltip title="Assign individual plan">
-                        <IconButton size="small" onClick={()=>setPlanDialogTeacher(teacher)} sx={{color:tokens.accentDark,bgcolor:`${tokens.accent}15`,'&:hover':{bgcolor:`${tokens.accent}25`},width:32,height:32}}>
-                          <CardMembership fontSize="small"/>
+                      <Tooltip title={lastSeen ? new Date(lastSeen).toLocaleString() : 'No recorded activity'}>
+                        <Typography variant="caption" sx={{color:tokens.textMuted}}>{timeAgo(lastSeen)}</Typography>
+                      </Tooltip>
+                    </Box>
+                    <Box sx={{display:'flex',gap:0.5}}>
+                      {!teacher.parentAdmin && (
+                        <Tooltip title="Assign individual plan">
+                          <IconButton size="small" onClick={()=>setPlanDialogTeacher(teacher)} sx={{color:tokens.accentDark,bgcolor:`${tokens.accent}15`,'&:hover':{bgcolor:`${tokens.accent}25`},width:32,height:32}}>
+                            <CardMembership fontSize="small"/>
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <Tooltip title="View tool usage & activity">
+                        <IconButton size="small" onClick={()=>setActivityTeacher(teacher)} sx={{color:tokens.textSecondary,bgcolor:`${tokens.textSecondary}10`,'&:hover':{bgcolor:`${tokens.textSecondary}20`},width:32,height:32}}>
+                          <Assessment fontSize="small"/>
                         </IconButton>
                       </Tooltip>
-                    )}
-                    <Tooltip title="View Activity">
-                      <IconButton size="small" onClick={()=>handleViewActivity(teacher)} sx={{color:tokens.textSecondary,bgcolor:`${tokens.textSecondary}10`,'&:hover':{bgcolor:`${tokens.textSecondary}20`},width:32,height:32}}>
-                        <Assessment fontSize="small"/>
-                      </IconButton>
-                    </Tooltip>
+                    </Box>
                   </Box>
-                </Box>
-              </Paper>
-            </Grid>
-          ))}
+                </Paper>
+              </Grid>
+            );
+          })}
         </Grid>
       )}
 
-      {/* Activity Dialog */}
-      <Dialog open={!!activityDialog} onClose={()=>setActivityDialog(null)} maxWidth="md" fullWidth PaperProps={{sx:{borderRadius:3}}}>
-        <DialogTitle sx={{fontWeight:700,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <Box>
-            <Typography variant="h6">Teacher Activity Log</Typography>
-            {activityDialog && <Typography variant="caption" sx={{color:tokens.textMuted,display:'block',mt:0.5}}>{activityDialog.firstName} {activityDialog.lastName}</Typography>}
-          </Box>
-          <IconButton onClick={()=>setActivityDialog(null)}><Close/></IconButton>
-        </DialogTitle>
-        <DialogContent>
-          {/* Period Selector */}
-          <Box sx={{display:'flex',gap:1,mb:3}}>
-            {['7d','30d','90d','1y'].map(period=>(
-              <Button
-                key={period}
-                size="small"
-                variant={activityPeriod===period?'contained':'outlined'}
-                onClick={()=>handleActivityPeriodChange(period)}
-                sx={{textTransform:'none',borderRadius:2}}
-              >
-                {period==='7d'?'7 Days':period==='30d'?'30 Days':period==='90d'?'90 Days':'1 Year'}
-              </Button>
-            ))}
-          </Box>
-
-          {activityLoading?(
-            <Box sx={{display:'flex',justifyContent:'center',py:8}}>
-              <CircularProgress sx={{color:tokens.accent}}/>
-            </Box>
-          ):activityData?(
-            <Box>
-              {/* Activity Summary */}
-              <Paper elevation={0} sx={{p:2,mb:3,borderRadius:2,bgcolor:'#F8FAFC'}}>
-                <Typography variant="body2" fontWeight={600} sx={{mb:1.5,color:tokens.textMuted}}>Activity Summary ({activityData.totalActivities} activities)</Typography>
-                <Grid container spacing={1}>
-                  {Object.entries(activityData.summary).map(([action,count])=>(
-                    <Grid item xs={6} md={4} key={action}>
-                      <Box sx={{display:'flex',alignItems:'center',gap:0.75,p:1,bgcolor:'white',borderRadius:1.5,border:`1px solid ${tokens.surfaceBorder}`}}>
-                        <Typography variant="caption" fontWeight={700} sx={{color:tokens.primary}}>{count}</Typography>
-                        <Typography variant="caption" sx={{color:tokens.textMuted,textTransform:'capitalize'}}>{action.replace(/_/g,' ')}</Typography>
-                      </Box>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Paper>
-
-              {/* Activity List */}
-              <Typography variant="body2" fontWeight={600} sx={{mb:2,color:tokens.textMuted}}>Recent Activities</Typography>
-              {activityData.activities.length===0?(
-                <Paper elevation={0} sx={{p:4,borderRadius:2,border:`1px dashed ${tokens.surfaceBorder}`,bgcolor:'#FAFBFC',textAlign:'center'}}>
-                  <Typography sx={{color:tokens.textMuted}}>No activities found in this period.</Typography>
-                </Paper>
-              ):(
-                <Box sx={{maxHeight:400,overflowY:'auto'}}>
-                  {activityData.activities.map((activity,index)=>(
-                    <Box key={index} sx={{display:'flex',alignItems:'flex-start',gap:2,p:2,borderBottom:`1px solid ${tokens.surfaceBorder}`,'&:last-child':{borderBottom:'none'}}}>
-                      <Avatar sx={{width:36,height:36,fontSize:14,bgcolor:`${tokens.accent}15`,color:tokens.accent}}>
-                        {activityData.teacher?.firstName?.charAt(0)||'?'}
-                      </Avatar>
-                      <Box sx={{flex:1}}>
-                        <Typography variant="body2" fontWeight={600}>{activityData.teacher?.firstName} {activityData.teacher?.lastName}</Typography>
-                        <Typography variant="caption" sx={{color:tokens.textMuted,display:'block'}}>{activity.action.replace(/_/g,' ').toUpperCase()}</Typography>
-                        <Typography variant="caption" sx={{color:tokens.textMuted}}>{new Date(activity.timestamp).toLocaleString()}</Typography>
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          ):(
-            <Paper elevation={0} sx={{p:4,borderRadius:2,border:`1px dashed ${tokens.surfaceBorder}`,bgcolor:'#FAFBFC',textAlign:'center'}}>
-              <Typography sx={{color:tokens.textMuted}}>Failed to load activity data.</Typography>
-            </Paper>
-          )}
-        </DialogContent>
-        <DialogActions sx={{px:3,pb:2}}>
-          <Button onClick={()=>setActivityDialog(null)} sx={{textTransform:'none'}}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <TeacherActivityDialog
+        open={Boolean(activityTeacher)}
+        teacher={activityTeacher}
+        onClose={()=>setActivityTeacher(null)}
+      />
 
       {/* Assign / extend an individual teacher's plan */}
       <AssignIndividualPlanDialog
@@ -1085,6 +1199,7 @@ function TeachersSection({ searchQuery: initialSearchQuery }) {
     </Box>
   );
 }
+
 
 function AllUsersSection() {
   const [users,setUsers]=useState([]);

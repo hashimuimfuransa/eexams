@@ -6,6 +6,7 @@ const ActivityLog = require('../models/ActivityLog');
 const jwt = require('jsonwebtoken');
 const { resolveEffectivePlan } = require('../middleware/planRestrictions');
 const { isTierAtLeast } = require('../utils/planLimits');
+const { ensureAnswerSlots } = require('../utils/answerSlots');
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -850,15 +851,18 @@ const joinSharedExam = async (req, res) => {
           return total + sectionQuestions.reduce((sectionTotal, q) => sectionTotal + (q.points || 1), 0);
         }, 0) || 0;
 
-        // Create new result
-        const result = await Result.create({
+        // Create new result with an answer entry per question, as startExam does - saving an
+        // answer only updates an existing entry, so the empty list this used to create made
+        // every save fail with "Answer not found in result".
+        const result = new Result({
           student: studentUser._id,
           exam: sharedExam.exam._id,
           startTime: Date.now(),
           maxPossibleScore,
-          answers: [],
           isCompleted: false
         });
+        await ensureAnswerSlots(result);
+        await result.save();
         resultId = result._id;
 
         // Store resultId in shared exam students

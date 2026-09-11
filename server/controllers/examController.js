@@ -14,6 +14,7 @@ const { sanitizeExamForStudent } = require('../utils/studentExamView');
 const ExamRequest = require('../models/ExamRequest');
 const { batchUpdateAnswers, batchGradeAnswers, bulkFetchQuestions } = require('../utils/batchOperations');
 const { isMultipleAnswerQuestion, gradeMultipleAnswer } = require('../utils/multipleAnswerGrading');
+const { ensureAnswerSlots } = require('../utils/answerSlots');
 
 /**
  * Check if an exam has extracted content
@@ -1301,6 +1302,9 @@ const startExam = async (req, res) => {
     } else if (existingResult && !existingResult.isCompleted) {
       // Return the existing result if exam was started but not completed
       console.log(`Student ${req.user._id} is continuing exam ${exam._id} that was previously started`);
+      if (await ensureAnswerSlots(existingResult)) {
+        await existingResult.save();
+      }
       return res.json(existingResult);
     }
 
@@ -1807,9 +1811,16 @@ const submitAnswer = async (req, res) => {
     }
 
     // Find the answer in the result
-    const answerIndex = result.answers.findIndex(
+    const findAnswerIndex = () => result.answers.findIndex(
       answer => answer.question.toString() === sanitizedData.questionId
     );
+    let answerIndex = findAnswerIndex();
+
+    // A session created without an entry per question has nowhere to put this answer, so add the
+    // missing entries instead of rejecting it. A question from another exam still isn't found.
+    if (answerIndex === -1 && await ensureAnswerSlots(result)) {
+      answerIndex = findAnswerIndex();
+    }
 
     if (answerIndex === -1) {
       return res.status(404).json({
@@ -2336,6 +2347,13 @@ const completeExam = async (req, res) => {
         percentage: percentage,
         endTime: currentResult.endTime
       });
+    }
+
+    // Add an entry for any question the session is missing, so a session created without them can
+    // be submitted and unanswered questions still count towards the maximum score. Done before the
+    // populated reload below so the new entries come back populated like the rest.
+    if (await ensureAnswerSlots(currentResult)) {
+      await currentResult.save();
     }
 
     // Use the current result we already found and populate the necessary fields
@@ -3521,9 +3539,15 @@ const selectQuestion = async (req, res) => {
     console.log(`🔍 Looking for answer in result with ${result.answers.length} answers`);
     console.log(`Question IDs in result:`, result.answers.map(a => a.question.toString()));
 
-    const answerIndex = result.answers.findIndex(
+    const findAnswerIndex = () => result.answers.findIndex(
       answer => answer.question.toString() === questionId
     );
+    let answerIndex = findAnswerIndex();
+
+    // Same as submitAnswer: add the entries a session was created without
+    if (answerIndex === -1 && await ensureAnswerSlots(result)) {
+      answerIndex = findAnswerIndex();
+    }
 
     if (answerIndex === -1) {
       console.log(`❌ Answer not found in result for question: ${questionId}`);

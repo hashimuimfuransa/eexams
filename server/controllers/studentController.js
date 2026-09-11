@@ -15,6 +15,7 @@ const {
 const { generateOverallRecommendation } = require('../utils/resultRecommendation');
 const { SPREADSHEET_QUESTION_FIELDS } = require('../utils/resultQuestionFields');
 const { sanitizeExamForStudent, sanitizeSessionForStudent } = require('../utils/studentExamView');
+const { missingAnswerSlots } = require('../utils/answerSlots');
 
 // @desc    Get available exams for student (level-scoped exam bank)
 // @route   GET /api/student/exams
@@ -861,7 +862,7 @@ const getDetailedResult = async (req, res) => {
 // @access  Private/Student
 const getCurrentExamSession = async (req, res) => {
   try {
-    const result = await Result.findOne({
+    const findSession = () => Result.findOne({
       student: req.user._id,
       exam: req.params.examId,
       isCompleted: false
@@ -870,9 +871,20 @@ const getCurrentExamSession = async (req, res) => {
       select: 'text type options points section'
     }).populate('exam', 'title description timeLimit');
 
+    let result = await findSession();
+
     if (!result) {
       // Return null instead of 404 to allow frontend to start a new session
       return res.json(null);
+    }
+
+    // A session missing the answer entry for a question rejects every save the student makes on
+    // it, so fill the gaps before handing it over. Pushed directly rather than via save(), which
+    // would re-validate the populated answers and fail on any question deleted since.
+    const missingSlots = await missingAnswerSlots(result);
+    if (missingSlots.length > 0) {
+      await Result.updateOne({ _id: result._id }, { $push: { answers: { $each: missingSlots } } });
+      result = await findSession();
     }
 
     // Calculate time remaining

@@ -9,6 +9,7 @@
 // slide (it is read, not tabulated), an exercise sheet is a numbered list with
 // room to write, and a scheme of work is a wide landscape table.
 const PDFDocument = require('pdfkit');
+const { formLabels } = require('./plannerLanguage');
 
 const FONT_REG = 'Times-Roman';
 const FONT_BOLD = 'Times-Bold';
@@ -73,7 +74,7 @@ const drawRow = (doc, cursor, cells, minHeight = 0) => {
 
 // Title block shared by all three kinds: document title, then whichever
 // identifying fields were actually filled in.
-const drawHeader = (doc, cursor, resource, heading) => {
+const drawHeader = (doc, cursor, resource, heading, labels) => {
   const width = cursor.width;
   const title = sanitize(resource.title) || heading;
 
@@ -84,13 +85,13 @@ const drawHeader = (doc, cursor, resource, heading) => {
   cursor.y += th + 4;
 
   const meta = [
-    ['School', resource.schoolName],
-    ['Teacher', resource.teacherName],
-    ['Subject', resource.subject],
-    ['Class', resource.className],
-    ['Unit', resource.unitTitle],
-    ['Term', resource.term],
-    ['Year', resource.academicYear]
+    [labels.school, resource.schoolName],
+    [labels.teacher, resource.teacherName],
+    [labels.subject, resource.subject],
+    [labels.className, resource.className],
+    [labels.unit, resource.unitTitle],
+    [labels.term, resource.term],
+    [labels.year, resource.academicYear]
   ].filter(([, v]) => sanitize(v));
 
   if (meta.length) {
@@ -116,11 +117,12 @@ const renderSlides = (doc, resource) => {
     y: doc.page.margins.top,
     width: doc.page.width - doc.page.margins.left - doc.page.margins.right
   };
-  drawHeader(doc, cursor, resource, 'Slide deck');
+  const L = formLabels(resource);
+  drawHeader(doc, cursor, resource, L.slidesTitle, L);
 
   const w = cursor.width;
   (resource.slides || []).forEach((slide, i) => {
-    const heading = `${i + 1}. ${sanitize(slide.heading) || 'Slide'}`;
+    const heading = `${i + 1}. ${sanitize(slide.heading) || L.slide}`;
     drawRow(doc, cursor, [{ text: heading, w, font: FONT_BOLD, size: 11.5, fill: SHADE }]);
 
     const bullets = (slide.bullets || [])
@@ -132,7 +134,7 @@ const renderSlides = (doc, resource) => {
 
     const notes = sanitize(slide.notes);
     if (notes) {
-      drawRow(doc, cursor, [{ text: `Speaker notes: ${notes}`, w, font: FONT_ITALIC, size: 9.5 }]);
+      drawRow(doc, cursor, [{ text: `${L.speakerNotes}: ${notes}`, w, font: FONT_ITALIC, size: 9.5 }]);
     }
     cursor.y += 8;
   });
@@ -148,7 +150,8 @@ const renderExercises = (doc, resource) => {
     y: doc.page.margins.top,
     width: doc.page.width - doc.page.margins.left - doc.page.margins.right
   };
-  drawHeader(doc, cursor, resource, 'Exercise sheet');
+  const L = formLabels(resource);
+  drawHeader(doc, cursor, resource, L.exerciseTitle, L);
 
   const w = cursor.width;
 
@@ -156,7 +159,7 @@ const renderExercises = (doc, resource) => {
   // anyway, in whatever space the learner finds.
   doc.font(FONT_REG).fontSize(10.5).fillColor('#000000');
   const fieldW = (w - 20) / 3;
-  ['Name: ' + '.'.repeat(26), 'Class: ' + '.'.repeat(14), 'Date: ' + '.'.repeat(16)]
+  [`${L.name}: ` + '.'.repeat(26), `${L.className}: ` + '.'.repeat(14), `${L.date}: ` + '.'.repeat(16)]
     .forEach((label, i) => doc.text(label, cursor.x0 + i * (fieldW + 10), cursor.y, { width: fieldW }));
   cursor.y += 24;
 
@@ -173,7 +176,7 @@ const renderExercises = (doc, resource) => {
   const totalMarks = sanitize(resource.totalMarks) || String(sumOf(items));
 
   if (Number(totalMarks) > 0) {
-    drawRow(doc, cursor, [{ text: 'Total: ' + totalMarks + ' marks', w, font: FONT_BOLD, size: 10.5, align: 'right' }]);
+    drawRow(doc, cursor, [{ text: `${L.total}: ${totalMarks} ${L.marks}`, w, font: FONT_BOLD, size: 10.5, align: 'right' }]);
   }
   cursor.y += 8;
 
@@ -196,11 +199,11 @@ const renderExercises = (doc, resource) => {
   groups.filter((g) => g.rows.length).forEach(({ sec, rows }) => {
     if (sec) {
       const marks = sumOf(rows);
-      const title = [sanitize(sec.label) && ('SECTION ' + sanitize(sec.label)), sanitize(sec.title)]
+      const title = [sanitize(sec.label) && (`${L.section} ` + sanitize(sec.label)), sanitize(sec.title)]
         .filter(Boolean).join(': ');
       drawRow(doc, cursor, [
         { text: title, w: w - 90, font: FONT_BOLD, size: 11, fill: SHADE },
-        { text: marks > 0 ? '(' + marks + ' marks)' : '', w: 90, font: FONT_BOLD, size: 10, fill: SHADE, align: 'right' }
+        { text: marks > 0 ? `(${marks} ${L.marks})` : '', w: 90, font: FONT_BOLD, size: 10, fill: SHADE, align: 'right' }
       ]);
       const secInstr = sanitize(sec.instructions);
       if (secInstr) drawRow(doc, cursor, [{ text: secInstr, w, font: FONT_ITALIC, size: 10 }]);
@@ -239,11 +242,11 @@ const renderExercises = (doc, resource) => {
   if (answered.length) {
     doc.addPage();
     cursor.y = doc.page.margins.top;
-    drawRow(doc, cursor, [{ text: 'MARKING KEY', w, font: FONT_BOLD, size: 12, fill: SHADE, align: 'center' }]);
+    drawRow(doc, cursor, [{ text: L.markingKey, w, font: FONT_BOLD, size: 12, fill: SHADE, align: 'center' }]);
     drawRow(doc, cursor, [
-      { text: 'Q', w: numW, font: FONT_BOLD, size: 10, fill: SHADE, align: 'center' },
-      { text: 'Answer', w: bodyW - markW, font: FONT_BOLD, size: 10, fill: SHADE },
-      { text: 'Marks', w: markW, font: FONT_BOLD, size: 10, fill: SHADE, align: 'center' }
+      { text: L.questionCol, w: numW, font: FONT_BOLD, size: 10, fill: SHADE, align: 'center' },
+      { text: L.answer, w: bodyW - markW, font: FONT_BOLD, size: 10, fill: SHADE },
+      { text: L.marksCol, w: markW, font: FONT_BOLD, size: 10, fill: SHADE, align: 'center' }
     ]);
     answered.forEach((item) => {
       drawRow(doc, cursor, [
@@ -253,7 +256,7 @@ const renderExercises = (doc, resource) => {
       ]);
     });
     if (Number(totalMarks) > 0) {
-      drawRow(doc, cursor, [{ text: 'Total: ' + totalMarks + ' marks', w, font: FONT_BOLD, size: 11, align: 'right' }]);
+      drawRow(doc, cursor, [{ text: `${L.total}: ${totalMarks} ${L.marks}`, w, font: FONT_BOLD, size: 11, align: 'right' }]);
     }
   }
 };
@@ -268,7 +271,8 @@ const renderScheme = (doc, resource) => {
     y: doc.page.margins.top,
     width: doc.page.width - doc.page.margins.left - doc.page.margins.right
   };
-  drawHeader(doc, cursor, resource, 'Scheme of work');
+  const L = formLabels(resource);
+  drawHeader(doc, cursor, resource, L.schemeTitle, L);
 
   const w = cursor.width;
   // Week | Lesson | Unit | Lesson title | Objectives | Activities | Materials | Assessment
@@ -276,7 +280,7 @@ const renderScheme = (doc, resource) => {
   const widths = ratios.map((r) => Math.floor(w * r));
   widths[widths.length - 1] += w - widths.reduce((a, b) => a + b, 0);
 
-  const headers = ['Wk', 'L#', 'Unit', 'Lesson title', 'Objectives', 'Activities', 'Materials', 'Assessment'];
+  const headers = L.schemeHeaders;
   const drawHead = () => drawRow(doc, cursor, headers.map((text, i) => ({
     text, w: widths[i], font: FONT_BOLD, size: 9.5, fill: SHADE, align: 'center', valign: 'center'
   })));

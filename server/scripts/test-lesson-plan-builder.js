@@ -6,6 +6,7 @@
  *   - a textbook is narrowed to the chapter the teacher actually named
  *   - whatever shape the model returns for activities becomes clean line arrays
  *   - step timings always add up to the lesson duration
+ *   - a plan or scheme is pinned to one language, printed headings included
  *
  * Usage: node server/scripts/test-lesson-plan-builder.js
  */
@@ -18,6 +19,13 @@ const {
   buildLessonPlanPrompt,
   normalizePlan
 } = require('../utils/lessonPlanBuilder');
+const { buildSchemePrompt } = require('../utils/plannerResourceBuilder');
+const {
+  canonicalLanguage,
+  resolveLanguage,
+  formLabels,
+  printedPlanDefaults
+} = require('../utils/plannerLanguage');
 
 let failures = 0;
 function check(name, fn) {
@@ -152,6 +160,74 @@ check('falls back to matching the subject when language is auto', () => {
 check('includes the reference material when one was attached', () => {
   const prompt = buildLessonPlanPrompt({ brief: 'unit 6', details: {}, reference: 'CHAPTER TEXT HERE' });
   assertTrue(prompt.includes('CHAPTER TEXT HERE'), 'reference should reach the model');
+});
+
+check('a French plan gets French step names, the French objective form and a French example', () => {
+  const prompt = buildLessonPlanPrompt({ brief: 'Unit 6 - Les habits, lesson 7 of 7', details: { language: 'auto', subject: 'Français' } });
+  assertTrue(prompt.includes('write EVERY field in French'), 'should pin French');
+  assertTrue(prompt.includes('Développement de la leçon'), 'should name the French development step');
+  assertTrue(prompt.includes("À l'aide de"), 'should give the French objective form');
+  assertTrue(!prompt.includes('Greets learners'), 'no English example lines in a French prompt');
+});
+check('an undecided language is shown both the English and the French official terms', () => {
+  const prompt = buildLessonPlanPrompt({ brief: 'unit 6', details: { language: 'auto' } });
+  assertTrue(prompt.includes('"Lesson Development"') && prompt.includes('"Développement de la leçon"'), 'both vocabularies');
+});
+check('a pre-filled "None" is not pinned as a known detail, real needs are', () => {
+  assertTrue(!buildLessonPlanPrompt({ brief: 'unit 6', details: { specialNeeds: 'None' } }).includes('- specialNeeds: None'), 'None should not be pinned');
+  assertTrue(buildLessonPlanPrompt({ brief: 'unit 6', details: { specialNeeds: 'Low vision: 2' } }).includes('- specialNeeds: Low vision: 2'), 'real needs are pinned');
+});
+check('asks for a full Lesson Development rather than two or three lines', () => {
+  assertTrue(buildLessonPlanPrompt({ brief: 'unit 6', details: {} }).includes('6-8 teacher lines'), 'development depth rule');
+});
+
+console.log('\nnormalizePlan() language handling');
+check('a French plan falls back to French defaults, and a pre-filled None yields to the model', () => {
+  const plan = normalizePlan({ language: 'Français', specialNeeds: 'Aucun', steps: [] }, { specialNeeds: 'None' });
+  assertEqual(plan.language, 'French');
+  assertEqual(plan.specialNeeds, 'Aucun');
+  assertEqual(plan.location, 'Salle de classe');
+});
+check("the teacher's chosen language wins over the model's echo", () => {
+  assertEqual(normalizePlan({ language: 'English', steps: [] }, { language: 'French' }).language, 'French');
+});
+
+console.log('\nplannerLanguage');
+check('recognises the language names teachers actually type', () => {
+  assertEqual(canonicalLanguage('Français'), 'French');
+  assertEqual(canonicalLanguage('fr'), 'French');
+  assertEqual(canonicalLanguage('Ikinyarwanda'), 'Kinyarwanda');
+  assertEqual(canonicalLanguage('auto'), '');
+});
+check('resolves from the explicit choice, then the subject, then the brief', () => {
+  assertEqual(resolveLanguage({ language: 'English', subject: 'Français' }), 'English');
+  assertEqual(resolveLanguage({ language: 'auto', subject: 'Français' }), 'French');
+  assertEqual(resolveLanguage({ language: 'auto', brief: "Unit 6 - Les habits, lesson 7 of 7: évaluation de l'unité" }), 'French');
+  assertEqual(resolveLanguage({ language: 'auto', brief: 'Unit 6 clothes vocabulary, P3 French' }), 'French');
+});
+check('does not force French onto a lesson that merely mentions France', () => {
+  assertEqual(resolveLanguage({ language: 'auto', subject: 'History', brief: 'The French Revolution, S4 History' }), '');
+  assertEqual(resolveLanguage({ language: 'auto', brief: 'Introduce fractions to P4 learners' }), '');
+});
+check('French documents print French headings, including the closing row', () => {
+  const L = formLabels({ language: 'Français' });
+  assertEqual(L.selfEvaluation, "Évaluation de l'enseignement");
+  assertTrue(L.specialNeeds.includes('besoins éducatifs spéciaux'), 'SEN heading should be French');
+  assertEqual(formLabels({ subject: 'French' }).lessonPlanTitle, 'PLAN DE LEÇON');
+  assertEqual(formLabels({ language: 'English', subject: 'French' }).lessonPlanTitle, 'LESSON PLAN');
+});
+check('the app-filled "None" and "Classroom" print in the form language; real content does not change', () => {
+  const printed = printedPlanDefaults({ language: 'French', specialNeeds: 'None', location: 'Classroom' });
+  assertEqual(printed.specialNeeds, 'Aucun');
+  assertEqual(printed.location, 'Salle de classe');
+  assertEqual(printedPlanDefaults({ language: 'French', specialNeeds: 'Déficience visuelle : 2' }).specialNeeds, 'Déficience visuelle : 2');
+});
+
+console.log('\nbuildSchemePrompt()');
+check('a French scheme writes its objectives in French', () => {
+  const prompt = buildSchemePrompt({ brief: 'Term 3 scheme', details: { language: 'auto', subject: 'Français' }, count: 12 });
+  assertTrue(prompt.includes('Les apprenants seront capables de'), 'French objective opener');
+  assertTrue(!prompt.includes('Learners will be able to'), 'no English opener in a French scheme');
 });
 
 console.log(failures === 0 ? '\nAll lesson-planner builder tests passed.\n' : `\n${failures} test(s) failed.\n`);

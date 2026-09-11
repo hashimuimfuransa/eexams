@@ -249,6 +249,16 @@ function PlanEditor({ plan, setField, setStep, addStep, removeStep }) {
       >
         Add a step
       </Button>
+
+      <Divider sx={{ my: 2 }} />
+      <TextField
+        fullWidth size="small" multiline minRows={2}
+        label="Teacher's self-evaluation (Évaluation de l'enseignement)"
+        helperText="The last row of the printed form. Leave it blank to print an empty box you fill in by hand after the lesson."
+        value={plan.selfEvaluation || ''}
+        onChange={(e) => setField('selfEvaluation', e.target.value)}
+        sx={fieldSx}
+      />
     </Box>
   );
 }
@@ -260,7 +270,7 @@ export default function LessonPlanner({ user }) {
   const [brief, setBrief] = useState('');
   const [details, setDetails] = useState({
     subject: '', className: '', term: '', date: new Date().toISOString().slice(0, 10),
-    duration: '40 min', classSize: '', unitNo: '', lessonNo: '', specialNeeds: 'None', language: 'auto'
+    duration: '40 min', classSize: '', unitNo: '', lessonNo: '', specialNeeds: '', language: 'auto'
   });
 
   const [referenceContent, setReferenceContent] = useState('');
@@ -721,7 +731,9 @@ export default function LessonPlanner({ user }) {
                 <Grid item xs={12} sm={8} md={6}>
                   <TextField
                     fullWidth size="small" label="Special educational needs in this class"
-                    placeholder="None" value={details.specialNeeds}
+                    placeholder="e.g. Low vision: 2 learners — leave blank if none"
+                    helperText="The plan will include activities that cater for them."
+                    value={details.specialNeeds}
                     onChange={(e) => setDetail('specialNeeds', e.target.value)} sx={fieldSx}
                   />
                 </Grid>

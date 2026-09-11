@@ -7,6 +7,7 @@
 // that height. That is what keeps borders aligned when a teacher writes four
 // lines of activities in one column and one line in the next.
 const PDFDocument = require('pdfkit');
+const { formLabels, printedPlanDefaults } = require('./plannerLanguage');
 
 const FONT_REG = 'Times-Roman';
 const FONT_BOLD = 'Times-Bold';
@@ -95,15 +96,15 @@ const drawLabelRow = (doc, cursor, label, value, labelW, valueW) => {
 
 // The activity table header: columns 1 and 4 span the full header block while the
 // middle splits into "Description…" / lesson overview / Teacher's + Learner's activity.
-const drawActivityHeader = (doc, cursor, widths, overview) => {
+const drawActivityHeader = (doc, cursor, widths, overview, labels) => {
   const [w1, w2, w3, w4] = widths;
   const midW = w2 + w3;
 
-  const timingTitle = 'Timing for each step';
-  const descTitle = 'Description of teaching and learning activities';
-  const genericTitle = 'Generic competences and cross-cutting issues + some explanations';
-  const teacherTitle = "Teacher's activity";
-  const learnerTitle = "Learner's activity";
+  const timingTitle = labels.timing;
+  const descTitle = labels.description;
+  const genericTitle = labels.competences;
+  const teacherTitle = labels.teacherActivity;
+  const learnerTitle = labels.learnerActivity;
 
   let hDesc = measure(doc, descTitle, midW, FONT_BOLD, 10.5);
   const hOverview = overview ? measure(doc, overview, midW, FONT_ITALIC, 9.5) : 0;
@@ -149,26 +150,30 @@ const renderLessonPlan = (doc, plan = {}) => {
   const x0 = doc.page.margins.left;
   const contentW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const cursor = { x0, y: doc.page.margins.top };
+  // Headings follow the plan's language — a French plan prints the French form.
+  const L = formLabels(plan);
+  const printed = printedPlanDefaults(plan, L);
 
   // ── Title ──
   doc.font(FONT_BOLD).fontSize(16).fillColor('#000000')
-    .text('LESSON PLAN', x0, cursor.y, { width: contentW, align: 'center' });
+    .text(L.lessonPlanTitle, x0, cursor.y, { width: contentW, align: 'center' });
   cursor.y = doc.y + 12;
 
   // ── School / Teacher line ──
   const half = contentW / 2;
   doc.fontSize(10.5);
-  doc.font(FONT_BOLD).text('School Name: ', x0, cursor.y, { width: half - 6, continued: true })
+  doc.font(FONT_BOLD).text(`${L.schoolName}: `, x0, cursor.y, { width: half - 6, continued: true })
     .font(FONT_REG).text(sanitize(plan.schoolName) || '—', { width: half - 6 });
   const leftBottom = doc.y;
-  doc.font(FONT_BOLD).text("Teacher's Name: ", x0 + half, cursor.y, { width: half, continued: true })
+  doc.font(FONT_BOLD).text(`${L.teacherName}: `, x0 + half, cursor.y, { width: half, continued: true })
     .font(FONT_REG).text(sanitize(plan.teacherName) || '—', { width: half });
   cursor.y = Math.max(leftBottom, doc.y) + 8;
 
   // ── Info grid: Term | Date | Subject | Class | Unit No | Lesson No | Duration | Class size ──
-  const infoFractions = [0.10, 0.14, 0.15, 0.16, 0.09, 0.12, 0.11, 0.13];
+  // Sized for the longer French headings too: at 10% "Trimestre" broke mid-word.
+  const infoFractions = [0.12, 0.13, 0.15, 0.13, 0.10, 0.12, 0.11, 0.14];
   const infoWidths = infoFractions.map((f) => f * contentW);
-  const infoHeaders = ['Term', 'Date', 'Subject', 'Class', 'Unit No', 'Lesson No', 'Duration', 'Class size'];
+  const infoHeaders = [L.term, L.date, L.subject, L.className, L.unitNo, L.lessonNo, L.duration, L.classSize];
   const infoValues = [plan.term, plan.date, plan.subject, plan.className, plan.unitNo, plan.lessonNo, plan.duration, plan.classSize];
 
   drawRow(doc, cursor, infoHeaders.map((h, i) => ({
@@ -181,28 +186,25 @@ const renderLessonPlan = (doc, plan = {}) => {
   // ── Special educational needs ──
   const needsLabelW = contentW * 0.5;
   drawRow(doc, cursor, [
-    {
-      text: 'Type of special educational needs to be catered for in this lesson and number of learners in each category',
-      w: needsLabelW, font: FONT_BOLD, size: 10.5
-    },
-    { text: sanitize(plan.specialNeeds) || 'None', w: contentW - needsLabelW, font: FONT_REG, size: 10.5 }
+    { text: L.specialNeeds, w: needsLabelW, font: FONT_BOLD, size: 10.5 },
+    { text: sanitize(printed.specialNeeds), w: contentW - needsLabelW, font: FONT_REG, size: 10.5 }
   ]);
 
   // ── Unit / competence / objective rows ──
   const labelW = contentW * 0.29;
   const valueW = contentW - labelW;
-  drawLabelRow(doc, cursor, 'Unit title', plan.unitTitle, labelW, valueW);
-  drawLabelRow(doc, cursor, 'Key unit competence', plan.keyUnitCompetence, labelW, valueW);
-  drawLabelRow(doc, cursor, 'Title of the lesson', plan.lessonTitle, labelW, valueW);
-  drawLabelRow(doc, cursor, 'Instructional objectives', plan.instructionalObjectives, labelW, valueW);
-  drawLabelRow(doc, cursor, 'Plan of this class (Location)', plan.location, labelW, valueW);
-  drawLabelRow(doc, cursor, 'Learning materials', plan.learningMaterials, labelW, valueW);
-  drawLabelRow(doc, cursor, 'References', plan.references, labelW, valueW);
+  drawLabelRow(doc, cursor, L.unitTitle, plan.unitTitle, labelW, valueW);
+  drawLabelRow(doc, cursor, L.keyUnitCompetence, plan.keyUnitCompetence, labelW, valueW);
+  drawLabelRow(doc, cursor, L.lessonTitle, plan.lessonTitle, labelW, valueW);
+  drawLabelRow(doc, cursor, L.instructionalObjectives, plan.instructionalObjectives, labelW, valueW);
+  drawLabelRow(doc, cursor, L.location, printed.location, labelW, valueW);
+  drawLabelRow(doc, cursor, L.learningMaterials, plan.learningMaterials, labelW, valueW);
+  drawLabelRow(doc, cursor, L.references, plan.references, labelW, valueW);
 
   // ── Activity table ──
   const actFractions = [0.18, 0.275, 0.275, 0.27];
   const actWidths = actFractions.map((f) => f * contentW);
-  drawActivityHeader(doc, cursor, actWidths, sanitize(plan.lessonOverview));
+  drawActivityHeader(doc, cursor, actWidths, sanitize(plan.lessonOverview), L);
 
   (plan.steps || []).forEach((step) => {
     const name = sanitize(step.name);
@@ -216,11 +218,13 @@ const renderLessonPlan = (doc, plan = {}) => {
     ]);
   });
 
-  // ── Self-evaluation (left blank for the teacher to fill in by hand) ──
+  // ── Self-evaluation ("Évaluation de l'enseignement"), the form's closing
+  // row. Left tall when blank: teachers fill it in by hand after the lesson.
+  const selfEvaluation = sanitize(plan.selfEvaluation);
   drawRow(doc, cursor, [
-    { text: "Teacher's self-evaluation", w: labelW, font: FONT_BOLD, size: 10.5, valign: 'center' },
-    { text: sanitize(plan.selfEvaluation), w: valueW, font: FONT_REG, size: 10.5 }
-  ], 34);
+    { text: L.selfEvaluation, w: labelW, font: FONT_BOLD, size: 10.5, valign: 'center' },
+    { text: selfEvaluation, w: valueW, font: FONT_REG, size: 10.5 }
+  ], selfEvaluation ? 34 : 50);
 };
 
 const safeFileName = (plan = {}) => {

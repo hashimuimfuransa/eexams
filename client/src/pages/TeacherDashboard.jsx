@@ -512,12 +512,12 @@ const TOOL_GROUPS = [
     key: 'exams',
     scope: 'exams',
     title: 'Exams',
-    subtitle: 'Create, run and mark assessments',
+    subtitle: 'Exams, homework, quizzes — create, assign and mark',
     accent: tokens.accent,
     tint: 'rgba(12,189,115,0.09)',
     icon: <Assignment sx={{ fontSize: 20 }} />,
     tools: [
-      { id: 'createExam',   label: 'Create Exam',   hint: 'AI, upload or build by hand', icon: <AutoAwesome sx={{ fontSize: 20 }} />,      colour: '#0CBD73', primary: true },
+      { id: 'createExam',   label: 'Create Exam',   hint: 'Exams, homework, quizzes — assign to students', icon: <AutoAwesome sx={{ fontSize: 20 }} />,      colour: '#0CBD73', primary: true },
       { id: 'exams',        label: 'My Exams',      hint: 'Publish, edit, share',        icon: <Assignment sx={{ fontSize: 20 }} />,       colour: '#0D406C' },
       { id: 'students',     label: 'Students',      hint: 'Add and organise classes',    icon: <People sx={{ fontSize: 20 }} />,           colour: '#6366F1' },
       { id: 'results',      label: 'Results',       hint: 'Scores and marking',          icon: <ListAlt sx={{ fontSize: 20 }} />,          colour: '#0891B2' },
@@ -884,7 +884,7 @@ function HomeSection({ stats, statsLoading, exams, results, setActiveSection, pe
           <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', height: '100%' }}>
             <SectionTitle action={<Button size="small" onClick={() => setActiveSection('exams')} sx={{ color: tokens.accent, fontWeight: 700, fontSize: 12, textTransform: 'none' }}>View All</Button>}>Recent Exams</SectionTitle>
             {exams.length === 0
-              ? <Box sx={{ py: 4, textAlign: 'center' }}><Typography sx={{ color: tokens.textMuted, fontSize: 13 }}>No exams yet.</Typography></Box>
+              ? <Box sx={{ py: 4, textAlign: 'center' }}><Typography sx={{ color: tokens.textMuted, fontSize: 13 }}>No exams yet. Create an exam, homework or quiz and assign it to your students.</Typography></Box>
               : exams.slice(0, 3).map((e, i) => {
                   const sc = e.status === 'active' ? tokens.accent : e.status === 'draft' ? tokens.warning : '#6366F1';
                   // Calculate total questions from all sections
@@ -986,7 +986,7 @@ function CreateExamSection({ stats, statsLoading, exams, results, setActiveSecti
   const referenceFileRef = useRef();
   // AI chat assistant - Enhanced with smart guidance
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState([{ role: 'assistant', text: 'Hi! I\'m your AI teaching assistant. I can help you create exams, design assessment strategies, or answer questions about pedagogy.\n\n**Quick tips:**\n• Be specific about subject, grade level, and topics\n• Tell me how many questions you need and what types (e.g., "10 multiple-choice, 5 short-answer")\n• Include all requirements in your prompt for best results', suggestions: ['Create a math exam for Grade 10 with 15 multiple-choice questions', 'How to assess critical thinking?', 'Design a science quiz with 20 questions: 10 multiple-choice, 5 true-false, 5 short-answer'] }]);
+  const [chatMessages, setChatMessages] = useState([{ role: 'assistant', text: 'Hi! I\'m your AI teaching assistant. I can help you create exams, homework, quizzes or any other assessment, design assessment strategies, or answer questions about pedagogy.\n\n**Quick tips:**\n• Be specific about subject, grade level, and topics\n• Tell me how many questions you need and what types (e.g., "10 multiple-choice, 5 short-answer")\n• Include all requirements in your prompt for best results', suggestions: ['Create a math exam for Grade 10 with 15 multiple-choice questions', 'How to assess critical thinking?', 'Design a science quiz with 20 questions: 10 multiple-choice, 5 true-false, 5 short-answer'] }]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   // Voice recording state
@@ -1066,6 +1066,7 @@ function CreateExamSection({ stats, statsLoading, exams, results, setActiveSecti
 
   const COMMON_SUGGESTIONS = [
     { text: '📝 Create exam', prompt: 'Create a [subject] exam for [grade] covering [topics]' },
+    { text: '📚 Create homework', prompt: 'Create a [subject] homework for [grade] with [number] questions on [topic]' },
     { text: '📊 Assessment tips', prompt: 'What are effective ways to assess [skill/concept]?' },
     { text: '❓ Question ideas', prompt: 'What questions can I ask about [topic] for [grade level]?' },
     { text: '📋 Exam structure', prompt: 'How should I structure a [duration] exam on [subject]?' },
@@ -1558,11 +1559,17 @@ function CreateExamSection({ stats, statsLoading, exams, results, setActiveSecti
           Back to dashboard
         </Button>
         <Typography fontWeight={800} sx={{ fontSize: { xs: 20, sm: 25 }, color: tokens.textPrimary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.2 }}>
-          Create an exam
+          Create an exam, homework or quiz
         </Typography>
         <Typography sx={{ fontSize: 13.5, color: tokens.textMuted, fontFamily: "DM Sans,sans-serif", mt: 0.5 }}>
           Describe it, paste it, or upload a document — then review every question before you publish.
         </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.25, mt: 1.5, p: 1.5, borderRadius: 2.5, bgcolor: 'rgba(12,189,115,0.07)', border: '1px solid rgba(12,189,115,0.25)' }}>
+          <People sx={{ fontSize: 18, color: tokens.accentDark, flexShrink: 0, mt: 0.1 }} />
+          <Typography sx={{ fontSize: 12.5, color: tokens.textSecondary, fontFamily: "DM Sans,sans-serif", lineHeight: 1.5 }}>
+            <strong>Not just exams.</strong> Use this for homework, quizzes, class tests or any other assessment. When you publish, open the <strong>Private / Invite</strong> tab to assign it to your students.
+          </Typography>
+        </Box>
       </Box>
 
       {/* AI Creator */}
@@ -1574,7 +1581,7 @@ function CreateExamSection({ stats, statsLoading, exams, results, setActiveSecti
             </Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography fontWeight={700} color="white" sx={{ fontSize: isXs ? 14 : 16, fontFamily: "DM Sans,sans-serif" }}>Exam Creator</Typography>
-              <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: isXs ? 11 : 12.5, fontFamily: "DM Sans,sans-serif", lineHeight: 1.4 }}>{isXs ? 'Create exams quickly • Reuse from Question Bank' : 'Describe your exam or upload a document to create it quickly • Reuse questions from Question Bank'}</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: isXs ? 11 : 12.5, fontFamily: "DM Sans,sans-serif", lineHeight: 1.4 }}>{isXs ? 'Exams, homework & quizzes • Reuse from Question Bank' : 'Describe an exam, homework or quiz — or upload a document — to create it quickly • Reuse questions from Question Bank'}</Typography>
             </Box>
           </Box>
           {hasTemplatesAccess && (
@@ -1727,7 +1734,7 @@ function CreateExamSection({ stats, statsLoading, exams, results, setActiveSecti
                     <TextField
                       fullWidth 
                       size="small" 
-                      placeholder="Describe what you need (e.g., 'Create a biology exam for Grade 10 about cell structure')"
+                      placeholder="Describe what you need (e.g., 'Create a biology exam for Grade 10 about cell structure' or 'A maths homework on fractions for P5')"
                       value={chatInput} 
                       onChange={e => { setChatInput(e.target.value); if (!e.target.value) setShowSuggestions(true); }}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }}
@@ -2055,7 +2062,7 @@ SECTION B: Short Answer (10 marks)
                     fullWidth
                     size="small"
                     label="Exam Title *"
-                    placeholder="Enter exam title"
+                    placeholder="e.g. Term 1 Maths Exam or Week 3 Homework"
                     value={examTitle}
                     onChange={(e) => setExamTitle(e.target.value)}
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: isXs ? 13 : 14 } }}
@@ -5827,7 +5834,7 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
           onClick={() => setActiveSection('createExam')}
           sx={{ borderRadius: 2.5, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none', px: 2.5, fontFamily: "DM Sans,sans-serif", '&:hover': { boxShadow: '0 4px 14px rgba(12,189,115,0.3)' } }}
         >
-          Create Exam
+          Create Exam / Homework
         </Button>
       </Box>
 

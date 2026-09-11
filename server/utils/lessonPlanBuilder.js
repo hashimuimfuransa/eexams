@@ -1,7 +1,15 @@
 // Prompt construction and response normalisation for the AI lesson planner.
 // Kept out of routes/lessonPlans.js so the prompt and the shaping rules can be
-// exercised directly (server/scripts/test-lesson-plan-prompt.js) without booting
+// exercised directly (server/scripts/test-lesson-plan-builder.js) without booting
 // Express, Mongo or auth.
+const {
+  resolveLanguage,
+  canonicalLanguage,
+  vocabularyFor,
+  exampleNote,
+  isNoneLike,
+  VOCAB
+} = require('./plannerLanguage');
 
 // The model habitually wraps emphasis in markdown (`*Évaluation formative…*`,
 // `**Devoir**`), which the PDF would print as literal asterisks — it styles those
@@ -106,15 +114,201 @@ const extractRelevantExcerpt = (content, brief, maxChars = 14000) => {
   return text.slice(start, start + maxChars);
 };
 
+// Worked examples of the finished JSON, one per language whose official terms
+// are known. The model copies an example's language as readily as its shape —
+// an English-worded example labelled subject "French" is what used to put
+// English step names and objectives into French plans — so the example is shown
+// in the plan's own language whenever that is known. Both carry a full-depth
+// Lesson Development, because the model sizes its steps to the example's.
+const EXAMPLE_PLANS = {
+  English: {
+    term: 'Term 3',
+    date: '2026-06-04',
+    subject: 'English',
+    className: 'Primary 3 (P3)',
+    unitNo: '6',
+    lessonNo: '7 of 7',
+    duration: '40 min',
+    classSize: '43',
+    specialNeeds: 'None',
+    unitTitle: 'CLOTHES',
+    keyUnitCompetence: 'To use the vocabulary of clothes to describe what people wear.',
+    lessonTitle: 'Describing what we wear',
+    instructionalObjectives: 'By using real clothes and picture charts, P3 learners who attend will be able to name and describe clothes clearly at more than 8/10 within 40 minutes.',
+    location: 'Classroom',
+    learningMaterials: 'Real clothes, picture charts, exercise books, markers',
+    references: "Rwanda Education Board. (2025). English Learner's Book P3. Kigali: REB.",
+    lessonOverview: 'Learners discover clothing words from real items, practise them in groups and use them to describe one another.',
+    steps: [
+      {
+        name: 'Introduction',
+        duration: '7 min',
+        teacherActivities: [
+          'Greets learners and asks them to sit in their groups.',
+          'Asks learners to recall three words from the previous lesson.',
+          'Shows a bag of real clothes and asks: "What do we wear to school?"'
+        ],
+        learnerActivities: [
+          'Respond to the greeting and sit in their groups.',
+          'Recall words from the previous lesson.',
+          'Observe the clothes and answer the question.'
+        ],
+        competences: ['Communication: Learners express ideas orally about what they wear.']
+      },
+      {
+        name: 'Lesson Development',
+        duration: '25 min',
+        teacherActivities: [
+          'Gives each group four clothing items and a card with their names.',
+          'Asks groups to match each item to its name.',
+          'Invites one learner per group to present their matches.',
+          'Writes shirt, trousers, skirt, dress, shoes and hat on the board and models the pronunciation.',
+          'Explains the pattern "He/She is wearing a ..." with two examples.',
+          'Asks pairs to describe each other using the pattern.'
+        ],
+        learnerActivities: [
+          'Receive the items and cards in their groups.',
+          'Match each item to its name.',
+          'Present their matches to the class.',
+          'Read the words from the board and repeat them.',
+          'Listen to the pattern and repeat the examples.',
+          'Describe their partner: "She is wearing a blue skirt."'
+        ],
+        competences: [
+          'Cooperation and interpersonal management: Learners share the matching task in groups.',
+          'Communication: Learners build full sentences about clothes.'
+        ]
+      },
+      {
+        name: 'Conclusion',
+        duration: '8 min',
+        teacherActivities: [
+          'Asks learners to summarise the new words.',
+          'Points at five items and asks learners to name them and say who is wearing one.',
+          'Gives homework: draw and label five clothes worn at home.'
+        ],
+        learnerActivities: [
+          'Summarise the new words.',
+          'Name the five items and describe a classmate.',
+          'Copy the homework into their exercise books.'
+        ],
+        competences: ['Lifelong learning: Learners practise the new words at home.']
+      }
+    ],
+    language: 'English'
+  },
+  French: {
+    term: 'Trimestre 3',
+    date: '2026-06-04',
+    subject: 'Français',
+    className: 'Primaire 3 (P3)',
+    unitNo: '6',
+    lessonNo: '7 sur 7',
+    duration: '40 min',
+    classSize: '43',
+    specialNeeds: 'Aucun',
+    unitTitle: 'LES HABITS',
+    keyUnitCompetence: 'Utiliser le vocabulaire des habits pour décrire ce que les gens portent.',
+    lessonTitle: 'Décrire ce que nous portons',
+    instructionalObjectives: "À l'aide de vrais habits et d'affiches illustrées, les apprenants de P3 présents seront capables de nommer et décrire correctement les habits à plus de 8/10 en 40 minutes.",
+    location: 'Salle de classe',
+    learningMaterials: "Vrais habits, affiches illustrées, cahiers d'exercices, marqueurs",
+    references: "Rwanda Education Board. (2025). Français, Livre de l'élève P3. Kigali : REB.",
+    lessonOverview: "Les apprenants découvrent le vocabulaire des habits à partir d'objets réels, s'exercent en groupes et l'utilisent pour se décrire.",
+    steps: [
+      {
+        name: 'Introduction',
+        duration: '7 min',
+        teacherActivities: [
+          'Salue les apprenants et les installe en groupes.',
+          'Demande de rappeler trois mots de la leçon précédente.',
+          `Montre un sac de vrais habits et demande : "Que portons-nous pour aller à l'école ?"`
+        ],
+        learnerActivities: [
+          "Répondent aux salutations et s'installent en groupes.",
+          'Rappellent des mots de la leçon précédente.',
+          'Observent les habits et répondent à la question.'
+        ],
+        competences: ["Communication : les apprenants s'expriment oralement sur ce qu'ils portent."]
+      },
+      {
+        name: 'Développement de la leçon',
+        duration: '25 min',
+        teacherActivities: [
+          'Distribue à chaque groupe quatre habits et une carte portant leurs noms.',
+          "Demande aux groupes d'associer chaque habit à son nom.",
+          'Invite un apprenant par groupe à présenter les réponses.',
+          'Écrit la chemise, le pantalon, la jupe, la robe, les chaussures et le chapeau au tableau et fait répéter.',
+          'Explique la structure "Il/Elle porte un/une ..." avec deux exemples.',
+          'Demande aux apprenants de décrire leur voisin deux à deux.'
+        ],
+        learnerActivities: [
+          'Reçoivent les habits et les cartes en groupes.',
+          'Associent chaque habit à son nom.',
+          'Présentent leurs réponses à la classe.',
+          'Lisent les mots au tableau et les répètent.',
+          'Écoutent la structure et répètent les exemples.',
+          'Décrivent leur voisin : "Elle porte une jupe bleue."'
+        ],
+        competences: [
+          'Coopération et gestion des relations interpersonnelles : les apprenants se partagent la tâche en groupes.',
+          'Communication : les apprenants construisent des phrases complètes sur les habits.'
+        ]
+      },
+      {
+        name: 'Conclusion',
+        duration: '8 min',
+        teacherActivities: [
+          'Demande aux apprenants de résumer les nouveaux mots.',
+          'Montre cinq habits et demande de les nommer et de dire qui en porte un.',
+          'Donne le devoir : dessiner et nommer cinq habits portés à la maison.'
+        ],
+        learnerActivities: [
+          'Résument les nouveaux mots.',
+          'Nomment les cinq habits et décrivent un camarade.',
+          'Notent le devoir dans leur cahier.'
+        ],
+        competences: ['Apprentissage tout au long de la vie : les apprenants réutilisent les mots à la maison.']
+      }
+    ],
+    language: 'French'
+  }
+};
+
 const buildLessonPlanPrompt = ({ brief, details = {}, reference }) => {
+  const target = resolveLanguage({ language: details.language, subject: details.subject, brief });
+
+  // "None" is what the form pre-fills, not something the teacher said. Pinned
+  // as a fixed detail it printed an English "None" on French plans.
   const detailLines = Object.entries(details)
-    .filter(([k, v]) => v && k !== 'language')
+    .filter(([k, v]) => v && k !== 'language' && !(k === 'specialNeeds' && isNoneLike(v)))
     .map(([k, v]) => `- ${k}: ${v}`)
     .join('\n');
 
-  const language = details.language && details.language !== 'auto'
-    ? details.language
-    : 'the language of the subject being taught — a French lesson must be written entirely in French, a Kinyarwanda lesson in Kinyarwanda, otherwise English';
+  const language = target || 'the language of the subject being taught — a French lesson must be written entirely in French, a Kinyarwanda lesson in Kinyarwanda, otherwise English';
+
+  const vocab = vocabularyFor(target);
+  const vocabText = vocab.map(([name, v]) => {
+    const intro = vocab.length > 1
+      ? `If the plan is in ${name}:`
+      : VOCAB[name] ? `Official ${name} terms:` : `Official terms (translate them into ${name}):`;
+    return [
+      intro,
+      `- Step names: ${v.steps.map((s) => `"${s}"`).join(', ')}`,
+      `- Instructional objective form: ${v.objectiveForm}`,
+      `- Generic competences: ${v.competences.join(', ')}`,
+      `- Cross-cutting issues: ${v.crossCutting.join(', ')}`,
+      `- Other values: no special needs = "${v.none}", location = "${v.classroom}", lesson number = "${v.lessonNo}", term = "${v.term}"`
+    ].join('\n');
+  }).join('\n\n');
+
+  const stepRule = VOCAB[target]
+    ? VOCAB[target].steps.map((s) => `"${s}"`).join(', ')
+    : target
+      ? `Introduction, Lesson Development and Conclusion, translated into ${target}`
+      : `named with the step names for the plan's language under OFFICIAL TERMS`;
+
+  const exampleLanguage = EXAMPLE_PLANS[target] ? target : 'English';
 
   return `You are an experienced Rwandan curriculum (REB / CBC) teacher writing a single-lesson plan that will be printed on the official lesson plan form and handed to a head teacher.
 
@@ -124,47 +318,26 @@ WHAT THE TEACHER WANTS TO PREPARE:
 ${detailLines ? `DETAILS ALREADY KNOWN (use these exactly as given, do not invent different values):\n${detailLines}\n` : ''}
 ${reference ? `REFERENCE MATERIAL FROM THE TEACHER'S BOOK / CURRICULUM (extracted text, may be partial):\n"""\n${reference}\n"""\n\nBase the content, vocabulary and examples on this material. If it covers the requested chapter/unit, follow it closely.\n` : ''}
 RULES:
-1. LANGUAGE: write EVERY field in ${language}. Never mix languages.
+1. LANGUAGE: write EVERY field in ${language}. Never mix languages — that covers the step names, competence names, objectives, location, "none", lesson number and term, not only the activities.
 2. Fill in any detail the teacher did not give (unit title, key unit competence, materials, references) using the reference material or standard REB practice.
-3. instructionalObjectives must be ONE sentence in the standard form: "By using <materials>, <class> learners who attend will be able to <do what> clearly at more than <x>/10 within <duration>."
-4. steps: exactly three — "Introduction", "Lesson Development", "Conclusion" — and their durations MUST add up to the total lesson duration.
-5. Each step needs concrete teacherActivities and learnerActivities (2-4 short lines each, starting with a verb: "Greets learners.", "Observe the demonstration."). They must mirror each other: what the teacher does, what the learners do at that moment.
-6. competences: 1-3 lines naming a REB generic competence (Critical thinking, Creativity and innovation, Research and problem solving, Communication, Cooperation and interpersonal management, Lifelong learning) or a cross-cutting issue (Inclusive education, Gender education, Peace and values education, Environment and sustainability, Standardisation culture, Financial education, Comprehensive sexuality education) followed by a short explanation of how this step develops it. Format: "Communication: Enhancing expression through clothing discussions."
-7. The Conclusion must include a summary activity and specific homework.
+3. instructionalObjectives must be ONE sentence in the instructional objective form under OFFICIAL TERMS.
+4. steps: exactly three — ${stepRule} — and their durations MUST add up to the total lesson duration.
+5. DEPTH: a head teacher inspects this plan, so every step must be complete, not a sketch.
+   - Introduction: 3-4 teacher lines and 3-4 learner lines — beyond the greeting, a quick revision of the previous lesson and a question or situation that leads into today's topic.
+   - Lesson Development: 6-8 teacher lines and 6-8 learner lines covering, in order, the learning activity learners do in groups or pairs, the presentation of their findings, the teacher's explanation and synthesis of the actual content (name the real words, rules, facts or methods taught), and a practice exercise.
+   - Conclusion: 3-5 teacher lines and 3-5 learner lines covering the summary, a short evaluation that checks the instructional objective (state the actual questions or task), and specific homework.
+   Each line is one concrete sentence starting with a verb, and the two columns mirror each other: what the teacher does, and what the learners do at that moment.
+6. competences: 1-3 lines per step, each naming a REB generic competence or cross-cutting issue (official names under OFFICIAL TERMS) followed by how this step develops it. Format: "<Name>: <explanation>".
+7. specialNeeds: if the teacher named learners with special educational needs, list each category with its number of learners, and make at least one Lesson Development teacher activity cater for them (seating near the board, large print, peer support, extra time). If there are none, write the plan language's word for "none".
 8. learningMaterials: real, locally available items (exercise books, locally made charts, real objects, markers, learner's book).
-9. references: real textbook references, one per line, e.g. "Rwanda Education Board. (2025). Livre de l'élève P3. Kigali: REB."
-10. Keep every line short — this is a printed table, not an essay.
+9. references: real textbook references, one per line, in the form used in the example.
+10. Keep each line to one sentence — this is a printed table, not an essay.
 
-Return ONLY a JSON object with exactly this shape:
-{
-  "term": "Term 3",
-  "date": "2026-06-04",
-  "subject": "French",
-  "className": "Primary 3 (P3)",
-  "unitNo": "6",
-  "lessonNo": "7 Out of 7",
-  "duration": "40 min",
-  "classSize": "43",
-  "specialNeeds": "None",
-  "unitTitle": "LES HABITS",
-  "keyUnitCompetence": "...",
-  "lessonTitle": "...",
-  "instructionalObjectives": "...",
-  "location": "Classroom",
-  "learningMaterials": "...",
-  "references": "...",
-  "lessonOverview": "One italic sentence describing the overall approach of the lesson.",
-  "steps": [
-    {
-      "name": "Introduction",
-      "duration": "7 min",
-      "teacherActivities": ["Greets learners.", "Shows real clothing items and asks guiding questions for discovery."],
-      "learnerActivities": ["Respond to greetings.", "Observe clothing items and identify them in groups."],
-      "competences": ["Communication: Enhancing expression through clothing discussions."]
-    }
-  ],
-  "language": "French"
-}`;
+OFFICIAL TERMS:
+${vocabText}
+
+${exampleNote(target, exampleLanguage)}Return ONLY a JSON object with exactly this shape:
+${JSON.stringify(EXAMPLE_PLANS[exampleLanguage], null, 2)}`;
 };
 
 /**
@@ -181,6 +354,8 @@ const normalizePlan = (raw = {}, details = {}) => {
   })).filter((s) => s.name || s.teacherActivities.length || s.learnerActivities.length);
 
   const duration = str(details.duration) || str(raw.duration);
+  const language = canonicalLanguage(details.language) || canonicalLanguage(str(raw.language));
+  const terms = VOCAB[language] || VOCAB.English;
 
   return {
     term: str(details.term) || str(raw.term),
@@ -191,20 +366,22 @@ const normalizePlan = (raw = {}, details = {}) => {
     lessonNo: str(details.lessonNo) || str(raw.lessonNo),
     duration,
     classSize: str(details.classSize) || str(raw.classSize),
-    specialNeeds: str(details.specialNeeds) || str(raw.specialNeeds, 'None'),
+    // A pre-filled "None" carries no information; the model's value is already
+    // in the plan's language ("Aucun").
+    specialNeeds: (isNoneLike(details.specialNeeds) ? '' : str(details.specialNeeds)) || str(raw.specialNeeds) || terms.none,
 
     unitTitle: str(raw.unitTitle),
     keyUnitCompetence: str(raw.keyUnitCompetence),
     lessonTitle: str(raw.lessonTitle || raw.title),
     instructionalObjectives: str(raw.instructionalObjectives || raw.objectives),
-    location: str(raw.location, 'Classroom'),
+    location: str(raw.location) || terms.classroom,
     learningMaterials: str(raw.learningMaterials || raw.materials),
     references: str(raw.references),
     lessonOverview: str(raw.lessonOverview || raw.overview),
 
     steps: fillMissingStepDurations(steps, duration),
     selfEvaluation: '',
-    language: str(raw.language) || (details.language && details.language !== 'auto' ? details.language : '')
+    language
   };
 };
 

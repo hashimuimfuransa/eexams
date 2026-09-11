@@ -252,11 +252,14 @@ router.post('/generate', aiGradingLimiter, isAdminOrTeacher, requireLessonPlanne
     const reference = referenceContent ? extractRelevantExcerpt(referenceContent, brief) : '';
     const prompt = buildLessonPlanPrompt({ brief: brief.trim(), details, reference });
 
+    // The smart model reasons before it answers, and a full plan (6-8 lines per
+    // column in Lesson Development, often in French) outgrew 4096 tokens of
+    // room — the same headroom the planner-resource generators already get.
     const result = await groqClient.generateContent(prompt, {
       model: 'smart',
       jsonMode: true,
       temperature: 0.4,
-      maxTokens: 4096
+      maxTokens: 8000
     });
 
     let parsed = result.parsedContent;

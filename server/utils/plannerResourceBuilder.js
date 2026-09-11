@@ -9,14 +9,16 @@
 // one entry here rather than touching each layer.
 const { str, lines, extractRelevantExcerpt } = require('./lessonPlanBuilder');
 const { normalizeLayout, THEME_KEYS, DEFAULT_THEME } = require('./slideThemes');
+const { resolveLanguage, vocabularyFor, exampleNote, VOCAB } = require('./plannerLanguage');
 
 // Shared REB/CBC framing, so a deck and a scheme sound like the same teacher.
 const CONTEXT = `You are an experienced Rwandan curriculum (REB / CBC) teacher preparing classroom material that will be printed and used in a real lesson.`;
 
-const languageRule = (details) =>
-  details.language && details.language !== 'auto'
-    ? details.language
-    : 'the language of the subject being taught — a French lesson entirely in French, a Kinyarwanda lesson in Kinyarwanda, otherwise English';
+// The resolved language when the teacher's choice, the subject or the brief
+// settles it (see plannerLanguage.js); otherwise the model matches the subject.
+const languageRule = (details, brief) =>
+  resolveLanguage({ language: details.language, subject: details.subject, brief })
+    || 'the language of the subject being taught — a French lesson entirely in French, a Kinyarwanda lesson in Kinyarwanda, otherwise English';
 
 const detailBlock = (details = {}) => {
   const detailLines = Object.entries(details)
@@ -65,9 +67,9 @@ LAYOUTS (use the exact key):
 - "summary"   closing recap, 3-4 bullets, plus REQUIRED "homework".
 
 RULES:
-1. LANGUAGE: write EVERY field in ${languageRule(details)}. Never mix languages.
+1. LANGUAGE: write EVERY field in ${languageRule(details, brief)}. Never mix languages.
 2. Produce exactly ${slideCount} slides, in teaching order.
-3. Slide 1 MUST be layout "title". Slide 2 SHOULD be layout "bullets" with eyebrow "Objectives" listing what learners will be able to do. The LAST slide MUST be layout "summary" with real homework.
+3. Slide 1 MUST be layout "title". Slide 2 SHOULD be layout "bullets" with an eyebrow meaning "Objectives" in the deck's language ("Objectives", "Objectifs") listing what learners will be able to do. The LAST slide MUST be layout "summary" with real homework.
 4. VARY the layouts. A deck that is every slide "bullets" is a failure. Across ${slideCount} slides use at least four different layouts, including at least one "question" and at least one "callout" or "image".
 5. A bullet is ONE short line readable from the back of the room: max ~10 words, no full paragraphs, no trailing full stops on fragments.
 6. "eyebrow" is a 1-2 word section label in the deck's language ("Objectifs", "Pratique", "Résumé"). Set it on most content slides.
@@ -149,7 +151,7 @@ ${detailBlock(details)}${referenceBlock(reference)}This is a real exam-style pap
 organised into SECTIONS like a proper assessment, not one flat list.
 
 RULES:
-1. LANGUAGE: write EVERY field in ${languageRule(details)}. Never mix languages.
+1. LANGUAGE: write EVERY field in ${languageRule(details, brief)}. Never mix languages.
 2. Produce exactly ${itemCount} questions, ordered from easier to harder.
 3. ${typeRule}
 4. Group the questions into 2-3 sections and declare them in "sections". Give each a label ("A", "B", "C"), a title naming the skill it tests, and its own instruction line. Every item's "section" field must match one of those labels.
@@ -244,8 +246,60 @@ const normalizeExercises = (raw = {}, details = {}) => {
 
 // ── Scheme of work ───────────────────────────────────────────────────────────
 
+// The scheme example used to be a French unit with its objectives, activities
+// and materials written in English — and the model copied exactly that into
+// French schemes. Each example is now written wholly in its own language, and
+// the one matching the scheme is shown.
+const SCHEME_EXAMPLES = {
+  English: {
+    subject: 'English',
+    className: 'Primary 3 (P3)',
+    term: 'Term 3',
+    academicYear: '2026',
+    language: 'English',
+    weeks: [{
+      week: '1',
+      lessonNo: '1',
+      unitTitle: 'CLOTHES',
+      lessonTitle: 'Names of clothes',
+      objectives: 'Learners will be able to name ten common clothes correctly.',
+      activities: 'Group discussion, flashcard drill, role play',
+      materials: 'Real clothes, locally made charts',
+      assessment: 'Oral questioning, matching exercise'
+    }]
+  },
+  French: {
+    subject: 'Français',
+    className: 'Primaire 3 (P3)',
+    term: 'Trimestre 3',
+    academicYear: '2026',
+    language: 'French',
+    weeks: [{
+      week: '1',
+      lessonNo: '1',
+      unitTitle: 'LES HABITS',
+      lessonTitle: 'Le vocabulaire des habits',
+      objectives: 'Les apprenants seront capables de nommer correctement dix habits courants.',
+      activities: 'Discussion en groupes, jeu de cartes-images, jeu de rôle',
+      materials: 'Vrais habits, affiches fabriquées localement',
+      assessment: 'Questions orales, exercice écrit'
+    }]
+  }
+};
+
 const buildSchemePrompt = ({ brief, details = {}, reference, count }) => {
   const weekCount = clampCount(count, 12, 20);
+  const target = resolveLanguage({ language: details.language, subject: details.subject, brief });
+  const exampleLanguage = SCHEME_EXAMPLES[target] ? target : 'English';
+
+  // The objective opener is what the model most readily leaves in English, so
+  // it is spelled out per language instead of one English template.
+  const vocab = vocabularyFor(target);
+  const openers = vocab
+    .map(([name, v]) => (vocab.length > 1 ? `${v.schemeObjective} in ${name}` : v.schemeObjective))
+    .join(' or ');
+  const translated = target && !VOCAB[target] ? `, translated into ${target}` : '';
+
   return `${CONTEXT}
 
 WHAT THE TEACHER WANTS:
@@ -255,36 +309,18 @@ ${detailBlock(details)}${referenceBlock(reference)}This is the scheme of work a 
 coherent term plan, not a list of topic names.
 
 RULES:
-1. LANGUAGE: write EVERY field in ${languageRule(details)}. Never mix languages.
+1. LANGUAGE: write EVERY field in ${target || languageRule(details, brief)}. Never mix languages — the objectives, activities, materials and assessment included.
 2. Produce exactly ${weekCount} rows, one per teaching week, numbered "1" upward in "week".
 3. Rows must progress coherently across the term: later units build on earlier ones, prerequisites come first, and revision/assessment weeks sit where a real teacher would put them (mid-term and end of term).
-4. "objectives" is ONE measurable sentence starting "Learners will be able to ..." with an observable verb (name, describe, calculate, demonstrate) — never "understand" or "know".
-5. "activities" names the actual teaching methods for that week (group work, demonstration, role play, field observation), as short comma-separated phrases.
+4. "objectives" is ONE measurable sentence starting ${openers}${translated}, with an observable verb (name, describe, calculate, demonstrate) — never "understand" or "know", or their equivalents.
+5. "activities" names the actual teaching methods for that week (group work, demonstration, role play, field observation), as short comma-separated phrases in the scheme's language.
 6. "materials" must be real, locally available items (exercise books, locally made charts, real objects, markers, learner's book) — never "internet" or equipment a rural school will not have.
-7. "assessment" states how learning is checked that week (oral questioning, written exercise, observation checklist, end-of-unit test).
+7. "assessment" states how learning is checked that week (oral questioning, written exercise, observation checklist, end-of-unit test), in the scheme's language.
 8. "unitTitle" repeats across the weeks belonging to the same unit, so the unit blocks are visible down the page.
 9. Keep every field short — this prints as a wide table, one line per cell where possible.
 
-Return ONLY a JSON object with exactly this shape:
-{
-  "subject": "French",
-  "className": "Primary 3 (P3)",
-  "term": "Term 3",
-  "academicYear": "2026",
-  "language": "French",
-  "weeks": [
-    {
-      "week": "1",
-      "lessonNo": "1",
-      "unitTitle": "LES HABITS",
-      "lessonTitle": "Vocabulaire des habits",
-      "objectives": "Learners will be able to name common clothing items in French.",
-      "activities": "Group discussion, flashcard drill, role play",
-      "materials": "Real clothing items, locally made charts",
-      "assessment": "Oral questioning, written exercise"
-    }
-  ]
-}`;
+${exampleNote(target, exampleLanguage)}Return ONLY a JSON object with exactly this shape:
+${JSON.stringify(SCHEME_EXAMPLES[exampleLanguage], null, 2)}`;
 };
 
 const normalizeScheme = (raw = {}, details = {}) => ({

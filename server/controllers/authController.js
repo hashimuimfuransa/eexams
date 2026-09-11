@@ -8,6 +8,7 @@ const emailService = require('../utils/emailService');
 const cacheService = require('../utils/cacheService');
 const { invalidateUserCache } = require('../middleware/auth');
 const { getEffectiveSubscriptionStatus, getSubscriptionExpiryDate, syncSubscriptionStatus } = require('../utils/subscriptionStatus');
+const { phoneLookupVariants } = require('../utils/phoneUtils');
 
 // Google OAuth client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -273,13 +274,16 @@ const login = async (req, res) => {
     }
 
     // Optimize database query - select only necessary fields for faster retrieval
-    // Search by email or phone
+    // Search by email or phone. A phone may be stored with or without spacing
+    // (teacher-created students are "+250788123456" while the login form sends
+    // "+250 788123456"), so match any spelling of the number.
+    const phoneVariants = phone && phone.trim() ? phoneLookupVariants(phone) : [];
     const searchConditions = [];
     if (email && email.trim()) {
       searchConditions.push({ email: email.trim().toLowerCase() });
     }
-    if (phone && phone.trim()) {
-      searchConditions.push({ phone: phone.trim() });
+    if (phoneVariants.length) {
+      searchConditions.push({ phone: { $in: phoneVariants } });
     }
 
     const user = await User.findOne({
@@ -304,7 +308,7 @@ const login = async (req, res) => {
       console.log('[Login] Email mismatch:', { provided: email, found: user.email });
       return res.status(401).json({ message: 'No account found with this email. Please check your email or register for a new account.' });
     }
-    if (phone && user.phone !== phone.trim()) {
+    if (phone && !phoneVariants.includes(user.phone)) {
       console.log('[Login] Phone mismatch:', { provided: phone, found: user.phone });
       return res.status(401).json({ message: 'No account found with this phone number. Please check your phone number or register for a new account.' });
     }
@@ -365,7 +369,8 @@ const login = async (req, res) => {
       subLevel: user.subLevel,
       freeExamUsed: user.freeExamUsed,
       freeExamLevel: user.freeExamLevel,
-      requiresLevelSelection: user.role === 'student' && !user.level
+      requiresLevelSelection: user.role === 'student' && !user.level,
+      mustChangePassword: !!user.mustChangePassword
     };
 
     // Send response immediately - don't wait for lastLogin update
@@ -428,18 +433,32 @@ const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
-    // Get user with password
-    const user = await User.findById(req.user._id);
-
-    // Check current password
-    const isMatch = await user.comparePassword(currentPassword);
-
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Current password is incorrect' });
+    if (!newPassword || String(newPassword).length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters long' });
     }
 
-    // Update password
+    // Get user with password
+    const user = await User.findById(req.user._id).select('+initialPassword');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // A student replacing the password their teacher issued proved they know
+    // it by signing in with it moments ago, so don't ask for it again.
+    if (!user.mustChangePassword) {
+      const isMatch = await user.comparePassword(currentPassword || '');
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Current password is incorrect' });
+      }
+    } else if (user.initialPassword && newPassword === user.initialPassword) {
+      return res.status(400).json({ message: 'Choose a new password, not the one your teacher gave you' });
+    }
+
+    // Update password. The teacher-issued one no longer works, so stop showing it.
     user.password = newPassword;
+    user.initialPassword = null;
+    user.mustChangePassword = false;
+    user.passwordChangedAt = new Date();
     await user.save();
 
     // Invalidate user cache
@@ -596,7 +615,8 @@ const verifyToken = async (req, res) => {
       subLevel: user.subLevel,
       freeExamUsed: user.freeExamUsed,
       freeExamLevel: user.freeExamLevel,
-      requiresLevelSelection: user.role === 'student' && !user.level
+      requiresLevelSelection: user.role === 'student' && !user.level,
+      mustChangePassword: !!user.mustChangePassword
     });
   } catch (error) {
     console.error('Token verification error:', error);
@@ -720,7 +740,8 @@ const googleAuth = async (req, res) => {
         subLevel: user.subLevel,
         freeExamUsed: user.freeExamUsed,
         freeExamLevel: user.freeExamLevel,
-        requiresLevelSelection: user.role === 'student' && !user.level
+        requiresLevelSelection: user.role === 'student' && !user.level,
+        mustChangePassword: !!user.mustChangePassword
       };
 
       // Include organization info for organization accounts
@@ -822,7 +843,8 @@ const googleAuth = async (req, res) => {
       subLevel: user.subLevel,
       freeExamUsed: user.freeExamUsed,
       freeExamLevel: user.freeExamLevel,
-      requiresLevelSelection: user.role === 'student' && !user.level
+      requiresLevelSelection: user.role === 'student' && !user.level,
+      mustChangePassword: !!user.mustChangePassword
     };
 
     // Include organization info for organization accounts
@@ -921,10 +943,14 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
     }
 
-    // Update password and clear reset token fields
+    // Update password and clear reset token fields (and any teacher-issued
+    // password, which no longer works)
     user.password = password;
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
+    user.initialPassword = null;
+    user.mustChangePassword = false;
+    user.passwordChangedAt = new Date();
     await user.save();
 
     // Send password reset confirmation email

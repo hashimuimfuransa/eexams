@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Box, Paper, Typography, TextField, Button, CircularProgress, Alert, Container } from '@mui/material';
 import { Timer, Security, Calculate, CheckCircle, Assessment, PlayArrow } from '@mui/icons-material';
 import api from '../services/api';
@@ -24,8 +24,24 @@ const PublicExamAccess = () => {
   const [showInstructions, setShowInstructions] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
   const [activeSessionInfo, setActiveSessionInfo] = useState(null);
+  const location = useLocation();
+
+  // ?mode=private links come from the teacher's Private / Invite tab: students
+  // sign in with the phone/email and password their teacher gave them and come
+  // straight back here — there is no guest access on these links.
+  const isPrivateLink = searchParams.get('mode') === 'private';
+  const isGuestUser = !!user?.email?.includes('@exam.local');
+  const needsLogin = isPrivateLink && (!user || isGuestUser);
+  const loginUrl = `/login?redirect=${encodeURIComponent(location.pathname + location.search)}`;
 
   useEffect(() => {
+    if (!needsLogin) return;
+    if (user) logout(); // a leftover guest session from an earlier public link
+    navigate(loginUrl, { replace: true });
+  }, [needsLogin]);
+
+  useEffect(() => {
+    if (needsLogin) return;
     console.log('PublicExamAccess useEffect triggered');
     console.log('  shareToken:', shareToken);
     console.log('  user:', user ? `${user.email} (${user._id})` : 'null');
@@ -102,16 +118,15 @@ const PublicExamAccess = () => {
       let joinData;
 
       if (user) {
-        // Check if user is a guest (has temporary email)
-        const isGuestUser = user.email && user.email.includes('@exam.local');
-
-        // Authenticated user - use their info
+        // Authenticated user - use their info. The server identifies a signed-in
+        // student from their token, so phone-only accounts (no email) work too.
         const userName = user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : (user.firstName || user.lastName || user.name || user.fullName || '');
         joinData = {
           email: user.email,
           name: userName,
           password: pwd,
-          isPrivate: !isGuestUser // Don't treat guest users as private
+          isPrivate: !isGuestUser, // Don't treat guest users as private
+          privateInvite: isPrivateLink
         };
       } else {
         // Unauthenticated user - let backend create guest account
@@ -171,10 +186,19 @@ const PublicExamAccess = () => {
       console.error('Error message:', err.response?.data?.message);
       console.error('Error data:', err.response?.data);
       
+      // Private link, but the server didn't accept the session (e.g. it expired): sign in again
+      if (err.response?.status === 401 && err.response?.data?.requiresLogin) {
+        logout();
+        navigate(loginUrl, { replace: true });
+        return;
+      }
+
       // If 403 error and user is logged in, show logout prompt
       if (err.response?.status === 403 && user) {
         setShowLogoutPrompt(true);
-        setError('You are logged in as a different user. Please logout and login with the correct account to access this exam.');
+        setError(err.response?.data?.notAssigned
+          ? err.response.data.message
+          : 'You are logged in as a different user. Please logout and login with the correct account to access this exam.');
       } else if (err.response?.status === 409 && err.response?.data?.hasActiveSession) {
         setActiveSessionInfo(err.response.data);
         setError(null);
@@ -211,7 +235,7 @@ const PublicExamAccess = () => {
     await handleJoin(password);
   };
 
-  if (loading) {
+  if (loading || needsLogin) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9' }}>
         <CircularProgress />
@@ -311,6 +335,16 @@ const PublicExamAccess = () => {
           <Typography sx={{ color: '#64748b', mb: 3 }}>
             {error}
           </Typography>
+          {showLogoutPrompt && (
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={() => { logout(); navigate(isPrivateLink ? loginUrl : '/login'); }}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, mr: 1.5 }}
+            >
+              Log out and sign in again
+            </Button>
+          )}
           <Button variant="contained" onClick={() => navigate('/')} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
             Go to Home
           </Button>
@@ -415,7 +449,7 @@ const PublicExamAccess = () => {
                 Account Conflict Detected
               </Typography>
               <Typography variant="body2" sx={{ mt: 1 }}>
-                You are logged in as <strong>{user?.email}</strong>. This exam requires you to login with a different account. Please logout first and then access this link again.
+                You are logged in as <strong>{user?.email || user?.phone}</strong>. This exam requires you to login with a different account. Please logout first and then access this link again.
               </Typography>
             </Alert>
             <Button
@@ -424,7 +458,7 @@ const PublicExamAccess = () => {
               fullWidth
               onClick={() => {
                 logout();
-                navigate('/login');
+                navigate(isPrivateLink ? loginUrl : '/login');
               }}
               sx={{ mb: 3, borderRadius: 2, textTransform: 'none', fontWeight: 700, py: 1.5 }}
             >
@@ -463,7 +497,7 @@ const PublicExamAccess = () => {
         {user && (
           <Box sx={{ bgcolor: '#EFF6FF', p: 2, borderRadius: 2, mb: 3 }}>
             <Typography sx={{ fontSize: 13, color: '#1E40AF' }}>
-              <strong>Logged in as:</strong> {user.email}
+              <strong>Logged in as:</strong> {user.email || user.phone}
             </Typography>
           </Box>
         )}

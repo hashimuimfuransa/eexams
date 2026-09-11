@@ -180,6 +180,12 @@ const Login = () => {
   const { mode, toggleMode } = useThemeMode();
   const isDark = mode === 'dark';
 
+  // Where to go after signing in — an exam link a teacher shared sends
+  // students here as ?redirect=/join/<token>?mode=private. In-app paths only.
+  const redirectParam = new URLSearchParams(location.search).get('redirect');
+  const redirectTo = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//') ? redirectParam : null;
+  const isExamInvite = !!redirectTo && redirectTo.startsWith('/join/');
+
   // Check if already logged in - redirect to dashboard
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -189,10 +195,10 @@ const Login = () => {
       if (user.role !== 'superadmin' && user.subscriptionStatus === 'pending') {
         navigate('/pending-approval');
       } else {
-        navigate('/dashboard');
+        navigate(redirectTo || '/dashboard');
       }
     }
-  }, [navigate]);
+  }, [navigate, redirectTo]);
 
   // Show a message if we were redirected here because the account was
   // signed in from another device (single-active-session guard).
@@ -355,7 +361,7 @@ const Login = () => {
         if (user.role !== 'superadmin' && user.subscriptionStatus === 'pending') {
           navigate('/pending-approval');
         } else {
-          navigate('/dashboard');
+          navigate(redirectTo || '/dashboard');
         }
       }, 500);
     } catch (err) {
@@ -462,7 +468,7 @@ const Login = () => {
         if (result.user.role !== 'superadmin' && result.user.subscriptionStatus === 'pending') {
           navigate('/pending-approval');
         } else {
-          navigate('/dashboard');
+          navigate(redirectTo || '/dashboard');
         }
       }, 500);
     } catch (err) {
@@ -478,7 +484,7 @@ const Login = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, redirectTo]);
 
   // Initialize Google Sign-In (no button rendering — we use a custom button)
   useEffect(() => {
@@ -642,6 +648,20 @@ const Login = () => {
           <p style={{ fontSize: 14, color: isDark ? tokens.dark.textSecondary : tokens.textSecondary, marginBottom: 24, lineHeight: 1.6 }}>
             Access your exams, results, and analytics.
           </p>
+
+          {isExamInvite && (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '12px 14px', borderRadius: 10, marginBottom: 18,
+              background: isDark ? 'rgba(12,189,115,0.1)' : 'rgba(12,189,115,0.06)',
+              border: `1px solid ${tokens.accent}33`,
+            }}>
+              <div style={{ flexShrink: 0, marginTop: 1, color: tokens.accent }}><Icon.Lock s={16} /></div>
+              <span style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.5, color: isDark ? tokens.dark.textPrimary : tokens.textPrimary }}>
+                Log in with the phone number or email and the password your teacher gave you — you'll go straight to your exam.
+              </span>
+            </div>
+          )}
 
           {error && (
             <div style={{

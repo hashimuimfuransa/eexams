@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Exam = require('../models/Exam');
@@ -122,6 +123,15 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
+// Starting password a teacher can read out or text to a student: the first
+// word of their first name plus four digits, e.g. "Mucyo4821". The student is
+// asked to replace it after signing in (User.mustChangePassword).
+const generateStudentPassword = (firstName) => {
+  const word = String(firstName || '').trim().split(/\s+/)[0].replace(/[^\p{L}\p{N}]/gu, '');
+  const base = word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : 'Student';
+  return `${base}${crypto.randomInt(1000, 10000)}`;
+};
+
 // @desc    Register a new student
 // @route   POST /api/admin/students
 // @access  Private/Admin
@@ -130,23 +140,35 @@ const registerStudent = async (req, res) => {
     console.log('Register student request body:', req.body);
     const { firstName, lastName, email, class: studentClass, organization, phone, gender, registrationNumber } = req.body;
 
-    // Validate required fields
-    if (!firstName || !lastName || !email) {
-      return res.status(400).json({ message: 'Please provide first name, last name and email' });
+    // Validate required fields. A student logs in with an email OR a phone
+    // number, so either one is enough — many students have no email address.
+    if (!firstName || !lastName) {
+      return res.status(400).json({ message: 'Please provide first name and last name' });
     }
 
-    const { normalizePhone } = require('../utils/phoneUtils');
+    const normalizedEmail = email ? String(email).trim().toLowerCase() : '';
+    if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ message: 'Please enter a valid email address' });
+    }
+
+    const { normalizePhone, compactPhone, phoneLookupVariants } = require('../utils/phoneUtils');
     let normalizedPhone;
     try {
-      normalizedPhone = normalizePhone(phone);
+      normalizedPhone = compactPhone(normalizePhone(phone));
     } catch (phoneError) {
       return res.status(400).json({ message: phoneError.message });
     }
 
+    if (!normalizedEmail && !normalizedPhone) {
+      return res.status(400).json({ message: 'Please provide an email address or a phone number — the student uses it to log in' });
+    }
+
     // Check if student already exists
-    const studentExists = await User.findOne({ email });
-    if (studentExists) {
+    if (normalizedEmail && await User.findOne({ email: normalizedEmail })) {
       return res.status(400).json({ message: 'Student with this email already exists' });
+    }
+    if (normalizedPhone && await User.findOne({ phone: { $in: phoneLookupVariants(normalizedPhone) } })) {
+      return res.status(400).json({ message: 'That phone number is already registered.' });
     }
 
     // A school may bring its own numbering; otherwise one is issued below.
@@ -168,16 +190,19 @@ const registerStudent = async (req, res) => {
       }
     }
 
-    // Auto-generate a default password: first name + 4-digit random number
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const defaultPassword = `${firstName.charAt(0).toUpperCase()}${firstName.slice(1).toLowerCase()}${randomSuffix}`;
+    // The teacher sees this password in their student list and hands it to
+    // the student, who is asked to replace it after signing in.
+    const defaultPassword = generateStudentPassword(firstName);
 
     // Create student
     const student = await User.create({
       firstName,
       lastName,
-      email,
+      email: normalizedEmail || undefined,
       password: defaultPassword,
+      initialPassword: defaultPassword,
+      mustChangePassword: true,
+      signinMethod: normalizedEmail ? 'email' : 'phone',
       role: 'student',
       class: studentClass || '',
       organization: organization || req.user.organization || '',
@@ -213,11 +238,13 @@ const registerStudent = async (req, res) => {
         }
       });
 
-      // Send welcome email with credentials
-      const emailService = require('../utils/emailService');
-      emailService.sendStudentWelcomeEmail(student, defaultPassword).catch(err => {
-        console.error('[registerStudent] Failed to send welcome email:', err);
-      });
+      // Send welcome email with credentials (phone-only students get theirs from the teacher)
+      if (student.email) {
+        const emailService = require('../utils/emailService');
+        emailService.sendStudentWelcomeEmail(student, defaultPassword).catch(err => {
+          console.error('[registerStudent] Failed to send welcome email:', err);
+        });
+      }
 
       res.status(201).json({
         _id: student._id,
@@ -229,7 +256,11 @@ const registerStudent = async (req, res) => {
         registrationNumber: student.registrationNumber || null,
         phone: student.phone,
         gender: student.gender,
-        organization: student.organization
+        organization: student.organization,
+        initialPassword: defaultPassword,
+        mustChangePassword: true,
+        passwordChangedAt: null,
+        createdAt: student.createdAt
       });
     } else {
       res.status(400).json({ message: 'Invalid student data' });
@@ -270,7 +301,7 @@ const getStudents = async (req, res) => {
         query = query.where('class', classFilter);
       }
       
-      let students = await query.select('-password');
+      let students = await query.select('-password +initialPassword');
       
       // Apply sorting
       if (sortBy) {
@@ -304,7 +335,7 @@ const getStudents = async (req, res) => {
         query = query.where('class', classFilter);
       }
       
-      let students = await query.select('-password');
+      let students = await query.select('-password +initialPassword');
       
       // Apply sorting
       if (sortBy) {
@@ -328,7 +359,7 @@ const getStudents = async (req, res) => {
       query = query.where('class', classFilter);
     }
     
-    let students = await query.select('-password');
+    let students = await query.select('-password +initialPassword');
     
     // Apply sorting
     if (sortBy) {
@@ -355,9 +386,9 @@ const sortStudents = (students, sortBy) => {
     case 'class-desc':
       return sorted.sort((a, b) => (b.class || '').localeCompare(a.class || ''));
     case 'email-asc':
-      return sorted.sort((a, b) => a.email.localeCompare(b.email));
+      return sorted.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
     case 'email-desc':
-      return sorted.sort((a, b) => b.email.localeCompare(a.email));
+      return sorted.sort((a, b) => (b.email || '').localeCompare(a.email || ''));
     default:
       return sorted;
   }
@@ -415,17 +446,26 @@ const updateStudent = async (req, res) => {
   try {
     const { firstName, lastName, email, class: studentClass, organization, isBlocked, phone, gender, password } = req.body;
 
-    const { normalizePhone } = require('../utils/phoneUtils');
+    const { normalizePhone, compactPhone } = require('../utils/phoneUtils');
     let normalizedPhone;
     if (phone !== undefined) {
       try {
-        normalizedPhone = normalizePhone(phone);
+        normalizedPhone = compactPhone(normalizePhone(phone));
       } catch (phoneError) {
         return res.status(400).json({ message: phoneError.message });
       }
     }
 
-    const student = await User.findById(req.params.id);
+    // '' clears the email — allowed as long as the student keeps a phone to log in with.
+    let normalizedEmail;
+    if (email !== undefined) {
+      normalizedEmail = email ? String(email).trim().toLowerCase() : '';
+      if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return res.status(400).json({ message: 'Please enter a valid email address' });
+      }
+    }
+
+    const student = await User.findById(req.params.id).select('+initialPassword');
 
     // Check if student exists and is a student
     if (!student || student.role !== 'student') {
@@ -459,7 +499,7 @@ const updateStudent = async (req, res) => {
       const changes = {};
       if (firstName && firstName !== student.firstName) changes.firstName = `${student.firstName} → ${firstName}`;
       if (lastName && lastName !== student.lastName) changes.lastName = `${student.lastName} → ${lastName}`;
-      if (email && email !== student.email) changes.email = `${student.email} → ${email}`;
+      if (normalizedEmail !== undefined && (normalizedEmail || undefined) !== student.email) changes.email = `${student.email || 'none'} → ${normalizedEmail || 'none'}`;
       if (studentClass !== undefined && studentClass !== student.class) changes.class = studentClass || 'none';
       if (isBlocked !== undefined && isBlocked !== student.isBlocked) changes.status = isBlocked ? 'Blocked' : 'Active';
       if (phone !== undefined && normalizedPhone !== student.phone) changes.phone = normalizedPhone || 'none';
@@ -469,13 +509,23 @@ const updateStudent = async (req, res) => {
       // Update student fields
       if (firstName) student.firstName = firstName;
       if (lastName) student.lastName = lastName;
-      if (email) student.email = email;
+      if (normalizedEmail !== undefined) student.email = normalizedEmail || undefined;
       if (studentClass !== undefined) student.class = studentClass;
       if (organization) student.organization = organization;
       if (isBlocked !== undefined) student.isBlocked = isBlocked;
       if (phone !== undefined) student.phone = normalizedPhone || undefined;
       if (gender !== undefined) student.gender = gender;
-      if (password && password.trim() !== '') student.password = password;
+      if (password && password.trim() !== '') {
+        // The teacher chose this password, so they can still read it back and
+        // the student is asked to replace it — same as a generated one.
+        student.password = password;
+        student.initialPassword = password;
+        student.mustChangePassword = true;
+      }
+
+      if (!student.email && !student.phone) {
+        return res.status(400).json({ message: 'A student needs an email address or a phone number to log in' });
+      }
 
       const updatedStudent = await student.save();
 
@@ -492,7 +542,7 @@ const updateStudent = async (req, res) => {
       });
 
       // Send update email to student if there are changes (but not for password changes since they're done directly)
-      if (Object.keys(changes).length > 0 && !changes.password) {
+      if (Object.keys(changes).length > 0 && !changes.password && updatedStudent.email) {
         const emailService = require('../utils/emailService');
         emailService.sendStudentUpdateEmail(updatedStudent, changes).catch(err => {
           console.error('[updateStudent] Failed to send update email:', err);
@@ -509,13 +559,22 @@ const updateStudent = async (req, res) => {
         organization: updatedStudent.organization,
         phone: updatedStudent.phone,
         gender: updatedStudent.gender,
-        isBlocked: updatedStudent.isBlocked
+        isBlocked: updatedStudent.isBlocked,
+        initialPassword: updatedStudent.initialPassword || null,
+        mustChangePassword: !!updatedStudent.mustChangePassword,
+        passwordChangedAt: updatedStudent.passwordChangedAt || null
       });
     } else {
       res.status(404).json({ message: 'Student not found' });
     }
   } catch (error) {
     console.error('Update student error:', error);
+    if (error.code === 11000) {
+      const clashedField = Object.keys(error.keyPattern || error.keyValue || {})[0];
+      return res.status(400).json({
+        message: clashedField === 'phone' ? 'That phone number is already registered.' : 'Another account already uses this email address.'
+      });
+    }
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(val => val.message);
       return res.status(400).json({ message: messages.join(', ') });
@@ -618,12 +677,14 @@ const resetStudentPassword = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to reset this student\'s password' });
     }
 
-    // Generate new password
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const newPassword = `${student.firstName.charAt(0).toUpperCase()}${student.firstName.slice(1).toLowerCase()}${randomSuffix}`;
+    // Generate new password. Like a new student's, the teacher can read it
+    // back and the student is asked to replace it after signing in.
+    const newPassword = generateStudentPassword(student.firstName);
 
     // Update student password
     student.password = newPassword;
+    student.initialPassword = newPassword;
+    student.mustChangePassword = true;
     await student.save();
 
     // Log the activity
@@ -637,13 +698,20 @@ const resetStudentPassword = async (req, res) => {
       }
     });
 
-    // Send password reset email
-    const emailService = require('../utils/emailService');
-    emailService.sendStudentPasswordResetEmail(student, newPassword).catch(err => {
-      console.error('[resetStudentPassword] Failed to send password reset email:', err);
-    });
+    // Send password reset email (phone-only students get it from the teacher)
+    if (student.email) {
+      const emailService = require('../utils/emailService');
+      emailService.sendStudentPasswordResetEmail(student, newPassword).catch(err => {
+        console.error('[resetStudentPassword] Failed to send password reset email:', err);
+      });
+    }
 
-    res.json({ message: 'Password reset successfully. Student will receive an email with the new password.' });
+    res.json({
+      message: student.email
+        ? 'Password reset. The new password was also emailed to the student.'
+        : 'Password reset. Share the new password with the student.',
+      password: newPassword
+    });
   } catch (error) {
     console.error('Reset student password error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -5168,17 +5236,35 @@ const shareExam = async (req, res) => {
       await share.save();
     }
 
-    const base = process.env.CLIENT_URL || 'http://localhost:3000';
+    const shareData = buildShareData(share);
     res.json({
       shareToken: share.shareToken,
-      publicLink: `${base}/join/${share.shareToken}`,
-      privateLink: `${base}/join/${share.shareToken}?mode=private`,
+      publicLink: shareData.publicLink,
+      privateLink: shareData.privateLink,
       share,
+      shareData,
     });
   } catch (err) {
     console.error('shareExam error:', err);
     res.status(500).json({ message: 'Server error' });
   }
+};
+
+// The link details the Private / Invite tab works with, in one shape for the
+// share and preview responses.
+const buildShareData = (share) => {
+  const base = process.env.CLIENT_URL || 'http://localhost:3000';
+  return {
+    shareId: share._id,
+    shareToken: share.shareToken,
+    publicLink: `${base}/join/${share.shareToken}`,
+    // mode=private: anyone not signed in is sent to the login page (no guest
+    // access) and comes back to the exam after entering the credentials
+    // their teacher gave them.
+    privateLink: `${base}/join/${share.shareToken}?mode=private`,
+    expiresAt: share.settings?.expiresAt || null,
+    settings: share.settings,
+  };
 };
 
 const getExamPreview = async (req, res) => {
@@ -5201,7 +5287,7 @@ const getExamPreview = async (req, res) => {
 
     const share = await SharedExam.findOne({ exam: examId, sharedBy: req.orgAdminId, isActive: true });
 
-    res.json({ exam, share: share || null });
+    res.json({ exam, share: share || null, shareData: share ? buildShareData(share) : null });
   } catch (err) {
     console.error('getExamPreview error:', err);
     res.status(500).json({ message: 'Server error' });
@@ -5211,10 +5297,10 @@ const getExamPreview = async (req, res) => {
 const createStudentAccounts = async (req, res) => {
   try {
     const { examId } = req.params;
-    const { students } = req.body; // [{ firstName, lastName, email, class }]
+    const { studentIds } = req.body; // ids from GET /admin/students
 
-    if (!Array.isArray(students) || !students.length)
-      return res.status(400).json({ message: 'Students array is required' });
+    if (!Array.isArray(studentIds) || !studentIds.length)
+      return res.status(400).json({ message: 'Select at least one student to assign' });
 
     // Find exam - allow both admin and teacher access
     const exam = await Exam.findOne({ _id: examId });
@@ -5232,38 +5318,38 @@ const createStudentAccounts = async (req, res) => {
       return res.status(403).json({ message: 'You do not have permission to access this exam' });
     }
 
-    const created = [];
-    const skipped = [];
-    const DEFAULT_PASSWORD = 'Exam@2024';
+    // Assign only students this teacher/organisation manages — the same set
+    // GET /admin/students lists. Matching by id (not email) is what lets
+    // phone-only students be assigned. Students are created beforehand via
+    // POST /admin/students, which applies the plan's student limit.
+    const ids = studentIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+    const scope = { _id: { $in: ids }, role: 'student' };
+    if (req.user.role === 'admin') {
+      const teacherIds = (await User.find({ role: 'teacher', parentAdmin: req.orgAdminId }).select('_id').lean()).map(t => t._id);
+      scope.createdBy = { $in: [req.orgAdminId, ...teacherIds] };
+    } else if (req.user.role !== 'superadmin') {
+      scope.createdBy = { $in: [req.user._id, req.orgAdminId] };
+    }
+    const students = await User.find(scope).select('firstName lastName email phone').lean();
 
+    const assignedIds = new Set(exam.assignedTo.map(id => id.toString()));
+    const assigned = [];
+    const alreadyAssigned = [];
     for (const s of students) {
-      if (!s.email || !s.firstName || !s.lastName) { skipped.push({ ...s, reason: 'Missing required fields' }); continue; }
-      const exists = await User.findOne({ email: s.email.toLowerCase() });
-      if (exists) {
-        // Assign exam to existing student
-        if (!exam.assignedTo.map(id => id.toString()).includes(exists._id.toString())) {
-          exam.assignedTo.push(exists._id);
-        }
-        skipped.push({ email: s.email, reason: 'Account already exists — exam assigned' });
-        continue;
-      }
-      const user = await User.create({
-        firstName: s.firstName.trim(),
-        lastName: s.lastName.trim(),
-        email: s.email.toLowerCase().trim(),
-        password: DEFAULT_PASSWORD,
-        role: 'student',
-        class: s.class || '',
-        createdBy: req.user._id,
-        organization: req.user.organization || '',
-        parentAdmin: req.orgAdminId || req.user._id,
-      });
-      exam.assignedTo.push(user._id);
-      created.push({ _id: user._id, email: user.email, firstName: user.firstName, lastName: user.lastName, tempPassword: DEFAULT_PASSWORD });
+      const summary = { _id: s._id, firstName: s.firstName, lastName: s.lastName, email: s.email, phone: s.phone };
+      (assignedIds.has(s._id.toString()) ? alreadyAssigned : assigned).push(summary);
     }
 
-    await exam.save();
-    res.json({ created, skipped, total: students.length });
+    if (assigned.length) {
+      await Exam.updateOne({ _id: exam._id }, { $addToSet: { assignedTo: { $each: assigned.map(s => s._id) } } });
+    }
+
+    res.json({
+      assigned,
+      alreadyAssigned,
+      notFound: studentIds.length - students.length,
+      assignedTo: [...assignedIds, ...assigned.map(s => s._id.toString())]
+    });
   } catch (err) {
     console.error('createStudentAccounts error:', err);
     res.status(500).json({ message: err.message || 'Server error' });

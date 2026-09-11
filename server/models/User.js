@@ -195,6 +195,25 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  // Starting password a teacher issued to a student. Kept readable (and
+  // select: false, so it only leaves the database when asked for) so the
+  // teacher can hand it to students who have no email; wiped as soon as the
+  // student chooses their own password.
+  initialPassword: {
+    type: String,
+    default: null,
+    select: false
+  },
+  // Set whenever a teacher issues a password — the student is asked to
+  // replace it after signing in.
+  mustChangePassword: {
+    type: Boolean,
+    default: false
+  },
+  passwordChangedAt: {
+    type: Date,
+    default: null
+  },
   // Level-based subscription fields
   level: {
     type: mongoose.Schema.Types.ObjectId,

@@ -33,4 +33,29 @@ function normalizePhone(phone) {
   throw new Error('Please enter a valid phone number with country code (e.g., +250 788 123 456)');
 }
 
-module.exports = { normalizePhone };
+// "+250 788 123 456" and "+250788123456" are the same number.
+function compactPhone(phone) {
+  return String(phone || '').trim().replace(/[\s\-\(\)]/g, '');
+}
+
+/**
+ * Every spelling a stored number could have for what someone typed at login:
+ * as typed, without spacing, normalized, and with a stray trunk 0 after +250
+ * dropped (the login form prefixes +250, so "0788…" arrives as "+250 0788…").
+ */
+function phoneLookupVariants(phone) {
+  const trimmed = String(phone || '').trim();
+  if (!trimmed) return [];
+
+  const compact = compactPhone(trimmed);
+  const variants = [trimmed, compact, compact.replace(/^\+2500/, '+250')];
+  try {
+    const normalized = normalizePhone(trimmed);
+    if (normalized) variants.push(normalized, compactPhone(normalized));
+  } catch (_) {
+    // Not normalizable — the as-typed spellings are all there is to try.
+  }
+  return [...new Set(variants)];
+}
+
+module.exports = { normalizePhone, compactPhone, phoneLookupVariants };

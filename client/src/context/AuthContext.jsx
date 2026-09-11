@@ -104,6 +104,7 @@ export const AuthProvider = ({ children }) => {
                   freeExamUsed: verifyRes.data.freeExamUsed ?? userData.freeExamUsed,
                   freeExamLevel: verifyRes.data.freeExamLevel ?? userData.freeExamLevel,
                   requiresLevelSelection: verifyRes.data.requiresLevelSelection ?? userData.requiresLevelSelection ?? false,
+                  mustChangePassword: verifyRes.data.mustChangePassword ?? userData.mustChangePassword ?? false,
                 };
                 localStorage.setItem('user', JSON.stringify(freshUser));
                 setUser(freshUser);
@@ -217,6 +218,7 @@ export const AuthProvider = ({ children }) => {
         freeExamUsed: response.data.freeExamUsed,
         freeExamLevel: response.data.freeExamLevel,
         requiresLevelSelection: response.data.requiresLevelSelection ?? false,
+        mustChangePassword: response.data.mustChangePassword ?? false,
       };
 
       // Save user to localStorage
@@ -344,6 +346,7 @@ export const AuthProvider = ({ children }) => {
         freeExamUsed: response.data.freeExamUsed,
         freeExamLevel: response.data.freeExamLevel,
         requiresLevelSelection: response.data.requiresLevelSelection ?? false,
+        mustChangePassword: response.data.mustChangePassword ?? false,
       };
 
       // Only persist session for existing (returning) users by default.
@@ -439,6 +442,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // The student replaced their teacher-issued password (ForcePasswordChangeDialog)
+  const markPasswordChanged = () => {
+    if (!user) return;
+    const updatedUser = { ...user, mustChangePassword: false };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -454,6 +465,7 @@ export const AuthProvider = ({ children }) => {
         updateUserProfile,
         updateUserLevel,
         clearUserLevel,
+        markPasswordChanged,
         setUser
       }}
     >

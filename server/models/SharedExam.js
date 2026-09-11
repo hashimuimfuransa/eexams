@@ -336,8 +336,11 @@ SharedExamSchema.methods.unlockStudent = function(studentId) {
 
 // Add a student to the share
 SharedExamSchema.methods.addStudent = function(studentData) {
-  const existingStudent = this.students.find(
-    s => s.email === studentData.email || s.student?.toString() === studentData.studentId
+  // Phone-only students join with no email, so a missing email must never
+  // match another entry's missing email — match by account id instead.
+  const existingStudent = this.students.find(s =>
+    (studentData.email && s.email === studentData.email) ||
+    (studentData.studentId && (s.student || s.studentId)?.toString() === studentData.studentId.toString())
   );
 
   if (existingStudent) {

@@ -419,7 +419,7 @@ const verifySharePassword = async (req, res) => {
 const joinSharedExam = async (req, res) => {
   try {
     const { shareToken } = req.params;
-    let { email, name, password, inviteToken, isPrivate } = req.body;
+    let { email, name, password, inviteToken, isPrivate, privateInvite } = req.body;
 
     console.log('Join request - isPrivate from body:', isPrivate);
     console.log('Join request - email:', email);
@@ -499,10 +499,46 @@ const joinSharedExam = async (req, res) => {
       }
     }
 
+    // A signed-in student joins as their own account whatever the body says:
+    // that is how phone-only students (no email) get in, and it stops a typed
+    // email from joining as someone else. Guest accounts (@exam.local) keep
+    // the email-based flow below.
+    const authUser = req.user && !String(req.user.email || '').endsWith('@exam.local') ? req.user : null;
+
+    // Private invite links (?mode=private) are for students who sign in with
+    // the details their teacher gave them — never create a guest for them.
+    if (privateInvite && !authUser) {
+      return res.status(401).json({
+        message: 'Please log in with the details your teacher gave you to open this exam.',
+        requiresLogin: true
+      });
+    }
+
+    if (authUser) {
+      if (privateInvite && authUser.role === 'student') {
+        const isAssigned = (sharedExam.exam.assignedTo || []).some(id => id.toString() === authUser._id.toString());
+        if (!isAssigned) {
+          // Finishing an assigned exam removes the student from assignedTo,
+          // so tell "already done" apart from "not invited".
+          const hasFinished = await Result.exists({ student: authUser._id, exam: sharedExam.exam._id, isCompleted: true });
+          if (hasFinished) {
+            return res.status(400).json({ message: 'You have already completed this exam', hasCompleted: true });
+          }
+          return res.status(403).json({
+            message: 'This exam is only for the students your teacher added. If your teacher gave you a different account, log out and sign in with that one.',
+            notAssigned: true
+          });
+        }
+      }
+      email = authUser.email || null;
+      name = `${authUser.firstName || ''} ${authUser.lastName || ''}`.trim() || 'Student';
+      isPrivate = true;
+    }
+
     // For public links without email/name, check if this is a marketplace share link
     // If so, try to find the user from the associated exam request
     let isMarketplaceUser = false;
-    if (!email || !name) {
+    if (!authUser && (!email || !name)) {
       console.log('Looking for marketplace request with sharedExam:', sharedExam._id);
       const examRequest = await ExamRequest.findOne({ sharedExam: sharedExam._id, status: 'approved' });
       console.log('Marketplace request query result:', {
@@ -529,16 +565,17 @@ const joinSharedExam = async (req, res) => {
     }
 
     // For private mode with email/name provided, validate they are not empty
-    if (isPrivate && (!email || !name)) {
+    if (!authUser && isPrivate && (!email || !name)) {
       return res.status(400).json({ message: 'Email and name are required for private exam access' });
     }
 
-    // Normalize email
-    email = email.toLowerCase().trim();
+    // Normalize email (a phone-only student has none)
+    email = email ? email.toLowerCase().trim() : null;
 
     // Check if already joined and has an active session (prevents simultaneous access)
-    const existingStudent = sharedExam.students.find(
-      s => s.email === email
+    const existingStudent = sharedExam.students.find(s => authUser
+      ? (s.student || s.studentId)?.toString() === authUser._id.toString() || (!!email && s.email === email)
+      : s.email === email
     );
 
     if (existingStudent) {
@@ -677,7 +714,7 @@ const joinSharedExam = async (req, res) => {
     }
 
     // Create new student user if doesn't exist
-    let studentUser = await User.findOne({ email });
+    let studentUser = authUser ? await User.findById(authUser._id) : await User.findOne({ email });
     let isNewUser = false;
     let tempPassword = null;
 
@@ -709,7 +746,7 @@ const joinSharedExam = async (req, res) => {
     // Add student to share
     const studentData = {
       studentId: studentUser._id,
-      email: email.toLowerCase().trim(),
+      email,
       name: name,
       accessMethod: inviteToken ? 'invite' : 'link',
       isActiveSession: true,
@@ -796,7 +833,6 @@ const joinSharedExam = async (req, res) => {
     }
 
     // Create exam session (Result) for the student so ExamInterface can load it
-    const Result = require('../models/Result');
     let resultId = null;
 
     try {

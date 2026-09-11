@@ -2829,6 +2829,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   const [newStudentForm, setNewStudentForm] = useState({ firstName: '', lastName: '', email: '', phone: '', class: '', gender: '' });
   const [newStudentFormError, setNewStudentFormError] = useState('');
   const [creatingStudent, setCreatingStudent] = useState(false);
+  const [studentCredentials, setStudentCredentials] = useState(null); // { student, title } — login details to hand over
   const [assignedStudents, setAssignedStudents] = useState([]);
   const [loadingAssigned, setLoadingAssigned] = useState(false);
   const [examResults, setExamResults] = useState([]);
@@ -2843,6 +2844,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   useEffect(() => {
     api.get(`/admin/exams/${examId}/preview`).then(r => {
       setPreview(r.data);
+      // An exam shared before keeps its link, so show it straight away
+      if (r.data?.shareData) setShareResult(r.data.shareData);
       if (r.data?.exam?.assignedTo) {
         fetchAssignedStudents(r.data.exam.assignedTo);
       }
@@ -2909,8 +2912,13 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
   };
 
   const handleCreateNewStudent = async () => {
-    if (!newStudentForm.firstName.trim() || !newStudentForm.lastName.trim() || !newStudentForm.email.trim()) {
-      setNewStudentFormError('First name, last name and email are required.');
+    if (!newStudentForm.firstName.trim() || !newStudentForm.lastName.trim()) {
+      setNewStudentFormError('First name and last name are required.');
+      return;
+    }
+    // The student logs in with either one, so an email isn't required
+    if (!newStudentForm.email.trim() && !newStudentForm.phone.trim()) {
+      setNewStudentFormError('Enter an email or a phone number so the student can log in.');
       return;
     }
     setCreatingStudent(true);
@@ -2920,8 +2928,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
       const newStudent = res.data;
       setExistingStudents(prev => [...prev, newStudent]);
       setSelectedStudentIds(prev => [...prev, newStudent._id.toString()]);
-      setSnack('✓ Student created successfully');
       setCreateStudentDialog(false);
+      setStudentCredentials({ student: newStudent, title: 'Student created' });
       setNewStudentForm({ firstName: '', lastName: '', email: '', phone: '', class: '', gender: '' });
     } catch (err) {
       setNewStudentFormError(err.response?.data?.message || 'Failed to create student');
@@ -3062,17 +3070,31 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
     if (selectedStudentIds.length === 0) { setSnack('Please select at least one student to assign.'); return; }
     setCreating(true);
     try {
-      // Assign existing students to exam
-      const studentsToAssign = existingStudents.filter(s => selectedStudentIds.includes(s._id.toString()));
-      const r = await api.post(`/admin/exams/${examId}/students`, { students: studentsToAssign.map(s => ({ firstName: s.firstName, lastName: s.lastName, email: s.email, class: s.class })) });
+      // Assign the selected students by id — phone-only students have no email to match on
+      const r = await api.post(`/admin/exams/${examId}/students`, { studentIds: selectedStudentIds });
       setCreateResult(r.data);
       if (!shareResult) handleShare('email');
       // Refresh assigned students list
-      fetchAssignedStudents(preview?.exam?.assignedTo || []);
+      fetchAssignedStudents(r.data.assignedTo || []);
       // Clear selection
       setSelectedStudentIds([]);
     } catch (err) { setSnack(err.response?.data?.message || 'Failed to assign students'); }
     finally { setCreating(false); }
+  };
+
+  // Issue a new password the teacher can see — for students whose password
+  // isn't on record (created before passwords were kept, or changed by them).
+  const handleResetStudentPassword = async (student) => {
+    if (!window.confirm(`Create a new password for ${student.firstName} ${student.lastName}? Their current password will stop working.`)) return;
+    try {
+      const r = await api.post(`/admin/students/${student._id}/reset-password`);
+      const withPassword = s => s._id === student._id ? { ...s, initialPassword: r.data.password, mustChangePassword: true } : s;
+      setExistingStudents(prev => prev.map(withPassword));
+      setAssignedStudents(prev => prev.map(withPassword));
+      setStudentCredentials({ student: { ...student, initialPassword: r.data.password }, title: 'New password' });
+    } catch (err) {
+      setSnack(err.response?.data?.message || 'Failed to reset password');
+    }
   };
 
   const handleEditQuestion = (question, sectionIndex, questionIndex) => {
@@ -3523,6 +3545,50 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
         {/* TAB 2 — PRIVATE / INVITE */}
         {tab === 2 && (
           <Box sx={{ p: 3 }}>
+            {/* Exam link — opens the login page; students sign in with the details from the list below and land in the exam */}
+            <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1.5px solid ${shareResult && isShareExpired() ? '#EF4444' : tokens.accent}`, bgcolor: 'rgba(12,189,115,0.03)', mb: 2.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
+                <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "DM Sans,sans-serif", display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  <Share sx={{ fontSize: 18, color: tokens.accent }} /> Exam link for your students
+                </Typography>
+                {shareResult && (isShareExpired() ? (
+                  <Chip icon={<ErrorOutline sx={{ fontSize: 12 }} />} label="Expired" size="small" sx={{ bgcolor: '#EF4444', color: 'white', fontSize: 10, fontWeight: 700, height: 22 }} />
+                ) : (
+                  <Chip icon={<CheckCircleOutline sx={{ fontSize: 12 }} />} label="Active" size="small" sx={{ bgcolor: tokens.accent, color: 'white', fontSize: 10, fontWeight: 700, height: 22 }} />
+                ))}
+              </Box>
+              <Typography sx={{ fontSize: 12, color: tokens.textMuted, mb: 1.5 }}>
+                Send this link to your students. It opens the login page: they sign in with the phone number or email and the password shown in the list below, then go straight into the exam.
+              </Typography>
+              {shareResult ? (
+                <>
+                  {(shareResult.expiresAt || shareResult.settings?.expiresAt) && (
+                    <Typography sx={{ fontSize: 11, color: isShareExpired() ? '#EF4444' : tokens.textMuted, mb: 0.75 }}>
+                      Expires: {new Date(shareResult.expiresAt || shareResult.settings?.expiresAt).toLocaleString()}
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: isXs ? 'wrap' : 'nowrap' }}>
+                    <TextField fullWidth size="small" value={shareResult.privateLink} InputProps={{ readOnly: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13, bgcolor: 'white' } }} />
+                    <Button variant="contained" startIcon={copied === 'private' ? <Check /> : <ContentCopy />} onClick={() => copyLink(shareResult.privateLink, 'private')}
+                      sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: copied === 'private' ? tokens.accent : gradients.brand, boxShadow: 'none', whiteSpace: 'nowrap', px: 2 }}>
+                      {copied === 'private' ? 'Copied' : 'Copy link'}
+                    </Button>
+                    {isShareExpired() && (
+                      <Button variant="outlined" startIcon={resettingExpiration ? <CircularProgress size={14} color="inherit" /> : <RestartAlt sx={{ fontSize: 14 }} />} onClick={handleResetExpiration} disabled={resettingExpiration}
+                        sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', borderColor: '#EF4444', color: '#EF4444', whiteSpace: 'nowrap', px: 2 }}>
+                        {resettingExpiration ? 'Resetting...' : 'Reset Link'}
+                      </Button>
+                    )}
+                  </Box>
+                </>
+              ) : (
+                <Button variant="contained" startIcon={sharing ? <CircularProgress size={16} color="inherit" /> : <Share />} onClick={() => handleShare('email')} disabled={sharing}
+                  sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: gradients.brand, boxShadow: 'none' }}>
+                  {sharing ? 'Creating link…' : 'Create exam link'}
+                </Button>
+              )}
+            </Paper>
+
             <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mb: 2.5 }}>
               <Box sx={{ mb: 1.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -3612,6 +3678,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                             s.firstName?.toLowerCase().includes(searchLower) ||
                             s.lastName?.toLowerCase().includes(searchLower) ||
                             s.email?.toLowerCase().includes(searchLower) ||
+                            s.phone?.includes(studentSearchTerm.trim()) ||
                             s.class?.toLowerCase().includes(searchLower)
                           );
                         })
@@ -3667,8 +3734,9 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                               <Typography sx={{ fontSize: 13, fontWeight: 600, fontFamily: "DM Sans,sans-serif" }}>
                                 {student.firstName} {student.lastName}
                               </Typography>
-                              <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>{student.email}</Typography>
+                              <Typography sx={{ fontSize: 11, color: tokens.textMuted }}>{studentLogin(student)}</Typography>
                             </Box>
+                            <StudentPasswordCell student={student} onReset={handleResetStudentPassword} />
                             {student.class && (
                               <Chip label={student.class} size="small" sx={{ fontSize: 10, bgcolor: 'rgba(12,189,115,0.1)', color: tokens.accent }} />
                             )}
@@ -3685,42 +3753,34 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <CheckCircle sx={{ color: tokens.accent }} />
                   <Typography fontWeight={700} sx={{ color: tokens.accentDark, fontFamily: "DM Sans,sans-serif" }}>
-                    {createResult.created.length} student{createResult.created.length !== 1 ? 's' : ''} assigned, {createResult.skipped.length} skipped
+                    {createResult.assigned.length} student{createResult.assigned.length !== 1 ? 's' : ''} assigned
+                    {createResult.alreadyAssigned.length > 0 && `, ${createResult.alreadyAssigned.length} already on this exam`}
                   </Typography>
                 </Box>
-                {shareResult && (
-                  <Box sx={{ mb: 1.5 }}>
-                    <Typography sx={{ fontSize: 12, color: tokens.textMuted, mb: 0.5 }}>Private Link (share with invited students)</Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <TextField fullWidth size="small" value={shareResult.privateLink} InputProps={{ readOnly: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }} />
-                      <Button variant="contained" onClick={() => copyLink(shareResult.privateLink, 'private')}
-                        sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: copied === 'private' ? tokens.accent : gradients.brand, boxShadow: 'none', whiteSpace: 'nowrap', px: 2 }}>
-                        {copied === 'private' ? '✓ Copied' : 'Copy'}
-                      </Button>
-                    </Box>
-                  </Box>
-                )}
-                {createResult.created.length > 0 && (
+                {createResult.assigned.length > 0 && (
                   <Box sx={{ maxHeight: 160, overflowY: 'auto' }}>
                     <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, mb: 0.5 }}>Assigned Students:</Typography>
-                    {createResult.created.map((s, i) => (
-                      <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5, borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
+                    {createResult.assigned.map((s) => (
+                      <Box key={s._id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5, borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
                         <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: tokens.accent }}>{s.firstName[0]}</Avatar>
-                        <Typography sx={{ fontSize: 12, flexGrow: 1 }}>{s.firstName} {s.lastName} — <b>{s.email}</b></Typography>
+                        <Typography sx={{ fontSize: 12, flexGrow: 1 }}>{s.firstName} {s.lastName} — <b>{studentLogin(s)}</b></Typography>
                       </Box>
                     ))}
                   </Box>
                 )}
-                {createResult.skipped.length > 0 && (
+                {createResult.alreadyAssigned.length > 0 && (
                   <Box sx={{ maxHeight: 160, overflowY: 'auto', mt: 1 }}>
-                    <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, mb: 0.5 }}>Skipped (already assigned to exam):</Typography>
-                    {createResult.skipped.map((s, i) => (
-                      <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5, borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
-                        <Typography sx={{ fontSize: 12, flexGrow: 1 }}>{s.email} — <span style={{ color: tokens.textMuted }}>{s.reason}</span></Typography>
+                    <Typography sx={{ fontSize: 12, fontWeight: 700, color: tokens.textSecondary, mb: 0.5 }}>Already on this exam:</Typography>
+                    {createResult.alreadyAssigned.map((s) => (
+                      <Box key={s._id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5, borderBottom: `1px solid ${tokens.surfaceBorder}` }}>
+                        <Typography sx={{ fontSize: 12, flexGrow: 1 }}>{s.firstName} {s.lastName} — <span style={{ color: tokens.textMuted }}>{studentLogin(s)}</span></Typography>
                       </Box>
                     ))}
                   </Box>
                 )}
+                <Typography sx={{ fontSize: 12, color: tokens.textMuted, mt: 1.5 }}>
+                  Now send the exam link above to these students, together with their login details from the list below.
+                </Typography>
                 <Button
                   fullWidth
                   variant="outlined"
@@ -3747,66 +3807,15 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               <Paper elevation={0} sx={{ p: 2, borderRadius: 2.5, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', mt: 2.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                   <Typography fontWeight={700} sx={{ fontSize: 14, fontFamily: "DM Sans,sans-serif" }}>Assigned Students ({assignedStudents.length})</Typography>
-                  {!shareResult && (
-                    <Button size="small" onClick={() => handleShare('email')} disabled={sharing}
-                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, color: tokens.accent, bgcolor: 'rgba(12,189,115,0.08)', fontSize: 12 }}>
-                      {sharing ? 'Generating...' : 'Generate Share Link'}
-                    </Button>
-                  )}
+                  <Typography sx={{ fontSize: 11.5, color: tokens.textMuted }}>Send each one the exam link with their own login</Typography>
                 </Box>
-                
-                {shareResult && (
-                  <Box sx={{ mb: 1.5, p: 1.5, bgcolor: isShareExpired() ? 'rgba(239, 68, 68, 0.05)' : 'rgba(12,189,115,0.05)', borderRadius: 2, border: `1px solid ${isShareExpired() ? '#EF4444' : tokens.accent}` }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography sx={{ fontSize: 12, color: tokens.textMuted }}>Private Link (share with invited students)</Typography>
-                      {isShareExpired() ? (
-                        <Chip
-                          icon={<ErrorOutline sx={{ fontSize: 12 }} />}
-                          label="Expired"
-                          size="small"
-                          sx={{ bgcolor: '#EF4444', color: 'white', fontSize: 10, fontWeight: 700, height: 22 }}
-                        />
-                      ) : (
-                        <Chip
-                          icon={<CheckCircleOutline sx={{ fontSize: 12 }} />}
-                          label="Active"
-                          size="small"
-                          sx={{ bgcolor: tokens.accent, color: 'white', fontSize: 10, fontWeight: 700, height: 22 }}
-                        />
-                      )}
-                    </Box>
-                    {(shareResult.expiresAt || shareResult.settings?.expiresAt) && (
-                      <Typography sx={{ fontSize: 11, color: isShareExpired() ? '#EF4444' : tokens.textMuted, mb: 0.5 }}>
-                        Expires: {new Date(shareResult.expiresAt || shareResult.settings?.expiresAt).toLocaleString()}
-                      </Typography>
-                    )}
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <TextField fullWidth size="small" value={shareResult.privateLink} InputProps={{ readOnly: true }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 } }} />
-                      <Button variant="contained" onClick={() => copyLink(shareResult.privateLink, 'private')}
-                        sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: copied === 'private' ? tokens.accent : gradients.brand, boxShadow: 'none', whiteSpace: 'nowrap', px: 2 }}>
-                        {copied === 'private' ? '✓ Copied' : 'Copy'}
-                      </Button>
-                      {isShareExpired() && (
-                        <Button
-                          variant="outlined"
-                          startIcon={resettingExpiration ? <CircularProgress size={14} color="inherit" /> : <RestartAlt sx={{ fontSize: 14 }} />}
-                          onClick={handleResetExpiration}
-                          disabled={resettingExpiration}
-                          sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', borderColor: '#EF4444', color: '#EF4444', whiteSpace: 'nowrap', px: 2, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.05)' } }}
-                        >
-                          {resettingExpiration ? 'Resetting...' : 'Reset Link'}
-                        </Button>
-                      )}
-                    </Box>
-                  </Box>
-                )}
-                
-                <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
+                <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ bgcolor: '#F8FAFC' }}>
                         <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Name</TableCell>
-                        <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Email</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Login (phone / email)</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Password</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Class</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Status</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 11 }}>Actions</TableCell>
@@ -3824,7 +3833,8 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                                 {student.firstName} {student.lastName}
                               </Box>
                             </TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{student.email}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{studentLogin(student) || '-'}</TableCell>
+                            <TableCell><StudentPasswordCell student={student} onReset={handleResetStudentPassword} /></TableCell>
                             <TableCell sx={{ fontSize: 12 }}>{student.class || '-'}</TableCell>
                             <TableCell>
                               {hasCompleted ? (
@@ -3834,11 +3844,20 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
                               )}
                             </TableCell>
                             <TableCell>
-                              <Tooltip title="Remove from exam">
-                                <IconButton size="small" onClick={() => handleRemoveStudent(student._id)} sx={{ color: '#EF4444' }}>
-                                  <Delete fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
+                              <Box sx={{ display: 'flex' }}>
+                                {shareResult && (
+                                  <CopyIconButton
+                                    text={buildExamInviteMessage({ student, examTitle: exam?.title, link: shareResult.privateLink })}
+                                    title="Copy invite (exam link + this student's login) to send by WhatsApp or SMS"
+                                    size={16}
+                                  />
+                                )}
+                                <Tooltip title="Remove from exam">
+                                  <IconButton size="small" onClick={() => handleRemoveStudent(student._id)} sx={{ color: '#EF4444' }}>
+                                    <Delete fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
                             </TableCell>
                           </TableRow>
                         );
@@ -3888,10 +3907,11 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
             />
           </Box>
           <TextField
-            label="Email *"
+            label="Email"
             type="email"
             value={newStudentForm.email}
             onChange={e => setNewStudentForm(p => ({ ...p, email: e.target.value }))}
+            helperText="Email or phone number — the student logs in with either one"
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
@@ -3899,6 +3919,7 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
               label="Phone"
               value={newStudentForm.phone}
               onChange={e => setNewStudentForm(p => ({ ...p, phone: e.target.value }))}
+              placeholder="0788 123 456"
               sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             />
             <TextField
@@ -3931,10 +3952,17 @@ function PublishDialog({ examId, onClose, setActiveSection }) {
           disabled={creatingStudent}
           sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}
         >
-          {creatingStudent ? 'Creating...' : 'Create & Assign'}
+          {creatingStudent ? 'Creating...' : 'Create Student'}
         </Button>
       </DialogActions>
     </Dialog>
+
+    {/* Login details for a student just created or given a new password */}
+    <StudentCredentialsDialog
+      student={studentCredentials?.student}
+      title={studentCredentials?.title}
+      onClose={() => setStudentCredentials(null)}
+    />
     </Dialog>
 
     {/* Edit Question Dialog - Separate from main dialog */}
@@ -5950,6 +5978,118 @@ function ExamsSection({ exams, setExams, setActiveSection, user }) {
   );
 }
 
+// ── Student login details ────────────────────────────────────────────────
+// A student signs in with an email OR a phone number, plus the password the
+// teacher was given for them (initialPassword) until they choose their own.
+const studentLogin = (s) => s?.email || s?.phone || '';
+
+const CopyIconButton = ({ text, title = 'Copy', size = 15 }) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Tooltip title={copied ? 'Copied!' : title}>
+      <IconButton
+        size="small"
+        onClick={(e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
+        sx={{ color: copied ? tokens.accent : tokens.textMuted }}
+      >
+        {copied ? <Check sx={{ fontSize: size }} /> : <ContentCopy sx={{ fontSize: size }} />}
+      </IconButton>
+    </Tooltip>
+  );
+};
+
+// The teacher-issued password: hidden until asked for (so it can't be read off
+// a projected screen before the exam) and copyable. Once the student has picked
+// their own password the teacher can only issue a new one.
+const StudentPasswordCell = ({ student, onReset }) => {
+  const [show, setShow] = useState(false);
+  if (student.initialPassword) {
+    return (
+      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }} onClick={e => e.stopPropagation()}>
+        <Typography sx={{ fontFamily: 'monospace', fontSize: 12.5, fontWeight: 700, color: tokens.textPrimary, minWidth: 72 }}>
+          {show ? student.initialPassword : '••••••••'}
+        </Typography>
+        <Tooltip title={show ? 'Hide password' : 'Show password'}>
+          <IconButton size="small" onClick={() => setShow(v => !v)} sx={{ color: tokens.textMuted }}>
+            {show ? <VisibilityOff sx={{ fontSize: 15 }} /> : <Visibility sx={{ fontSize: 15 }} />}
+          </IconButton>
+        </Tooltip>
+        <CopyIconButton text={student.initialPassword} title="Copy password" />
+      </Box>
+    );
+  }
+  return (
+    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }} onClick={e => e.stopPropagation()}>
+      <Typography sx={{ fontSize: 11.5, color: tokens.textMuted }}>
+        {student.passwordChangedAt ? 'Set by student' : 'Not available'}
+      </Typography>
+      {onReset && (
+        <Tooltip title="Create a new password you can see and share">
+          <IconButton size="small" onClick={() => onReset(student)} sx={{ color: '#6366F1' }}>
+            <LockReset sx={{ fontSize: 15 }} />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Box>
+  );
+};
+
+// Shown right after a student is created or their password is reset.
+const StudentCredentialsDialog = ({ student, onClose, title = 'Student login details' }) => {
+  const [copiedAll, setCopiedAll] = useState(false);
+  if (!student) return null;
+  const rows = [
+    student.email && { label: 'Email', value: student.email },
+    student.phone && { label: 'Phone', value: student.phone },
+    { label: 'Password', value: student.initialPassword, mono: true },
+  ].filter(Boolean);
+  const allText = rows.map(r => `${r.label}: ${r.value}`).join('\n');
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif" }}>{title}</DialogTitle>
+      <DialogContent>
+        <Typography sx={{ fontSize: 13, color: tokens.textSecondary, mb: 2 }}>
+          Give these to <strong>{student.firstName} {student.lastName}</strong>. They log in with {rows.length > 2 ? 'the email or the phone number' : `this ${rows[0].label.toLowerCase()}`} and
+          will be asked to choose their own password afterwards. The password stays visible in your student list until they do.
+        </Typography>
+        {rows.map(row => (
+          <Box key={row.label} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.25, mb: 1, borderRadius: 2, bgcolor: '#F8FAFC', border: `1px solid ${tokens.surfaceBorder}` }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontSize: 11, color: tokens.textMuted, fontWeight: 600 }}>{row.label}</Typography>
+              <Typography sx={{ fontSize: 15, fontWeight: 700, fontFamily: row.mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{row.value}</Typography>
+            </Box>
+            <CopyIconButton text={row.value} title={`Copy ${row.label.toLowerCase()}`} size={17} />
+          </Box>
+        ))}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+        <Button
+          startIcon={copiedAll ? <Check /> : <ContentCopy />}
+          onClick={() => { navigator.clipboard.writeText(allText); setCopiedAll(true); setTimeout(() => setCopiedAll(false), 2000); }}
+          sx={{ textTransform: 'none', fontWeight: 600, color: copiedAll ? tokens.accent : tokens.primary }}
+        >
+          {copiedAll ? 'Copied' : 'Copy all'}
+        </Button>
+        <Button variant="contained" onClick={onClose} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: gradients.brand, boxShadow: 'none' }}>Done</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Ready-to-send message (WhatsApp / SMS) with the exam link and one student's login details.
+const buildExamInviteMessage = ({ student, examTitle, link }) => [
+  `Hello ${student.firstName}, your exam "${examTitle || 'Exam'}" is ready.`,
+  `1. Open this link: ${link}`,
+  `2. Log in with your ${student.email ? 'email' : 'phone number'}: ${studentLogin(student)}`,
+  student.initialPassword ? `3. Password: ${student.initialPassword}` : '3. Use your usual password.',
+  student.initialPassword ? 'After the exam you will be asked to choose your own password.' : null,
+].filter(Boolean).join('\n');
+
 // Memoized StudentFormFields component (moved outside StudentsSection to prevent re-creation)
 const StudentFormFields = memo(({ form, setForm, formError, isEdit = false }) => {
   console.log('StudentFormFields render');
@@ -5960,7 +6100,7 @@ const StudentFormFields = memo(({ form, setForm, formError, isEdit = false }) =>
         <TextField label="First Name *" value={form.firstName} onChange={e => { console.log('First Name onChange:', e.target.value); setForm(p => ({ ...p, firstName: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         <TextField label="Last Name *" value={form.lastName} onChange={e => { console.log('Last Name onChange:', e.target.value); setForm(p => ({ ...p, lastName: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
       </Box>
-      <TextField label="Email *" type="email" value={form.email} onChange={e => { console.log('Email onChange:', e.target.value); setForm(p => ({ ...p, email: e.target.value })); }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+      <TextField label="Email" type="email" value={form.email} onChange={e => { console.log('Email onChange:', e.target.value); setForm(p => ({ ...p, email: e.target.value })); }} helperText="Email or phone number — the student logs in with either one" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
       {isEdit && (
         <TextField 
           label="New Password (leave blank to keep current)" 
@@ -5968,11 +6108,11 @@ const StudentFormFields = memo(({ form, setForm, formError, isEdit = false }) =>
           value={form.password || ''} 
           onChange={e => { console.log('Password onChange:', e.target.value); setForm(p => ({ ...p, password: e.target.value })); }} 
           sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} 
-          helperText="Enter a new password to update it directly without sending an email"
+          helperText="You'll see it in the student list, and the student is asked to change it after signing in"
         />
       )}
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <TextField label="Phone" value={form.phone} onChange={e => { console.log('Phone onChange:', e.target.value); setForm(p => ({ ...p, phone: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+        <TextField label="Phone" value={form.phone} onChange={e => { console.log('Phone onChange:', e.target.value); setForm(p => ({ ...p, phone: e.target.value })); }} placeholder="0788 123 456" sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         <TextField label="Class / Grade" value={form.class} onChange={e => { console.log('Class onChange:', e.target.value); setForm(p => ({ ...p, class: e.target.value })); }} sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
       </Box>
       <FormControl sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
@@ -6006,6 +6146,7 @@ function StudentsSection() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [credentials, setCredentials] = useState(null); // { student, title } — login details to hand over
   const emptyForm = { firstName: '', lastName: '', email: '', phone: '', class: '', gender: '' };
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
@@ -6022,14 +6163,14 @@ function StudentsSection() {
   const filtered = students
     .filter(s => {
       const name = `${s.firstName} ${s.lastName}`.toLowerCase();
-      const matchSearch = !search || name.includes(search.toLowerCase()) || s.email?.toLowerCase().includes(search.toLowerCase()) || s.class?.toLowerCase().includes(search.toLowerCase());
+      const matchSearch = !search || name.includes(search.toLowerCase()) || s.email?.toLowerCase().includes(search.toLowerCase()) || s.phone?.includes(search) || s.class?.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? !s.isBlocked : s.isBlocked);
       const matchClass = classFilter === 'all' || s.class === classFilter;
       return matchSearch && matchStatus && matchClass;
     })
     .sort((a, b) => {
       if (sortBy === 'name') return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
-      if (sortBy === 'email') return a.email?.localeCompare(b.email);
+      if (sortBy === 'email') return (a.email || '').localeCompare(b.email || '');
       if (sortBy === 'class') return (a.class || '').localeCompare(b.class || '');
       if (sortBy === 'newest') return new Date(b.createdAt) - new Date(a.createdAt);
       return 0;
@@ -6039,21 +6180,30 @@ function StudentsSection() {
   const totalBlocked = students.filter(s => s.isBlocked).length;
   const totalClasses = uniqueClasses.length;
 
+  // A student logs in with an email or a phone number, so one of them is enough.
+  const validateForm = () => {
+    if (!form.firstName.trim() || !form.lastName.trim()) return 'First name and last name are required.';
+    if (!form.email.trim() && !form.phone.trim()) return 'Enter an email or a phone number so the student can log in.';
+    return '';
+  };
+
   const handleCreate = async () => {
-    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) { setFormError('First name, last name and email are required.'); return; }
+    const error = validateForm();
+    if (error) { setFormError(error); return; }
     setSaving(true); setFormError('');
     try {
-      await api.post('/admin/students', form);
-      setSnack('✓ Student created successfully');
+      const res = await api.post('/admin/students', form);
       setCreateDialog(false);
       setForm(emptyForm);
+      setCredentials({ student: res.data, title: 'Student created' });
       load();
     } catch (err) { setFormError(err.response?.data?.message || 'Failed to create student'); }
     finally { setSaving(false); }
   };
 
   const handleEdit = async () => {
-    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) { setFormError('First name, last name and email are required.'); return; }
+    const error = validateForm();
+    if (error) { setFormError(error); return; }
     setSaving(true); setFormError('');
     try {
       await api.put(`/admin/students/${selectedStudent._id}`, form);
@@ -6088,9 +6238,10 @@ function StudentsSection() {
   const handleResetPassword = async () => {
     setResettingPassword(true);
     try {
-      await api.post(`/admin/students/${resetPasswordDialog._id}/reset-password`);
-      setSnack('✓ Password reset successfully. Student will receive an email with the new password.');
+      const res = await api.post(`/admin/students/${resetPasswordDialog._id}/reset-password`);
+      setCredentials({ student: { ...resetPasswordDialog, initialPassword: res.data.password }, title: 'New password' });
       setResetPasswordDialog(null);
+      load();
     } catch { setSnack('Failed to reset password'); }
     finally { setResettingPassword(false); }
   };
@@ -6181,17 +6332,17 @@ function StudentsSection() {
       ) : (
         <Paper elevation={0} sx={{ borderRadius: 3, border: `1px solid ${tokens.surfaceBorder}`, bgcolor: 'white', overflow: 'hidden' }}>
           <TableContainer sx={{ overflowX: 'auto' }}>
-            <Table sx={{ minWidth: 600 }}>
+            <Table sx={{ minWidth: 760 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-                  {['Student', 'Email', 'Phone', 'Class', 'Gender', 'Status', 'Actions'].map(h => (
+                  {['Student', 'Email', 'Phone', 'Password', 'Class', 'Gender', 'Status', 'Actions'].map(h => (
                     <TableCell key={h} sx={{ fontWeight: 700, color: tokens.textSecondary, fontSize: 12, px: 2, py: 1.25 }}>{h}</TableCell>
                   ))}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: tokens.textMuted }}>
+                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 6, color: tokens.textMuted }}>
                     {students.length === 0 ? 'No students yet. Add your first student.' : 'No students match your filters.'}
                   </TableCell></TableRow>
                 ) : filtered.map((s, i) => {
@@ -6207,8 +6358,9 @@ function StudentsSection() {
                           </Box>
                         </Box>
                       </TableCell>
-                      <TableCell sx={{ px: 2 }}><Typography variant="body2" sx={{ color: tokens.textSecondary }}>{s.email}</Typography></TableCell>
+                      <TableCell sx={{ px: 2 }}><Typography variant="body2" sx={{ color: tokens.textSecondary }}>{s.email || '—'}</Typography></TableCell>
                       <TableCell sx={{ px: 2 }}><Typography variant="body2" sx={{ color: tokens.textMuted }}>{s.phone || '—'}</Typography></TableCell>
+                      <TableCell sx={{ px: 2 }}><StudentPasswordCell student={s} onReset={setResetPasswordDialog} /></TableCell>
                       <TableCell sx={{ px: 2 }}><Chip label={s.class || 'N/A'} size="small" sx={{ bgcolor: 'rgba(13,64,108,0.07)', color: tokens.primary, fontWeight: 600, fontSize: 11 }} /></TableCell>
                       <TableCell sx={{ px: 2 }}><Typography variant="body2" sx={{ color: tokens.textMuted, textTransform: 'capitalize' }}>{s.gender || '—'}</Typography></TableCell>
                       <TableCell sx={{ px: 2 }}>
@@ -6280,7 +6432,7 @@ function StudentsSection() {
             </Box>
             <Box>
               <Typography fontWeight={700} color="white" sx={{ fontSize: 16, fontFamily: "DM Sans,sans-serif" }}>{selectedStudent.firstName} {selectedStudent.lastName}</Typography>
-              <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 12.5 }}>{selectedStudent.email}</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 12.5 }}>{selectedStudent.email || selectedStudent.phone}</Typography>
             </Box>
           </Box>
           <DialogContent sx={{ pt: 2.5 }}>
@@ -6326,7 +6478,8 @@ function StudentsSection() {
         <DialogTitle sx={{ fontWeight: 700, fontFamily: "DM Sans,sans-serif" }}>Reset Student Password?</DialogTitle>
         <DialogContent>
           <Typography sx={{ color: tokens.textSecondary }}>
-            Reset password for <strong>{resetPasswordDialog?.firstName} {resetPasswordDialog?.lastName}</strong>? A new password will be generated and sent to their email.
+            Reset password for <strong>{resetPasswordDialog?.firstName} {resetPasswordDialog?.lastName}</strong>? Their current password will stop working.
+            A new one will be shown to you{resetPasswordDialog?.email ? ' and emailed to the student' : ''}, and they will be asked to change it after signing in.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
@@ -6337,6 +6490,13 @@ function StudentsSection() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Login details for a student just created or given a new password */}
+      <StudentCredentialsDialog
+        student={credentials?.student}
+        title={credentials?.title}
+        onClose={() => setCredentials(null)}
+      />
 
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack('')} message={snack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>

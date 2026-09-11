@@ -25,7 +25,8 @@ router.get('/all', auth, isAdminOrTeacher, getAllSharedExams);
 // Public routes (for students accessing shared exams)
 router.get('/:shareToken', getSharedExam);
 router.post('/:shareToken/verify-password', verifySharePassword);
-router.post('/:shareToken/join', joinSharedExam);
+// optionalAuth: a signed-in student joins as their own account (see joinSharedExam)
+router.post('/:shareToken/join', auth.optionalAuth, joinSharedExam);
 router.post('/:shareToken/submit', submitSharedExam);
 
 // Protected routes (for teachers managing shares)
